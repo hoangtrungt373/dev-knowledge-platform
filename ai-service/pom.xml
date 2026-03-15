@@ -21,10 +21,6 @@
             <groupId>com.ttg</groupId>
             <artifactId>common</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.ttg</groupId>
-            <artifactId>knowledge-service</artifactId>
-        </dependency>
 
         <!-- LangChain4j (versions managed by BOM in parent) -->
         <dependency>
@@ -40,12 +36,6 @@
         <dependency>
             <groupId>com.pgvector</groupId>
             <artifactId>pgvector</artifactId>
-        </dependency>
-
-        <!-- Spring Data JPA (needed for embedding store repositories) -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
 
     </dependencies>

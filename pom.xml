@@ -21,19 +21,22 @@
 
     <modules>
         <module>common</module>
-        <module>knowledge-service</module>
-        <module>interview-service</module>
         <module>ai-service</module>
         <module>api</module>
     </modules>
 
     <properties>
+        <spring-boot.version>3.5.6</spring-boot.version>
+        <redis.version>5.0.1</redis.version>
+
         <java.version>21</java.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         <langchain4j.version>0.33.0</langchain4j.version>
         <pgvector.version>0.1.4</pgvector.version>
         <springdoc.version>2.5.0</springdoc.version>
         <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
+        <jjwt.version>0.12.3</jjwt.version>
+        <bcrypt.version>0.4</bcrypt.version>
     </properties>
 
     <dependencyManagement>
@@ -43,16 +46,6 @@
             <dependency>
                 <groupId>com.ttg</groupId>
                 <artifactId>common</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.ttg</groupId>
-                <artifactId>knowledge-service</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.ttg</groupId>
-                <artifactId>interview-service</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -85,6 +78,30 @@
                 <groupId>org.springdoc</groupId>
                 <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
                 <version>${springdoc.version}</version>
+            </dependency>
+
+            <!-- Redis -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-data-redis</artifactId>
+                <version>${spring-boot.version}</version>
+            </dependency>
+
+            <!-- JWT Dependencies -->
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-api</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-impl</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-jackson</artifactId>
+                <version>${jjwt.version}</version>
             </dependency>
 
         </dependencies>

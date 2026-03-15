@@ -1,0 +1,10 @@
+[
+  {
+    "question": "What is Dependency Injection?",
+    "answer": "Dependency Injection is a design pattern..."
+  },
+  {
+    "question": "What is Spring Bean?",
+    "answer": "A Spring Bean is an object managed by Spring container..."
+  }
+]
