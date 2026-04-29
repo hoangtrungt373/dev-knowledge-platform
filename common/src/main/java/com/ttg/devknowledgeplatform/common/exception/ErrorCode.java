@@ -35,6 +35,10 @@ public enum ErrorCode {
 
     // Category Errors (CATEGORY_*)
     CATEGORY_NOT_FOUND("CATEGORY_001", "Category not found", HttpStatus.NOT_FOUND),
+    CATEGORY_NAME_CONFLICT("CATEGORY_002", "A category with this name already exists", HttpStatus.CONFLICT),
+    CATEGORY_SLUG_CONFLICT("CATEGORY_003", "Unable to generate unique slug for category", HttpStatus.CONFLICT),
+    CATEGORY_CYCLIC_PARENT("CATEGORY_004", "Invalid parent: would create a cycle in the category tree", HttpStatus.BAD_REQUEST),
+    CATEGORY_LIST_FILTER_CONFLICT("CATEGORY_005", "Use only one of rootOnly or parentId", HttpStatus.BAD_REQUEST),
 
     // Tag Errors (TAG_*)
     TAG_NOT_FOUND("TAG_001", "Tag not found", HttpStatus.NOT_FOUND),

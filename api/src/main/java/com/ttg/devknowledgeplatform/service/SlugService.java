@@ -2,6 +2,7 @@ package com.ttg.devknowledgeplatform.service;
 
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
+import com.ttg.devknowledgeplatform.repository.CategoryRepository;
 import com.ttg.devknowledgeplatform.repository.ContentItemRepository;
 import com.ttg.devknowledgeplatform.repository.TagRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ public class SlugService {
 
     private final ContentItemRepository contentItemRepository;
     private final TagRepository tagRepository;
+    private final CategoryRepository categoryRepository;
 
     public String generateUniqueSlug(String title) {
         String baseSlug = toSlug(title);
@@ -72,6 +74,34 @@ public class SlugService {
             if (counter > MAX_SLUG_ATTEMPTS) {
                 throw new ApiException(ErrorCode.TAG_SLUG_CONFLICT,
                         "Unable to generate unique slug for tag name: " + name);
+            }
+            slug = baseSlug + "-" + counter++;
+        }
+        return slug;
+    }
+
+    public String generateUniqueCategorySlug(String name) {
+        String baseSlug = toSlug(name);
+        String slug = baseSlug;
+        int counter = 1;
+        while (categoryRepository.existsBySlug(slug)) {
+            if (counter > MAX_SLUG_ATTEMPTS) {
+                throw new ApiException(ErrorCode.CATEGORY_SLUG_CONFLICT,
+                        "Unable to generate unique slug for category name: " + name);
+            }
+            slug = baseSlug + "-" + counter++;
+        }
+        return slug;
+    }
+
+    public String generateUniqueCategorySlug(String name, Integer excludeCategoryId) {
+        String baseSlug = toSlug(name);
+        String slug = baseSlug;
+        int counter = 1;
+        while (categoryRepository.existsBySlugAndIdNot(slug, excludeCategoryId)) {
+            if (counter > MAX_SLUG_ATTEMPTS) {
+                throw new ApiException(ErrorCode.CATEGORY_SLUG_CONFLICT,
+                        "Unable to generate unique slug for category name: " + name);
             }
             slug = baseSlug + "-" + counter++;
         }
