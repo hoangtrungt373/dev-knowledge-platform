@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.controller;
+package com.ttg.devknowledgeplatform.endpoint;
 
 import java.io.IOException;
 
@@ -35,7 +35,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 @Slf4j
-public class OAuth2Controller {
+public class OAuth2Endpoint {
     
     private final UserService userService;
     private final JwtTokenProvider jwtTokenProvider;

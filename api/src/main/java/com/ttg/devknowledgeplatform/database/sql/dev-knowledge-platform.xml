@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.5.xsd"
+                   logicalFilePath="DevKnowledgePlatform">
+
+    <!-- Paths are relative to this file's directory: .../database/sql/ (not .../database/sql/sql/) -->
+    <includeAll path="repeatable" errorIfMissingOrEmpty="false" relativeToChangelogFile="true"/>
+    <includeAll path="2026/0.0.1" errorIfMissingOrEmpty="false" relativeToChangelogFile="true"/>
+</databaseChangeLog>

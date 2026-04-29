@@ -8,5 +8,6 @@ class DevKnowledgePlatformApplicationTests {
 
     @Test
     void contextLoads() {
+
     }
 }

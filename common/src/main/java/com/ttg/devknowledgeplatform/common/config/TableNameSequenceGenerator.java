@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.common.entity;
+package com.ttg.devknowledgeplatform.common.config;
 
 import java.util.Properties;
 

@@ -16,6 +16,7 @@ import org.hibernate.annotations.GenericGenerator;
 
 import java.time.Instant;
 
+import com.ttg.devknowledgeplatform.common.config.TableNameSequenceGenerator;
 import com.ttg.devknowledgeplatform.common.util.DateUtils;
 import com.ttg.devknowledgeplatform.common.util.UserUtils;
 

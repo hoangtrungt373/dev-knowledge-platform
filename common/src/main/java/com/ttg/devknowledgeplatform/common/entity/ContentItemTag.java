@@ -1,12 +1,13 @@
 package com.ttg.devknowledgeplatform.common.entity;
 
-import jakarta.persistence.EmbeddedId;
+import jakarta.persistence.AttributeOverride;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.MapsId;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -15,29 +16,21 @@ import lombok.ToString;
 
 @Entity
 @Table(name = "CONTENT_ITEM_TAG", schema = "product")
+@AttributeOverride(name = "id", column = @Column(name = "CONTENT_ITEM_TAG_ID"))
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(exclude = {"contentItem", "tag"})
+@EqualsAndHashCode(callSuper = true, exclude = {"contentItem", "tag"})
 @ToString(exclude = {"contentItem", "tag"})
-public class ContentItemTag {
+public class ContentItemTag extends AbstractEntity {
 
-    @EmbeddedId
-    private ContentItemTagId id;
-
+    @NotNull
     @ManyToOne(fetch = FetchType.LAZY)
-    @MapsId("contentItemId")
-    @JoinColumn(name = "CONTENT_ITEM_ID")
+    @JoinColumn(name = "CONTENT_ITEM_ID", nullable = false)
     private ContentItem contentItem;
 
+    @NotNull
     @ManyToOne(fetch = FetchType.LAZY)
-    @MapsId("tagId")
-    @JoinColumn(name = "TAG_ID")
+    @JoinColumn(name = "TAG_ID", nullable = false)
     private Tag tag;
-
-    public ContentItemTag(ContentItem contentItem, Tag tag) {
-        this.contentItem = contentItem;
-        this.tag = tag;
-        this.id = new ContentItemTagId(contentItem.getId(), tag.getId());
-    }
 }

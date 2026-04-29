@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.controller;
+package com.ttg.devknowledgeplatform.endpoint;
 
 import java.util.Map;
 
@@ -30,7 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 @Slf4j
-public class AuthCallbackController {
+public class AuthCallbackEndpoint {
     
     private final StateTokenService stateTokenService;
     

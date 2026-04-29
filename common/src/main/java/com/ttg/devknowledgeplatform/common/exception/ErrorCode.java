@@ -33,6 +33,18 @@ public enum ErrorCode {
     USER_EMAIL_INVALID("USER_003", "Invalid email format", HttpStatus.BAD_REQUEST),
     USER_INVALID_STATUS("USER_004", "Invalid user status", HttpStatus.BAD_REQUEST),
 
+    // Category Errors (CATEGORY_*)
+    CATEGORY_NOT_FOUND("CATEGORY_001", "Category not found", HttpStatus.NOT_FOUND),
+
+    // Tag Errors (TAG_*)
+    TAG_NOT_FOUND("TAG_001", "Tag not found", HttpStatus.NOT_FOUND),
+    TAG_NAME_CONFLICT("TAG_002", "A tag with this name already exists", HttpStatus.CONFLICT),
+    TAG_SLUG_CONFLICT("TAG_003", "Unable to generate unique slug for tag", HttpStatus.CONFLICT),
+
+    // Interview Question Errors (IQ_*)
+    INTERVIEW_QUESTION_NOT_FOUND("IQ_001", "Interview question not found", HttpStatus.NOT_FOUND),
+    INTERVIEW_QUESTION_SLUG_CONFLICT("IQ_002", "Slug conflict: unable to generate unique slug", HttpStatus.CONFLICT),
+
     // Validation Errors (VALIDATION_*)
     VALIDATION_FAILED("VALIDATION_001", "Validation failed", HttpStatus.BAD_REQUEST),
     VALIDATION_FIELD_REQUIRED("VALIDATION_002", "Required field is missing", HttpStatus.BAD_REQUEST),

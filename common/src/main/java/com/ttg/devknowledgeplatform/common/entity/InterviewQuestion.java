@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.common.entity;
 
-import com.ttg.devknowledgeplatform.common.enums.Difficulty;
+import com.ttg.devknowledgeplatform.common.enums.InterviewQuestionDifficulty;
 
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
@@ -9,7 +9,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.OneToOne;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -27,13 +27,13 @@ import lombok.ToString;
 @ToString(exclude = {"contentItem"})
 public class InterviewQuestion extends AbstractEntity {
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "CONTENT_ITEM_ID", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "CONTENT_ITEM_ID", nullable = false)
     private ContentItem contentItem;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "DIFFICULTY", length = 50, nullable = false)
-    private Difficulty difficulty = Difficulty.INTERMEDIATE;
+    private InterviewQuestionDifficulty difficulty = InterviewQuestionDifficulty.INTERMEDIATE;
 
     @Column(name = "QUESTION_BODY", nullable = false, columnDefinition = "TEXT")
     private String questionBody;
