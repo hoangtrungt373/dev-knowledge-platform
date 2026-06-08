@@ -12,16 +12,21 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.ttg.devknowledgeplatform.common.entity.User;
+import com.ttg.devknowledgeplatform.service.RefreshTokenBlacklistService;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Component
+@RequiredArgsConstructor
 @Slf4j
 public class JwtTokenProvider {
+
+    private final RefreshTokenBlacklistService blacklistService;
     
     @Value("${jwt.secret}")
     private String jwtSecret;
@@ -108,11 +113,25 @@ public class JwtTokenProvider {
         }
     }
     
+    public long getRemainingValiditySeconds(String token) {
+        try {
+            Date expiration = getExpirationDateFromToken(token);
+            long remaining = (expiration.getTime() - System.currentTimeMillis()) / 1000;
+            return Math.max(remaining, 0);
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     public String refreshToken(String refreshToken) {
         try {
+            if (blacklistService.isBlacklisted(refreshToken)) {
+                throw new IllegalArgumentException("Refresh token has been revoked");
+            }
+
             Claims claims = getAllClaimsFromToken(refreshToken);
             String type = claims.get("type", String.class);
-            
+
             if (!"refresh".equals(type)) {
                 throw new IllegalArgumentException("Invalid refresh token");
             }

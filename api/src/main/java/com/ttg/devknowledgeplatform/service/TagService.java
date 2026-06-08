@@ -16,4 +16,6 @@ public interface TagService {
     TagResponse getById(Integer id);
 
     PagedResponse<TagResponse> list(Pageable pageable, TagStatus status, String q);
+
+    void delete(Integer id);
 }

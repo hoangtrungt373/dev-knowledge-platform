@@ -10,6 +10,7 @@ import com.ttg.devknowledgeplatform.dto.admin.CategoryTreeNodeResponse;
 import com.ttg.devknowledgeplatform.dto.admin.CreateCategoryRequest;
 import com.ttg.devknowledgeplatform.dto.admin.UpdateCategoryRequest;
 import com.ttg.devknowledgeplatform.repository.CategoryRepository;
+import com.ttg.devknowledgeplatform.repository.ContentItemRepository;
 import com.ttg.devknowledgeplatform.repository.spec.CategorySpecification;
 import com.ttg.devknowledgeplatform.service.CategoryService;
 import com.ttg.devknowledgeplatform.service.SlugService;
@@ -34,6 +35,7 @@ import java.util.Map;
 public class CategoryServiceImpl implements CategoryService {
 
     private final CategoryRepository categoryRepository;
+    private final ContentItemRepository contentItemRepository;
     private final SlugService slugService;
 
     @Override
@@ -129,6 +131,21 @@ public class CategoryServiceImpl implements CategoryService {
 
         sortTreeNodes(roots);
         return roots;
+    }
+
+    @Override
+    public void delete(Integer id) {
+        Category category = findById(id);
+        if (categoryRepository.existsByParentId(id)) {
+            throw new ApiException(ErrorCode.CATEGORY_HAS_CHILDREN,
+                    "Category id=" + id + " has children; reassign or delete them first");
+        }
+        if (contentItemRepository.existsByCategoryId(id)) {
+            throw new ApiException(ErrorCode.CATEGORY_IN_USE,
+                    "Category id=" + id + " is referenced by content items");
+        }
+        categoryRepository.delete(category);
+        log.info("Deleted category id={}", id);
     }
 
     private static void validateListFilters(Integer parentId, Boolean rootOnly) {

@@ -24,7 +24,7 @@ import lombok.RequiredArgsConstructor;
 @EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
-    
+
     private final CustomOAuth2UserService customOAuth2UserService;
     private final CustomOidcUserService customOidcUserService;
     private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
@@ -36,11 +36,34 @@ public class SecurityConfig {
         http
             .authorizeHttpRequests(authz -> authz
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers("/api/v1/auth/login", "/api/v1/auth/exchange-state", "/api/v1/auth/oauth2/**", "/login/**", "/oauth2/**").permitAll()
-                .requestMatchers("/actuator/**").permitAll()
+
+                // Auth endpoints — login, register, refresh, OAuth2 flow, token exchange
+                .requestMatchers(
+                    "/api/v1/auth/login",
+                    "/api/v1/auth/register",
+                    "/api/v1/auth/refresh",
+                    "/api/v1/auth/exchange-state",
+                    "/api/v1/auth/oauth2/**"
+                ).permitAll()
+
+                // Public content browsing
+                .requestMatchers("/api/v1/public/**").permitAll()
+
+                // Public user profiles
                 .requestMatchers("/api/v1/users/public/**").permitAll()
+
+                // OAuth2 internal redirects
+                .requestMatchers("/login/**", "/oauth2/**").permitAll()
+
+                // Spring Actuator
+                .requestMatchers("/actuator/**").permitAll()
+
+                // Admin-only management
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+
+                // Current authenticated user info
                 .requestMatchers("/api/v1/auth/user").authenticated()
+
                 .anyRequest().authenticated()
             )
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
@@ -59,7 +82,7 @@ public class SecurityConfig {
             .headers(headers -> headers
                 .frameOptions(frameOptions -> frameOptions.disable())
             );
-        
+
         return http.build();
     }
 }

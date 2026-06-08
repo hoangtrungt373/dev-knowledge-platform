@@ -10,11 +10,13 @@ import org.springframework.data.domain.Pageable;
 
 public interface InterviewQuestionService {
 
-    InterviewQuestionResponse create(CreateInterviewQuestionRequest request);
+    InterviewQuestionResponse create(CreateInterviewQuestionRequest request, Integer authorId);
 
     InterviewQuestionResponse update(Integer id, UpdateInterviewQuestionRequest request);
 
     InterviewQuestionResponse getById(Integer id);
+
+    InterviewQuestionResponse getBySlug(String slug);
 
     PagedResponse<InterviewQuestionResponse> list(
             Pageable pageable,
@@ -22,4 +24,6 @@ public interface InterviewQuestionService {
             ContentStatus status,
             Boolean isCommon,
             String q);
+
+    void delete(Integer id);
 }

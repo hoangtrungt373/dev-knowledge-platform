@@ -88,6 +88,25 @@ public class UserService {
     public Optional<User> findByUserUuidOptional(String userUuid) {
         return userRepository.findByUserUuid(userUuid);
     }
+
+    public User registerLocalUser(String email, String firstName, String lastName, String rawPassword) {
+        log.info("Registering new local user: {}", email);
+        User user = User.builder()
+                .userUuid(UUID.randomUUID().toString())
+                .email(email)
+                .username(generateUsername(firstName + " " + lastName))
+                .password(passwordEncoder.encode(rawPassword))
+                .firstName(firstName)
+                .lastName(lastName)
+                .provider(com.ttg.devknowledgeplatform.common.enums.UserProvider.LOCAL)
+                .emailVerified(false)
+                .enabled(true)
+                .status(com.ttg.devknowledgeplatform.common.enums.UserStatus.OFFLINE)
+                .build();
+        User saved = userRepository.save(user);
+        log.info("Registered local user id={} uuid={}", saved.getId(), saved.getUserUuid());
+        return saved;
+    }
     
     private String generateUsername(String fullName) {
         if (fullName == null || fullName.trim().isEmpty()) {

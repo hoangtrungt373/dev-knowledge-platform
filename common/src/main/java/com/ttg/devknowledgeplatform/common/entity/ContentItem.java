@@ -13,6 +13,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.BatchSize;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -60,6 +61,7 @@ public class ContentItem extends AbstractEntity {
     @Column(name = "PUBLISHED_AT")
     private Instant publishedAt;
 
+    @BatchSize(size = 32)
     @OneToMany(mappedBy = "contentItem", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private Set<ContentItemTag> contentItemTags = new HashSet<>();
 }

@@ -9,6 +9,7 @@ import com.ttg.devknowledgeplatform.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.dto.admin.CreateTagRequest;
 import com.ttg.devknowledgeplatform.dto.admin.TagResponse;
 import com.ttg.devknowledgeplatform.dto.admin.UpdateTagRequest;
+import com.ttg.devknowledgeplatform.repository.ContentItemTagRepository;
 import com.ttg.devknowledgeplatform.repository.TagRepository;
 import com.ttg.devknowledgeplatform.repository.spec.TagSpecification;
 import com.ttg.devknowledgeplatform.service.SlugService;
@@ -28,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class TagServiceImpl implements TagService {
 
     private final TagRepository tagRepository;
+    private final ContentItemTagRepository contentItemTagRepository;
     private final SlugService slugService;
 
     @Override
@@ -84,6 +86,17 @@ public class TagServiceImpl implements TagService {
         Specification<Tag> spec = TagSpecification.withFilters(status, q);
         Page<TagResponse> page = tagRepository.findAll(spec, pageable).map(this::toResponse);
         return PagedResponse.from(page);
+    }
+
+    @Override
+    public void delete(Integer id) {
+        Tag tag = findById(id);
+        if (contentItemTagRepository.existsByTagId(id)) {
+            throw new ApiException(ErrorCode.TAG_IN_USE,
+                    "Tag id=" + id + " is used by content items; remove it from all content first");
+        }
+        tagRepository.delete(tag);
+        log.info("Deleted tag id={}", id);
     }
 
     private Tag findById(Integer id) {

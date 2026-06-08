@@ -2,10 +2,14 @@ package com.ttg.devknowledgeplatform.service.impl;
 
 import com.ttg.devknowledgeplatform.common.entity.Category;
 import com.ttg.devknowledgeplatform.common.entity.ContentItem;
+import com.ttg.devknowledgeplatform.common.entity.ContentItemTag;
 import com.ttg.devknowledgeplatform.common.entity.InterviewQuestion;
+import com.ttg.devknowledgeplatform.common.entity.Tag;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import com.ttg.devknowledgeplatform.common.enums.InterviewQuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.TagStatus;
+import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
 import com.ttg.devknowledgeplatform.dto.PagedResponse;
@@ -15,6 +19,7 @@ import com.ttg.devknowledgeplatform.dto.admin.UpdateInterviewQuestionRequest;
 import com.ttg.devknowledgeplatform.repository.CategoryRepository;
 import com.ttg.devknowledgeplatform.repository.ContentItemRepository;
 import com.ttg.devknowledgeplatform.repository.InterviewQuestionRepository;
+import com.ttg.devknowledgeplatform.repository.TagRepository;
 import com.ttg.devknowledgeplatform.repository.spec.InterviewQuestionSpecification;
 import com.ttg.devknowledgeplatform.service.InterviewQuestionService;
 import com.ttg.devknowledgeplatform.service.SlugService;
@@ -28,6 +33,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -39,9 +49,10 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
     private final ContentItemRepository contentItemRepository;
     private final CategoryRepository categoryRepository;
     private final SlugService slugService;
+    private final TagRepository tagRepository;
 
     @Override
-    public InterviewQuestionResponse create(CreateInterviewQuestionRequest request) {
+    public InterviewQuestionResponse create(CreateInterviewQuestionRequest request, Integer authorId) {
         Category category = resolveCategory(request.getCategoryId());
         String slug = slugService.generateUniqueSlug(request.getTitle());
 
@@ -51,12 +62,17 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
         contentItem.setSlug(slug);
         contentItem.setStatus(request.getStatus() != null ? request.getStatus() : ContentStatus.DRAFT);
         contentItem.setCategory(category);
+        contentItem.setAuthorId(authorId);
         contentItem.setViewCount(0);
         if (ContentStatus.PUBLISHED.equals(contentItem.getStatus())) {
             contentItem.setPublishedAt(Instant.now());
         }
 
         ContentItem savedContentItem = contentItemRepository.save(contentItem);
+
+        Set<Integer> tagIdsToApply =
+                request.getTagIds() == null ? Set.of() : request.getTagIds();
+        applyTagIds(savedContentItem, tagIdsToApply);
 
         InterviewQuestion question = new InterviewQuestion();
         question.setContentItem(savedContentItem);
@@ -101,6 +117,10 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
         question.setDetailedAnswer(request.getDetailedAnswer());
         question.setIsCommon(request.getIsCommon() != null ? request.getIsCommon() : question.getIsCommon());
 
+        if (request.getTagIds() != null) {
+            applyTagIds(contentItem, request.getTagIds());
+        }
+
         InterviewQuestion updated = interviewQuestionRepository.save(question);
         log.info("Updated interview question id={}", id);
         return toResponse(updated);
@@ -110,6 +130,16 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
     @Transactional(readOnly = true)
     public InterviewQuestionResponse getById(Integer id) {
         return toResponse(findById(id));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public InterviewQuestionResponse getBySlug(String slug) {
+        InterviewQuestion question = interviewQuestionRepository.findByContentItem_Slug(slug)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        ErrorCode.INTERVIEW_QUESTION_NOT_FOUND,
+                        "Interview question not found with slug: " + slug));
+        return toResponse(question);
     }
 
     @Override
@@ -126,6 +156,15 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
         Page<InterviewQuestionResponse> page =
                 interviewQuestionRepository.findAll(spec, pageable).map(this::toResponse);
         return PagedResponse.from(page);
+    }
+
+    @Override
+    public void delete(Integer id) {
+        InterviewQuestion question = findById(id);
+        ContentItem contentItem = question.getContentItem();
+        interviewQuestionRepository.delete(question);
+        contentItemRepository.delete(contentItem);
+        log.info("Deleted interview question id={} and its content item id={}", id, contentItem.getId());
     }
 
     private InterviewQuestion findById(Integer id) {
@@ -157,8 +196,58 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
                 .isCommon(question.getIsCommon())
                 .status(ci.getStatus())
                 .categoryId(ci.getCategory() != null ? ci.getCategory().getId() : null)
+                .tagIds(extractTagIds(ci))
                 .createdAt(question.getDteCreation())
                 .updatedAt(question.getDteLastModification())
                 .build();
+    }
+
+    /**
+     * Replaces all tag links for this content item. Deduplicates {@code tagIds} while preserving first-seen order.
+     * Enforces uniqueness in the service layer (no DB unique constraint).
+     */
+    private void applyTagIds(ContentItem contentItem, Set<Integer> tagIds) {
+        if (tagIds.stream().anyMatch(Objects::isNull)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FIELD_INVALID, "tagIds must not contain null");
+        }
+        LinkedHashSet<Integer> unique = new LinkedHashSet<>(tagIds);
+        if (unique.isEmpty()) {
+            contentItem.getContentItemTags().clear();
+            return;
+        }
+
+        List<Tag> existing = tagRepository.findAllById(unique);
+        if (existing.size() != unique.size()) {
+            throw new ApiException(
+                    ErrorCode.TAG_NOT_FOUND, "One or more tags were not found");
+        }
+        List<Integer> inactive = existing.stream()
+                .filter(t -> t.getStatus() != TagStatus.ACTIVE)
+                .map(Tag::getId)
+                .toList();
+        if (!inactive.isEmpty()) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FIELD_INVALID,
+                    "Tags with ids " + inactive + " are inactive and cannot be assigned");
+        }
+
+        contentItem.getContentItemTags().clear();
+        for (Integer tagId : unique) {
+            ContentItemTag link = new ContentItemTag();
+            link.setContentItem(contentItem);
+            link.setTag(tagRepository.getReferenceById(tagId));
+            contentItem.getContentItemTags().add(link);
+        }
+    }
+
+    private static Set<Integer> extractTagIds(ContentItem ci) {
+        if (ci.getContentItemTags() == null || ci.getContentItemTags().isEmpty()) {
+            return Set.of();
+        }
+        return ci.getContentItemTags().stream()
+                .map(cit -> cit.getTag().getId())
+                .sorted()
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 }

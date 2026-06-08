@@ -7,6 +7,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
+import java.util.Set;
+
 @Data
 public class UpdateInterviewQuestionRequest {
 
@@ -29,4 +31,7 @@ public class UpdateInterviewQuestionRequest {
     private ContentStatus status;
 
     private Integer categoryId;
+
+    /** Null = leave tags unchanged; empty = clear all; otherwise replace (deduped in service). */
+    private Set<Integer> tagIds;
 }

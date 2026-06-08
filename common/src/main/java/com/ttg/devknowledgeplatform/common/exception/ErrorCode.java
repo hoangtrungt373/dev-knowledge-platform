@@ -48,6 +48,23 @@ public enum ErrorCode {
     // Interview Question Errors (IQ_*)
     INTERVIEW_QUESTION_NOT_FOUND("IQ_001", "Interview question not found", HttpStatus.NOT_FOUND),
     INTERVIEW_QUESTION_SLUG_CONFLICT("IQ_002", "Slug conflict: unable to generate unique slug", HttpStatus.CONFLICT),
+    INTERVIEW_QUESTION_IN_USE("IQ_003", "Interview question is referenced and cannot be deleted", HttpStatus.CONFLICT),
+
+    // Article Errors (ARTICLE_*)
+    ARTICLE_NOT_FOUND("ARTICLE_001", "Article not found", HttpStatus.NOT_FOUND),
+    ARTICLE_SLUG_CONFLICT("ARTICLE_002", "Slug conflict: unable to generate unique slug", HttpStatus.CONFLICT),
+    ARTICLE_TYPE_INVALID("ARTICLE_003", "Article type must be ARTICLE or BLOG_POST", HttpStatus.BAD_REQUEST),
+
+    // Category delete guard
+    CATEGORY_HAS_CHILDREN("CATEGORY_006", "Category has children and cannot be deleted", HttpStatus.CONFLICT),
+    CATEGORY_IN_USE("CATEGORY_007", "Category is used by content items and cannot be deleted", HttpStatus.CONFLICT),
+
+    // Tag delete guard
+    TAG_IN_USE("TAG_004", "Tag is used by content items and cannot be deleted", HttpStatus.CONFLICT),
+
+    // User errors
+    USER_PASSWORD_INVALID("USER_005", "Password must be at least 8 characters", HttpStatus.BAD_REQUEST),
+    USER_EMAIL_ALREADY_EXISTS("USER_006", "An account with this email already exists", HttpStatus.CONFLICT);
 
     // Validation Errors (VALIDATION_*)
     VALIDATION_FAILED("VALIDATION_001", "Validation failed", HttpStatus.BAD_REQUEST),

@@ -21,4 +21,6 @@ public interface CategoryService {
             Pageable pageable, Integer parentId, Boolean rootOnly, String q);
 
     List<CategoryTreeNodeResponse> listTree();
+
+    void delete(Integer id);
 }
