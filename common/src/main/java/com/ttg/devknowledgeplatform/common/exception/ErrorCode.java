@@ -64,7 +64,7 @@ public enum ErrorCode {
 
     // User errors
     USER_PASSWORD_INVALID("USER_005", "Password must be at least 8 characters", HttpStatus.BAD_REQUEST),
-    USER_EMAIL_ALREADY_EXISTS("USER_006", "An account with this email already exists", HttpStatus.CONFLICT);
+    USER_EMAIL_ALREADY_EXISTS("USER_006", "An account with this email already exists", HttpStatus.CONFLICT),
 
     // Validation Errors (VALIDATION_*)
     VALIDATION_FAILED("VALIDATION_001", "Validation failed", HttpStatus.BAD_REQUEST),

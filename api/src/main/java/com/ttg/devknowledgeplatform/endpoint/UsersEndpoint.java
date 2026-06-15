@@ -4,7 +4,7 @@ import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.endpoint.OAuth2Endpoint.UserInfo;
-import com.ttg.devknowledgeplatform.service.UserService;
+import com.ttg.devknowledgeplatform.security.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;

@@ -9,7 +9,7 @@ import com.ttg.devknowledgeplatform.dto.admin.ArticleResponse;
 import com.ttg.devknowledgeplatform.dto.admin.CreateArticleRequest;
 import com.ttg.devknowledgeplatform.dto.admin.UpdateArticleRequest;
 import com.ttg.devknowledgeplatform.service.ArticleService;
-import com.ttg.devknowledgeplatform.service.UserService;
+import com.ttg.devknowledgeplatform.security.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

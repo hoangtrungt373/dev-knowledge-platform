@@ -51,6 +51,7 @@ export default function AuthCallback(): JSX.Element | null {
           userId: data.userId,
           username: data.username,
           email: data.email,
+          role: data.role,
         });
         
         console.log('Tokens stored in localStorage');

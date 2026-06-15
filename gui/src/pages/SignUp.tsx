@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -21,26 +21,32 @@ import EmailIcon from '@mui/icons-material/Email';
 import LockIcon from '@mui/icons-material/Lock';
 import PersonIcon from '@mui/icons-material/Person';
 import { authService } from '../services';
+import { authApi } from '../api';
 import { OAuthProvider } from '../types';
 import { useNotification } from '../contexts/NotificationContext';
+import { useSubmitGuard } from '../hooks/useSubmitGuard';
+import { PROVIDER_COLORS } from '../constants/colors';
 
 interface FormErrors {
-  username?: string;
+  firstName?: string;
   email?: string;
   password?: string;
   confirmPassword?: string;
 }
 
+// Fix 5: replace username field with firstName + lastName to match RegisterRequest
 export default function SignUp(): JSX.Element {
-  const { showInfo } = useNotification();
-  
-  const [username, setUsername] = useState('');
+  const { showError } = useNotification();
+  const navigate = useNavigate();
+  const { loading, guard } = useSubmitGuard();
+
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
 
   const loginWith = (provider: OAuthProvider): void => {
@@ -49,26 +55,19 @@ export default function SignUp(): JSX.Element {
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
-    
-    // Username validation
-    if (!username.trim()) {
-      newErrors.username = 'Username is required';
-    } else if (username.length < 3) {
-      newErrors.username = 'Username must be at least 3 characters';
-    } else if (username.length > 30) {
-      newErrors.username = 'Username must be less than 30 characters';
-    } else if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      newErrors.username = 'Username can only contain letters, numbers, and underscores';
+
+    if (!firstName.trim()) {
+      newErrors.firstName = 'First name is required';
+    } else if (firstName.trim().length > 255) {
+      newErrors.firstName = 'First name must be less than 255 characters';
     }
-    
-    // Email validation
+
     if (!email.trim()) {
       newErrors.email = 'Email is required';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       newErrors.email = 'Please enter a valid email';
     }
-    
-    // Password validation
+
     if (!password) {
       newErrors.password = 'Password is required';
     } else if (password.length < 8) {
@@ -80,33 +79,25 @@ export default function SignUp(): JSX.Element {
     } else if (!/(?=.*\d)/.test(password)) {
       newErrors.password = 'Password must contain at least one number';
     }
-    
-    // Confirm password validation
+
     if (!confirmPassword) {
       newErrors.confirmPassword = 'Please confirm your password';
     } else if (password !== confirmPassword) {
       newErrors.confirmPassword = 'Passwords do not match';
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!validateForm()) {
-      return;
-    }
-    
-    setLoading(true);
-    
-    // TODO: Implement actual API call
-    // For now, just show a notification
-    setTimeout(() => {
-      setLoading(false);
-      showInfo('Sign up via form is not yet implemented. Please use Google or Facebook to create an account.');
-    }, 1000);
+    if (!validateForm()) return;
+    guard(async () => {
+      const tokens = await authApi.register(firstName.trim(), lastName.trim() || undefined, email, password, showError);
+      authService.storeTokens(tokens);
+      navigate('/dashboard', { replace: true });
+    });
   };
 
   return (
@@ -119,25 +110,32 @@ export default function SignUp(): JSX.Element {
           Join Duck Chat today
         </Typography>
 
-        {/* Sign Up Form */}
         <Box component="form" onSubmit={handleSubmit}>
           <Stack spacing={2}>
-            <TextField
-              fullWidth
-              label="Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              error={!!errors.username}
-              helperText={errors.username}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <PersonIcon color="action" />
-                  </InputAdornment>
-                ),
-              }}
-            />
-            
+            <Stack direction="row" spacing={1}>
+              <TextField
+                fullWidth
+                label="First Name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                error={!!errors.firstName}
+                helperText={errors.firstName}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <PersonIcon color="action" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <TextField
+                fullWidth
+                label="Last Name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+              />
+            </Stack>
+
             <TextField
               fullWidth
               label="Email"
@@ -154,7 +152,7 @@ export default function SignUp(): JSX.Element {
                 ),
               }}
             />
-            
+
             <TextField
               fullWidth
               label="Password"
@@ -171,18 +169,14 @@ export default function SignUp(): JSX.Element {
                 ),
                 endAdornment: (
                   <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => setShowPassword(!showPassword)}
-                      edge="end"
-                      size="small"
-                    >
+                    <IconButton onClick={() => setShowPassword(!showPassword)} edge="end" size="small">
                       {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
                     </IconButton>
                   </InputAdornment>
                 ),
               }}
             />
-            
+
             <TextField
               fullWidth
               label="Confirm Password"
@@ -199,11 +193,7 @@ export default function SignUp(): JSX.Element {
                 ),
                 endAdornment: (
                   <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      edge="end"
-                      size="small"
-                    >
+                    <IconButton onClick={() => setShowConfirmPassword(!showConfirmPassword)} edge="end" size="small">
                       {showConfirmPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
                     </IconButton>
                   </InputAdornment>
@@ -214,57 +204,49 @@ export default function SignUp(): JSX.Element {
             <Button
               type="submit"
               variant="contained"
-              size="large"
               fullWidth
               disabled={loading}
-              sx={{ py: 1.5, mt: 1 }}
             >
               {loading ? <CircularProgress size={24} color="inherit" /> : 'Create Account'}
             </Button>
           </Stack>
         </Box>
 
-        {/* Divider */}
         <Divider sx={{ my: 3 }}>
           <Typography variant="body2" color="text.secondary">
             or sign up with
           </Typography>
         </Divider>
 
-        {/* OAuth Buttons */}
         <Stack spacing={2}>
           <Button
             variant="outlined"
-            size="large"
             fullWidth
             startIcon={<GoogleIcon />}
             onClick={() => loginWith('google')}
             sx={{
-              py: 1.5,
-              borderColor: '#db4437',
-              color: '#db4437',
+              borderColor: PROVIDER_COLORS.google.main,
+              color: PROVIDER_COLORS.google.main,
               '&:hover': {
-                borderColor: '#c23321',
-                backgroundColor: 'rgba(219, 68, 55, 0.04)',
+                borderColor: PROVIDER_COLORS.google.hover,
+                backgroundColor: PROVIDER_COLORS.google.hoverBg,
               },
             }}
           >
             Continue with Google
           </Button>
-          
+
           <Button
             variant="outlined"
-            size="large"
             fullWidth
             startIcon={<FacebookIcon />}
             onClick={() => loginWith('facebook')}
             sx={{
-              py: 1.5,
-              borderColor: '#1877f2',
-              color: '#1877f2',
+              borderColor: PROVIDER_COLORS.facebook.main,
+              color: PROVIDER_COLORS.facebook.main,
               '&:hover': {
-                borderColor: '#166fe5',
-                backgroundColor: 'rgba(24, 119, 242, 0.04)',
+                borderColor: PROVIDER_COLORS.facebook.hover,
+                backgroundColor: PROVIDER_COLORS.facebook.hoverBg,
               },
             }}
           >
@@ -272,7 +254,6 @@ export default function SignUp(): JSX.Element {
           </Button>
         </Stack>
 
-        {/* Login Link */}
         <Box sx={{ mt: 3, textAlign: 'center' }}>
           <Typography variant="body2" color="text.secondary">
             Already have an account?{' '}

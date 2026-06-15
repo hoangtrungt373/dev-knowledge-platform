@@ -12,10 +12,10 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
 
-import com.ttg.devknowledgeplatform.handler.OAuth2LoginSuccessHandler;
+import com.ttg.devknowledgeplatform.security.handler.OAuth2LoginSuccessHandler;
 import com.ttg.devknowledgeplatform.security.JwtAuthenticationFilter;
-import com.ttg.devknowledgeplatform.service.CustomOAuth2UserService;
-import com.ttg.devknowledgeplatform.service.CustomOidcUserService;
+import com.ttg.devknowledgeplatform.security.service.CustomOAuth2UserService;
+import com.ttg.devknowledgeplatform.security.service.CustomOidcUserService;
 
 import lombok.RequiredArgsConstructor;
 

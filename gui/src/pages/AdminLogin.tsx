@@ -19,15 +19,16 @@ import LockIcon from '@mui/icons-material/Lock';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { adminAuthService } from '../services';
 import { useNotification } from '../contexts/NotificationContext';
+import { useSubmitGuard } from '../hooks/useSubmitGuard';
 
 export default function AdminLogin(): JSX.Element {
   const navigate = useNavigate();
   const { showError } = useNotification();
+  const { loading, guard } = useSubmitGuard();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -52,26 +53,20 @@ export default function AdminLogin(): JSX.Element {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
-
-    if (!validateForm()) {
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      await adminAuthService.login(email, password);
-      navigate('/admin/dashboard', { replace: true });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
-      setLoginError(message);
-      showError(message);
-    } finally {
-      setLoading(false);
-    }
+    if (!validateForm()) return;
+    guard(async () => {
+      try {
+        await adminAuthService.login(email, password);
+        navigate('/admin/dashboard', { replace: true });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
+        setLoginError(message);
+        showError(message);
+      }
+    });
   };
 
   return (
@@ -144,10 +139,8 @@ export default function AdminLogin(): JSX.Element {
             <Button
               type="submit"
               variant="contained"
-              size="large"
               fullWidth
               disabled={loading}
-              sx={{ py: 1.5, mt: 1 }}
             >
               {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
             </Button>

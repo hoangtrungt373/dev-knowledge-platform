@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.handler;
+package com.ttg.devknowledgeplatform.security.handler;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -15,8 +15,8 @@ import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.common.enums.UserStatus;
 import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.security.JwtTokenProvider;
-import com.ttg.devknowledgeplatform.service.StateTokenService;
-import com.ttg.devknowledgeplatform.service.UserService;
+import com.ttg.devknowledgeplatform.security.service.StateTokenService;
+import com.ttg.devknowledgeplatform.security.service.UserService;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.endpoint;
 
 import java.io.IOException;
+import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,7 +15,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.common.enums.UserRole;
 import com.ttg.devknowledgeplatform.common.enums.UserStatus;
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
@@ -22,10 +22,10 @@ import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.dto.RegisterRequest;
 import com.ttg.devknowledgeplatform.security.JwtTokenProvider;
-import com.ttg.devknowledgeplatform.service.RefreshTokenBlacklistService;
-import com.ttg.devknowledgeplatform.service.UserService;
+import com.ttg.devknowledgeplatform.security.service.RefreshTokenBlacklistService;
+import com.ttg.devknowledgeplatform.security.service.StateTokenService;
+import com.ttg.devknowledgeplatform.security.service.UserService;
 
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -44,6 +44,7 @@ public class OAuth2Endpoint {
     private final JwtTokenProvider jwtTokenProvider;
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenBlacklistService blacklistService;
+    private final StateTokenService stateTokenService;
 
     @GetMapping("/oauth2/authorization/{provider}")
     public void oauth2Authorization(@PathVariable String provider, HttpServletResponse response) throws IOException {
@@ -61,16 +62,13 @@ public class OAuth2Endpoint {
         if (!user.getEnabled()) {
             throw new ApiException(ErrorCode.AUTH_FORBIDDEN, "Account is disabled");
         }
-        if (user.getRole() != UserRole.ADMIN) {
-            throw new ApiException(ErrorCode.AUTH_FORBIDDEN, "Admin access required");
-        }
 
         userService.updateStatus(user.getId(), UserStatus.ONLINE);
 
         String accessToken = jwtTokenProvider.generateToken(user);
         String refreshToken = jwtTokenProvider.generateRefreshToken(user);
 
-        log.info("Admin login successful: {} (uuid: {})", user.getEmail(), user.getUserUuid());
+        log.info("Login successful: {} role={} (uuid: {})", user.getEmail(), user.getRole(), user.getUserUuid());
 
         return ResponseEntity.ok(LoginResponse.builder()
                 .accessToken(accessToken)
@@ -104,6 +102,26 @@ public class OAuth2Endpoint {
                 .username(user.getUsername())
                 .email(user.getEmail())
                 .role(user.getRole().name())
+                .build());
+    }
+
+    @PostMapping("/exchange-state")
+    public ResponseEntity<LoginResponse> exchangeState(@Valid @RequestBody ExchangeStateRequest request) {
+        Map<String, String> tokenData = stateTokenService.getTokenData(request.getStateToken());
+        if (tokenData == null) {
+            throw new ApiException(ErrorCode.AUTH_TOKEN_INVALID, "State token not found or expired");
+        }
+        stateTokenService.deleteTokenData(request.getStateToken());
+
+        log.info("State token exchanged for user: {}", tokenData.get("email"));
+
+        return ResponseEntity.ok(LoginResponse.builder()
+                .accessToken(tokenData.get("accessToken"))
+                .refreshToken(tokenData.get("refreshToken"))
+                .userId(tokenData.get("userId"))
+                .username(tokenData.get("username"))
+                .email(tokenData.get("email"))
+                .role(tokenData.get("role"))
                 .build());
     }
 
@@ -178,6 +196,12 @@ public class OAuth2Endpoint {
         private String status;
         private java.time.Instant createdAt;
         private java.time.Instant lastModified;
+    }
+
+    @Data
+    public static class ExchangeStateRequest {
+        @NotBlank(message = "State token is required")
+        private String stateToken;
     }
 
     @Data

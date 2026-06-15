@@ -99,13 +99,19 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
           autoHideDuration={notification.duration}
           onClose={handleClose}
           anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-          sx={{ mt: 8 }} // Offset for NavBar
+          sx={{ mt: 6 }} // Offset for dense NavBar (48px)
         >
           <Alert
             onClose={handleClose}
             severity={notification.severity as AlertColor}
             variant="filled"
-            sx={{ width: '100%' }}
+            sx={{
+              width: '100%',
+              py: 0.5,
+              fontSize: '0.8125rem',
+              alignItems: 'center',
+              '& .MuiAlert-action': { pt: 0, alignItems: 'center' },
+            }}
             action={
               <IconButton
                 size="small"

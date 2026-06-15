@@ -12,7 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.service.RefreshTokenBlacklistService;
+import com.ttg.devknowledgeplatform.security.service.RefreshTokenBlacklistService;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
@@ -55,8 +55,9 @@ public class JwtTokenProvider {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", user.getUserUuid());
         claims.put("role", "ROLE_" + user.getRole().name());
+        claims.put("username", user.getUsername());
         claims.put("type", "refresh");
-        
+
         return createToken(claims, user.getEmail(), refreshTokenExpiration);
     }
     
@@ -139,11 +140,13 @@ public class JwtTokenProvider {
             String userId = claims.get("userId", String.class);
             String email = claims.getSubject();
             String role = claims.get("role", String.class);
-            
+            String username = claims.get("username", String.class);
+
             Map<String, Object> newClaims = new HashMap<>();
             newClaims.put("userId", userId);
             newClaims.put("email", email);
             newClaims.put("role", role != null ? role : "ROLE_USER");
+            newClaims.put("username", username);
             
             return createToken(newClaims, email, jwtExpiration);
             

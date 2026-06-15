@@ -9,7 +9,7 @@ import com.ttg.devknowledgeplatform.dto.admin.CreateInterviewQuestionRequest;
 import com.ttg.devknowledgeplatform.dto.admin.InterviewQuestionResponse;
 import com.ttg.devknowledgeplatform.dto.admin.UpdateInterviewQuestionRequest;
 import com.ttg.devknowledgeplatform.service.InterviewQuestionService;
-import com.ttg.devknowledgeplatform.service.UserService;
+import com.ttg.devknowledgeplatform.security.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

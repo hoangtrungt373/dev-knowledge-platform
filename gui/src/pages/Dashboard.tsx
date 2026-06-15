@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Paper, Typography, Avatar, Stack, Divider, Button, CircularProgress, Box } from '@mui/material';
 import { userApi } from '../api';
 import { authService } from '../services';
@@ -7,27 +6,19 @@ import { User } from '../types';
 import { useNotification } from '../contexts/NotificationContext';
 
 export default function Dashboard(): JSX.Element | null {
-  const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const { showError } = useNotification();
 
   useEffect(() => {
-    if (!authService.isAuthenticated()) {
-      navigate('/login', { replace: true });
-      return;
-    }
-
     (async () => {
       try {
         setLoading(true);
-        // Api.getCurrentUser automatically shows error notification if it fails
         const me = await userApi.getCurrentUser(showError);
         setUser(me);
       } catch (error) {
-        console.error('Failed to load user:', error);
-        // Error notification already shown by Api.getCurrentUser
-        // Optionally redirect to login if unauthorized
+        // 401 means the token expired between PrivateRoute check and this fetch;
+        // httpClient already tried a refresh — log out if it still failed.
         if ((error as any)?.status === 401) {
           authService.logout();
         }
@@ -35,7 +26,7 @@ export default function Dashboard(): JSX.Element | null {
         setLoading(false);
       }
     })();
-  }, [navigate, showError]);
+  }, [showError]);
 
   if (loading) {
     return (

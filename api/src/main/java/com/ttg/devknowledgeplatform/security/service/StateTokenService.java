@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.service;
+package com.ttg.devknowledgeplatform.security.service;
 
 import java.util.Map;
 import java.util.UUID;

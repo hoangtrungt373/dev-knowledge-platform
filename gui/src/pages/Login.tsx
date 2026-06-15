@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -20,16 +20,20 @@ import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import EmailIcon from '@mui/icons-material/Email';
 import LockIcon from '@mui/icons-material/Lock';
 import { authService } from '../services';
+import { authApi } from '../api';
 import { OAuthProvider } from '../types';
 import { useNotification } from '../contexts/NotificationContext';
+import { useSubmitGuard } from '../hooks/useSubmitGuard';
+import { PROVIDER_COLORS } from '../constants/colors';
 
 export default function Login(): JSX.Element {
-  const { showInfo } = useNotification();
-  
+  const { showError } = useNotification();
+  const navigate = useNavigate();
+  const { loading, guard } = useSubmitGuard();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
   const loginWith = (provider: OAuthProvider): void => {
@@ -47,29 +51,22 @@ export default function Login(): JSX.Element {
     
     if (!password) {
       newErrors.password = 'Password is required';
-    } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+    } else if (password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters';
     }
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!validateForm()) {
-      return;
-    }
-    
-    setLoading(true);
-    
-    // TODO: Implement actual API call
-    // For now, just show a notification
-    setTimeout(() => {
-      setLoading(false);
-      showInfo('Login via email/password is not yet implemented. Please use Google or Facebook.');
-    }, 1000);
+    if (!validateForm()) return;
+    guard(async () => {
+      const tokens = await authApi.login(email, password, showError);
+      authService.storeTokens(tokens);
+      navigate('/dashboard', { replace: true });
+    });
   };
 
   return (
@@ -133,10 +130,8 @@ export default function Login(): JSX.Element {
             <Button
               type="submit"
               variant="contained"
-              size="large"
               fullWidth
               disabled={loading}
-              sx={{ py: 1.5 }}
             >
               {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
             </Button>
@@ -159,31 +154,28 @@ export default function Login(): JSX.Element {
             startIcon={<GoogleIcon />}
             onClick={() => loginWith('google')}
             sx={{
-              py: 1.5,
-              borderColor: '#db4437',
-              color: '#db4437',
+              borderColor: PROVIDER_COLORS.google.main,
+              color: PROVIDER_COLORS.google.main,
               '&:hover': {
-                borderColor: '#c23321',
-                backgroundColor: 'rgba(219, 68, 55, 0.04)',
+                borderColor: PROVIDER_COLORS.google.hover,
+                backgroundColor: PROVIDER_COLORS.google.hoverBg,
               },
             }}
           >
             Continue with Google
           </Button>
-          
+
           <Button
             variant="outlined"
-            size="large"
             fullWidth
             startIcon={<FacebookIcon />}
             onClick={() => loginWith('facebook')}
             sx={{
-              py: 1.5,
-              borderColor: '#1877f2',
-              color: '#1877f2',
+              borderColor: PROVIDER_COLORS.facebook.main,
+              color: PROVIDER_COLORS.facebook.main,
               '&:hover': {
-                borderColor: '#166fe5',
-                backgroundColor: 'rgba(24, 119, 242, 0.04)',
+                borderColor: PROVIDER_COLORS.facebook.hover,
+                backgroundColor: PROVIDER_COLORS.facebook.hoverBg,
               },
             }}
           >

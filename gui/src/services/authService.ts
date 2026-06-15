@@ -1,26 +1,8 @@
 import { AuthTokens, OAuthProvider } from '../types';
-
-const STORAGE_KEYS = {
-  accessToken: 'accessToken',
-  refreshToken: 'refreshToken',
-  userId: 'userId',
-  username: 'username',
-  email: 'email'
-} as const;
+import { STORAGE_KEYS } from '../constants/storage';
 
 const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8081';
 
-/**
- * Auth Service
- * 
- * Manages authentication state:
- * - Token storage (localStorage)
- * - OAuth2 flow initiation
- * - Session management (login/logout)
- * 
- * Note: This service handles CLIENT-SIDE auth state.
- * For API calls, use authApi from '../api'
- */
 export interface AuthService {
   startOAuth(provider: OAuthProvider): void;
   storeTokens(tokens: Partial<AuthTokens>): void;
@@ -29,85 +11,80 @@ export interface AuthService {
   getUserId(): string | null;
   getUsername(): string | null;
   getEmail(): string | null;
+  getRole(): string | null;   // Fix 8
   clear(): void;
   logout(): void;
   isAuthenticated(): boolean;
 }
 
 export const authService: AuthService = {
-  /**
-   * Start OAuth2 login flow
-   * Redirects user to backend OAuth2 endpoint
-   */
   startOAuth(provider: OAuthProvider): void {
     window.location.href = `${BACKEND_BASE_URL}/api/v1/auth/oauth2/authorization/${provider}`;
   },
 
-  /**
-   * Store auth tokens in localStorage
-   */
+  // Fix 8: store role alongside other tokens
   storeTokens(tokens: Partial<AuthTokens>): void {
     if (tokens.accessToken) localStorage.setItem(STORAGE_KEYS.accessToken, tokens.accessToken);
     if (tokens.refreshToken) localStorage.setItem(STORAGE_KEYS.refreshToken, tokens.refreshToken);
     if (tokens.userId) localStorage.setItem(STORAGE_KEYS.userId, tokens.userId);
     if (tokens.username) localStorage.setItem(STORAGE_KEYS.username, tokens.username);
     if (tokens.email) localStorage.setItem(STORAGE_KEYS.email, tokens.email);
+    if (tokens.role) localStorage.setItem(STORAGE_KEYS.role, tokens.role);
   },
 
-  /**
-   * Get access token from storage
-   */
   getAccessToken(): string | null {
     return localStorage.getItem(STORAGE_KEYS.accessToken);
   },
 
-  /**
-   * Get refresh token from storage
-   */
   getRefreshToken(): string | null {
     return localStorage.getItem(STORAGE_KEYS.refreshToken);
   },
 
-  /**
-   * Get stored user ID
-   */
   getUserId(): string | null {
     return localStorage.getItem(STORAGE_KEYS.userId);
   },
 
-  /**
-   * Get stored username
-   */
   getUsername(): string | null {
     return localStorage.getItem(STORAGE_KEYS.username);
   },
 
-  /**
-   * Get stored email
-   */
   getEmail(): string | null {
     return localStorage.getItem(STORAGE_KEYS.email);
   },
 
-  /**
-   * Clear all auth data from storage
-   */
+  // Fix 8
+  getRole(): string | null {
+    return localStorage.getItem(STORAGE_KEYS.role);
+  },
+
   clear(): void {
     Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
   },
 
-  /**
-   * Logout user and redirect to login page
-   */
+  // Fix 6: call backend logout to blacklist the refresh token before clearing
   logout(): void {
+    const refreshToken = this.getRefreshToken();
+    if (refreshToken) {
+      // Fire-and-forget — don't block the redirect on network errors
+      fetch(`${BACKEND_BASE_URL}/api/v1/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      }).catch(() => {});
+    }
     this.clear();
     window.location.href = '/login';
   },
 
-  /**
-   * Check if user is authenticated (has access token)
-   */
+  // Fix 9: validate JWT expiry from the `exp` claim instead of just checking presence
   isAuthenticated(): boolean {
-    return !!this.getAccessToken();
+    const token = this.getAccessToken();
+    if (!token) return false;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return typeof payload.exp === 'number' && payload.exp * 1000 > Date.now();
+    } catch {
+      return false;
+    }
   },
 };

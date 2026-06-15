@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.service;
+package com.ttg.devknowledgeplatform.security.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

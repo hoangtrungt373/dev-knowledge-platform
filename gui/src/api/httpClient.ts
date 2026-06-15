@@ -1,22 +1,14 @@
 import { ErrorResponse } from '../types';
-import { 
-  getUserFriendlyErrorMessage, 
-  getErrorDetails, 
+import {
+  getUserFriendlyErrorMessage,
+  getErrorDetails,
   requiresSupportContact,
-  getSupportContact 
+  getSupportContact
 } from '../utils/errorHandler';
+import { STORAGE_KEYS } from '../constants/storage';
 
 const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8081';
 
-/**
- * HTTP Client Interface
- * 
- * Base client for all API calls. Features:
- * - Automatic Bearer token injection
- * - Error response parsing
- * - User-friendly error messages
- * - Support contact for technical errors (5xx)
- */
 interface HttpClient {
   request<T>(endpoint: string, options?: RequestInit, showNotification?: (message: string) => void): Promise<T>;
   get<T>(endpoint: string, showNotification?: (message: string) => void): Promise<T>;
@@ -26,9 +18,6 @@ interface HttpClient {
   delete<T>(endpoint: string, showNotification?: (message: string) => void): Promise<T>;
 }
 
-/**
- * HTTP Client Implementation
- */
 class HttpClientImpl implements HttpClient {
 
   private readonly baseUrl: string;
@@ -37,24 +26,20 @@ class HttpClientImpl implements HttpClient {
     this.baseUrl = baseUrl;
   }
 
-  /**
-   * Make HTTP request with authentication
-   */
   async request<T>(
     endpoint: string,
     options: RequestInit = {},
     showNotification?: (message: string) => void
   ): Promise<T> {
-    const token = localStorage.getItem('accessToken');
-    
-    const headers: HeadersInit = {
+    const token = localStorage.getItem(STORAGE_KEYS.accessToken);
+
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...(options.headers as Record<string, string>),
     };
 
-    // Add Authorization header if token exists
     if (token) {
-      (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+      headers['Authorization'] = `Bearer ${token}`;
     }
 
     try {
@@ -63,58 +48,91 @@ class HttpClientImpl implements HttpClient {
         headers,
       });
 
+      // Fix 7: on 401, try to silently refresh the token then retry once
+      if (response.status === 401 && !endpoint.includes('/auth/refresh') && !endpoint.includes('/auth/login')) {
+        const refreshToken = localStorage.getItem(STORAGE_KEYS.refreshToken);
+        if (refreshToken) {
+          const refreshed = await this.tryRefreshToken(refreshToken);
+          if (refreshed) {
+            const newToken = localStorage.getItem(STORAGE_KEYS.accessToken);
+            const retryHeaders = { ...headers };
+            if (newToken) retryHeaders['Authorization'] = `Bearer ${newToken}`;
+            const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, {
+              ...options,
+              headers: retryHeaders,
+            });
+            if (retryResponse.ok) {
+              return await this.parseBody<T>(retryResponse);
+            }
+          }
+        }
+        // Refresh failed or not available — clear session and redirect to login
+        Object.values(STORAGE_KEYS).forEach(k => localStorage.removeItem(k));
+        window.location.href = '/login';
+        throw new Error('Session expired. Please log in again.');
+      }
+
       if (!response.ok) {
-        // Parse error response
         const errorResponse = await this.parseErrorResponse(response);
         const userMessage = await getUserFriendlyErrorMessage(response, errorResponse);
-        
-        // Log technical details (not shown to user)
+
         const errorDetails = await getErrorDetails(response);
         console.error('API Error:', errorDetails);
 
-        // Show notification if handler provided
         if (showNotification) {
           let message = userMessage;
-          
-          // Add support contact for technical errors
           if (requiresSupportContact(response.status)) {
             message += ` Contact support at ${getSupportContact()}`;
           }
-          
           showNotification(message);
         }
 
-        // Throw error with user-friendly message
         const error = new Error(userMessage);
         (error as any).status = response.status;
         (error as any).errorResponse = errorResponse;
         throw error;
       }
 
-      return await response.json();
+      return await this.parseBody<T>(response);
     } catch (error: any) {
-      // Re-throw if it's already our formatted error
-      if (error.status && error.errorResponse) {
-        throw error;
-      }
+      if (error.status && error.errorResponse) throw error;
 
-      // Handle network errors
       if (error instanceof TypeError && error.message.includes('fetch')) {
         const networkError = new Error('Network error. Please check your connection.');
-        if (showNotification) {
-          showNotification(networkError.message);
-        }
+        if (showNotification) showNotification(networkError.message);
         throw networkError;
       }
 
-      // Re-throw other errors
       throw error;
     }
   }
 
-  /**
-   * Parse error response from backend
-   */
+  // Fix 7: attempt a silent token refresh; returns true if successful
+  private async tryRefreshToken(refreshToken: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (response.ok) {
+        const data: { accessToken: string } = await response.json();
+        localStorage.setItem(STORAGE_KEYS.accessToken, data.accessToken);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  private async parseBody<T>(response: Response): Promise<T> {
+    if (response.status === 204 || response.headers.get('content-length') === '0') {
+      return undefined as unknown as T;
+    }
+    return response.json();
+  }
+
   private async parseErrorResponse(response: Response): Promise<ErrorResponse | null> {
     try {
       const contentType = response.headers.get('content-type');
@@ -130,74 +148,25 @@ class HttpClientImpl implements HttpClient {
     return null;
   }
 
-  /**
-   * GET request
-   */
   get<T>(endpoint: string, showNotification?: (message: string) => void): Promise<T> {
     return this.request<T>(endpoint, { method: 'GET' }, showNotification);
   }
 
-  /**
-   * POST request
-   */
-  post<T>(
-    endpoint: string,
-    body?: any,
-    showNotification?: (message: string) => void
-  ): Promise<T> {
-    return this.request<T>(
-      endpoint,
-      {
-        method: 'POST',
-        body: body ? JSON.stringify(body) : undefined,
-      },
-      showNotification
-    );
+  post<T>(endpoint: string, body?: any, showNotification?: (message: string) => void): Promise<T> {
+    return this.request<T>(endpoint, { method: 'POST', body: body ? JSON.stringify(body) : undefined }, showNotification);
   }
 
-  /**
-   * PUT request
-   */
-  put<T>(
-    endpoint: string,
-    body?: any,
-    showNotification?: (message: string) => void
-  ): Promise<T> {
-    return this.request<T>(
-      endpoint,
-      {
-        method: 'PUT',
-        body: body ? JSON.stringify(body) : undefined,
-      },
-      showNotification
-    );
+  put<T>(endpoint: string, body?: any, showNotification?: (message: string) => void): Promise<T> {
+    return this.request<T>(endpoint, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }, showNotification);
   }
 
-  /**
-   * PATCH request
-   */
-  patch<T>(
-    endpoint: string,
-    body?: any,
-    showNotification?: (message: string) => void
-  ): Promise<T> {
-    return this.request<T>(
-      endpoint,
-      {
-        method: 'PATCH',
-        body: body ? JSON.stringify(body) : undefined,
-      },
-      showNotification
-    );
+  patch<T>(endpoint: string, body?: any, showNotification?: (message: string) => void): Promise<T> {
+    return this.request<T>(endpoint, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }, showNotification);
   }
 
-  /**
-   * DELETE request
-   */
   delete<T>(endpoint: string, showNotification?: (message: string) => void): Promise<T> {
     return this.request<T>(endpoint, { method: 'DELETE' }, showNotification);
   }
 }
 
-// Export singleton instance
 export const httpClient: HttpClient = new HttpClientImpl();
