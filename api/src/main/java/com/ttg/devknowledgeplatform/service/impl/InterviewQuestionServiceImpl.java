@@ -16,6 +16,7 @@ import com.ttg.devknowledgeplatform.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.dto.admin.CreateInterviewQuestionRequest;
 import com.ttg.devknowledgeplatform.dto.admin.InterviewQuestionResponse;
 import com.ttg.devknowledgeplatform.dto.admin.UpdateInterviewQuestionRequest;
+import com.ttg.devknowledgeplatform.mapper.InterviewQuestionMapper;
 import com.ttg.devknowledgeplatform.repository.CategoryRepository;
 import com.ttg.devknowledgeplatform.repository.ContentItemRepository;
 import com.ttg.devknowledgeplatform.repository.InterviewQuestionRepository;
@@ -37,7 +38,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -50,11 +50,12 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
     private final CategoryRepository categoryRepository;
     private final SlugService slugService;
     private final TagRepository tagRepository;
+    private final InterviewQuestionMapper interviewQuestionMapper;
 
     @Override
     public InterviewQuestionResponse create(CreateInterviewQuestionRequest request, Integer authorId) {
         Category category = resolveCategory(request.getCategoryId());
-        String slug = slugService.generateUniqueSlug(request.getTitle());
+        String slug = slugService.generateUniqueSlug(request.getTitle(), contentItemRepository::existsBySlug, ErrorCode.INTERVIEW_QUESTION_SLUG_CONFLICT);
 
         ContentItem contentItem = new ContentItem();
         contentItem.setType(ContentType.INTERVIEW_QUESTION);
@@ -84,7 +85,7 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
 
         InterviewQuestion saved = interviewQuestionRepository.save(question);
         log.info("Created interview question id={} slug={}", saved.getId(), slug);
-        return toResponse(saved);
+        return interviewQuestionMapper.toResponse(saved);
     }
 
     @Override
@@ -95,7 +96,7 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
         Category category = resolveCategory(request.getCategoryId());
 
         if (!contentItem.getTitle().equals(request.getTitle())) {
-            String newSlug = slugService.generateUniqueSlug(request.getTitle(), contentItem.getId());
+            String newSlug = slugService.generateUniqueSlug(request.getTitle(), contentItemRepository::existsBySlugAndIdNot, contentItem.getId(), ErrorCode.INTERVIEW_QUESTION_SLUG_CONFLICT);
             contentItem.setSlug(newSlug);
         }
 
@@ -123,13 +124,13 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
 
         InterviewQuestion updated = interviewQuestionRepository.save(question);
         log.info("Updated interview question id={}", id);
-        return toResponse(updated);
+        return interviewQuestionMapper.toResponse(updated);
     }
 
     @Override
     @Transactional(readOnly = true)
     public InterviewQuestionResponse getById(Integer id) {
-        return toResponse(findById(id));
+        return interviewQuestionMapper.toResponse(findById(id));
     }
 
     @Override
@@ -139,7 +140,7 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         ErrorCode.INTERVIEW_QUESTION_NOT_FOUND,
                         "Interview question not found with slug: " + slug));
-        return toResponse(question);
+        return interviewQuestionMapper.toResponse(question);
     }
 
     @Override
@@ -154,7 +155,7 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
         Specification<InterviewQuestion> spec =
                 InterviewQuestionSpecification.withFilters(difficulty, status, isCommon, q);
         Page<InterviewQuestionResponse> page =
-                interviewQuestionRepository.findAll(spec, pageable).map(this::toResponse);
+                interviewQuestionRepository.findAll(spec, pageable).map(interviewQuestionMapper::toResponse);
         return PagedResponse.from(page);
     }
 
@@ -182,30 +183,6 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
                         "Category not found with id: " + categoryId));
     }
 
-    private InterviewQuestionResponse toResponse(InterviewQuestion question) {
-        ContentItem ci = question.getContentItem();
-        return InterviewQuestionResponse.builder()
-                .id(question.getId())
-                .contentItemId(ci.getId())
-                .title(ci.getTitle())
-                .slug(ci.getSlug())
-                .difficulty(question.getDifficulty())
-                .questionBody(question.getQuestionBody())
-                .shortAnswer(question.getShortAnswer())
-                .detailedAnswer(question.getDetailedAnswer())
-                .isCommon(question.getIsCommon())
-                .status(ci.getStatus())
-                .categoryId(ci.getCategory() != null ? ci.getCategory().getId() : null)
-                .tagIds(extractTagIds(ci))
-                .createdAt(question.getDteCreation())
-                .updatedAt(question.getDteLastModification())
-                .build();
-    }
-
-    /**
-     * Replaces all tag links for this content item. Deduplicates {@code tagIds} while preserving first-seen order.
-     * Enforces uniqueness in the service layer (no DB unique constraint).
-     */
     private void applyTagIds(ContentItem contentItem, Set<Integer> tagIds) {
         if (tagIds.stream().anyMatch(Objects::isNull)) {
             throw new ApiException(
@@ -241,13 +218,4 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
         }
     }
 
-    private static Set<Integer> extractTagIds(ContentItem ci) {
-        if (ci.getContentItemTags() == null || ci.getContentItemTags().isEmpty()) {
-            return Set.of();
-        }
-        return ci.getContentItemTags().stream()
-                .map(cit -> cit.getTag().getId())
-                .sorted()
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-    }
 }

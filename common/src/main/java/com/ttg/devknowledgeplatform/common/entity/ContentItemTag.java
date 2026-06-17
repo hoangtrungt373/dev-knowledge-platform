@@ -21,7 +21,7 @@ import org.hibernate.annotations.BatchSize;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(callSuper = true, exclude = {"contentItem", "tag"})
+@EqualsAndHashCode(callSuper = true)
 @ToString(exclude = {"contentItem", "tag"})
 public class ContentItemTag extends AbstractEntity {
 

@@ -16,6 +16,7 @@ interface HttpClient {
   put<T>(endpoint: string, body?: any, showNotification?: (message: string) => void): Promise<T>;
   patch<T>(endpoint: string, body?: any, showNotification?: (message: string) => void): Promise<T>;
   delete<T>(endpoint: string, showNotification?: (message: string) => void): Promise<T>;
+  postForm<T>(endpoint: string, formData: FormData, showNotification?: (message: string) => void): Promise<T>;
 }
 
 class HttpClientImpl implements HttpClient {
@@ -34,7 +35,8 @@ class HttpClientImpl implements HttpClient {
     const token = localStorage.getItem(STORAGE_KEYS.accessToken);
 
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+      // Skip Content-Type for FormData — the browser sets it with the multipart boundary
+      ...(!(options.body instanceof FormData) && { 'Content-Type': 'application/json' }),
       ...(options.headers as Record<string, string>),
     };
 
@@ -166,6 +168,10 @@ class HttpClientImpl implements HttpClient {
 
   delete<T>(endpoint: string, showNotification?: (message: string) => void): Promise<T> {
     return this.request<T>(endpoint, { method: 'DELETE' }, showNotification);
+  }
+
+  postForm<T>(endpoint: string, formData: FormData, showNotification?: (message: string) => void): Promise<T> {
+    return this.request<T>(endpoint, { method: 'POST', body: formData }, showNotification);
   }
 }
 

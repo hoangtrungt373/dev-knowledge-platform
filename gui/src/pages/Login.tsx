@@ -130,6 +130,7 @@ export default function Login(): JSX.Element {
             <Button
               type="submit"
               variant="contained"
+              size="large"
               fullWidth
               disabled={loading}
             >
@@ -167,6 +168,7 @@ export default function Login(): JSX.Element {
 
           <Button
             variant="outlined"
+            size="large"
             fullWidth
             startIcon={<FacebookIcon />}
             onClick={() => loginWith('facebook')}

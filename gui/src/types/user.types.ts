@@ -14,10 +14,11 @@ export interface User {
   lastName?: string;
   profilePicture?: string;
   provider: string;
+  role?: string;
   emailVerified: boolean;
   status: string;
   createdAt: string;
-  lastLogin?: string;
+  lastModified?: string;
 }
 
 /**
@@ -32,6 +33,14 @@ export interface TokenResponse {
  */
 export interface RefreshTokenRequest {
   refreshToken: string;
+}
+
+/**
+ * Response from register / resend-otp endpoints
+ */
+export interface RegisterResponse {
+  email: string;
+  message: string;
 }
 
 /**

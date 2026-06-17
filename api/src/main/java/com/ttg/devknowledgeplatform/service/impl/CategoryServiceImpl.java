@@ -9,6 +9,7 @@ import com.ttg.devknowledgeplatform.dto.admin.CategoryResponse;
 import com.ttg.devknowledgeplatform.dto.admin.CategoryTreeNodeResponse;
 import com.ttg.devknowledgeplatform.dto.admin.CreateCategoryRequest;
 import com.ttg.devknowledgeplatform.dto.admin.UpdateCategoryRequest;
+import com.ttg.devknowledgeplatform.mapper.CategoryMapper;
 import com.ttg.devknowledgeplatform.repository.CategoryRepository;
 import com.ttg.devknowledgeplatform.repository.ContentItemRepository;
 import com.ttg.devknowledgeplatform.repository.spec.CategorySpecification;
@@ -37,6 +38,7 @@ public class CategoryServiceImpl implements CategoryService {
     private final CategoryRepository categoryRepository;
     private final ContentItemRepository contentItemRepository;
     private final SlugService slugService;
+    private final CategoryMapper categoryMapper;
 
     @Override
     public CategoryResponse create(CreateCategoryRequest request) {
@@ -46,7 +48,7 @@ public class CategoryServiceImpl implements CategoryService {
                     "A category with name '" + name + "' already exists");
         }
         Category parent = resolveParent(request.getParentId());
-        String slug = slugService.generateUniqueCategorySlug(name);
+        String slug = slugService.generateUniqueSlug(name, categoryRepository::existsBySlug, ErrorCode.CATEGORY_SLUG_CONFLICT);
 
         Category category = new Category();
         category.setName(name);
@@ -56,7 +58,7 @@ public class CategoryServiceImpl implements CategoryService {
         Category saved = categoryRepository.save(category);
         log.info("Created category id={} slug={} parentId={}", saved.getId(), slug,
                 parent != null ? parent.getId() : null);
-        return toResponse(saved);
+        return categoryMapper.toResponse(saved);
     }
 
     @Override
@@ -70,7 +72,7 @@ public class CategoryServiceImpl implements CategoryService {
                         "A category with name '" + name + "' already exists");
             }
             category.setName(name);
-            category.setSlug(slugService.generateUniqueCategorySlug(name, id));
+            category.setSlug(slugService.generateUniqueSlug(name, categoryRepository::existsBySlugAndIdNot, id, ErrorCode.CATEGORY_SLUG_CONFLICT));
         }
 
         Category newParent = resolveParent(request.getParentId());
@@ -79,13 +81,13 @@ public class CategoryServiceImpl implements CategoryService {
 
         Category updated = categoryRepository.save(category);
         log.info("Updated category id={}", id);
-        return toResponse(updated);
+        return categoryMapper.toResponse(updated);
     }
 
     @Override
     @Transactional(readOnly = true)
     public CategoryResponse getById(Integer id) {
-        return toResponse(findById(id));
+        return categoryMapper.toResponse(findById(id));
     }
 
     @Override
@@ -95,7 +97,7 @@ public class CategoryServiceImpl implements CategoryService {
 
         validateListFilters(parentId, rootOnly);
         Specification<Category> spec = CategorySpecification.withFilters(parentId, rootOnly, q);
-        Page<CategoryResponse> page = categoryRepository.findAll(spec, pageable).map(this::toResponse);
+        Page<CategoryResponse> page = categoryRepository.findAll(spec, pageable).map(categoryMapper::toResponse);
         return PagedResponse.from(page);
     }
 
@@ -105,13 +107,7 @@ public class CategoryServiceImpl implements CategoryService {
         List<Category> all = categoryRepository.findAll();
         Map<Integer, CategoryTreeNodeResponse> nodes = new HashMap<>();
         for (Category c : all) {
-            nodes.put(c.getId(), CategoryTreeNodeResponse.builder()
-                    .id(c.getId())
-                    .name(c.getName())
-                    .slug(c.getSlug())
-                    .parentId(c.getParent() != null ? c.getParent().getId() : null)
-                    .children(new ArrayList<>())
-                    .build());
+            nodes.put(c.getId(), categoryMapper.toTreeNode(c));
         }
 
         List<CategoryTreeNodeResponse> roots = new ArrayList<>();
@@ -212,14 +208,4 @@ public class CategoryServiceImpl implements CategoryService {
         return name.trim();
     }
 
-    private CategoryResponse toResponse(Category category) {
-        return CategoryResponse.builder()
-                .id(category.getId())
-                .name(category.getName())
-                .slug(category.getSlug())
-                .parentId(category.getParent() != null ? category.getParent().getId() : null)
-                .createdAt(category.getDteCreation())
-                .updatedAt(category.getDteLastModification())
-                .build();
-    }
 }

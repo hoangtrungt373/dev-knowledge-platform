@@ -83,6 +83,7 @@ export const darkTheme: Theme = createTheme({
     MuiOutlinedInput: {
       styleOverrides: {
         root: {
+          backgroundColor: '#21262d',
           '& .MuiOutlinedInput-notchedOutline': {
             borderColor: BRAND_COLORS.dark.border,
           },
@@ -148,6 +149,7 @@ export const lightTheme: Theme = createTheme({
     MuiOutlinedInput: {
       styleOverrides: {
         root: {
+          backgroundColor: BRAND_COLORS.light.surface,
           '& .MuiOutlinedInput-notchedOutline': {
             borderColor: BRAND_COLORS.light.border,
           },

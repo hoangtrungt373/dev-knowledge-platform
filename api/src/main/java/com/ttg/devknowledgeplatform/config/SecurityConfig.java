@@ -14,6 +14,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 
 import com.ttg.devknowledgeplatform.security.handler.OAuth2LoginSuccessHandler;
 import com.ttg.devknowledgeplatform.security.JwtAuthenticationFilter;
+import com.ttg.devknowledgeplatform.security.JsonAuthenticationEntryPoint;
 import com.ttg.devknowledgeplatform.security.service.CustomOAuth2UserService;
 import com.ttg.devknowledgeplatform.security.service.CustomOidcUserService;
 
@@ -30,6 +31,7 @@ public class SecurityConfig {
     private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
     private final CorsConfigurationSource corsConfigurationSource;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final JsonAuthenticationEntryPoint authenticationEntryPoint;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -41,6 +43,8 @@ public class SecurityConfig {
                 .requestMatchers(
                     "/api/v1/auth/login",
                     "/api/v1/auth/register",
+                    "/api/v1/auth/verify-otp",
+                    "/api/v1/auth/resend-otp",
                     "/api/v1/auth/refresh",
                     "/api/v1/auth/exchange-state",
                     "/api/v1/auth/oauth2/**"
@@ -74,6 +78,9 @@ public class SecurityConfig {
                     .oidcUserService(customOidcUserService)
                 )
                 .successHandler(oAuth2LoginSuccessHandler)
+            )
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(authenticationEntryPoint)
             )
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session

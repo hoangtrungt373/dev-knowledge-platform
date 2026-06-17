@@ -15,6 +15,22 @@ import com.ttg.devknowledgeplatform.dto.OAuth2UserInfoFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Processes OIDC logins for providers that issue ID tokens (e.g. Google).
+ *
+ * <p>Extends Spring's {@link OidcUserService} so that the standard OIDC token validation
+ * and UserInfo endpoint call happen first. After that, this service applies the same
+ * find-or-create strategy as {@link CustomOAuth2UserService}:
+ * <ol>
+ *   <li>Find by provider + provider subject ID (returning user).</li>
+ *   <li>Find by email and link the OIDC identity to the existing account.</li>
+ *   <li>Create a brand-new user.</li>
+ * </ol>
+ *
+ * <p>The returned principal is the original {@link org.springframework.security.oauth2.core.oidc.user.OidcUser}
+ * rather than a custom wrapper, because the OIDC ID token is the authoritative identity
+ * document. Downstream handlers extract the email from it to look up the local user record.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j

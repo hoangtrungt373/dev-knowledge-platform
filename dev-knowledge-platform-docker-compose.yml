@@ -32,6 +32,34 @@ services:
       timeout: 5s
       retries: 5
 
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: dev-premier-mailpit
+    ports:
+      - "1025:1025"   # SMTP — Spring sends emails here
+      - "8025:8025"   # Web UI — open in browser to read emails
+    environment:
+      MP_MAX_MESSAGES: 100
+
+  minio:
+    image: minio/minio:latest
+    container_name: dev-premier-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web Console — open in browser to manage buckets
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
   redis_data:
+  minio_data:

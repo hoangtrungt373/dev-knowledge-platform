@@ -24,6 +24,22 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Handles a successful OAuth2 or OIDC login by issuing JWTs and redirecting the browser
+ * back to the frontend via a short-lived state token.
+ *
+ * <p>Direct token delivery in the redirect URL would expose the tokens in browser history
+ * and server logs. Instead, this handler:
+ * <ol>
+ *   <li>Generates an access token and a refresh token for the authenticated user.</li>
+ *   <li>Stores both tokens (along with basic profile data) in Redis under a one-time
+ *       state token with a short TTL (configured via {@code app.state.token.expiration}).</li>
+ *   <li>Redirects the browser to {@code {frontendUrl}/auth/callback?state=<stateToken>}.</li>
+ * </ol>
+ *
+ * <p>The frontend then calls {@code POST /api/v1/auth/exchange-state} with the state token
+ * to retrieve the actual JWTs, at which point the Redis entry is deleted.
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j

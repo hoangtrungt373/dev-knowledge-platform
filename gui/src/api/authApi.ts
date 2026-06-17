@@ -1,4 +1,4 @@
-import { AuthTokens } from '../types';
+import { AuthTokens, RegisterResponse } from '../types';
 import { httpClient } from './httpClient';
 
 interface AuthApi {
@@ -6,40 +6,32 @@ interface AuthApi {
   refreshToken(refreshToken: string, showError?: (message: string) => void): Promise<{ accessToken: string }>;
   login(email: string, password: string, showError?: (message: string) => void): Promise<AuthTokens>;
   register(firstName: string, lastName: string | undefined, email: string, password: string, showError?: (message: string) => void): Promise<AuthTokens>;
+  verifyOtp(email: string, otp: string, showError?: (message: string) => void): Promise<AuthTokens>;
+  resendOtp(email: string, showError?: (message: string) => void): Promise<RegisterResponse>;
 }
 
 export const authApi: AuthApi = {
-  // Fix 1: field must be `stateToken`, not `state`
   exchangeStateToken(stateToken: string, showError?: (message: string) => void): Promise<AuthTokens> {
-    return httpClient.post<AuthTokens>(
-      '/api/v1/auth/exchange-state',
-      { stateToken },
-      showError
-    );
+    return httpClient.post<AuthTokens>('/api/v1/auth/exchange-state', { stateToken }, showError);
   },
 
   refreshToken(refreshToken: string, showError?: (message: string) => void): Promise<{ accessToken: string }> {
-    return httpClient.post<{ accessToken: string }>(
-      '/api/v1/auth/refresh',
-      { refreshToken },
-      showError
-    );
+    return httpClient.post<{ accessToken: string }>('/api/v1/auth/refresh', { refreshToken }, showError);
   },
 
   login(email: string, password: string, showError?: (message: string) => void): Promise<AuthTokens> {
-    return httpClient.post<AuthTokens>(
-      '/api/v1/auth/login',
-      { email, password },
-      showError
-    );
+    return httpClient.post<AuthTokens>('/api/v1/auth/login', { email, password }, showError);
   },
 
-  // Fix 2: backend expects { firstName, lastName, email, password }, not { username, email, password }
   register(firstName: string, lastName: string | undefined, email: string, password: string, showError?: (message: string) => void): Promise<AuthTokens> {
-    return httpClient.post<AuthTokens>(
-      '/api/v1/auth/register',
-      { firstName, lastName, email, password },
-      showError
-    );
+    return httpClient.post<AuthTokens>('/api/v1/auth/register', { firstName, lastName, email, password }, showError);
+  },
+
+  verifyOtp(email: string, otp: string, showError?: (message: string) => void): Promise<AuthTokens> {
+    return httpClient.post<AuthTokens>('/api/v1/auth/verify-otp', { email, otp }, showError);
+  },
+
+  resendOtp(email: string, showError?: (message: string) => void): Promise<RegisterResponse> {
+    return httpClient.post<RegisterResponse>('/api/v1/auth/resend-otp', { email }, showError);
   },
 };

@@ -2,6 +2,7 @@ import { httpClient } from './httpClient';
 import {
   Tag, CreateTagPayload, UpdateTagPayload,
   Category, CategoryTreeNode, CreateCategoryPayload, UpdateCategoryPayload,
+  InterviewQuestion, CreateInterviewQuestionPayload, UpdateInterviewQuestionPayload,
   PagedResponse,
 } from '../types/admin.types';
 
@@ -14,6 +15,17 @@ function buildQuery(params: Record<string, string | number | undefined>): string
   });
   const s = q.toString();
   return s ? `?${s}` : '';
+}
+
+export interface InterviewQuestionListParams {
+  page?: number;
+  size?: number;
+  sortBy?: string;
+  sortDir?: string;
+  difficulty?: string;
+  status?: string;
+  isCommon?: boolean;
+  q?: string;
 }
 
 export interface CategoryListParams {
@@ -80,5 +92,37 @@ export const adminApi = {
 
   deleteCategory(id: number, showError?: ShowError): Promise<void> {
     return httpClient.delete(`/api/v1/admin/categories/${id}`, showError);
+  },
+
+  // ── Interview Questions ────────────────────────────────────────────────────
+
+  listInterviewQuestions(params: InterviewQuestionListParams, showError?: ShowError): Promise<PagedResponse<InterviewQuestion>> {
+    const query: Record<string, string | number | undefined> = {
+      page: params.page,
+      size: params.size,
+      sortBy: params.sortBy,
+      sortDir: params.sortDir,
+      difficulty: params.difficulty,
+      status: params.status,
+      q: params.q,
+    };
+    if (params.isCommon !== undefined) query.isCommon = String(params.isCommon);
+    return httpClient.get(`/api/v1/admin/interview-questions${buildQuery(query)}`, showError);
+  },
+
+  getInterviewQuestion(id: number, showError?: ShowError): Promise<InterviewQuestion> {
+    return httpClient.get(`/api/v1/admin/interview-questions/${id}`, showError);
+  },
+
+  createInterviewQuestion(payload: CreateInterviewQuestionPayload, showError?: ShowError): Promise<InterviewQuestion> {
+    return httpClient.post('/api/v1/admin/interview-questions', payload, showError);
+  },
+
+  updateInterviewQuestion(id: number, payload: UpdateInterviewQuestionPayload, showError?: ShowError): Promise<InterviewQuestion> {
+    return httpClient.put(`/api/v1/admin/interview-questions/${id}`, payload, showError);
+  },
+
+  deleteInterviewQuestion(id: number, showError?: ShowError): Promise<void> {
+    return httpClient.delete(`/api/v1/admin/interview-questions/${id}`, showError);
   },
 };

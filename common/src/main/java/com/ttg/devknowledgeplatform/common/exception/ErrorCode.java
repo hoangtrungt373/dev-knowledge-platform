@@ -62,9 +62,16 @@ public enum ErrorCode {
     // Tag delete guard
     TAG_IN_USE("TAG_004", "Tag is used by content items and cannot be deleted", HttpStatus.CONFLICT),
 
+    // OTP Errors (OTP_*)
+    AUTH_OTP_INVALID("OTP_001", "Invalid OTP code", HttpStatus.BAD_REQUEST),
+    AUTH_OTP_EXPIRED("OTP_002", "OTP has expired or was not found", HttpStatus.BAD_REQUEST),
+    AUTH_OTP_EMAIL_NOT_PENDING("OTP_003", "No pending verification found for this email", HttpStatus.BAD_REQUEST),
+
     // User errors
     USER_PASSWORD_INVALID("USER_005", "Password must be at least 8 characters", HttpStatus.BAD_REQUEST),
     USER_EMAIL_ALREADY_EXISTS("USER_006", "An account with this email already exists", HttpStatus.CONFLICT),
+    USER_USERNAME_ALREADY_EXISTS("USER_007", "This username is already taken", HttpStatus.CONFLICT),
+    USER_USERNAME_INVALID("USER_008", "Username must be 3–30 characters and may only contain lowercase letters, numbers, and underscores", HttpStatus.BAD_REQUEST),
 
     // Validation Errors (VALIDATION_*)
     VALIDATION_FAILED("VALIDATION_001", "Validation failed", HttpStatus.BAD_REQUEST),

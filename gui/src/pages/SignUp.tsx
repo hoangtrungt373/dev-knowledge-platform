@@ -204,6 +204,7 @@ export default function SignUp(): JSX.Element {
             <Button
               type="submit"
               variant="contained"
+              size="large"
               fullWidth
               disabled={loading}
             >
@@ -222,6 +223,7 @@ export default function SignUp(): JSX.Element {
           <Button
             variant="outlined"
             fullWidth
+            size="large"
             startIcon={<GoogleIcon />}
             onClick={() => loginWith('google')}
             sx={{
@@ -239,6 +241,7 @@ export default function SignUp(): JSX.Element {
           <Button
             variant="outlined"
             fullWidth
+            size="large"
             startIcon={<FacebookIcon />}
             onClick={() => loginWith('facebook')}
             sx={{

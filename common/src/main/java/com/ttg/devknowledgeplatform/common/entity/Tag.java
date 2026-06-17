@@ -6,7 +6,6 @@ import java.util.Set;
 import com.ttg.devknowledgeplatform.common.enums.TagStatus;
 
 import jakarta.persistence.AttributeOverride;
-import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -19,6 +18,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 @Entity
 @Table(name = "TAG", schema = "product")
@@ -27,6 +27,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
+@ToString(exclude = "contentItemTags")
 public class Tag extends AbstractEntity {
 
     @NotNull
@@ -42,6 +43,7 @@ public class Tag extends AbstractEntity {
     @Column(name = "STATUS", length = 10, nullable = false)
     private TagStatus status = TagStatus.ACTIVE;
 
-    @OneToMany(mappedBy = "tag", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    // Navigation-only — lifecycle is owned by ContentItem.contentItemTags
+    @OneToMany(mappedBy = "tag", fetch = FetchType.LAZY)
     private Set<ContentItemTag> contentItemTags = new HashSet<>();
 }

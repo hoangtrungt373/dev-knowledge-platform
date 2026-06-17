@@ -22,6 +22,20 @@ import com.ttg.devknowledgeplatform.dto.OAuth2UserInfoFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Processes OAuth2 authorization-code logins for non-OIDC providers (e.g. Facebook).
+ *
+ * <p>After Spring Security exchanges the authorization code for tokens, this service is
+ * invoked to load or create the local {@link com.ttg.devknowledgeplatform.common.entity.User}
+ * record. The lookup strategy is:
+ * <ol>
+ *   <li>Find by provider + provider subject ID (returning user via the same provider).</li>
+ *   <li>Find by email and link the OAuth2 identity to the existing account.</li>
+ *   <li>Create a brand-new user.</li>
+ * </ol>
+ *
+ * <p>For OIDC providers such as Google, see {@link CustomOidcUserService} instead.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j

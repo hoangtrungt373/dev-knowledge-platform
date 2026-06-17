@@ -22,10 +22,20 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * JWT Authentication Filter
- * 
- * Extracts JWT token from Authorization header and validates it.
- * Sets authentication in SecurityContext if token is valid.
+ * Servlet filter that authenticates requests carrying a JWT access token.
+ *
+ * <p>On each request the filter:
+ * <ol>
+ *   <li>Reads the {@code Authorization: Bearer <token>} header.</li>
+ *   <li>Validates the token's signature and expiration via {@link JwtTokenProvider}.</li>
+ *   <li>Reconstructs a {@link CustomOAuth2User} principal from the token claims and
+ *       sets it on the {@link org.springframework.security.core.context.SecurityContext}.</li>
+ * </ol>
+ *
+ * <p>If the token is absent, invalid, or expired, the filter passes the request through
+ * unauthenticated — Spring Security's access rules then decide whether to allow or deny it.
+ * This design avoids short-circuiting the filter chain so that public endpoints continue
+ * to work without a token.
  */
 @Component
 @RequiredArgsConstructor

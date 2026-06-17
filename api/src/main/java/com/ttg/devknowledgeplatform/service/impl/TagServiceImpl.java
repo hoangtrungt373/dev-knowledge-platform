@@ -9,6 +9,7 @@ import com.ttg.devknowledgeplatform.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.dto.admin.CreateTagRequest;
 import com.ttg.devknowledgeplatform.dto.admin.TagResponse;
 import com.ttg.devknowledgeplatform.dto.admin.UpdateTagRequest;
+import com.ttg.devknowledgeplatform.mapper.TagMapper;
 import com.ttg.devknowledgeplatform.repository.ContentItemTagRepository;
 import com.ttg.devknowledgeplatform.repository.TagRepository;
 import com.ttg.devknowledgeplatform.repository.spec.TagSpecification;
@@ -31,6 +32,7 @@ public class TagServiceImpl implements TagService {
     private final TagRepository tagRepository;
     private final ContentItemTagRepository contentItemTagRepository;
     private final SlugService slugService;
+    private final TagMapper tagMapper;
 
     @Override
     public TagResponse create(CreateTagRequest request) {
@@ -39,7 +41,7 @@ public class TagServiceImpl implements TagService {
             throw new ApiException(ErrorCode.TAG_NAME_CONFLICT,
                     "A tag with name '" + name + "' already exists");
         }
-        String slug = slugService.generateUniqueTagSlug(name);
+        String slug = slugService.generateUniqueSlug(name, tagRepository::existsBySlug, ErrorCode.TAG_SLUG_CONFLICT);
 
         Tag tag = new Tag();
         tag.setName(name);
@@ -48,7 +50,7 @@ public class TagServiceImpl implements TagService {
 
         Tag saved = tagRepository.save(tag);
         log.info("Created tag id={} slug={}", saved.getId(), slug);
-        return toResponse(saved);
+        return tagMapper.toResponse(saved);
     }
 
     @Override
@@ -62,7 +64,7 @@ public class TagServiceImpl implements TagService {
                         "A tag with name '" + name + "' already exists");
             }
             tag.setName(name);
-            tag.setSlug(slugService.generateUniqueTagSlug(name, id));
+            tag.setSlug(slugService.generateUniqueSlug(name, tagRepository::existsBySlugAndIdNot, id, ErrorCode.TAG_SLUG_CONFLICT));
         }
 
         if (request.getStatus() != null) {
@@ -71,20 +73,20 @@ public class TagServiceImpl implements TagService {
 
         Tag updated = tagRepository.save(tag);
         log.info("Updated tag id={}", id);
-        return toResponse(updated);
+        return tagMapper.toResponse(updated);
     }
 
     @Override
     @Transactional(readOnly = true)
     public TagResponse getById(Integer id) {
-        return toResponse(findById(id));
+        return tagMapper.toResponse(findById(id));
     }
 
     @Override
     @Transactional(readOnly = true)
     public PagedResponse<TagResponse> list(Pageable pageable, TagStatus status, String q) {
         Specification<Tag> spec = TagSpecification.withFilters(status, q);
-        Page<TagResponse> page = tagRepository.findAll(spec, pageable).map(this::toResponse);
+        Page<TagResponse> page = tagRepository.findAll(spec, pageable).map(tagMapper::toResponse);
         return PagedResponse.from(page);
     }
 
@@ -113,14 +115,4 @@ public class TagServiceImpl implements TagService {
         return name.trim();
     }
 
-    private TagResponse toResponse(Tag tag) {
-        return TagResponse.builder()
-                .id(tag.getId())
-                .name(tag.getName())
-                .slug(tag.getSlug())
-                .status(tag.getStatus())
-                .createdAt(tag.getDteCreation())
-                .updatedAt(tag.getDteLastModification())
-                .build();
-    }
 }

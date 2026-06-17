@@ -21,16 +21,26 @@ import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.dto.RegisterRequest;
+import com.ttg.devknowledgeplatform.dto.UserInfoResponse;
+import com.ttg.devknowledgeplatform.dto.auth.ExchangeStateRequest;
+import com.ttg.devknowledgeplatform.dto.auth.LoginRequest;
+import com.ttg.devknowledgeplatform.dto.auth.LoginResponse;
+import com.ttg.devknowledgeplatform.dto.auth.LogoutRequest;
+import com.ttg.devknowledgeplatform.dto.auth.RefreshTokenRequest;
+import com.ttg.devknowledgeplatform.dto.auth.RegisterResponse;
+import com.ttg.devknowledgeplatform.dto.auth.ResendOtpRequest;
+import com.ttg.devknowledgeplatform.dto.auth.TokenResponse;
+import com.ttg.devknowledgeplatform.dto.auth.VerifyOtpRequest;
+import com.ttg.devknowledgeplatform.mapper.UserMapper;
 import com.ttg.devknowledgeplatform.security.JwtTokenProvider;
+import com.ttg.devknowledgeplatform.service.EmailService;
+import com.ttg.devknowledgeplatform.service.OtpService;
 import com.ttg.devknowledgeplatform.security.service.RefreshTokenBlacklistService;
 import com.ttg.devknowledgeplatform.security.service.StateTokenService;
 import com.ttg.devknowledgeplatform.security.service.UserService;
 
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import lombok.Builder;
-import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -45,6 +55,9 @@ public class OAuth2Endpoint {
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenBlacklistService blacklistService;
     private final StateTokenService stateTokenService;
+    private final OtpService otpService;
+    private final EmailService emailService;
+    private final UserMapper userMapper;
 
     @GetMapping("/oauth2/authorization/{provider}")
     public void oauth2Authorization(@PathVariable String provider, HttpServletResponse response) throws IOException {
@@ -90,6 +103,14 @@ public class OAuth2Endpoint {
         User user = userService.registerLocalUser(
                 request.getEmail(), request.getFirstName(), request.getLastName(), request.getPassword());
 
+        try {
+            String otp = otpService.generateAndStore(request.getEmail());
+            emailService.sendOtpEmail(request.getEmail(), otp);
+            log.info("Verification OTP sent to: {}", request.getEmail());
+        } catch (Exception e) {
+            log.warn("Failed to send verification OTP to {}: {}", request.getEmail(), e.getMessage());
+        }
+
         String accessToken = jwtTokenProvider.generateToken(user);
         String refreshToken = jwtTokenProvider.generateRefreshToken(user);
 
@@ -105,6 +126,54 @@ public class OAuth2Endpoint {
                 .build());
     }
 
+    @PostMapping("/verify-otp")
+    public ResponseEntity<LoginResponse> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
+        String email = request.getEmail();
+
+        if (!otpService.hasPendingOtp(email)) {
+            throw new ApiException(ErrorCode.AUTH_OTP_EXPIRED, "OTP has expired, please request a new one");
+        }
+        if (!otpService.verify(email, request.getOtp())) {
+            throw new ApiException(ErrorCode.AUTH_OTP_INVALID, "Invalid OTP code");
+        }
+
+        User user = userService.enableUser(email);
+        userService.updateStatus(user.getId(), UserStatus.ONLINE);
+
+        String accessToken = jwtTokenProvider.generateToken(user);
+        String refreshToken = jwtTokenProvider.generateRefreshToken(user);
+
+        log.info("Email verified and login successful: {} (uuid: {})", user.getEmail(), user.getUserUuid());
+
+        return ResponseEntity.ok(LoginResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .userId(user.getUserUuid())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .role(user.getRole().name())
+                .build());
+    }
+
+    @PostMapping("/resend-otp")
+    public ResponseEntity<RegisterResponse> resendOtp(@Valid @RequestBody ResendOtpRequest request) {
+        String email = request.getEmail();
+        User user = userService.findByEmail(email);
+
+        if (user == null) {
+            throw new ApiException(ErrorCode.USER_NOT_FOUND, "No account found for this email");
+        }
+        if (user.getEmailVerified()) {
+            throw new ApiException(ErrorCode.AUTH_OTP_EMAIL_NOT_PENDING, "Email is already verified");
+        }
+
+        String otp = otpService.generateAndStore(email);
+        emailService.sendOtpEmail(email, otp);
+        log.info("OTP resent to: {}", email);
+
+        return ResponseEntity.ok(new RegisterResponse(email, "A new verification code has been sent to your email"));
+    }
+
     @PostMapping("/exchange-state")
     public ResponseEntity<LoginResponse> exchangeState(@Valid @RequestBody ExchangeStateRequest request) {
         Map<String, String> tokenData = stateTokenService.getTokenData(request.getStateToken());
@@ -112,7 +181,6 @@ public class OAuth2Endpoint {
             throw new ApiException(ErrorCode.AUTH_TOKEN_INVALID, "State token not found or expired");
         }
         stateTokenService.deleteTokenData(request.getStateToken());
-
         log.info("State token exchanged for user: {}", tokenData.get("email"));
 
         return ResponseEntity.ok(LoginResponse.builder()
@@ -126,15 +194,12 @@ public class OAuth2Endpoint {
     }
 
     @GetMapping("/user")
-    public ResponseEntity<UserInfo> getCurrentUser(@AuthenticationPrincipal CustomOAuth2User principal) {
-        if (principal == null) {
-            throw new ApiException(ErrorCode.AUTH_UNAUTHORIZED, "Authentication required");
-        }
+    public ResponseEntity<UserInfoResponse> getCurrentUser(@AuthenticationPrincipal CustomOAuth2User principal) {
         User user = userService.findByEmail(principal.getEmail());
         if (user == null) {
             throw new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND, "User not found");
         }
-        return ResponseEntity.ok(buildUserInfo(user));
+        return ResponseEntity.ok(userMapper.toUserInfo(user));
     }
 
     @PostMapping("/logout")
@@ -162,83 +227,5 @@ public class OAuth2Endpoint {
             log.error("Token refresh failed", e);
             throw new ApiException(ErrorCode.AUTH_TOKEN_INVALID, "Token refresh failed");
         }
-    }
-
-    private UserInfo buildUserInfo(User user) {
-        return UserInfo.builder()
-                .id(user.getUserUuid())
-                .username(user.getUsername())
-                .email(user.getEmail())
-                .firstName(user.getFirstName())
-                .lastName(user.getLastName())
-                .profilePicture(user.getProfilePicture())
-                .provider(user.getProvider().name())
-                .role(user.getRole().name())
-                .emailVerified(user.getEmailVerified())
-                .status(user.getStatus().name())
-                .createdAt(user.getDteCreation())
-                .lastModified(user.getDteLastModification())
-                .build();
-    }
-
-    @Data
-    @Builder
-    public static class UserInfo {
-        private String id;         // UUID — the only external user identifier
-        private String username;
-        private String email;
-        private String firstName;
-        private String lastName;
-        private String profilePicture;
-        private String provider;
-        private String role;
-        private Boolean emailVerified;
-        private String status;
-        private java.time.Instant createdAt;
-        private java.time.Instant lastModified;
-    }
-
-    @Data
-    public static class ExchangeStateRequest {
-        @NotBlank(message = "State token is required")
-        private String stateToken;
-    }
-
-    @Data
-    public static class LoginRequest {
-        @NotBlank(message = "Email is required")
-        private String email;
-        @NotBlank(message = "Password is required")
-        private String password;
-    }
-
-    @Data
-    @Builder
-    public static class LoginResponse {
-        private String accessToken;
-        private String refreshToken;
-        private String userId;      // UUID
-        private String username;
-        private String email;
-        private String role;
-    }
-
-    @Data
-    public static class TokenResponse {
-        private String accessToken;
-
-        public TokenResponse(String accessToken) {
-            this.accessToken = accessToken;
-        }
-    }
-
-    @Data
-    public static class RefreshTokenRequest {
-        private String refreshToken;
-    }
-
-    @Data
-    public static class LogoutRequest {
-        private String refreshToken;
     }
 }

@@ -15,6 +15,7 @@ import com.ttg.devknowledgeplatform.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.dto.admin.ArticleResponse;
 import com.ttg.devknowledgeplatform.dto.admin.CreateArticleRequest;
 import com.ttg.devknowledgeplatform.dto.admin.UpdateArticleRequest;
+import com.ttg.devknowledgeplatform.mapper.ArticleMapper;
 import com.ttg.devknowledgeplatform.repository.ArticleRepository;
 import com.ttg.devknowledgeplatform.repository.CategoryRepository;
 import com.ttg.devknowledgeplatform.repository.ContentItemRepository;
@@ -35,7 +36,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -48,13 +48,14 @@ public class ArticleServiceImpl implements ArticleService {
     private final CategoryRepository categoryRepository;
     private final TagRepository tagRepository;
     private final SlugService slugService;
+    private final ArticleMapper articleMapper;
 
     @Override
     public ArticleResponse create(CreateArticleRequest request, Integer authorId) {
         validateArticleType(request.getType());
 
         Category category = resolveCategory(request.getCategoryId());
-        String slug = slugService.generateUniqueSlug(request.getTitle());
+        String slug = slugService.generateUniqueSlug(request.getTitle(), contentItemRepository::existsBySlug, ErrorCode.ARTICLE_SLUG_CONFLICT);
         ContentStatus status = request.getStatus() != null ? request.getStatus() : ContentStatus.DRAFT;
 
         ContentItem contentItem = new ContentItem();
@@ -80,7 +81,7 @@ public class ArticleServiceImpl implements ArticleService {
 
         Article saved = articleRepository.save(article);
         log.info("Created article id={} slug={}", saved.getId(), slug);
-        return toResponse(saved);
+        return articleMapper.toResponse(saved);
     }
 
     @Override
@@ -96,7 +97,7 @@ public class ArticleServiceImpl implements ArticleService {
         Category category = resolveCategory(request.getCategoryId());
 
         if (!contentItem.getTitle().equals(request.getTitle())) {
-            contentItem.setSlug(slugService.generateUniqueSlug(request.getTitle(), contentItem.getId()));
+            contentItem.setSlug(slugService.generateUniqueSlug(request.getTitle(), contentItemRepository::existsBySlugAndIdNot, contentItem.getId(), ErrorCode.ARTICLE_SLUG_CONFLICT));
         }
         contentItem.setTitle(request.getTitle());
 
@@ -120,13 +121,13 @@ public class ArticleServiceImpl implements ArticleService {
 
         Article updated = articleRepository.save(article);
         log.info("Updated article id={}", id);
-        return toResponse(updated);
+        return articleMapper.toResponse(updated);
     }
 
     @Override
     @Transactional(readOnly = true)
     public ArticleResponse getById(Integer id) {
-        return toResponse(findById(id));
+        return articleMapper.toResponse(findById(id));
     }
 
     @Override
@@ -135,7 +136,7 @@ public class ArticleServiceImpl implements ArticleService {
         Article article = articleRepository.findByContentItem_Slug(slug)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         ErrorCode.ARTICLE_NOT_FOUND, "Article not found with slug: " + slug));
-        return toResponse(article);
+        return articleMapper.toResponse(article);
     }
 
     @Override
@@ -143,7 +144,7 @@ public class ArticleServiceImpl implements ArticleService {
     public PagedResponse<ArticleResponse> list(
             Pageable pageable, ContentType type, ContentStatus status, String q) {
         Specification<Article> spec = ArticleSpecification.withFilters(type, status, q);
-        Page<ArticleResponse> page = articleRepository.findAll(spec, pageable).map(this::toResponse);
+        Page<ArticleResponse> page = articleRepository.findAll(spec, pageable).map(articleMapper::toResponse);
         return PagedResponse.from(page);
     }
 
@@ -174,25 +175,6 @@ public class ArticleServiceImpl implements ArticleService {
             throw new ApiException(ErrorCode.ARTICLE_TYPE_INVALID,
                     "Type must be ARTICLE or BLOG_POST, got: " + type);
         }
-    }
-
-    private ArticleResponse toResponse(Article article) {
-        ContentItem ci = article.getContentItem();
-        return ArticleResponse.builder()
-                .id(article.getId())
-                .contentItemId(ci.getId())
-                .title(ci.getTitle())
-                .slug(ci.getSlug())
-                .type(ci.getType())
-                .body(article.getBody())
-                .status(ci.getStatus())
-                .categoryId(ci.getCategory() != null ? ci.getCategory().getId() : null)
-                .tagIds(extractTagIds(ci))
-                .viewCount(ci.getViewCount())
-                .publishedAt(ci.getPublishedAt())
-                .createdAt(article.getDteCreation())
-                .updatedAt(article.getDteLastModification())
-                .build();
     }
 
     private void applyTagIds(ContentItem contentItem, Set<Integer> tagIds) {
@@ -227,13 +209,4 @@ public class ArticleServiceImpl implements ArticleService {
         }
     }
 
-    private static Set<Integer> extractTagIds(ContentItem ci) {
-        if (ci.getContentItemTags() == null || ci.getContentItemTags().isEmpty()) {
-            return Set.of();
-        }
-        return ci.getContentItemTags().stream()
-                .map(cit -> cit.getTag().getId())
-                .sorted()
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-    }
 }

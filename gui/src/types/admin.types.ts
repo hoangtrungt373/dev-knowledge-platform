@@ -55,3 +55,49 @@ export interface UpdateCategoryPayload {
   name: string;
   parentId: number | null;
 }
+
+// ── Interview Questions ─────────────────────────────────────────────────────
+
+export type Difficulty = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
+export type ContentStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+
+export interface InterviewQuestion {
+  id: number;
+  contentItemId: number;
+  title: string;
+  slug: string;
+  difficulty: Difficulty;
+  questionBody: string;
+  shortAnswer: string | null;
+  detailedAnswer: string | null;
+  isCommon: boolean;
+  status: ContentStatus;
+  categoryId: number | null;
+  tagIds: number[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateInterviewQuestionPayload {
+  title: string;
+  difficulty: Difficulty;
+  questionBody: string;
+  shortAnswer?: string | null;
+  detailedAnswer?: string | null;
+  isCommon?: boolean;
+  status?: ContentStatus;
+  categoryId?: number | null;
+  tagIds?: number[];
+}
+
+export interface UpdateInterviewQuestionPayload {
+  title: string;
+  difficulty: Difficulty;
+  questionBody: string;
+  shortAnswer?: string | null;
+  detailedAnswer?: string | null;
+  isCommon?: boolean;
+  status?: ContentStatus;
+  categoryId?: number | null;
+  tagIds?: number[] | null;
+}

@@ -1,17 +1,21 @@
 package com.ttg.devknowledgeplatform.common.exception;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.mail.MailException;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -20,260 +24,128 @@ import org.springframework.web.servlet.NoHandlerFoundException;
 import com.ttg.devknowledgeplatform.common.dto.ErrorResponse;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * Global Exception Handler
- * 
- * Handles all exceptions thrown by controllers and returns standardized error responses.
- * 
- * <h3>Exception Handling Priority:</h3>
- * <ol>
- *   <li>Custom exceptions (ApiException, BusinessException, ResourceNotFoundException)</li>
- *   <li>Spring Security exceptions (AuthenticationException, AccessDeniedException)</li>
- *   <li>Validation exceptions (MethodArgumentNotValidException, ConstraintViolationException)</li>
- *   <li>Spring MVC exceptions (NoHandlerFoundException, MethodArgumentTypeMismatchException)</li>
- *   <li>Generic exceptions (Exception)</li>
- * </ol>
- */
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
-    
-    /**
-     * Handle custom API exceptions
-     */
+
+    // --- Custom exceptions ---
+
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ErrorResponse> handleApiException(ApiException ex, HttpServletRequest request) {
-        log.error("API Exception: {} - {}", ex.getErrorCode().getCode(), ex.getMessage(), ex);
-        
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .errorCode(ex.getErrorCode().getCode())
-                .status(ex.getErrorCode().getHttpStatus().value())
-                .errorMessage(ex.getMessage())
-                .timestamp(Instant.now())
-                .path(request.getRequestURI())
-                .build();
-        
-        return ResponseEntity.status(ex.getErrorCode().getHttpStatus()).body(errorResponse);
-    }
-    
-    /**
-     * Handle business exceptions (e.g., user not found, duplicate email)
-     */
-    @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ErrorResponse> handleBusinessException(BusinessException ex, HttpServletRequest request) {
-        log.warn("Business Exception: {} - {}", ex.getErrorCode().getCode(), ex.getMessage());
-        
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .errorCode(ex.getErrorCode().getCode())
-                .status(ex.getErrorCode().getHttpStatus().value())
-                .errorMessage(ex.getMessage())
-                .timestamp(Instant.now())
-                .path(request.getRequestURI())
-                .build();
-        
-        return ResponseEntity.status(ex.getErrorCode().getHttpStatus()).body(errorResponse);
-    }
-    
-    /**
-     * Handle resource not found exceptions
-     */
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleResourceNotFoundException(ResourceNotFoundException ex, HttpServletRequest request) {
-        log.warn("Resource Not Found: {} - {}", ex.getErrorCode().getCode(), ex.getMessage());
-        
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .errorCode(ex.getErrorCode().getCode())
-                .status(HttpStatus.NOT_FOUND.value())
-                .errorMessage(ex.getMessage())
-                .timestamp(Instant.now())
-                .path(request.getRequestURI())
-                .build();
-        
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
-    }
-    
-    /**
-     * Handle Spring Security authentication exceptions
-     */
-    @ExceptionHandler(AuthenticationException.class)
-    public ResponseEntity<ErrorResponse> handleAuthenticationException(AuthenticationException ex, HttpServletRequest request) {
-        log.warn("Authentication Exception: {}", ex.getMessage());
-        
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .errorCode(ErrorCode.AUTH_UNAUTHORIZED.getCode())
-                .status(HttpStatus.UNAUTHORIZED.value())
-                .errorMessage("Authentication failed: " + ex.getMessage())
-                .timestamp(Instant.now())
-                .path(request.getRequestURI())
-                .build();
-        
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
-    }
-    
-    /**
-     * Handle Spring Security access denied exceptions
-     */
-    @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ErrorResponse> handleAccessDeniedException(AccessDeniedException ex, HttpServletRequest request) {
-        log.warn("Access Denied: {}", ex.getMessage());
-        
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .errorCode(ErrorCode.AUTH_FORBIDDEN.getCode())
-                .status(HttpStatus.FORBIDDEN.value())
-                .errorMessage("Access denied: " + ex.getMessage())
-                .timestamp(Instant.now())
-                .path(request.getRequestURI())
-                .build();
-        
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
-    }
-    
-    /**
-     * Handle bad credentials exceptions
-     */
-    @ExceptionHandler(BadCredentialsException.class)
-    public ResponseEntity<ErrorResponse> handleBadCredentialsException(BadCredentialsException ex, HttpServletRequest request) {
-        log.warn("Bad Credentials: {}", ex.getMessage());
-        
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .errorCode(ErrorCode.AUTH_UNAUTHORIZED.getCode())
-                .status(HttpStatus.UNAUTHORIZED.value())
-                .errorMessage("Invalid credentials")
-                .timestamp(Instant.now())
-                .path(request.getRequestURI())
-                .build();
-        
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
-    }
-    
-    /**
-     * Handle validation errors from @Valid annotation
-     */
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidationException(MethodArgumentNotValidException ex, HttpServletRequest request) {
-        log.warn("Validation Exception: {}", ex.getMessage());
-        
-        Map<String, List<String>> validationErrors = new HashMap<>();
-        ex.getBindingResult().getAllErrors().forEach(error -> {
-            String fieldName = ((FieldError) error).getField();
-            String errorMessage = error.getDefaultMessage();
-            validationErrors.computeIfAbsent(fieldName, k -> new java.util.ArrayList<>()).add(errorMessage);
-        });
-        
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .errorCode(ErrorCode.VALIDATION_FAILED.getCode())
-                .status(HttpStatus.BAD_REQUEST.value())
-                .errorMessage("Validation failed")
-                .timestamp(Instant.now())
-                .path(request.getRequestURI())
-                .validationErrors(validationErrors)
-                .build();
-        
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
-    }
-    
-    /**
-     * Handle constraint violation exceptions (from @Validated)
-     */
-    @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ErrorResponse> handleConstraintViolationException(ConstraintViolationException ex, HttpServletRequest request) {
-        log.warn("Constraint Violation: {}", ex.getMessage());
-        
-        Map<String, List<String>> validationErrors = new HashMap<>();
-        for (ConstraintViolation<?> violation : ex.getConstraintViolations()) {
-            String fieldName = violation.getPropertyPath().toString();
-            String errorMessage = violation.getMessage();
-            validationErrors.computeIfAbsent(fieldName, k -> new java.util.ArrayList<>()).add(errorMessage);
+        HttpStatus status = ex.getErrorCode().getHttpStatus();
+        if (status.is5xxServerError()) {
+            log.error("API error [{}]: {}", ex.getErrorCode().getCode(), ex.getMessage(), ex);
+        } else {
+            log.warn("API error [{}]: {}", ex.getErrorCode().getCode(), ex.getMessage());
         }
-        
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .errorCode(ErrorCode.VALIDATION_FAILED.getCode())
-                .status(HttpStatus.BAD_REQUEST.value())
-                .errorMessage("Validation failed")
-                .timestamp(Instant.now())
-                .path(request.getRequestURI())
-                .validationErrors(validationErrors)
-                .build();
-        
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+        return buildResponse(ex.getErrorCode().getCode(), status, ex.getMessage(), request, null);
     }
-    
-    /**
-     * Handle method argument type mismatch (e.g., invalid path variable type)
-     */
+
+    // --- Validation exceptions ---
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex, HttpServletRequest request) {
+        log.warn("Validation failed on {}: {}", request.getRequestURI(), ex.getMessage());
+        Map<String, List<String>> errors = new HashMap<>();
+        ex.getBindingResult().getAllErrors().forEach(error -> {
+            String field = ((FieldError) error).getField();
+            errors.computeIfAbsent(field, k -> new ArrayList<>()).add(error.getDefaultMessage());
+        });
+        return buildResponse(ErrorCode.VALIDATION_FAILED.getCode(), HttpStatus.BAD_REQUEST, "Validation failed", request, errors);
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolation(ConstraintViolationException ex, HttpServletRequest request) {
+        log.warn("Constraint violation on {}: {}", request.getRequestURI(), ex.getMessage());
+        Map<String, List<String>> errors = new HashMap<>();
+        ex.getConstraintViolations().forEach(v ->
+            errors.computeIfAbsent(v.getPropertyPath().toString(), k -> new ArrayList<>()).add(v.getMessage())
+        );
+        return buildResponse(ErrorCode.VALIDATION_FAILED.getCode(), HttpStatus.BAD_REQUEST, "Validation failed", request, errors);
+    }
+
+    // --- HTTP / MVC exceptions ---
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException ex, HttpServletRequest request) {
+        log.warn("Malformed request body on {}: {}", request.getRequestURI(), ex.getMessage());
+        return buildResponse(ErrorCode.REQUEST_BODY_INVALID.getCode(), HttpStatus.BAD_REQUEST, "Malformed or missing request body", request, null);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex, HttpServletRequest request) {
+        log.warn("Method not allowed on {}: {}", request.getRequestURI(), ex.getMessage());
+        return buildResponse(ErrorCode.REQUEST_METHOD_NOT_ALLOWED.getCode(), HttpStatus.METHOD_NOT_ALLOWED, ex.getMessage(), request, null);
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingParam(MissingServletRequestParameterException ex, HttpServletRequest request) {
+        log.warn("Missing parameter '{}' on {}", ex.getParameterName(), request.getRequestURI());
+        String message = "Required parameter '" + ex.getParameterName() + "' is missing";
+        return buildResponse(ErrorCode.REQUEST_PARAMETER_MISSING.getCode(), HttpStatus.BAD_REQUEST, message, request, null);
+    }
+
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<ErrorResponse> handleMethodArgumentTypeMismatchException(MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
-        log.warn("Method Argument Type Mismatch: {}", ex.getMessage());
-        
-        String message = String.format("Invalid value '%s' for parameter '%s'. Expected type: %s",
-                ex.getValue(), ex.getName(), ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown");
-        
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .errorCode(ErrorCode.REQUEST_PARAMETER_MISSING.getCode())
-                .status(HttpStatus.BAD_REQUEST.value())
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+        log.warn("Type mismatch for parameter '{}' on {}: {}", ex.getName(), request.getRequestURI(), ex.getMessage());
+        String message = String.format("Invalid value '%s' for parameter '%s'", ex.getValue(), ex.getName());
+        return buildResponse(ErrorCode.VALIDATION_FIELD_INVALID.getCode(), HttpStatus.BAD_REQUEST, message, request, null);
+    }
+
+    @ExceptionHandler(NoHandlerFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoHandler(NoHandlerFoundException ex, HttpServletRequest request) {
+        log.warn("No handler found: {}", ex.getRequestURL());
+        return buildResponse(ErrorCode.RESOURCE_NOT_FOUND.getCode(), HttpStatus.NOT_FOUND, "Endpoint not found: " + ex.getRequestURL(), request, null);
+    }
+
+    // --- Security exceptions ---
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
+        log.warn("Access denied on {}: {}", request.getRequestURI(), ex.getMessage());
+        return buildResponse(ErrorCode.AUTH_FORBIDDEN.getCode(), HttpStatus.FORBIDDEN, "Access denied", request, null);
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ErrorResponse> handleAuthentication(AuthenticationException ex, HttpServletRequest request) {
+        log.warn("Authentication failed on {}: {}", request.getRequestURI(), ex.getMessage());
+        return buildResponse(ErrorCode.AUTH_UNAUTHORIZED.getCode(), HttpStatus.UNAUTHORIZED, "Authentication failed", request, null);
+    }
+
+    // --- External service exceptions ---
+
+    @ExceptionHandler(MailException.class)
+    public ResponseEntity<ErrorResponse> handleMailException(MailException ex, HttpServletRequest request) {
+        log.error("Email service error on {}: {}", request.getRequestURI(), ex.getMessage(), ex);
+        return buildResponse(ErrorCode.SERVER_EXTERNAL_SERVICE_ERROR.getCode(), HttpStatus.SERVICE_UNAVAILABLE, "Email service is currently unavailable", request, null);
+    }
+
+    // --- Fallback ---
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleGeneric(Exception ex, HttpServletRequest request) {
+        log.error("Unexpected error on {}: {}", request.getRequestURI(), ex.getMessage(), ex);
+        return buildResponse(ErrorCode.SERVER_INTERNAL_ERROR.getCode(), HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred", request, null);
+    }
+
+    // --- Builder helper ---
+
+    private ResponseEntity<ErrorResponse> buildResponse(
+            String code, HttpStatus status, String message,
+            HttpServletRequest request, Map<String, List<String>> validationErrors) {
+
+        ErrorResponse body = ErrorResponse.builder()
+                .errorCode(code)
+                .status(status.value())
                 .errorMessage(message)
                 .timestamp(Instant.now())
                 .path(request.getRequestURI())
+                .validationErrors(validationErrors)
                 .build();
-        
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
-    }
-    
-    /**
-     * Handle 404 Not Found (no handler found for request)
-     */
-    @ExceptionHandler(NoHandlerFoundException.class)
-    public ResponseEntity<ErrorResponse> handleNoHandlerFoundException(NoHandlerFoundException ex, HttpServletRequest request) {
-        log.warn("No Handler Found: {}", ex.getRequestURL());
-        
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .errorCode(ErrorCode.RESOURCE_NOT_FOUND.getCode())
-                .status(HttpStatus.NOT_FOUND.value())
-                .errorMessage("Endpoint not found: " + ex.getRequestURL())
-                .timestamp(Instant.now())
-                .path(request.getRequestURI())
-                .build();
-        
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
-    }
-    
-    /**
-     * Handle illegal argument exceptions
-     */
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ErrorResponse> handleIllegalArgumentException(IllegalArgumentException ex, HttpServletRequest request) {
-        log.warn("Illegal Argument: {}", ex.getMessage());
-        
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .errorCode(ErrorCode.REQUEST_BODY_INVALID.getCode())
-                .status(HttpStatus.BAD_REQUEST.value())
-                .errorMessage(ex.getMessage())
-                .timestamp(Instant.now())
-                .path(request.getRequestURI())
-                .build();
-        
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
-    }
-    
-    /**
-     * Handle all other exceptions (fallback)
-     */
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGenericException(Exception ex, HttpServletRequest request) {
-        log.error("Unexpected error occurred: {}", ex.getMessage(), ex);
-        
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .errorCode(ErrorCode.SERVER_INTERNAL_ERROR.getCode())
-                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
-                .errorMessage("An unexpected error occurred. Please try again later.")
-                .timestamp(Instant.now())
-                .path(request.getRequestURI())
-                .build();
-        
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+
+        return ResponseEntity.status(status).body(body);
     }
 }
