@@ -12,4 +12,6 @@ public interface InterviewQuestionRepository
         extends JpaRepository<InterviewQuestion, Integer>, JpaSpecificationExecutor<InterviewQuestion> {
 
     Optional<InterviewQuestion> findByContentItem_Slug(String slug);
+
+    Optional<InterviewQuestion> findByContentItem_Id(Integer contentItemId);
 }

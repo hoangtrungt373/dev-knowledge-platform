@@ -12,5 +12,7 @@ public interface ArticleRepository extends JpaRepository<Article, Integer>, JpaS
 
     Optional<Article> findByContentItem_Slug(String slug);
 
+    Optional<Article> findByContentItem_Id(Integer contentItemId);
+
     boolean existsByContentItemId(Integer contentItemId);
 }

@@ -128,13 +128,11 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public InterviewQuestionResponse getById(Integer id) {
         return interviewQuestionMapper.toResponse(findById(id));
     }
 
     @Override
-    @Transactional(readOnly = true)
     public InterviewQuestionResponse getBySlug(String slug) {
         InterviewQuestion question = interviewQuestionRepository.findByContentItem_Slug(slug)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -144,7 +142,6 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public PagedResponse<InterviewQuestionResponse> list(
             Pageable pageable,
             InterviewQuestionDifficulty difficulty,

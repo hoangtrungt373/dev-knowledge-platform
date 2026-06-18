@@ -77,13 +77,11 @@ public class TagServiceImpl implements TagService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public TagResponse getById(Integer id) {
         return tagMapper.toResponse(findById(id));
     }
 
     @Override
-    @Transactional(readOnly = true)
     public PagedResponse<TagResponse> list(Pageable pageable, TagStatus status, String q) {
         Specification<Tag> spec = TagSpecification.withFilters(status, q);
         Page<TagResponse> page = tagRepository.findAll(spec, pageable).map(tagMapper::toResponse);

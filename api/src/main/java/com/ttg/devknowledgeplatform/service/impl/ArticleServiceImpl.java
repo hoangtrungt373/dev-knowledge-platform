@@ -125,13 +125,11 @@ public class ArticleServiceImpl implements ArticleService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public ArticleResponse getById(Integer id) {
         return articleMapper.toResponse(findById(id));
     }
 
     @Override
-    @Transactional(readOnly = true)
     public ArticleResponse getBySlug(String slug) {
         Article article = articleRepository.findByContentItem_Slug(slug)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -140,7 +138,6 @@ public class ArticleServiceImpl implements ArticleService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public PagedResponse<ArticleResponse> list(
             Pageable pageable, ContentType type, ContentStatus status, String q) {
         Specification<Article> spec = ArticleSpecification.withFilters(type, status, q);

@@ -95,31 +95,26 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public User findByEmail(String email) {
         return userRepository.findByEmail(email).orElse(null);
     }
 
     @Override
-    @Transactional(readOnly = true)
     public User findByUserUuid(String userUuid) {
         return userRepository.findByUserUuid(userUuid).orElse(null);
     }
 
     @Override
-    @Transactional(readOnly = true)
     public Optional<User> findById(Integer userId) {
         return userRepository.findById(userId);
     }
 
     @Override
-    @Transactional(readOnly = true)
     public Optional<User> findByUserUuidOptional(String userUuid) {
         return userRepository.findByUserUuid(userUuid);
     }
 
     @Override
-    @Transactional(readOnly = true)
     public User findByProviderAndProviderId(UserProvider provider, String providerId) {
         return userRepository.findByProviderAndProviderId(provider, providerId).orElse(null);
     }

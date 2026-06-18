@@ -46,12 +46,6 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- MapStruct -->
-        <dependency>
-            <groupId>org.mapstruct</groupId>
-            <artifactId>mapstruct</artifactId>
-        </dependency>
-
         <!-- Jackson — ApiResponse / ErrorResponse serialization -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

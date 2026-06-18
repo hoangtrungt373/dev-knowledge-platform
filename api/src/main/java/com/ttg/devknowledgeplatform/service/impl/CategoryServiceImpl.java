@@ -85,13 +85,11 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public CategoryResponse getById(Integer id) {
         return categoryMapper.toResponse(findById(id));
     }
 
     @Override
-    @Transactional(readOnly = true)
     public PagedResponse<CategoryResponse> list(
             Pageable pageable, Integer parentId, Boolean rootOnly, String q) {
 
@@ -102,7 +100,6 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public List<CategoryTreeNodeResponse> listTree() {
         List<Category> all = categoryRepository.findAll();
         Map<Integer, CategoryTreeNodeResponse> nodes = new HashMap<>();
