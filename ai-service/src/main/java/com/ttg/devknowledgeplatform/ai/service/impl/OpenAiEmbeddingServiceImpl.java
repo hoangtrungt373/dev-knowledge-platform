@@ -22,6 +22,7 @@ public class OpenAiEmbeddingServiceImpl implements EmbeddingService {
                 .apiKey(properties.getApiKey())
                 .modelName(properties.getModel())
                 .dimensions(properties.getDimensions())
+                .maxRetries(properties.getMaxRetries())
                 .build();
         log.info("EmbeddingService initialised: model={} dimensions={}",
                 properties.getModel(), properties.getDimensions());

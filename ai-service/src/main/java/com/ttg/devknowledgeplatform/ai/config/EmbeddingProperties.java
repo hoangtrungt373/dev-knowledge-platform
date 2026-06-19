@@ -1,5 +1,7 @@
 package com.ttg.devknowledgeplatform.ai.config;
 
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import lombok.Getter;
@@ -29,4 +31,28 @@ public class EmbeddingProperties {
     /** Token overlap between consecutive chunks to preserve context at boundaries. */
     @Positive
     private int chunkOverlap = 100;
+
+    // --- Chat / generation ---
+
+    @NotBlank
+    private String chatModel = "gpt-4o-mini";
+
+    @Positive
+    private int maxTokens = 1024;
+
+    private double temperature = 0.7;
+
+    @Positive
+    private int maxRetries = 3;
+
+    // --- RAG ---
+
+    @Positive
+    private int topK = 5;
+
+    @DecimalMin("0.0") @DecimalMax("1.0")
+    private float similarityThreshold = 0.75f;
+
+    @NotBlank
+    private String systemPrompt;
 }

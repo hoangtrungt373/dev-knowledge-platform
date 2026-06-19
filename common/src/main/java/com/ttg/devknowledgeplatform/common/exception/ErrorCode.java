@@ -90,7 +90,11 @@ public enum ErrorCode {
     // Request Errors (REQUEST_*)
     REQUEST_BODY_INVALID("REQUEST_001", "Invalid request body", HttpStatus.BAD_REQUEST),
     REQUEST_PARAMETER_MISSING("REQUEST_002", "Required parameter is missing", HttpStatus.BAD_REQUEST),
-    REQUEST_METHOD_NOT_ALLOWED("REQUEST_003", "HTTP method not allowed", HttpStatus.METHOD_NOT_ALLOWED);
+    REQUEST_METHOD_NOT_ALLOWED("REQUEST_003", "HTTP method not allowed", HttpStatus.METHOD_NOT_ALLOWED),
+
+    // AI / RAG Errors (AI_*)
+    AI_SERVICE_UNAVAILABLE("AI_001", "AI service is temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE),
+    AI_EMBEDDING_FAILED("AI_002", "Failed to generate embedding for the provided text", HttpStatus.SERVICE_UNAVAILABLE);
     
     private final String code;
     private final String message;
