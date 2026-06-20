@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ttg.devknowledgeplatform.config.CacheNames;
+import com.ttg.devknowledgeplatform.config.dto.CacheTtlProperties;
 import com.ttg.devknowledgeplatform.security.service.StateTokenService;
 
 import lombok.RequiredArgsConstructor;
@@ -17,20 +19,22 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class RedisStateTokenService implements StateTokenService {
+public class StateTokenServiceImpl implements StateTokenService {
 
     private static final String KEY_PREFIX = "oauth2:state:";
     private static final TypeReference<Map<String, String>> MAP_TYPE = new TypeReference<>() {};
 
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
+    private final CacheTtlProperties cacheTtlProperties;
 
     @Override
-    public Map<String, String> storeTokenData(String stateToken, Map<String, String> tokenData, long expirationSeconds) {
+    public Map<String, String> storeTokenData(String stateToken, Map<String, String> tokenData) {
+        Duration ttl = cacheTtlProperties.getTtlFor(CacheNames.STATE_TOKENS);
         try {
             String json = objectMapper.writeValueAsString(tokenData);
-            stringRedisTemplate.opsForValue().set(KEY_PREFIX + stateToken, json, Duration.ofSeconds(expirationSeconds));
-            log.debug("Stored state token in Redis: {} (ttl={}s)", stateToken, expirationSeconds);
+            stringRedisTemplate.opsForValue().set(KEY_PREFIX + stateToken, json, ttl);
+            log.debug("Stored state token in Redis: {} (ttl={})", stateToken, ttl);
             return tokenData;
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize state token data", e);

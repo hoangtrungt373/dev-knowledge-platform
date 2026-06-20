@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -113,6 +114,23 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleAuthentication(AuthenticationException ex, HttpServletRequest request) {
         log.warn("Authentication failed on {}: {}", request.getRequestURI(), ex.getMessage());
         return buildResponse(ErrorCode.AUTH_UNAUTHORIZED.getCode(), HttpStatus.UNAUTHORIZED, "Authentication failed", request, null);
+    }
+
+    // --- Rate limiting ---
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ErrorResponse> handleRateLimit(RateLimitExceededException ex, HttpServletRequest request) {
+        log.warn("Rate limit exceeded on {}", request.getRequestURI());
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Retry-After", "60");
+        ErrorResponse body = ErrorResponse.builder()
+                .errorCode(ex.getErrorCode().getCode())
+                .status(HttpStatus.TOO_MANY_REQUESTS.value())
+                .errorMessage(ex.getMessage())
+                .timestamp(Instant.now())
+                .path(request.getRequestURI())
+                .build();
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).headers(headers).body(body);
     }
 
     // --- External service exceptions ---

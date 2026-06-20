@@ -33,7 +33,7 @@ import lombok.extern.slf4j.Slf4j;
  * <ol>
  *   <li>Generates an access token and a refresh token for the authenticated user.</li>
  *   <li>Stores both tokens (along with basic profile data) in Redis under a one-time
- *       state token with a short TTL (configured via {@code app.state.token.expiration}).</li>
+ *       state token with a short TTL (configured via {@code cache.ttl.state-tokens}).</li>
  *   <li>Redirects the browser to {@code {frontendUrl}/auth/callback?state=<stateToken>}.</li>
  * </ol>
  *
@@ -51,9 +51,6 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     
     @Value("${app.frontend.url:http://localhost:3000}")
     private String frontendUrl;
-    
-    @Value("${app.state.token.expiration:300}")
-    private long stateTokenExpirationSeconds;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, 
@@ -93,7 +90,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         tokenData.put("email", user.getEmail());
         tokenData.put("role", user.getRole().name());
         
-        stateTokenService.storeTokenData(stateToken, tokenData, stateTokenExpirationSeconds);
+        stateTokenService.storeTokenData(stateToken, tokenData);
         
         log.debug("Stored tokens with state token: {}", stateToken);
         

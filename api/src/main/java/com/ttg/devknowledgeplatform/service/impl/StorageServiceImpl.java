@@ -8,7 +8,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
-import com.ttg.devknowledgeplatform.config.StorageProperties;
+import com.ttg.devknowledgeplatform.config.dto.StorageProperties;
 import com.ttg.devknowledgeplatform.service.StorageService;
 
 import io.minio.BucketExistsArgs;

@@ -18,12 +18,13 @@ public interface StateTokenService {
     /**
      * Persists arbitrary data associated with a state token.
      *
-     * @param stateToken       the opaque state identifier, typically from {@link #generateStateToken()}
-     * @param tokenData        key/value pairs to store (e.g. {@code redirectUri}, {@code provider})
-     * @param expirationSeconds how long the entry should live before automatic expiry
+     * <p>The TTL is read from {@code cache.ttl.state-tokens} in application properties.
+     *
+     * @param stateToken the opaque state identifier, typically from {@link #generateStateToken()}
+     * @param tokenData  key/value pairs to store (e.g. {@code redirectUri}, {@code provider})
      * @return the same {@code tokenData} map, for call-site convenience
      */
-    Map<String, String> storeTokenData(String stateToken, Map<String, String> tokenData, long expirationSeconds);
+    Map<String, String> storeTokenData(String stateToken, Map<String, String> tokenData);
 
     /**
      * Retrieves the data associated with a state token without removing it.

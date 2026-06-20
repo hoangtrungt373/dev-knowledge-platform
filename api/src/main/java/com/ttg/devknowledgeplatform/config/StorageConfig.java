@@ -3,6 +3,8 @@ package com.ttg.devknowledgeplatform.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.ttg.devknowledgeplatform.config.dto.StorageProperties;
+
 import io.minio.MinioClient;
 import lombok.RequiredArgsConstructor;
 

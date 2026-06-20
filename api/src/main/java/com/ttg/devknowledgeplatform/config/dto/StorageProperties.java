@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.config;
+package com.ttg.devknowledgeplatform.config.dto;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;

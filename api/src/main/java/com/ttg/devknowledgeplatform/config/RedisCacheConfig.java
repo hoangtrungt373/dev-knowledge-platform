@@ -1,21 +1,28 @@
 package com.ttg.devknowledgeplatform.config;
 
-import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.cache.annotation.EnableCaching;
-import org.springframework.cache.interceptor.KeyGenerator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import com.ttg.devknowledgeplatform.config.dto.CacheTtlProperties;
+
+import io.lettuce.core.RedisClient;
+import io.lettuce.core.api.StatefulRedisConnection;
+import io.lettuce.core.codec.ByteArrayCodec;
+import io.lettuce.core.codec.RedisCodec;
+import io.lettuce.core.codec.StringCodec;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -43,52 +50,16 @@ public class RedisCacheConfig {
      * @return Base Redis cache configuration
      */
     @Bean
-    public RedisCacheConfiguration baseRedisCacheConfiguration() {
+    public RedisCacheConfiguration baseRedisCacheConfiguration(
+            CacheTtlProperties cacheTtlProperties,
+            ObjectMapper objectMapper) {
         return RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofMinutes(5)) // Default TTL for caches without explicit configuration
+                .entryTtl(cacheTtlProperties.getDefaultTtl())
                 .serializeKeysWith(RedisSerializationContext.SerializationPair
                         .fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair
-                        .fromSerializer(new GenericJackson2JsonRedisSerializer()))
+                        .fromSerializer(new GenericJackson2JsonRedisSerializer(objectMapper)))
                 .disableCachingNullValues();
-    }
-
-    /**
-     * Configuration properties for cache TTL settings.
-     * 
-     * <p>This class automatically binds all cache TTLs from {@code cache.ttl.*} properties.
-     * To add a new cache, simply add its TTL to the properties file:
-     * 
-     * <pre>{@code
-     * cache:
-     *   ttl:
-     *     cache-name-1: PT5M
-     *     cache-name-2: PT30M
-     * }</pre>
-     * 
-     * <p>The format is ISO-8601 duration (e.g., PT5M = 5 minutes, PT1H = 1 hour).
-     */
-    @ConfigurationProperties(prefix = "cache.ttl")
-    public static class CacheTtlProperties {
-        private Map<String, Duration> ttl = new HashMap<>();
-
-        public Map<String, Duration> getTtl() {
-            return ttl;
-        }
-
-        public void setTtl(Map<String, Duration> ttl) {
-            this.ttl = ttl;
-        }
-    }
-
-    /**
-     * Creates the cache TTL properties bean.
-     * 
-     * @return CacheTtlProperties instance with all cache TTLs from properties
-     */
-    @Bean
-    public CacheTtlProperties cacheTtlProperties() {
-        return new CacheTtlProperties();
     }
 
     /**
@@ -107,26 +78,14 @@ public class RedisCacheConfig {
             RedisCacheConfiguration baseConfig,
             CacheTtlProperties cacheTtlProperties) {
         
-        // Build per-cache configurations with custom TTLs
         Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
-        Map<String, Duration> ttlMap = cacheTtlProperties.getTtl();
-        
-        for (Map.Entry<String, Duration> entry : ttlMap.entrySet()) {
-            String cacheName = entry.getKey();
-            Duration ttl = entry.getValue();
-            
-            if (ttl != null) {
-                RedisCacheConfiguration cacheConfig = baseConfig.entryTtl(ttl);
-                cacheConfigurations.put(cacheName, cacheConfig);
-                log.info("Configured cache '{}' with TTL: {}", cacheName, ttl);
-            } else {
-                log.warn("Cache '{}' has null TTL, using default TTL", cacheName);
-            }
-        }
-        
-        // If no caches configured, log a warning
+        cacheTtlProperties.getTtl().forEach((cacheName, ttl) -> {
+            cacheConfigurations.put(cacheName, baseConfig.entryTtl(ttl));
+            log.info("Configured cache '{}' with TTL: {}", cacheName, ttl);
+        });
+
         if (cacheConfigurations.isEmpty()) {
-            log.warn("No cache TTLs configured in cache.ttl.* properties. Using default TTL (5 minutes) for all caches.");
+            log.warn("No cache TTLs configured under cache.ttl.*; all caches use default TTL: {}", cacheTtlProperties.getDefaultTtl());
         } else {
             log.info("Configured {} cache(s) with custom TTLs", cacheConfigurations.size());
         }
@@ -134,32 +93,36 @@ public class RedisCacheConfig {
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(baseConfig)
                 .withInitialCacheConfigurations(cacheConfigurations)
+                .transactionAware()
                 .build();
     }
 
     /**
-     * Custom key generator for OAuth2 state token caching.
-     * 
-     * <p>Generates cache keys in the format: {@code "oauth2:state:{stateToken}"}
-     * 
-     * <p><strong>Usage:</strong>
-     * <pre>{@code
-     * @Cacheable(value = "oauth2-state-tokens", keyGenerator = "stateTokenKeyGenerator")
-     * public Map<String, String> getTokenData(String stateToken) {
-     *     // Method body
-     * }
-     * }</pre>
+     * Dedicated Redis connection for Bucket4j rate limiting.
+     *
+     * <p>Bucket4j stores bucket state as binary data, so it requires a
+     * {@code StatefulRedisConnection<String, byte[]>} with a mixed codec —
+     * string keys for readability and {@code byte[]} values for Bucket4j's
+     * internal binary format. Spring's {@code RedisConnectionFactory} only
+     * supports {@code String} or {@code Object} values, so this connection
+     * is created directly from the underlying Lettuce {@link RedisClient}.
+     *
+     * <p>Declared as a bean so it is visible, injectable, and easy to mock
+     * in tests — rather than being created inline inside {@code ChatRateLimiter}.
+     *
+     * @param connectionFactory Spring's auto-configured Lettuce connection factory
+     * @return a persistent connection reused by {@code ChatRateLimiter} for all rate-limit checks
      */
-    @Bean("stateTokenKeyGenerator")
-    public KeyGenerator stateTokenKeyGenerator() {
-        return (target, method, params) -> {
-            // First parameter should be the state token
-            if (params.length > 0) {
-                String stateToken = String.valueOf(params[0]).trim();
-                return "oauth2:state:" + stateToken;
-            }
-            // Fallback: use method name and all parameters
-            return "oauth2:state:" + method.getName();
-        };
+    @Bean(destroyMethod = "close")
+    public StatefulRedisConnection<String, byte[]> bucket4jRedisConnection(
+            LettuceConnectionFactory connectionFactory) {
+        Object nativeClient = connectionFactory.getNativeClient();
+        if (!(nativeClient instanceof RedisClient redisClient)) {
+            throw new IllegalStateException(
+                "Bucket4j rate limiting requires a standalone Lettuce RedisClient, got: " +
+                (nativeClient == null ? "null" : nativeClient.getClass().getName()) +
+                ". Redis Cluster is not supported.");
+        }
+        return redisClient.connect(RedisCodec.of(StringCodec.UTF8, ByteArrayCodec.INSTANCE));
     }
 }
