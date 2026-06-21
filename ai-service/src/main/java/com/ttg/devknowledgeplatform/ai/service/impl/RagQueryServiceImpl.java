@@ -8,11 +8,15 @@ import com.ttg.devknowledgeplatform.ai.entity.ContentEmbedding;
 import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;
 import com.ttg.devknowledgeplatform.ai.service.EmbeddingService;
 import com.ttg.devknowledgeplatform.ai.service.RagQueryService;
+import com.ttg.devknowledgeplatform.ai.service.RagStreamHandler;
 import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.output.Response;
+import dev.langchain4j.model.StreamingResponseHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,6 +24,7 @@ import org.springframework.stereotype.Service;
 import java.util.Comparator;
 import java.util.List;
 import java.util.StringJoiner;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
@@ -31,7 +36,8 @@ import java.util.stream.IntStream;
  *   <li>Run a native pgvector cosine-distance query to fetch the top-K chunk IDs.</li>
  *   <li>Load those chunks with their parent {@code ContentItem} eagerly (JOIN FETCH)
  *       so no lazy-init issues arise after the repository transaction closes.</li>
- *   <li>Score each chunk via dot product, filter below {@code similarityThreshold}, sort descending, call the OpenAI chat model.</li>
+ *   <li>Score each chunk via dot product, filter below {@code similarityThreshold}, sort descending.</li>
+ *   <li>Call the OpenAI chat model — blocking ({@link #query}) or streaming ({@link #queryStream}).</li>
  * </ol>
  *
  * <p>No {@code @Transactional} is placed on this class intentionally: the two repository calls each
@@ -45,11 +51,21 @@ public class RagQueryServiceImpl implements RagQueryService {
 
     private static final String NO_CONTEXT_ANSWER =
             "I don't have relevant information in my knowledge base to answer this question.";
+    private static final String GENERIC_ERROR_MESSAGE =
+            "Failed to process your question. Please try again later.";
 
     private final EmbeddingService embeddingService;
     private final ContentEmbeddingRepository contentEmbeddingRepository;
     private final ChatLanguageModel chatLanguageModel;
+    private final StreamingChatLanguageModel streamingChatLanguageModel;
     private final EmbeddingProperties properties;
+
+    /** Pairs a chunk with its pre-computed cosine similarity score. */
+    private record ScoredChunk(ContentEmbedding chunk, float score) {}
+
+    // -------------------------------------------------------------------------
+    // Public API
+    // -------------------------------------------------------------------------
 
     @Override
     public RagAnswer query(String question) {
@@ -60,28 +76,89 @@ public class RagQueryServiceImpl implements RagQueryService {
             throw e;
         } catch (Exception e) {
             log.error("RAG query failed: {}", e.getMessage(), e);
-            throw new RagQueryException("Failed to process your question. Please try again later.", e);
+            throw new RagQueryException(GENERIC_ERROR_MESSAGE, e);
         }
     }
 
+    @Override
+    public void queryStream(String question, RagStreamHandler handler) {
+        log.info("RAG stream query: {}", question);
+        try {
+            List<ScoredChunk> scored = retrieveAndScore(question);
+
+            if (scored == null) {
+                handler.onToken(NO_CONTEXT_ANSWER);
+                handler.onComplete();
+                return;
+            }
+
+            // Send sources before LLM call — client can show citations immediately
+            handler.onSources(buildSources(scored));
+
+            streamingChatLanguageModel.generate(
+                    buildMessages(question, scored),
+                    new StreamingResponseHandler<AiMessage>() {
+                        @Override
+                        public void onNext(String token) {
+                            handler.onToken(token);
+                        }
+
+                        @Override
+                        public void onComplete(Response<AiMessage> response) {
+                            log.info("RAG stream completed: {} chunks used", scored.size());
+                            handler.onComplete();
+                        }
+
+                        @Override
+                        public void onError(Throwable error) {
+                            log.error("RAG stream LLM error: {}", error.getMessage(), error);
+                            handler.onError(new RagQueryException("Streaming failed during generation.", error));
+                        }
+                    }
+            );
+        } catch (RagQueryException e) {
+            handler.onError(e);
+        } catch (Exception e) {
+            log.error("RAG stream query failed: {}", e.getMessage(), e);
+            handler.onError(new RagQueryException(GENERIC_ERROR_MESSAGE, e));
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Private pipeline steps
+    // -------------------------------------------------------------------------
+
     private RagAnswer doQuery(String question) {
-        // 1. Embed the question
+        List<ScoredChunk> scored = retrieveAndScore(question);
+
+        if (scored == null) {
+            return new RagAnswer(NO_CONTEXT_ANSWER, List.of());
+        }
+
+        String answer = generateAnswer(question, scored);
+        log.info("RAG query completed: {} chunks retrieved, answer length={}", scored.size(), answer.length());
+        return new RagAnswer(answer, buildSources(scored));
+    }
+
+    /**
+     * Embeds the question, fetches top-K chunk IDs from pgvector, loads entities,
+     * scores via dot product, filters below the similarity threshold, and sorts descending.
+     *
+     * @return sorted scored chunks, or {@code null} if no relevant chunks were found
+     */
+    private List<ScoredChunk> retrieveAndScore(String question) {
         float[] questionEmbedding = embeddingService.embed(question);
 
-        // 2. Find top-K IDs by cosine distance (native pgvector query)
         List<Integer> ids = contentEmbeddingRepository.findTopSimilarIds(
                 toVectorString(questionEmbedding), properties.getTopK());
 
         if (ids.isEmpty()) {
             log.warn("No embeddings found in the knowledge base");
-            return new RagAnswer(NO_CONTEXT_ANSWER, List.of());
+            return null;
         }
 
-        // 3. Load entities with content item eagerly (avoids LazyInitializationException)
         List<ContentEmbedding> chunks = contentEmbeddingRepository.findAllByIdWithContentItem(ids);
 
-        // 4. Score once, filter by threshold, sort descending, build sources
-        record ScoredChunk(ContentEmbedding chunk, float score) {}
         List<ScoredChunk> scored = chunks.stream()
                 .map(ce -> new ScoredChunk(ce, dotProduct(questionEmbedding, ce.getEmbedding())))
                 .filter(sc -> sc.score() >= properties.getSimilarityThreshold())
@@ -90,10 +167,14 @@ public class RagQueryServiceImpl implements RagQueryService {
 
         if (scored.isEmpty()) {
             log.warn("No chunks passed similarity threshold {}", properties.getSimilarityThreshold());
-            return new RagAnswer(NO_CONTEXT_ANSWER, List.of());
+            return null;
         }
 
-        List<RagSource> sources = scored.stream()
+        return scored;
+    }
+
+    private List<RagSource> buildSources(List<ScoredChunk> scored) {
+        return scored.stream()
                 .map(sc -> new RagSource(
                         sc.chunk().getContentItem().getId(),
                         sc.chunk().getSourceType().name(),
@@ -102,39 +183,34 @@ public class RagQueryServiceImpl implements RagQueryService {
                         sc.score()
                 ))
                 .toList();
-
-        // 5. Call LLM with retrieved context (preserve sorted order)
-        List<ContentEmbedding> sortedChunks = scored.stream().map(ScoredChunk::chunk).toList();
-        String answer = generateAnswer(question, sortedChunks);
-
-        log.info("RAG query completed: {} chunks retrieved, answer length={}", scored.size(), answer.length());
-        return new RagAnswer(answer, sources);
     }
 
     /**
-     * Builds the system prompt from the retrieved chunks and calls the chat model.
-     * Chunks are numbered [1]…[N] so the LLM can reference them in its answer.
+     * Builds the numbered context string {@code [1] chunk1\n\n[2] chunk2...}
+     * injected into the system prompt.
      */
-    private String generateAnswer(String question, List<ContentEmbedding> chunks) {
-        String context = IntStream.range(0, chunks.size())
-                .mapToObj(i -> "[" + (i + 1) + "] " + chunks.get(i).getChunkText())
-                .collect(java.util.stream.Collectors.joining("\n\n"));
+    private String buildContext(List<ScoredChunk> scored) {
+        return IntStream.range(0, scored.size())
+                .mapToObj(i -> "[" + (i + 1) + "] " + scored.get(i).chunk().getChunkText())
+                .collect(Collectors.joining("\n\n"));
+    }
 
-        String systemPrompt = properties.getSystemPrompt() + context;
+    private String generateAnswer(String question, List<ScoredChunk> scored) {
+        return chatLanguageModel.generate(buildMessages(question, scored)).content().text();
+    }
 
-        Response<AiMessage> response = chatLanguageModel.generate(
-                List.of(
-                        SystemMessage.from(systemPrompt),
-                        UserMessage.from(question)
-                )
-        );
-        return response.content().text();
+    private List<ChatMessage> buildMessages(String question, List<ScoredChunk> scored) {
+        return List.of(SystemMessage.from(buildSystemPrompt(scored)), UserMessage.from(question));
+    }
+
+    private String buildSystemPrompt(List<ScoredChunk> scored) {
+        return properties.getSystemPrompt() + buildContext(scored);
     }
 
     /**
      * Computes cosine similarity between two embedding vectors via dot product.
-     * This is valid because OpenAI's embedding models produce L2-normalized vectors,
-     * meaning {@code cosine_similarity(a, b) = dot_product(a, b)}.
+     * Valid because OpenAI's embedding models produce L2-normalized vectors:
+     * {@code cosine_similarity(a, b) = dot_product(a, b)}.
      *
      * @return similarity in [0, 1]; 1.0 = identical direction, 0.0 = orthogonal
      */
@@ -149,7 +225,7 @@ public class RagQueryServiceImpl implements RagQueryService {
 
     /**
      * Formats a float array as the pgvector text literal {@code [x,y,z,...]}.
-     * This is the format expected by the native {@code CAST(:embedding AS vector)} expression.
+     * Required by the native {@code CAST(:embedding AS vector)} expression.
      */
     private static String toVectorString(float[] embedding) {
         StringJoiner joiner = new StringJoiner(",", "[", "]");
