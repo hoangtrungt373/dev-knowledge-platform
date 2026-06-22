@@ -97,7 +97,10 @@ public enum ErrorCode {
     AI_EMBEDDING_FAILED("AI_002", "Failed to generate embedding for the provided text", HttpStatus.SERVICE_UNAVAILABLE),
 
     // Rate Limiting (RATE_*)
-    RATE_LIMIT_EXCEEDED("RATE_001", "Too many requests — please slow down and try again", HttpStatus.TOO_MANY_REQUESTS);
+    RATE_LIMIT_EXCEEDED("RATE_001", "Too many requests — please slow down and try again", HttpStatus.TOO_MANY_REQUESTS),
+
+    // Chat Session (CHAT_*)
+    CHAT_SESSION_NOT_FOUND("CHAT_001", "Chat session not found or does not belong to the current user", HttpStatus.NOT_FOUND);
     
     private final String code;
     private final String message;

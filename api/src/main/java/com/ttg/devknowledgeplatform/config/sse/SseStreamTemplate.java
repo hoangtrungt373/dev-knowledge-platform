@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.config.sse;
 
-import com.ttg.devknowledgeplatform.config.AsyncConfig;
+import com.ttg.devknowledgeplatform.config.web.WebMvcConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
@@ -55,7 +55,7 @@ public class SseStreamTemplate {
      *         before {@code work} begins executing
      */
     public SseEmitter stream(Consumer<SseEmitterWriter> work) {
-        SseEmitter emitter = new SseEmitter(AsyncConfig.SSE_TIMEOUT_MS);
+        SseEmitter emitter = new SseEmitter(WebMvcConfig.SSE_TIMEOUT_MS);
         AtomicBoolean cancelled = new AtomicBoolean(false);
 
         emitter.onCompletion(() -> {

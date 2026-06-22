@@ -9,6 +9,7 @@ import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;
 import com.ttg.devknowledgeplatform.ai.service.EmbeddingService;
 import com.ttg.devknowledgeplatform.ai.service.RagQueryService;
 import com.ttg.devknowledgeplatform.ai.service.RagStreamHandler;
+import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -21,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.StringJoiner;
@@ -37,6 +39,7 @@ import java.util.stream.IntStream;
  *   <li>Load those chunks with their parent {@code ContentItem} eagerly (JOIN FETCH)
  *       so no lazy-init issues arise after the repository transaction closes.</li>
  *   <li>Score each chunk via dot product, filter below {@code similarityThreshold}, sort descending.</li>
+ *   <li>Build the LLM message list: system prompt → prior conversation turns → current question.</li>
  *   <li>Call the OpenAI chat model — blocking ({@link #query}) or streaming ({@link #queryStream}).</li>
  * </ol>
  *
@@ -68,10 +71,10 @@ public class RagQueryServiceImpl implements RagQueryService {
     // -------------------------------------------------------------------------
 
     @Override
-    public RagAnswer query(String question) {
-        log.info("RAG query: {}", question);
+    public RagAnswer query(String question, List<ConversationTurn> history) {
+        log.info("RAG query: history={} turns", history.size());
         try {
-            return doQuery(question);
+            return doQuery(question, history);
         } catch (RagQueryException e) {
             throw e;
         } catch (Exception e) {
@@ -81,8 +84,8 @@ public class RagQueryServiceImpl implements RagQueryService {
     }
 
     @Override
-    public void queryStream(String question, RagStreamHandler handler) {
-        log.info("RAG stream query: {}", question);
+    public void queryStream(String question, List<ConversationTurn> history, RagStreamHandler handler) {
+        log.info("RAG stream query: history={} turns", history.size());
         try {
             List<ScoredChunk> scored = retrieveAndScore(question);
 
@@ -96,7 +99,7 @@ public class RagQueryServiceImpl implements RagQueryService {
             handler.onSources(buildSources(scored));
 
             streamingChatLanguageModel.generate(
-                    buildMessages(question, scored),
+                    buildMessages(question, scored, history),
                     new StreamingResponseHandler<AiMessage>() {
                         @Override
                         public void onNext(String token) {
@@ -128,14 +131,14 @@ public class RagQueryServiceImpl implements RagQueryService {
     // Private pipeline steps
     // -------------------------------------------------------------------------
 
-    private RagAnswer doQuery(String question) {
+    private RagAnswer doQuery(String question, List<ConversationTurn> history) {
         List<ScoredChunk> scored = retrieveAndScore(question);
 
         if (scored == null) {
             return new RagAnswer(NO_CONTEXT_ANSWER, List.of());
         }
 
-        String answer = generateAnswer(question, scored);
+        String answer = generateAnswer(question, scored, history);
         log.info("RAG query completed: {} chunks retrieved, answer length={}", scored.size(), answer.length());
         return new RagAnswer(answer, buildSources(scored));
     }
@@ -195,12 +198,33 @@ public class RagQueryServiceImpl implements RagQueryService {
                 .collect(Collectors.joining("\n\n"));
     }
 
-    private String generateAnswer(String question, List<ScoredChunk> scored) {
-        return chatLanguageModel.generate(buildMessages(question, scored)).content().text();
+    private String generateAnswer(String question, List<ScoredChunk> scored, List<ConversationTurn> history) {
+        return chatLanguageModel.generate(buildMessages(question, scored, history)).content().text();
     }
 
-    private List<ChatMessage> buildMessages(String question, List<ScoredChunk> scored) {
-        return List.of(SystemMessage.from(buildSystemPrompt(scored)), UserMessage.from(question));
+    /**
+     * Constructs the full message list for the LLM:
+     * <ol>
+     *   <li>System prompt with numbered context chunks.</li>
+     *   <li>Alternating User/Assistant messages from the conversation history (oldest first).</li>
+     *   <li>The current user question as the final message.</li>
+     * </ol>
+     *
+     * <p>Prepending history before the current question gives the LLM the full conversational
+     * context needed to resolve pronouns and follow-up references ("that", "the one above", etc.).
+     */
+    private List<ChatMessage> buildMessages(String question, List<ScoredChunk> scored, List<ConversationTurn> history) {
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(SystemMessage.from(buildSystemPrompt(scored)));
+        for (ConversationTurn turn : history) {
+            if ("USER".equals(turn.role())) {
+                messages.add(UserMessage.from(turn.content()));
+            } else {
+                messages.add(AiMessage.from(turn.content()));
+            }
+        }
+        messages.add(UserMessage.from(question));
+        return messages;
     }
 
     private String buildSystemPrompt(List<ScoredChunk> scored) {

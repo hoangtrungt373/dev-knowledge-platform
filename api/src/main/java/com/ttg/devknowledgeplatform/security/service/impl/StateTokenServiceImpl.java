@@ -9,8 +9,8 @@ import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ttg.devknowledgeplatform.config.CacheNames;
-import com.ttg.devknowledgeplatform.config.dto.CacheTtlProperties;
+import com.ttg.devknowledgeplatform.config.cache.CacheNames;
+import com.ttg.devknowledgeplatform.config.cache.CacheTtlProperties;
 import com.ttg.devknowledgeplatform.security.service.StateTokenService;
 
 import lombok.RequiredArgsConstructor;
