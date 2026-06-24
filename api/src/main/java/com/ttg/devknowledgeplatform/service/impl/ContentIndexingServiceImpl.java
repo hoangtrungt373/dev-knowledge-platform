@@ -1,7 +1,9 @@
 package com.ttg.devknowledgeplatform.service.impl;
 
+import com.ttg.devknowledgeplatform.ai.dto.ContentEmbeddingMetadata;
 import com.ttg.devknowledgeplatform.ai.service.ContentIngestionService;
 import com.ttg.devknowledgeplatform.common.entity.Article;
+import com.ttg.devknowledgeplatform.common.entity.Category;
 import com.ttg.devknowledgeplatform.common.entity.ContentItem;
 import com.ttg.devknowledgeplatform.common.entity.InterviewQuestion;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
@@ -18,9 +20,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -63,54 +63,68 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
     }
 
     private void ingestContentItem(ContentItem contentItem) {
-        // tags apply to all content types — extract once here
-        Map<String, Object> commonExtra = buildTagMetadata(contentItem);
-
         ContentType type = contentItem.getType();
         switch (type) {
-            case INTERVIEW_QUESTION -> ingestInterviewQuestion(contentItem, commonExtra);
-            case ARTICLE, BLOG_POST -> ingestArticle(contentItem, commonExtra);
+            case INTERVIEW_QUESTION -> ingestInterviewQuestion(contentItem);
+            case ARTICLE, BLOG_POST -> ingestArticle(contentItem);
             default -> log.warn("Unsupported content type for indexing: {}", type);
         }
     }
 
-    private void ingestInterviewQuestion(ContentItem contentItem, Map<String, Object> commonExtra) {
+    private void ingestInterviewQuestion(ContentItem contentItem) {
         InterviewQuestion iq = interviewQuestionRepository
                 .findByContentItem_Id(contentItem.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("InterviewQuestion for ContentItem", String.valueOf(contentItem.getId())));
+                .orElseThrow(() -> new ResourceNotFoundException("InterviewQuestion for ContentItem",
+                        String.valueOf(contentItem.getId())));
 
-        String fullText = buildInterviewQuestionText(contentItem, iq);
-
-        Map<String, Object> extra = new HashMap<>(commonExtra);
-        extra.put("difficulty", iq.getDifficulty().name());
-        extra.put("isCommon", iq.getIsCommon());
-
-        contentIngestionService.ingest(contentItem, fullText, extra);
+        ContentEmbeddingMetadata metadata = buildMetadata(contentItem, iq.getDifficulty().name(), iq.getIsCommon());
+        contentIngestionService.ingest(contentItem, buildInterviewQuestionText(contentItem, iq), metadata);
     }
 
-    private void ingestArticle(ContentItem contentItem, Map<String, Object> commonExtra) {
+    private void ingestArticle(ContentItem contentItem) {
         Article article = articleRepository
                 .findByContentItem_Id(contentItem.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Article for ContentItem", String.valueOf(contentItem.getId())));
+                .orElseThrow(() -> new ResourceNotFoundException("Article for ContentItem",
+                        String.valueOf(contentItem.getId())));
 
-        String fullText = buildArticleText(contentItem, article);
-        contentIngestionService.ingest(contentItem, fullText, commonExtra);
+        ContentEmbeddingMetadata metadata = buildMetadata(contentItem, null, null);
+        contentIngestionService.ingest(contentItem, buildArticleText(contentItem, article), metadata);
     }
 
-    private Map<String, Object> buildTagMetadata(ContentItem contentItem) {
-        Map<String, Object> meta = new HashMap<>();
-        if (contentItem.getContentItemTags() == null || contentItem.getContentItemTags().isEmpty()) {
-            return meta;
+    /**
+     * Constructs the {@link ContentEmbeddingMetadata} stored on every chunk produced from
+     * {@code contentItem}. This is the single source of truth for the JSONB metadata schema.
+     *
+     * <p>{@code difficulty} and {@code isCommon} are non-null only for interview questions;
+     * they are {@code null} for articles and blog posts and will be omitted from the JSON
+     * by {@link com.fasterxml.jackson.annotation.JsonInclude.Include#NON_NULL}.
+     */
+    private ContentEmbeddingMetadata buildMetadata(ContentItem contentItem,
+                                                   String difficulty, Boolean isCommon) {
+        Category category = contentItem.getCategory();
+
+        List<Integer> tagIds = null;
+        List<String> tagNames = null;
+        if (contentItem.getContentItemTags() != null && !contentItem.getContentItemTags().isEmpty()) {
+            tagIds = contentItem.getContentItemTags().stream()
+                    .map(cit -> cit.getTag().getId())
+                    .toList();
+            tagNames = contentItem.getContentItemTags().stream()
+                    .map(cit -> cit.getTag().getName())
+                    .toList();
         }
-        List<Integer> tagIds = contentItem.getContentItemTags().stream()
-                .map(cit -> cit.getTag().getId())
-                .toList();
-        List<String> tagNames = contentItem.getContentItemTags().stream()
-                .map(cit -> cit.getTag().getName())
-                .toList();
-        meta.put("tagIds", tagIds);
-        meta.put("tagNames", tagNames);
-        return meta;
+
+        return new ContentEmbeddingMetadata(
+                contentItem.getType().name(),
+                contentItem.getStatus().name(),
+                contentItem.getTitle(),
+                category != null ? category.getId() : null,
+                category != null ? category.getName() : null,
+                tagIds,
+                tagNames,
+                difficulty,
+                isCommon
+        );
     }
 
     private String buildInterviewQuestionText(ContentItem contentItem, InterviewQuestion iq) {

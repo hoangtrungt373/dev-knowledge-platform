@@ -53,6 +53,19 @@ public class EmbeddingProperties {
     @DecimalMin("0.0") @DecimalMax("1.0")
     private float similarityThreshold = 0.75f;
 
+    /**
+     * Multiplier applied to {@code topK} when a {@link com.ttg.devknowledgeplatform.ai.filter.RagFilter}
+     * is active. Fetching more candidates than needed ensures the post-filter pool remains large
+     * enough to yield {@code topK} results after filtering, compensating for HNSW's inability
+     * to perform efficient filtered approximate nearest-neighbour search.
+     */
+    @Positive
+    private int oversampleFactor = 3;
+
     @NotBlank
     private String systemPrompt;
+
+    /** Prompt prefix used to rewrite ambiguous follow-up questions into standalone queries. */
+    @NotBlank
+    private String contextualizationPrompt;
 }

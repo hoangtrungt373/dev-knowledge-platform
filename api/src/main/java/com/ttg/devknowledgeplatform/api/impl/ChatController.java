@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.api.impl;
 
 import com.ttg.devknowledgeplatform.ai.dto.RagSource;
+import com.ttg.devknowledgeplatform.ai.filter.RagFilter;
 import com.ttg.devknowledgeplatform.ai.service.RagQueryService;
 import com.ttg.devknowledgeplatform.ai.service.RagStreamHandler;
 import com.ttg.devknowledgeplatform.api.ChatApi;
@@ -45,7 +46,7 @@ public class ChatController implements ChatApi {
         Integer sessionId = chatSessionService.getOrCreateSessionId(request.sessionId(), userId);
         List<ConversationTurn> history = chatSessionService.getRecentTurns(sessionId, MAX_CONTEXT_TURNS);
 
-        var answer = ragQueryService.query(request.question(), history);
+        var answer = ragQueryService.query(request.question(), history, buildFilter(request));
         chatSessionService.addTurn(sessionId, request.question(), answer.answer());
 
         log.info("Chat query completed: sessionId={} questionLength={}", sessionId, request.question().length());
@@ -60,7 +61,7 @@ public class ChatController implements ChatApi {
 
         return sseStreamTemplate.stream(writer -> {
             writer.send("session", Map.of("sessionId", sessionId));
-            ragQueryService.queryStream(request.question(), history, new RagStreamHandler() {
+            ragQueryService.queryStream(request.question(), history, buildFilter(request), new RagStreamHandler() {
                 @Override
                 public void onSources(List<RagSource> sources) {
                     writer.send("sources", sources);
@@ -86,6 +87,11 @@ public class ChatController implements ChatApi {
                 }
             });
         });
+    }
+
+    /** Constructs a {@link RagFilter} from the optional filter fields on the chat request. */
+    private RagFilter buildFilter(ChatRequest request) {
+        return new RagFilter(request.sourceTypes(), request.tags(), request.categoryId());
     }
 
     @Override

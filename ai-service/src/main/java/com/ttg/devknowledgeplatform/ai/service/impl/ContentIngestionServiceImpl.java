@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.ai.service.impl;
 
 import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.dto.ContentEmbeddingMetadata;
 import com.ttg.devknowledgeplatform.ai.entity.ContentEmbedding;
 import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;
 import com.ttg.devknowledgeplatform.ai.service.ContentIngestionService;
@@ -13,10 +14,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
+/**
+ * Default {@link ContentIngestionService} implementation.
+ *
+ * <p>Receives a pre-built {@link ContentEmbeddingMetadata} from the caller rather than
+ * constructing it internally. This keeps the metadata schema contract in one place
+ * ({@code ContentIndexingServiceImpl}) and avoids the previous two-step merge where
+ * both this class and its caller wrote overlapping keys into separate maps.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -29,7 +36,7 @@ public class ContentIngestionServiceImpl implements ContentIngestionService {
     private final EmbeddingProperties properties;
 
     @Override
-    public void ingest(ContentItem contentItem, String fullText, Map<String, Object> extraMetadata) {
+    public void ingest(ContentItem contentItem, String fullText, ContentEmbeddingMetadata metadata) {
         Integer contentItemId = contentItem.getId();
         log.info("Ingesting content item id={} type={}", contentItemId, contentItem.getType());
 
@@ -43,9 +50,6 @@ public class ContentIngestionServiceImpl implements ContentIngestionService {
 
         List<float[]> embeddings = embeddingService.embedBatch(chunks);
 
-        Map<String, Object> baseMetadata = buildBaseMetadata(contentItem);
-        baseMetadata.putAll(extraMetadata);
-
         List<ContentEmbedding> rows = new ArrayList<>(chunks.size());
         for (int i = 0; i < chunks.size(); i++) {
             String chunk = chunks.get(i);
@@ -58,7 +62,7 @@ public class ContentIngestionServiceImpl implements ContentIngestionService {
             ce.setModelName(properties.getModel());
             ce.setDimensions(properties.getDimensions());
             ce.setTokenCount(chunkingService.estimateTokens(chunk));
-            ce.setMetadata(new HashMap<>(baseMetadata));
+            ce.setMetadata(metadata);
             rows.add(ce);
         }
 
@@ -71,17 +75,5 @@ public class ContentIngestionServiceImpl implements ContentIngestionService {
     public void deleteEmbeddings(Integer contentItemId) {
         repository.deleteByContentItem_Id(contentItemId);
         log.info("Deleted all embeddings for content item id={}", contentItemId);
-    }
-
-    private Map<String, Object> buildBaseMetadata(ContentItem contentItem) {
-        Map<String, Object> metadata = new HashMap<>();
-        metadata.put("type", contentItem.getType().name());
-        metadata.put("status", contentItem.getStatus().name());
-        metadata.put("title", contentItem.getTitle());
-        if (contentItem.getCategory() != null) {
-            metadata.put("categoryId", contentItem.getCategory().getId());
-            metadata.put("categoryName", contentItem.getCategory().getName());
-        }
-        return metadata;
     }
 }

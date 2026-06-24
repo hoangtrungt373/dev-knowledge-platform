@@ -3,8 +3,10 @@ package com.ttg.devknowledgeplatform.ai.service.impl;
 import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
 import com.ttg.devknowledgeplatform.ai.dto.RagAnswer;
 import com.ttg.devknowledgeplatform.ai.dto.RagSource;
-import com.ttg.devknowledgeplatform.ai.exception.RagQueryException;
 import com.ttg.devknowledgeplatform.ai.entity.ContentEmbedding;
+import com.ttg.devknowledgeplatform.ai.exception.RagQueryException;
+import com.ttg.devknowledgeplatform.ai.filter.RagFilter;
+import com.ttg.devknowledgeplatform.ai.filter.RagFilterStrategy;
 import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;
 import com.ttg.devknowledgeplatform.ai.service.EmbeddingService;
 import com.ttg.devknowledgeplatform.ai.service.RagQueryService;
@@ -14,10 +16,10 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.output.Response;
-import dev.langchain4j.model.StreamingResponseHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.StringJoiner;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -34,18 +37,20 @@ import java.util.stream.IntStream;
  *
  * <p>Pipeline per query:
  * <ol>
- *   <li>Embed the question via {@link EmbeddingService} (OpenAI text-embedding-3-small).</li>
- *   <li>Run a native pgvector cosine-distance query to fetch the top-K chunk IDs.</li>
- *   <li>Load those chunks with their parent {@code ContentItem} eagerly (JOIN FETCH)
- *       so no lazy-init issues arise after the repository transaction closes.</li>
- *   <li>Score each chunk via dot product, filter below {@code similarityThreshold}, sort descending.</li>
- *   <li>Build the LLM message list: system prompt → prior conversation turns → current question.</li>
- *   <li>Call the OpenAI chat model — blocking ({@link #query}) or streaming ({@link #queryStream}).</li>
+ *   <li>Contextualise the question against conversation history (optional LLM rewrite).</li>
+ *   <li>Embed the resulting query string via {@link EmbeddingService}.</li>
+ *   <li>Fetch candidate chunk IDs from pgvector using cosine distance, oversampling when a
+ *       {@link RagFilter} is active to compensate for post-filter losses.</li>
+ *   <li>Load chunks with their parent {@code ContentItem} eagerly (JOIN FETCH).</li>
+ *   <li>Apply composed {@link RagFilterStrategy} predicates to the candidate set.</li>
+ *   <li>Score via dot product, filter below {@code similarityThreshold}, sort descending,
+ *       then cut back to {@code topK}.</li>
+ *   <li>Build the LLM message list and generate — blocking or streaming.</li>
  * </ol>
  *
- * <p>No {@code @Transactional} is placed on this class intentionally: the two repository calls each
- * run in their own short-lived read-only transaction, and the DB connection is fully released before
- * the LLM HTTP call begins.
+ * <p>No {@code @Transactional} is placed on this class intentionally: the two repository calls
+ * each run in their own short-lived read-only transaction, and the DB connection is fully
+ * released before the LLM HTTP call begins.
  */
 @Service
 @RequiredArgsConstructor
@@ -62,6 +67,8 @@ public class RagQueryServiceImpl implements RagQueryService {
     private final ChatLanguageModel chatLanguageModel;
     private final StreamingChatLanguageModel streamingChatLanguageModel;
     private final EmbeddingProperties properties;
+    /** All {@code @Component} implementations of {@link RagFilterStrategy} collected by Spring. */
+    private final List<RagFilterStrategy> filterStrategies;
 
     /** Pairs a chunk with its pre-computed cosine similarity score. */
     private record ScoredChunk(ContentEmbedding chunk, float score) {}
@@ -71,10 +78,11 @@ public class RagQueryServiceImpl implements RagQueryService {
     // -------------------------------------------------------------------------
 
     @Override
-    public RagAnswer query(String question, List<ConversationTurn> history) {
-        log.info("RAG query: history={} turns", history.size());
+    public RagAnswer query(String question, List<ConversationTurn> history, RagFilter filter) {
+        log.info("RAG query: history={} turns, filter={}",
+                history.size(), filter.isEmpty() ? "none" : filter);
         try {
-            return doQuery(question, history);
+            return doQuery(question, history, filter);
         } catch (RagQueryException e) {
             throw e;
         } catch (Exception e) {
@@ -84,10 +92,13 @@ public class RagQueryServiceImpl implements RagQueryService {
     }
 
     @Override
-    public void queryStream(String question, List<ConversationTurn> history, RagStreamHandler handler) {
-        log.info("RAG stream query: history={} turns", history.size());
+    public void queryStream(String question, List<ConversationTurn> history,
+                            RagFilter filter, RagStreamHandler handler) {
+        log.info("RAG stream query: history={} turns, filter={}",
+                history.size(), filter.isEmpty() ? "none" : filter);
         try {
-            List<ScoredChunk> scored = retrieveAndScore(question);
+            String retrievalQuery = contextualizeQuestion(question, history);
+            List<ScoredChunk> scored = retrieveAndScore(retrievalQuery, filter);
 
             if (scored == null) {
                 handler.onToken(NO_CONTEXT_ANSWER);
@@ -131,8 +142,9 @@ public class RagQueryServiceImpl implements RagQueryService {
     // Private pipeline steps
     // -------------------------------------------------------------------------
 
-    private RagAnswer doQuery(String question, List<ConversationTurn> history) {
-        List<ScoredChunk> scored = retrieveAndScore(question);
+    private RagAnswer doQuery(String question, List<ConversationTurn> history, RagFilter filter) {
+        String retrievalQuery = contextualizeQuestion(question, history);
+        List<ScoredChunk> scored = retrieveAndScore(retrievalQuery, filter);
 
         if (scored == null) {
             return new RagAnswer(NO_CONTEXT_ANSWER, List.of());
@@ -144,16 +156,27 @@ public class RagQueryServiceImpl implements RagQueryService {
     }
 
     /**
-     * Embeds the question, fetches top-K chunk IDs from pgvector, loads entities,
-     * scores via dot product, filters below the similarity threshold, and sorts descending.
+     * Embeds the question, fetches candidate chunk IDs from pgvector, applies {@link RagFilterStrategy}
+     * predicates, scores via dot product, filters below the similarity threshold, and returns the
+     * top-K results sorted by descending similarity.
      *
-     * @return sorted scored chunks, or {@code null} if no relevant chunks were found
+     * <p>When {@code filter} is non-empty the initial pgvector query fetches
+     * {@code topK × oversampleFactor} candidates so that the post-filter candidate pool remains
+     * large enough to yield {@code topK} results after filtering. Without oversampling, an
+     * aggressive filter could reduce the pool to zero even when relevant chunks exist further
+     * down the HNSW graph.
+     *
+     * @return sorted scored chunks, or {@code null} if no relevant chunks survived filter + threshold
      */
-    private List<ScoredChunk> retrieveAndScore(String question) {
+    private List<ScoredChunk> retrieveAndScore(String question, RagFilter filter) {
         float[] questionEmbedding = embeddingService.embed(question);
 
+        int candidateLimit = filter.isEmpty()
+                ? properties.getTopK()
+                : properties.getTopK() * properties.getOversampleFactor();
+
         List<Integer> ids = contentEmbeddingRepository.findTopSimilarIds(
-                toVectorString(questionEmbedding), properties.getTopK());
+                toVectorString(questionEmbedding), candidateLimit);
 
         if (ids.isEmpty()) {
             log.warn("No embeddings found in the knowledge base");
@@ -162,14 +185,23 @@ public class RagQueryServiceImpl implements RagQueryService {
 
         List<ContentEmbedding> chunks = contentEmbeddingRepository.findAllByIdWithContentItem(ids);
 
+        // Compose all applicable strategy predicates with AND semantics
+        Predicate<ContentEmbedding> compositePredicate = filterStrategies.stream()
+                .filter(s -> s.isApplicable(filter))
+                .map(s -> s.predicate(filter))
+                .reduce(Predicate::and)
+                .orElse(ce -> true);
+
         List<ScoredChunk> scored = chunks.stream()
+                .filter(compositePredicate)
                 .map(ce -> new ScoredChunk(ce, dotProduct(questionEmbedding, ce.getEmbedding())))
                 .filter(sc -> sc.score() >= properties.getSimilarityThreshold())
                 .sorted(Comparator.comparingDouble(ScoredChunk::score).reversed())
+                .limit(properties.getTopK())
                 .toList();
 
         if (scored.isEmpty()) {
-            log.warn("No chunks passed similarity threshold {}", properties.getSimilarityThreshold());
+            log.warn("No chunks passed filter + similarity threshold {}", properties.getSimilarityThreshold());
             return null;
         }
 
@@ -200,6 +232,45 @@ public class RagQueryServiceImpl implements RagQueryService {
 
     private String generateAnswer(String question, List<ScoredChunk> scored, List<ConversationTurn> history) {
         return chatLanguageModel.generate(buildMessages(question, scored, history)).content().text();
+    }
+
+    /**
+     * Rewrites an ambiguous follow-up question into a fully self-contained standalone query
+     * suitable for vector similarity search.
+     *
+     * <p>When a user asks <em>"Does PostgreSQL support it?"</em> after discussing HNSW indexing,
+     * the pronoun <em>"it"</em> produces a meaningless embedding. This method resolves such
+     * references by asking the LLM to rewrite the question with all context inlined:
+     * <em>"Does PostgreSQL support HNSW indexing?"</em>
+     *
+     * <p>Only the rewritten query is used for retrieval. The original question is preserved
+     * for the final {@link #buildMessages} call so the user sees a natural conversation.
+     *
+     * <p>If history is empty the question is already standalone — returned as-is with no
+     * LLM call. If the rewrite LLM call fails, the original question is used as a fallback
+     * so retrieval degrades gracefully rather than failing entirely.
+     *
+     * @param question the raw follow-up question from the user
+     * @param history  prior conversation turns used to resolve references
+     * @return a standalone question safe to embed for vector search
+     */
+    private String contextualizeQuestion(String question, List<ConversationTurn> history) {
+        if (history.isEmpty()) {
+            return question;
+        }
+        try {
+            StringBuilder prompt = new StringBuilder(properties.getContextualizationPrompt());
+            history.forEach(t -> prompt.append(t.role()).append(": ").append(t.content()).append("\n"));
+            prompt.append("\nFollow-up: ").append(question);
+
+            String rewritten = chatLanguageModel.generate(UserMessage.from(prompt.toString()))
+                                                .content().text().strip();
+            log.debug("Question contextualized: [{}] → [{}]", question, rewritten);
+            return rewritten;
+        } catch (Exception e) {
+            log.warn("Question contextualization failed, falling back to original: {}", e.getMessage());
+            return question;
+        }
     }
 
     /**
