@@ -2,8 +2,8 @@ package com.ttg.devknowledgeplatform.ai.service.impl;
 
 import com.ttg.devknowledgeplatform.ai.dto.RagAnswer;
 import com.ttg.devknowledgeplatform.ai.exception.RagQueryException;
-import com.ttg.devknowledgeplatform.ai.filter.RagFilter;
-import com.ttg.devknowledgeplatform.ai.pipeline.RagPipelineContext;
+import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
+import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.pipeline.RagPipelineRunner;
 import com.ttg.devknowledgeplatform.ai.service.RagQueryService;
 import com.ttg.devknowledgeplatform.ai.service.RagStreamHandler;

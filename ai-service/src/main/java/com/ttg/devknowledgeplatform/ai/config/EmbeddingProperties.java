@@ -9,6 +9,8 @@ import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
+import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
+
 @ConfigurationProperties(prefix = "app.ai.embedding")
 @Validated
 @Getter
@@ -54,7 +56,7 @@ public class EmbeddingProperties {
     private float similarityThreshold = 0.75f;
 
     /**
-     * Multiplier applied to {@code topK} when a {@link com.ttg.devknowledgeplatform.ai.filter.RagFilter}
+     * Multiplier applied to {@code topK} when a {@link RagFilter}
      * is active. Fetching more candidates than needed ensures the post-filter pool remains large
      * enough to yield {@code topK} results after filtering, compensating for HNSW's inability
      * to perform efficient filtered approximate nearest-neighbour search.

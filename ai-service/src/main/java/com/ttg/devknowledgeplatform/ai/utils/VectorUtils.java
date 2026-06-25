@@ -1,13 +1,11 @@
-package com.ttg.devknowledgeplatform.ai.pipeline;
+package com.ttg.devknowledgeplatform.ai.utils;
 
 import java.util.StringJoiner;
 
 /**
  * Shared vector math utilities used by pipeline stages.
- *
- * <p>Package-private: not intended for use outside {@code ai.pipeline}.
  */
-final class VectorUtils {
+public class VectorUtils {
 
     private VectorUtils() {}
 
@@ -19,7 +17,7 @@ final class VectorUtils {
      *
      * @return similarity in {@code [0, 1]}; {@code 1.0} = identical direction, {@code 0.0} = orthogonal
      */
-    static float dotProduct(float[] a, float[] b) {
+    public static float dotProduct(float[] a, float[] b) {
         float sum = 0f;
         int len = Math.min(a.length, b.length);
         for (int i = 0; i < len; i++) {
@@ -34,7 +32,7 @@ final class VectorUtils {
      * <p>Required by the native {@code CAST(:embedding AS vector)} expression used in
      * {@code ContentEmbeddingRepository.findTopSimilarIds}.
      */
-    static String toVectorString(float[] embedding) {
+    public static String toVectorString(float[] embedding) {
         StringJoiner joiner = new StringJoiner(",", "[", "]");
         for (float f : embedding) {
             joiner.add(String.valueOf(f));

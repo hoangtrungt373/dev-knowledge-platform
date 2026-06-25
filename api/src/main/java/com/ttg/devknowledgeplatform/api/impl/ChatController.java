@@ -1,7 +1,7 @@
 package com.ttg.devknowledgeplatform.api.impl;
 
 import com.ttg.devknowledgeplatform.ai.dto.RagSource;
-import com.ttg.devknowledgeplatform.ai.filter.RagFilter;
+import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
 import com.ttg.devknowledgeplatform.ai.service.RagQueryService;
 import com.ttg.devknowledgeplatform.ai.service.RagStreamHandler;
 import com.ttg.devknowledgeplatform.api.ChatApi;

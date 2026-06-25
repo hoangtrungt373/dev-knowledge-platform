@@ -1,8 +1,11 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
 import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.entity.ContentEmbedding;
 import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;
+import com.ttg.devknowledgeplatform.ai.utils.VectorUtils;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

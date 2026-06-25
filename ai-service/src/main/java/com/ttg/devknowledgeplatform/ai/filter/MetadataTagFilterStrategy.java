@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.ai.filter;
 
 import com.ttg.devknowledgeplatform.ai.dto.ContentEmbeddingMetadata;
+import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
 import com.ttg.devknowledgeplatform.ai.entity.ContentEmbedding;
 import org.springframework.stereotype.Component;
 

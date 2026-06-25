@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.ai.filter;
+package com.ttg.devknowledgeplatform.ai.dto;
 
 import com.ttg.devknowledgeplatform.common.enums.ContentType;
 

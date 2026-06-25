@@ -1,7 +1,9 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
 import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.dto.RagSource;
+import com.ttg.devknowledgeplatform.ai.dto.ScoredChunk;
 import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
 import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
 import dev.langchain4j.data.message.AiMessage;

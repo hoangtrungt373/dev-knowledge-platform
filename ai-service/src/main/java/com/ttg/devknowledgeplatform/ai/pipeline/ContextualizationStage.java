@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
 import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatLanguageModel;

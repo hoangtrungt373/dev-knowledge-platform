@@ -1,7 +1,7 @@
 package com.ttg.devknowledgeplatform.ai.service;
 
 import com.ttg.devknowledgeplatform.ai.dto.RagAnswer;
-import com.ttg.devknowledgeplatform.ai.filter.RagFilter;
+import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
 import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
 import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
 

@@ -1,8 +1,13 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
 import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
+import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
+import com.ttg.devknowledgeplatform.ai.dto.ScoredChunk;
 import com.ttg.devknowledgeplatform.ai.entity.ContentEmbedding;
 import com.ttg.devknowledgeplatform.ai.filter.RagFilterStrategy;
+import com.ttg.devknowledgeplatform.ai.utils.VectorUtils;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -18,7 +23,7 @@ import java.util.function.Predicate;
  *
  * <p>Filter strategies are collected from Spring context as a {@code List<RagFilterStrategy>}.
  * Only strategies whose {@link RagFilterStrategy#isApplicable} returns {@code true} for the
- * current {@link com.ttg.devknowledgeplatform.ai.filter.RagFilter} participate;
+ * current {@link RagFilter} participate;
  * their predicates are AND-composed.
  *
  * <p>Filtering happens in Java after the pgvector ANN search intentionally: pushing arbitrary

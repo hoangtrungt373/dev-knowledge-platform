@@ -7,6 +7,8 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
+
 /**
  * Assembles the ordered RAG pipeline and executes it against a {@link RagPipelineContext}.
  *

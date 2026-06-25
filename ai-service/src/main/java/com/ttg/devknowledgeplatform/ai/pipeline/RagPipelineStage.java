@@ -1,5 +1,7 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
+import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
+
 /**
  * A single step in the RAG retrieval pipeline (Pipes-and-Filters pattern).
  *

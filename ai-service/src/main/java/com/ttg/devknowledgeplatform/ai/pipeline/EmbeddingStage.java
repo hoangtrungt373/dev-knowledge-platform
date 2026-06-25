@@ -1,5 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
+import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.service.EmbeddingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

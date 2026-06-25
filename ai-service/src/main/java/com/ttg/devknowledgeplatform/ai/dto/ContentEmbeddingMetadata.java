@@ -22,7 +22,7 @@ import java.util.List;
  * @param categoryName display name of the assigned category; {@code null} if uncategorised
  * @param tagIds       database identifiers of all tags attached to the content item
  * @param tagNames     display names of all tags attached to the content item;
- *                     matched against {@link com.ttg.devknowledgeplatform.ai.filter.RagFilter#tags()}
+ *                     matched against {@link RagFilter#tags()}
  *                     by {@link com.ttg.devknowledgeplatform.ai.filter.MetadataTagFilterStrategy}
  * @param difficulty   difficulty level name (e.g. {@code "EASY"}); non-null only for
  *                     {@code INTERVIEW_QUESTION} content
