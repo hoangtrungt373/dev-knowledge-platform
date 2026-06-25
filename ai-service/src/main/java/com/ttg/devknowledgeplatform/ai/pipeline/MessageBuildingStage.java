@@ -1,9 +1,11 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
 import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.dto.RagSource;
 import com.ttg.devknowledgeplatform.ai.dto.ScoredChunk;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
 import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
 import dev.langchain4j.data.message.AiMessage;
@@ -38,9 +40,14 @@ import java.util.stream.IntStream;
  *   </li>
  * </ul>
  *
+ * <p>The system prompt prefix is resolved from {@link RagPipelineContext#getFilter()}: when the
+ * filter targets exactly one {@link com.ttg.devknowledgeplatform.common.enums.ContentType} a
+ * domain-specific prompt is used; mixed or unfiltered queries fall back to the default prompt.
+ *
  * <p><strong>Reads:</strong> {@link RagPipelineContext#getSelectedChunks()},
  * {@link RagPipelineContext#getConversationContext()},
- * {@link RagPipelineContext#getOriginalQuestion()}.<br>
+ * {@link RagPipelineContext#getOriginalQuestion()},
+ * {@link RagPipelineContext#getFilter()}.<br>
  * <strong>Writes:</strong> {@link RagPipelineContext#setSources(List)},
  * {@link RagPipelineContext#setMessages(List)}.
  */
@@ -55,7 +62,7 @@ public class MessageBuildingStage implements RagPipelineStage {
         List<ScoredChunk> selected = ctx.getSelectedChunks();
 
         ctx.setSources(buildSources(selected));
-        ctx.setMessages(buildMessages(selected, ctx.getConversationContext(), ctx.getOriginalQuestion()));
+        ctx.setMessages(buildMessages(selected, ctx.getConversationContext(), ctx.getOriginalQuestion(), ctx.getFilter()));
     }
 
     private List<RagSource> buildSources(List<ScoredChunk> selected) {
@@ -71,9 +78,10 @@ public class MessageBuildingStage implements RagPipelineStage {
 
     private List<ChatMessage> buildMessages(List<ScoredChunk> selected,
                                             ConversationContext context,
-                                            String originalQuestion) {
+                                            String originalQuestion,
+                                            RagFilter filter) {
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(buildSystemPrompt(selected)));
+        messages.add(SystemMessage.from(buildSystemPrompt(selected, filter)));
 
         if (context.hasSummary()) {
             messages.add(UserMessage.from("Earlier conversation summary:\n" + context.summary()));
@@ -91,10 +99,25 @@ public class MessageBuildingStage implements RagPipelineStage {
         return messages;
     }
 
-    private String buildSystemPrompt(List<ScoredChunk> selected) {
+    private String buildSystemPrompt(List<ScoredChunk> selected, RagFilter filter) {
         String contextBlock = IntStream.range(0, selected.size())
                 .mapToObj(i -> "[" + (i + 1) + "] " + selected.get(i).chunk().getChunkText())
                 .collect(Collectors.joining("\n\n"));
-        return properties.getSystemPrompt() + contextBlock;
+        return resolvePromptPrefix(filter) + contextBlock;
+    }
+
+    /**
+     * Picks the system prompt prefix based on the active filter's content type.
+     * Falls back to the default prompt for mixed-type or unfiltered queries.
+     */
+    private String resolvePromptPrefix(RagFilter filter) {
+        if (filter.sourceTypes() == null || filter.sourceTypes().size() != 1) {
+            return properties.getSystemPrompt();
+        }
+        return switch (filter.sourceTypes().iterator().next()) {
+            case ARTICLE -> properties.getSystemPromptArticle();
+            case INTERVIEW_QUESTION -> properties.getSystemPromptInterviewQuestion();
+            case BLOG_POST -> properties.getSystemPromptBlogPost();
+        };
     }
 }

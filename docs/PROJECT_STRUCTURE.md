@@ -75,16 +75,12 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── ContextualizationStage.java   — LLM question rewrite; skips if no conversation context
 │   ├── EmbeddingStage.java           — OpenAI embed of contextualized question
 │   ├── RetrievalStage.java           — pgvector ANN search + eager-load; always oversamples topK×oversampleFactor
-│   ├── ScoringStage.java             — filter strategies + dot-product + threshold; aborts if empty
+│   ├── ScoringStage.java             — AND-compose filter predicates from RagFilter + dot-product + threshold; aborts if empty
 │   ├── DeduplicationStage.java       — NOT in active pipeline; retained for reference (see class Javadoc)
 │   ├── MmrStage.java                 — greedy MMR selection of topK from scored chunks; handles diversity
 │   └── MessageBuildingStage.java     — assembles List<ChatMessage> + List<RagSource>
 ├── filter/                           — dynamic post-retrieval filter package
-│   ├── RagFilter.java                — Java 21 record: sourceTypes, tags, categoryId
-│   ├── RagFilterStrategy.java        — interface: predicate(RagFilter) + isApplicable(RagFilter)
-│   ├── SourceTypeFilterStrategy.java — filters by ContentType column
-│   ├── MetadataTagFilterStrategy.java    — filters by tagNames[] in JSONB (any-match)
-│   └── MetadataCategoryFilterStrategy.java — filters by categoryId in JSONB (exact)
+│   └── RagFilter.java                — Java 21 record: sourceTypes, tags, categoryId
 ├── repository/
 │   └── ContentEmbeddingRepository.java   — findTopSimilarIds (pgvector <=>), findAllByIdWithContentItem
 └── service/
@@ -154,7 +150,7 @@ GUI (React)
                     ContextualizationStage  — LLM question rewrite
                     EmbeddingStage          — OpenAI text-embedding-3-small
                     RetrievalStage          — pgvector ANN (HNSW <=>); always oversamples topK×oversampleFactor
-                    ScoringStage            — RagFilterStrategy composition + dotProduct + threshold
+                    ScoringStage            — AND-compose RagFilter predicates + dotProduct + threshold
                     MmrStage                — greedy MMR topK selection; handles cross-doc + within-doc diversity
                     MessageBuildingStage    — List<ChatMessage> + List<RagSource>
               └─→ ChatLanguageModel (blocking) OR StreamingChatLanguageModel (SSE)

@@ -80,6 +80,18 @@ public class EmbeddingProperties {
     @NotBlank
     private String systemPrompt;
 
+    /** System prompt prefix applied when the query is scoped exclusively to {@code ARTICLE} content. */
+    @NotBlank
+    private String systemPromptArticle;
+
+    /** System prompt prefix applied when the query is scoped exclusively to {@code INTERVIEW_QUESTION} content. */
+    @NotBlank
+    private String systemPromptInterviewQuestion;
+
+    /** System prompt prefix applied when the query is scoped exclusively to {@code BLOG_POST} content. */
+    @NotBlank
+    private String systemPromptBlogPost;
+
     /** Prompt prefix used to rewrite ambiguous follow-up questions into standalone queries. */
     @NotBlank
     private String contextualizationPrompt;
