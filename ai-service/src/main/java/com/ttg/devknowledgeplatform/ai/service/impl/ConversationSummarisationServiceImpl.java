@@ -40,11 +40,11 @@ public class ConversationSummarisationServiceImpl implements ConversationSummari
         StringBuilder prompt = new StringBuilder(properties.getSummarisationPrompt());
 
         if (previousSummary != null && !previousSummary.isBlank()) {
-            prompt.append("\n\nPrevious summary (extend this, do not repeat it verbatim):\n")
+            prompt.append(properties.getCompressionPreviousSummaryLabel())
                   .append(previousSummary);
         }
 
-        prompt.append("\n\nConversation turns to compress:\n");
+        prompt.append(properties.getCompressionTurnsLabel());
         turnsToCompress.forEach(t ->
                 prompt.append(t.role()).append(": ").append(t.content()).append("\n"));
 

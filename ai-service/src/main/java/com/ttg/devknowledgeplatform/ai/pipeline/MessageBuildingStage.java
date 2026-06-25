@@ -84,8 +84,8 @@ public class MessageBuildingStage implements RagPipelineStage {
         messages.add(SystemMessage.from(buildSystemPrompt(selected, filter)));
 
         if (context.hasSummary()) {
-            messages.add(UserMessage.from("Earlier conversation summary:\n" + context.summary()));
-            messages.add(AiMessage.from("Understood. I will keep this context in mind while answering."));
+            messages.add(UserMessage.from(properties.getHistorySummaryLabel() + context.summary()));
+            messages.add(AiMessage.from(properties.getHistorySummaryAck()));
         }
 
         for (ConversationTurn turn : context.recentTurns()) {

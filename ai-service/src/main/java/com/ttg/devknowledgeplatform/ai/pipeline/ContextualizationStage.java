@@ -46,13 +46,13 @@ public class ContextualizationStage implements RagPipelineStage {
         try {
             StringBuilder prompt = new StringBuilder(properties.getContextualizationPrompt());
             if (conversationContext.hasSummary()) {
-                prompt.append("Summary of earlier conversation:\n")
+                prompt.append(properties.getContextSummaryLabel())
                       .append(conversationContext.summary())
                       .append("\n\n");
             }
             conversationContext.recentTurns().forEach(t ->
                     prompt.append(t.role()).append(": ").append(t.content()).append("\n"));
-            prompt.append("\nFollow-up: ").append(ctx.getOriginalQuestion());
+            prompt.append(properties.getContextFollowUpLabel()).append(ctx.getOriginalQuestion());
 
             String rewritten = chatLanguageModel.generate(UserMessage.from(prompt.toString()))
                                                 .content().text().strip();

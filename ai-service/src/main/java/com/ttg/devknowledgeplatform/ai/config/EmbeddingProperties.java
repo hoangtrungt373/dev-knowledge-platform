@@ -77,6 +77,52 @@ public class EmbeddingProperties {
     @DecimalMin("0.0") @DecimalMax("1.0")
     private float mmrLambda = 0.5f;
 
+    // --- Prompt label strings ---
+
+    /**
+     * Label prepended to the rolling summary when building the contextualization rewrite prompt.
+     * Placed before the summary text so the LLM understands it is historical context.
+     */
+    @NotBlank
+    private String contextSummaryLabel = "Summary of earlier conversation:\n";
+
+    /**
+     * Label prepended to the current user question when building the contextualization rewrite prompt.
+     * Signals to the LLM that what follows is the ambiguous follow-up to rewrite.
+     */
+    @NotBlank
+    private String contextFollowUpLabel = "\nFollow-up: ";
+
+    /**
+     * Label used as the user message that injects the rolling summary into the LLM message list.
+     * Placed before the summary text so the model treats it as prior conversation context.
+     */
+    @NotBlank
+    private String historySummaryLabel = "Earlier conversation summary:\n";
+
+    /**
+     * Synthetic AI acknowledgement message that follows the injected summary in the message list.
+     * Closes the synthetic User/Assistant exchange used to inject compressed history.
+     */
+    @NotBlank
+    private String historySummaryAck = "Understood. I will keep this context in mind while answering.";
+
+    /**
+     * Label prepended to the previous summary text in the compression prompt.
+     * Instructs the LLM to extend rather than rewrite the existing summary.
+     */
+    @NotBlank
+    private String compressionPreviousSummaryLabel = "\n\nPrevious summary (extend this, do not repeat it verbatim):\n";
+
+    /**
+     * Label that separates the previous summary from the new turns in the compression prompt.
+     * Signals to the LLM where the new content to compress begins.
+     */
+    @NotBlank
+    private String compressionTurnsLabel = "\n\nConversation turns to compress:\n";
+
+    // --- System prompts ---
+
     @NotBlank
     private String systemPrompt;
 

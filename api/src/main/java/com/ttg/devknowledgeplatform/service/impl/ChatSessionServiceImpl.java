@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.service.impl;
 
 import com.ttg.devknowledgeplatform.ai.service.ConversationSummarisationService;
+import com.ttg.devknowledgeplatform.config.chat.ChatSessionProperties;
 import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
 import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
 import com.ttg.devknowledgeplatform.common.entity.ChatMessage;
@@ -27,7 +28,7 @@ import java.util.List;
  * Default {@link ChatSessionService} implementation.
  *
  * <p>Session expiry is enforced lazily on access: when a session is retrieved and found
- * to be inactive for more than {@value #SESSION_TTL_HOURS} hours, its messages are cleared
+ * to be inactive for more than the configured TTL hours, its messages are cleared
  * via cascade delete (orphanRemoval = true) and {@code lastActivityAt} is reset. The session
  * record itself is kept so the client's stored session ID remains valid.
  *
@@ -37,15 +38,13 @@ import java.util.List;
  * {@code "system"} in that case, which is acceptable for message rows.
  *
  * <h3>Rolling summarisation</h3>
- * <p>After every {@value #SUMMARY_TRIGGER_INTERVAL}th new Q&amp;A pair beyond the initial
- * {@value #SUMMARY_THRESHOLD}, the {@code addTurn} method compresses all turns before the
- * {@value #SUMMARY_RECENT_WINDOW}-pair verbatim window into a rolling summary stored on the
- * session. At the first trigger ({@value #SUMMARY_THRESHOLD} pairs) exactly
- * {@code SUMMARY_THRESHOLD − SUMMARY_RECENT_WINDOW = 7} pairs are compressed — enough content
- * to justify the LLM call. The summarisation call happens synchronously inside the transaction;
- * since it fires only once every {@value #SUMMARY_TRIGGER_INTERVAL} turns, the occasional extra
- * latency is acceptable. For a production system with strict p99 requirements, consider promoting
- * this to an {@code @Async} fire-and-forget call using the existing {@code ragStreamExecutor} pool.
+ * <p>Summarisation triggers and window sizes are controlled by {@link ChatSessionProperties}.
+ * After every {@code summaryTriggerIntervalPairs} new Q&amp;A pairs beyond the initial
+ * {@code summaryThresholdPairs}, all turns before the {@code summaryRecentWindowPairs}-pair
+ * verbatim window are compressed into a rolling summary. The summarisation call happens
+ * synchronously inside the transaction; since it fires only once every interval, the occasional
+ * extra latency is acceptable. For a production system with strict p99 requirements, consider
+ * promoting this to an {@code @Async} fire-and-forget call using the existing {@code ragStreamExecutor} pool.
  */
 @Service
 @RequiredArgsConstructor
@@ -53,28 +52,10 @@ import java.util.List;
 @Transactional(rollbackFor = Throwable.class)
 public class ChatSessionServiceImpl implements ChatSessionService {
 
-    static final int SESSION_TTL_HOURS = 24;
-
-    /**
-     * First trigger: summarise after this many Q&amp;A pairs have been saved.
-     *
-     * <p>Must satisfy {@code SUMMARY_THRESHOLD > SUMMARY_RECENT_WINDOW} so that the first
-     * compression covers at least {@code SUMMARY_THRESHOLD - SUMMARY_RECENT_WINDOW} pairs.
-     * With THRESHOLD=12 and WINDOW=5 the first run compresses 7 pairs — enough to justify
-     * the LLM call cost. Setting this too low (e.g. 8) would compress only 3 pairs on the
-     * first trigger, an unfavourable cost/benefit ratio.
-     */
-    static final int SUMMARY_THRESHOLD = 12;
-
-    /** Re-trigger: generate a new summary every N new pairs beyond the threshold. */
-    static final int SUMMARY_TRIGGER_INTERVAL = 4;
-
-    /** Verbatim window: always keep the last N Q&A pairs uncompressed for near-context recall. */
-    static final int SUMMARY_RECENT_WINDOW = 5;
-
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final ConversationSummarisationService conversationSummarisationService;
+    private final ChatSessionProperties sessionProperties;
 
     @Override
     public Integer getOrCreateSessionId(Integer requestedSessionId, Integer userId) {
@@ -167,20 +148,20 @@ public class ChatSessionServiceImpl implements ChatSessionService {
     /**
      * Returns {@code true} when a new rolling summary should be generated.
      *
-     * <p>Triggers at {@value #SUMMARY_THRESHOLD} pairs and every {@value #SUMMARY_TRIGGER_INTERVAL}
-     * pairs thereafter: {@code pairCount == THRESHOLD} OR
-     * {@code (pairCount - THRESHOLD) % INTERVAL == 0 && pairCount > THRESHOLD}.
+     * <p>Triggers at {@code summaryThresholdPairs} and every {@code summaryTriggerIntervalPairs}
+     * new pairs thereafter.
      */
     private boolean shouldSummarise(int pairCount) {
-        if (pairCount < SUMMARY_THRESHOLD) return false;
-        return (pairCount - SUMMARY_THRESHOLD) % SUMMARY_TRIGGER_INTERVAL == 0;
+        int threshold = sessionProperties.getSummaryThresholdPairs();
+        if (pairCount < threshold) return false;
+        return (pairCount - threshold) % sessionProperties.getSummaryTriggerIntervalPairs() == 0;
     }
 
     /**
      * Loads all messages for the session, compresses the older portion into a rolling summary,
      * and stores it on {@code session} (the caller is responsible for persisting the session).
      *
-     * <p>Turns within the {@value #SUMMARY_RECENT_WINDOW}-pair verbatim window are excluded from
+     * <p>Turns within the {@code summaryRecentWindowPairs}-pair verbatim window are excluded from
      * compression so the RAG pipeline always has fresh near-context available without re-parsing
      * the summary. All turns outside the window — including those already covered by the previous
      * summary — are passed to the LLM together with the previous summary, letting the model build
@@ -188,7 +169,7 @@ public class ChatSessionServiceImpl implements ChatSessionService {
      */
     private void updateRollingSummary(ChatSession session) {
         List<ChatMessage> all = chatMessageRepository.findByChatSession_IdOrderByTurnIndexAsc(session.getId());
-        int verbatimCount = SUMMARY_RECENT_WINDOW * 2;
+        int verbatimCount = sessionProperties.getSummaryRecentWindowPairs() * 2;
         if (all.size() <= verbatimCount) {
             return;
         }
@@ -213,7 +194,7 @@ public class ChatSessionServiceImpl implements ChatSessionService {
 
     private boolean isExpired(ChatSession session) {
         return session.getLastActivityAt()
-                .plusSeconds(SESSION_TTL_HOURS * 3600L)
+                .plusSeconds(sessionProperties.getTtlHours() * 3600L)
                 .isBefore(DateUtils.getCurrentDateTime());
     }
 }
