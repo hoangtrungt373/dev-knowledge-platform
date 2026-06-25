@@ -19,7 +19,8 @@ Dependency order: `common` ← `ai-service` ← `api`. `gui` is independent.
 ```
 common/src/main/java/com/ttg/devknowledgeplatform/common/
 ├── dto/
-│   └── ConversationTurn.java         — role + content record for conversation history
+│   ├── ConversationContext.java       — rolling summary + recent verbatim turns; primary RAG context type
+│   └── ConversationTurn.java         — role + content record for a single message
 ├── entity/
 │   ├── AbstractEntity.java           — audit columns (usrCreation, dteCreation, version, …)
 │   ├── Article.java
@@ -27,7 +28,9 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │   ├── ContentItem.java              — base content record (type, status, title, slug, category)
 │   ├── ContentItemTag.java           — join entity for content ↔ tag
 │   ├── InterviewQuestion.java
-│   └── Tag.java
+│   ├── Tag.java
+│   ├── ChatSession.java              — userId, title, lastActivityAt, summary (TEXT); parent of ChatMessage rows
+│   └── ChatMessage.java              — role, content, turnIndex; child of ChatSession
 ├── enums/
 │   ├── ContentStatus.java            — DRAFT, PUBLISHED, …
 │   ├── ContentType.java              — INTERVIEW_QUESTION, ARTICLE, BLOG_POST
@@ -50,7 +53,8 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   └── EmbeddingProperties.java      — @ConfigurationProperties at app.ai.embedding.*
 │                                        fields: apiKey, model, dimensions, chunkSize, chunkOverlap,
 │                                        chatModel, maxTokens, temperature, maxRetries,
-│                                        topK, similarityThreshold, oversampleFactor
+│                                        topK, similarityThreshold, oversampleFactor, mmrLambda,
+│                                        systemPrompt, contextualizationPrompt, summarisationPrompt
 ├── converter/
 │   └── FloatArrayToVectorConverter.java  — JPA AttributeConverter for pgvector column type
 ├── dto/
@@ -62,6 +66,19 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │                                        metadata (JSONB: categoryId, categoryName, tagIds, tagNames)
 ├── exception/
 │   └── RagQueryException.java
+├── pipeline/                         — Pipes-and-Filters RAG pipeline (Pipes-and-Filters pattern)
+│   ├── RagPipelineContext.java       — mutable per-request carrier: inputs, stage outputs, abort state
+│   ├── RagPipelineStage.java         — @FunctionalInterface: void process(RagPipelineContext)
+│   ├── RagPipelineRunner.java        — assembles ordered stages, stops on abort
+│   ├── ScoredChunk.java              — package-private record: ContentEmbedding + float score
+│   ├── VectorUtils.java              — package-private: dotProduct, toVectorString
+│   ├── ContextualizationStage.java   — LLM question rewrite; skips if no conversation context
+│   ├── EmbeddingStage.java           — OpenAI embed of contextualized question
+│   ├── RetrievalStage.java           — pgvector ANN search + eager-load; always oversamples topK×oversampleFactor
+│   ├── ScoringStage.java             — filter strategies + dot-product + threshold; aborts if empty
+│   ├── DeduplicationStage.java       — NOT in active pipeline; retained for reference (see class Javadoc)
+│   ├── MmrStage.java                 — greedy MMR selection of topK from scored chunks; handles diversity
+│   └── MessageBuildingStage.java     — assembles List<ChatMessage> + List<RagSource>
 ├── filter/                           — dynamic post-retrieval filter package
 │   ├── RagFilter.java                — Java 21 record: sourceTypes, tags, categoryId
 │   ├── RagFilterStrategy.java        — interface: predicate(RagFilter) + isApplicable(RagFilter)
@@ -71,13 +88,16 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ├── repository/
 │   └── ContentEmbeddingRepository.java   — findTopSimilarIds (pgvector <=>), findAllByIdWithContentItem
 └── service/
-    ├── ContentIngestionService.java   — chunks text + stores embeddings
-    ├── EmbeddingService.java          — wraps OpenAI embedding API
-    ├── RagQueryService.java           — interface: query() + queryStream() with filter overloads
-    ├── RagStreamHandler.java          — SSE callback interface
+    ├── ContentIngestionService.java          — chunks text + stores embeddings
+    ├── ConversationSummarisationService.java — compresses old turns into a rolling summary (LLM)
+    ├── EmbeddingService.java                 — wraps OpenAI embedding API
+    ├── RagQueryService.java                  — interface: query() + queryStream();
+    │                                            primary overloads accept ConversationContext + RagFilter
+    ├── RagStreamHandler.java                 — SSE callback interface
     └── impl/
-        └── RagQueryServiceImpl.java   — orchestrates the full RAG pipeline;
-                                         injects List<RagFilterStrategy> for dynamic filtering
+        ├── ConversationSummarisationServiceImpl.java — ChatLanguageModel-backed summarisation
+        └── RagQueryServiceImpl.java          — thin orchestrator: create context → RagPipelineRunner
+                                                 → call ChatLanguageModel / StreamingChatLanguageModel
 ```
 
 ---
@@ -110,7 +130,8 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │   └── …
 ├── security/                         — JwtProvider, OAuth2 handlers, UserUtils
 └── service/
-    ├── ChatSessionService.java
+    ├── ChatSessionService.java       — getOrCreateSessionId, getConversationContext (primary),
+    │                                   getRecentTurns, addTurn (triggers rolling summary), listSessions, getHistory
     ├── ContentIndexingService.java   — index / reindex / deleteIndex per contentItemId
     └── impl/
         └── ContentIndexingServiceImpl.java  — type-specific ingestion; buildCommonMetadata()
@@ -125,16 +146,18 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 ```
 GUI (React)
   └─→ ChatController (POST /api/v1/chat[/stream])
+        getConversationContext (summary + recent turns)
         builds RagFilter from request fields
-        └─→ RagQueryService
-              contextualizeQuestion (LLM rewrite if history present)
-              └─→ EmbeddingService (OpenAI text-embedding-3-small)
-              └─→ ContentEmbeddingRepository.findTopSimilarIds (pgvector <=>)
-                   oversample by oversampleFactor when RagFilter is non-empty
-              └─→ ContentEmbeddingRepository.findAllByIdWithContentItem
-              └─→ RagFilterStrategy composition (Predicate<ContentEmbedding>)
-              └─→ dotProduct scoring + similarityThreshold filter + topK cut
-              └─→ StreamingChatLanguageModel (gpt-4o-mini) — SSE token stream
+        └─→ RagQueryServiceImpl
+              creates RagPipelineContext
+              └─→ RagPipelineRunner (Pipes-and-Filters)
+                    ContextualizationStage  — LLM question rewrite
+                    EmbeddingStage          — OpenAI text-embedding-3-small
+                    RetrievalStage          — pgvector ANN (HNSW <=>); always oversamples topK×oversampleFactor
+                    ScoringStage            — RagFilterStrategy composition + dotProduct + threshold
+                    MmrStage                — greedy MMR topK selection; handles cross-doc + within-doc diversity
+                    MessageBuildingStage    — List<ChatMessage> + List<RagSource>
+              └─→ ChatLanguageModel (blocking) OR StreamingChatLanguageModel (SSE)
 ```
 
 ---

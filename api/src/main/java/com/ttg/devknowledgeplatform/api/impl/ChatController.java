@@ -5,7 +5,7 @@ import com.ttg.devknowledgeplatform.ai.filter.RagFilter;
 import com.ttg.devknowledgeplatform.ai.service.RagQueryService;
 import com.ttg.devknowledgeplatform.ai.service.RagStreamHandler;
 import com.ttg.devknowledgeplatform.api.ChatApi;
-import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
+import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
 import com.ttg.devknowledgeplatform.common.entity.ChatMessage;
 import com.ttg.devknowledgeplatform.config.sse.SseStreamTemplate;
 import com.ttg.devknowledgeplatform.dto.chat.ChatRequest;
@@ -44,9 +44,9 @@ public class ChatController implements ChatApi {
     @Override
     public ResponseEntity<ChatResponse> chat(ChatRequest request, Integer userId) {
         Integer sessionId = chatSessionService.getOrCreateSessionId(request.sessionId(), userId);
-        List<ConversationTurn> history = chatSessionService.getRecentTurns(sessionId, MAX_CONTEXT_TURNS);
+        ConversationContext context = chatSessionService.getConversationContext(sessionId, MAX_CONTEXT_TURNS);
 
-        var answer = ragQueryService.query(request.question(), history, buildFilter(request));
+        var answer = ragQueryService.query(request.question(), context, buildFilter(request));
         chatSessionService.addTurn(sessionId, request.question(), answer.answer());
 
         log.info("Chat query completed: sessionId={} questionLength={}", sessionId, request.question().length());
@@ -56,12 +56,12 @@ public class ChatController implements ChatApi {
     @Override
     public SseEmitter chatStream(ChatRequest request, Integer userId) {
         Integer sessionId = chatSessionService.getOrCreateSessionId(request.sessionId(), userId);
-        List<ConversationTurn> history = chatSessionService.getRecentTurns(sessionId, MAX_CONTEXT_TURNS);
+        ConversationContext context = chatSessionService.getConversationContext(sessionId, MAX_CONTEXT_TURNS);
         StringBuilder answerBuffer = new StringBuilder();
 
         return sseStreamTemplate.stream(writer -> {
             writer.send("session", Map.of("sessionId", sessionId));
-            ragQueryService.queryStream(request.question(), history, buildFilter(request), new RagStreamHandler() {
+            ragQueryService.queryStream(request.question(), context, buildFilter(request), new RagStreamHandler() {
                 @Override
                 public void onSources(List<RagSource> sources) {
                     writer.send("sources", sources);

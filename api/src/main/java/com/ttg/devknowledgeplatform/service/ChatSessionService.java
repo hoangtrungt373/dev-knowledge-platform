@@ -1,5 +1,6 @@
 package com.ttg.devknowledgeplatform.service;
 
+import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
 import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
 import com.ttg.devknowledgeplatform.common.entity.ChatMessage;
 import com.ttg.devknowledgeplatform.dto.chat.ChatSessionSummaryDto;
@@ -16,6 +17,11 @@ import java.util.List;
  * <p>Sessions expire after 24 hours of inactivity. An expired session is cleared rather
  * than deleted — the ID remains valid but the history is reset, giving the user a fresh
  * context while preserving the session reference they may have stored client-side.
+ *
+ * <p>Once a session accumulates more than {@code SUMMARY_THRESHOLD} Q&amp;A pairs,
+ * older turns are periodically compressed into a rolling summary stored on the session.
+ * {@link #getConversationContext} returns both the summary and the recent verbatim turns
+ * so the RAG pipeline can inject full history without linear token growth.
  */
 public interface ChatSessionService {
 
@@ -43,6 +49,20 @@ public interface ChatSessionService {
      * @return ordered list of conversation turns, oldest first
      */
     List<ConversationTurn> getRecentTurns(Integer sessionId, int maxTurns);
+
+    /**
+     * Returns the full conversation context for the RAG pipeline: the session's rolling summary
+     * (if it has been generated) combined with the last {@code maxTurns} Q&amp;A pairs verbatim.
+     *
+     * <p>This is the preferred method for building context on each chat request. Using
+     * {@link ConversationContext} instead of a raw turn list allows the RAG pipeline to inject
+     * older conversation history via the compressed summary without re-appending all past turns.
+     *
+     * @param sessionId the session ID returned by {@link #getOrCreateSessionId}
+     * @param maxTurns  maximum number of recent Q&amp;A pairs to include verbatim
+     * @return conversation context combining the rolling summary with recent verbatim turns
+     */
+    ConversationContext getConversationContext(Integer sessionId, int maxTurns);
 
     /**
      * Saves a completed Q&A exchange to the session and updates {@code lastActivityAt}.

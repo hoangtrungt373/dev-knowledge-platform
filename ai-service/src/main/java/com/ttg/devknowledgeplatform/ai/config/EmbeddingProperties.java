@@ -62,10 +62,30 @@ public class EmbeddingProperties {
     @Positive
     private int oversampleFactor = 3;
 
+    /**
+     * Lambda (λ) for Maximal Marginal Relevance re-ranking.
+     *
+     * <p>Controls the relevance/diversity trade-off when selecting the final {@code topK} chunks:
+     * <ul>
+     *   <li>{@code 1.0} — pure relevance; equivalent to sorting by cosine similarity (no diversity)</li>
+     *   <li>{@code 0.5} — equal weight between relevance and diversity (default)</li>
+     *   <li>{@code 0.0} — pure diversity; ignores relevance scores entirely</li>
+     * </ul>
+     */
+    @DecimalMin("0.0") @DecimalMax("1.0")
+    private float mmrLambda = 0.5f;
+
     @NotBlank
     private String systemPrompt;
 
     /** Prompt prefix used to rewrite ambiguous follow-up questions into standalone queries. */
     @NotBlank
     private String contextualizationPrompt;
+
+    /**
+     * Prompt prefix sent to the LLM when compressing old conversation turns into a rolling summary.
+     * The implementation appends the previous summary (if any) and the turns to compress after this prefix.
+     */
+    @NotBlank
+    private String summarisationPrompt;
 }
