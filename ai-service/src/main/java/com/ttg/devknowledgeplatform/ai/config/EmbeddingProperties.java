@@ -138,9 +138,14 @@ public class EmbeddingProperties {
     @NotBlank
     private String systemPromptBlogPost;
 
-    /** Prompt prefix used to rewrite ambiguous follow-up questions into standalone queries. */
+    /**
+     * Prompt sent to the LLM to both resolve pronoun references and enrich the raw user question
+     * into a structured four-part form (CONTEXT / TASK / CONSTRAINTS / OUTPUT_FORMAT).
+     * The LLM response must contain five labelled lines (STANDALONE, CONTEXT, TASK,
+     * CONSTRAINTS, OUTPUT_FORMAT); see {@code ContextualizationStage} for the parse logic.
+     */
     @NotBlank
-    private String contextualizationPrompt;
+    private String inputEnrichmentPrompt;
 
     /**
      * Prompt prefix sent to the LLM when compressing old conversation turns into a rolling summary.

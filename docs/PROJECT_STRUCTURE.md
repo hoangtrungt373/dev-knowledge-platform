@@ -54,7 +54,7 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │                                        fields: apiKey, model, dimensions, chunkSize, chunkOverlap,
 │                                        chatModel, maxTokens, temperature, maxRetries,
 │                                        topK, similarityThreshold, oversampleFactor, mmrLambda,
-│                                        systemPrompt, contextualizationPrompt, summarisationPrompt
+│                                        systemPrompt, inputEnrichmentPrompt, summarisationPrompt
 ├── converter/
 │   └── FloatArrayToVectorConverter.java  — JPA AttributeConverter for pgvector column type
 ├── dto/
@@ -67,12 +67,12 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ├── exception/
 │   └── RagQueryException.java
 ├── pipeline/                         — Pipes-and-Filters RAG pipeline (Pipes-and-Filters pattern)
-│   ├── RagPipelineContext.java       — mutable per-request carrier: inputs, stage outputs, abort state
+│   ├── RagPipelineContext.java       — mutable per-request carrier: inputs, stage outputs (contextualizedQuestion, enrichedQuestion, …), abort state
 │   ├── RagPipelineStage.java         — @FunctionalInterface: void process(RagPipelineContext)
 │   ├── RagPipelineRunner.java        — assembles ordered stages, stops on abort
 │   ├── ScoredChunk.java              — package-private record: ContentEmbedding + float score
 │   ├── VectorUtils.java              — package-private: dotProduct, toVectorString
-│   ├── ContextualizationStage.java   — LLM question rewrite; skips if no conversation context
+│   ├── ContextualizationStage.java   — LLM enrichment: resolves pronouns → STANDALONE (for embedding) + CONTEXT/TASK/CONSTRAINTS/OUTPUT_FORMAT (for generation)
 │   ├── EmbeddingStage.java           — OpenAI embed of contextualized question
 │   ├── RetrievalStage.java           — pgvector ANN search + eager-load; always oversamples topK×oversampleFactor
 │   ├── ScoringStage.java             — AND-compose filter predicates from RagFilter + dot-product + threshold; aborts if empty
@@ -147,7 +147,7 @@ GUI (React)
         └─→ RagQueryServiceImpl
               creates RagPipelineContext
               └─→ RagPipelineRunner (Pipes-and-Filters)
-                    ContextualizationStage  — LLM question rewrite
+                    ContextualizationStage  — LLM enrichment (STANDALONE + Context+Task+Constraints+OutputFormat)
                     EmbeddingStage          — OpenAI text-embedding-3-small
                     RetrievalStage          — pgvector ANN (HNSW <=>); always oversamples topK×oversampleFactor
                     ScoringStage            — AND-compose RagFilter predicates + dotProduct + threshold

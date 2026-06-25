@@ -62,7 +62,8 @@ public class MessageBuildingStage implements RagPipelineStage {
         List<ScoredChunk> selected = ctx.getSelectedChunks();
 
         ctx.setSources(buildSources(selected));
-        ctx.setMessages(buildMessages(selected, ctx.getConversationContext(), ctx.getOriginalQuestion(), ctx.getFilter()));
+        ctx.setMessages(buildMessages(selected, ctx.getConversationContext(),
+                ctx.getOriginalQuestion(), ctx.getEnrichedQuestion(), ctx.getFilter()));
     }
 
     private List<RagSource> buildSources(List<ScoredChunk> selected) {
@@ -79,6 +80,7 @@ public class MessageBuildingStage implements RagPipelineStage {
     private List<ChatMessage> buildMessages(List<ScoredChunk> selected,
                                             ConversationContext context,
                                             String originalQuestion,
+                                            String enrichedQuestion,
                                             RagFilter filter) {
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(SystemMessage.from(buildSystemPrompt(selected, filter)));
@@ -95,7 +97,12 @@ public class MessageBuildingStage implements RagPipelineStage {
                 messages.add(AiMessage.from(turn.content()));
             }
         }
-        messages.add(UserMessage.from(originalQuestion));
+        // Prefer the enriched (Context+Task+Constraints+OutputFormat) form when available;
+        // fall back to the raw question if ContextualizationStage could not produce one.
+        String userMessage = (enrichedQuestion != null && !enrichedQuestion.isBlank())
+                ? enrichedQuestion
+                : originalQuestion;
+        messages.add(UserMessage.from(userMessage));
         return messages;
     }
 

@@ -41,8 +41,17 @@ public class RagPipelineContext {
     // Stage outputs — populated progressively
     // -------------------------------------------------------------------------
 
-    /** Rewritten standalone question from {@code ContextualizationStage}. */
+    /** Rewritten standalone question from {@code ContextualizationStage}. Used for vector embedding. */
     private String contextualizedQuestion;
+
+    /**
+     * Structured, enriched form of the user question produced by {@code ContextualizationStage}.
+     *
+     * <p>Contains four labelled lines: CONTEXT / TASK / CONSTRAINTS / OUTPUT_FORMAT.
+     * When non-null, {@code MessageBuildingStage} uses this instead of {@link #originalQuestion}
+     * as the final user message so the LLM receives a fully scoped, format-directed query.
+     */
+    private String enrichedQuestion;
 
     /** Dense vector from {@code EmbeddingStage}. */
     private float[] queryEmbedding;

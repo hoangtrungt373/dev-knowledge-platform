@@ -9,58 +9,142 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
- * Pipeline stage that rewrites an ambiguous follow-up question into a fully
- * self-contained standalone query suitable for vector similarity search.
+ * Pipeline stage that resolves ambiguous references and enriches the raw user question
+ * into a structured four-part form following the <em>Context + Task + Constraints + Output Format</em>
+ * prompt-engineering pattern.
  *
- * <p>When a user asks <em>"Does PostgreSQL support it?"</em> after discussing HNSW indexing,
- * the pronoun <em>"it"</em> produces a meaningless embedding. This stage resolves such
- * references by asking the LLM to inline all context:
- * <em>"Does PostgreSQL support HNSW indexing?"</em>
+ * <h3>Why enrichment matters</h3>
+ * <p>A raw question like <em>"Does it support it?"</em> produces a low-quality embedding and gives
+ * the generation LLM no scope or format guidance. This stage uses a single LLM call to produce
+ * a five-labelled block:
+ * <pre>{@code
+ * STANDALONE:    Does PostgreSQL support HNSW indexing for ANN search?
+ * CONTEXT:       Developer studying vector search in a RAG pipeline using pgvector.
+ * TASK:          Understand whether PostgreSQL natively supports HNSW and how it performs.
+ * CONSTRAINTS:   Intermediate level; focus on pgvector usage; include index creation syntax.
+ * OUTPUT_FORMAT: Short answer + code example showing index creation; Markdown.
+ * }</pre>
+ * <p>The STANDALONE line becomes {@link RagPipelineContext#setContextualizedQuestion} — a clean,
+ * self-contained sentence that is embedded for cosine similarity search. The remaining four
+ * lines form {@link RagPipelineContext#setEnrichedQuestion} and are passed to the generation
+ * LLM as the user message, giving it explicit scope, depth, and output format instructions.
  *
- * <p>The rolling summary (if present) is included in the rewrite prompt so references to
- * topics from compressed older turns are resolved correctly.
- *
- * <p>If there is no conversation context (fresh session) the original question is used
- * as-is with no LLM call. On LLM failure the original question is used as a fallback.
- *
- * <p><strong>Context:</strong> writes {@link RagPipelineContext#setContextualizedQuestion}.
+ * <h3>Fallback behaviour</h3>
+ * <p>If the LLM call fails or the response cannot be parsed, the original question is used
+ * for both fields ({@code enrichedQuestion} is left null). {@code MessageBuildingStage} is
+ * aware of this and falls back gracefully to {@code originalQuestion}.
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class ContextualizationStage implements RagPipelineStage {
 
+    private static final String STANDALONE_KEY    = "STANDALONE";
+    private static final String CONTEXT_KEY       = "CONTEXT";
+    private static final String TASK_KEY          = "TASK";
+    private static final String CONSTRAINTS_KEY   = "CONSTRAINTS";
+    private static final String OUTPUT_FORMAT_KEY = "OUTPUT_FORMAT";
+
     private final ChatLanguageModel chatLanguageModel;
     private final EmbeddingProperties properties;
 
     @Override
     public void process(RagPipelineContext ctx) {
-        ConversationContext conversationContext = ctx.getConversationContext();
-
-        if (conversationContext.recentTurns().isEmpty() && !conversationContext.hasSummary()) {
-            ctx.setContextualizedQuestion(ctx.getOriginalQuestion());
-            return;
-        }
-
         try {
-            StringBuilder prompt = new StringBuilder(properties.getContextualizationPrompt());
-            if (conversationContext.hasSummary()) {
-                prompt.append(properties.getContextSummaryLabel())
-                      .append(conversationContext.summary())
-                      .append("\n\n");
-            }
-            conversationContext.recentTurns().forEach(t ->
-                    prompt.append(t.role()).append(": ").append(t.content()).append("\n"));
-            prompt.append(properties.getContextFollowUpLabel()).append(ctx.getOriginalQuestion());
+            String prompt = buildPrompt(ctx);
+            String response = chatLanguageModel.generate(UserMessage.from(prompt))
+                                               .content().text().strip();
 
-            String rewritten = chatLanguageModel.generate(UserMessage.from(prompt.toString()))
-                                                .content().text().strip();
-            log.debug("Question contextualized: [{}] → [{}]", ctx.getOriginalQuestion(), rewritten);
-            ctx.setContextualizedQuestion(rewritten);
+            EnrichedQuery parsed = parseResponse(response);
+            if (parsed != null) {
+                log.debug("Contextualized: [{}] → [{}]", ctx.getOriginalQuestion(), parsed.standalone());
+                ctx.setContextualizedQuestion(parsed.standalone());
+                ctx.setEnrichedQuestion(parsed.enriched());
+            } else {
+                log.warn("Could not parse enrichment response — falling back to original question");
+                ctx.setContextualizedQuestion(ctx.getOriginalQuestion());
+            }
         } catch (Exception e) {
-            log.warn("Contextualization failed, using original question: {}", e.getMessage());
+            log.warn("Contextualization/enrichment failed, using original question: {}", e.getMessage());
             ctx.setContextualizedQuestion(ctx.getOriginalQuestion());
         }
     }
+
+    /**
+     * Assembles the enrichment prompt, optionally injecting the rolling summary and recent
+     * conversation turns before the current question.
+     */
+    private String buildPrompt(RagPipelineContext ctx) {
+        ConversationContext conversationContext = ctx.getConversationContext();
+        StringBuilder prompt = new StringBuilder(properties.getInputEnrichmentPrompt());
+
+        if (conversationContext.hasSummary()) {
+            prompt.append(properties.getContextSummaryLabel())
+                  .append(conversationContext.summary())
+                  .append("\n\n");
+        }
+        conversationContext.recentTurns().forEach(t ->
+                prompt.append(t.role()).append(": ").append(t.content()).append("\n"));
+        prompt.append(properties.getContextFollowUpLabel()).append(ctx.getOriginalQuestion());
+
+        return prompt.toString();
+    }
+
+    /**
+     * Parses the LLM response into an {@link EnrichedQuery}.
+     *
+     * <p>Each line is expected to start with one of the five keys followed by a colon.
+     * Lines that do not match any key are ignored. Returns {@code null} if the STANDALONE
+     * value is absent or blank (indicating a malformed response).
+     *
+     * @param response raw LLM text output
+     * @return parsed result, or {@code null} on parse failure
+     */
+    private EnrichedQuery parseResponse(String response) {
+        Map<String, String> sections = new LinkedHashMap<>();
+        for (String line : response.split("\n")) {
+            line = line.strip();
+            int colonIdx = line.indexOf(':');
+            if (colonIdx > 0) {
+                String key   = line.substring(0, colonIdx).strip().toUpperCase().replace(" ", "_");
+                String value = line.substring(colonIdx + 1).strip();
+                sections.putIfAbsent(key, value);
+            }
+        }
+
+        String standalone = sections.get(STANDALONE_KEY);
+        if (standalone == null || standalone.isBlank()) {
+            return null;
+        }
+
+        StringBuilder enriched = new StringBuilder();
+        appendSection(enriched, CONTEXT_KEY,       "CONTEXT",       sections);
+        appendSection(enriched, TASK_KEY,          "TASK",          sections);
+        appendSection(enriched, CONSTRAINTS_KEY,   "CONSTRAINTS",   sections);
+        appendSection(enriched, OUTPUT_FORMAT_KEY, "OUTPUT FORMAT", sections);
+
+        return new EnrichedQuery(standalone, enriched.toString().strip());
+    }
+
+    private void appendSection(StringBuilder sb, String mapKey, String label, Map<String, String> sections) {
+        String value = sections.get(mapKey);
+        if (value != null && !value.isBlank()) {
+            if (!sb.isEmpty()) sb.append("\n");
+            sb.append(label).append(": ").append(value);
+        }
+    }
+
+    /**
+     * Holds the two outputs produced by one LLM enrichment call:
+     * the clean standalone question (for embedding) and the structured enriched prompt
+     * (for LLM generation).
+     *
+     * <p>Java 21 record — an immutable data carrier with auto-generated constructor,
+     * accessors, {@code equals}, {@code hashCode}, and {@code toString}.
+     */
+    private record EnrichedQuery(String standalone, String enriched) {}
 }
