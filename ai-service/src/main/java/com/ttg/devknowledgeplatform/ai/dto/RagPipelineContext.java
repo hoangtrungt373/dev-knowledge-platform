@@ -71,6 +71,13 @@ public class RagPipelineContext {
     /** Fully assembled LLM message list from {@code MessageBuildingStage}. */
     private List<ChatMessage> messages;
 
+    /**
+     * Per-request similarity threshold override set by {@code QueryAnomalyStage} on soft-anomaly
+     * detection. When non-null, {@code ScoringStage} uses this value instead of the configured
+     * default, requiring retrieved chunks to score higher before passing into the LLM context.
+     */
+    private Float effectiveSimilarityThreshold;
+
     // -------------------------------------------------------------------------
     // Abort state
     // -------------------------------------------------------------------------

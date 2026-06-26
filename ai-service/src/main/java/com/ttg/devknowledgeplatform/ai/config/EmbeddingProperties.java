@@ -139,6 +139,50 @@ public class EmbeddingProperties {
     private String systemPromptBlogPost;
 
     /**
+     * How often {@code CorpusStatisticsService} recomputes and persists corpus centroids.
+     * Expressed as an ISO-8601 duration string (e.g. {@code PT6H} = every 6 hours).
+     * The default of 6 hours is a good balance: content is curated and changes infrequently,
+     * so recomputing more often wastes DB resources; recomputing less often risks stale centroids
+     * after a large content import.
+     */
+    private String centroidRefreshInterval = "PT6H";
+
+    /**
+     * Cosine similarity floor below which a query is considered completely outside the
+     * platform's knowledge domain. {@code QueryAnomalyStage} aborts the pipeline and
+     * returns an out-of-scope message — no retrieval or LLM call is made.
+     *
+     * <p>Measured against the L2-normalised corpus centroid, so the range is {@code [0, 1]}.
+     * A value around {@code 0.20} rejects only clearly unrelated queries (e.g. cooking recipes
+     * asked against a software engineering corpus).
+     */
+    @DecimalMin("0.0") @DecimalMax("1.0")
+    private float anomalyHardThreshold = 0.20f;
+
+    /**
+     * Cosine similarity below which a query is treated as a soft anomaly — potentially
+     * related but marginal. The pipeline continues but {@code QueryAnomalyStage} applies a
+     * stricter retrieval similarity threshold ({@link #anomalySoftSimilarityThreshold}) to
+     * reduce the risk of hallucination on borderline topics.
+     *
+     * <p>Must be greater than {@link #anomalyHardThreshold}. Queries with similarity
+     * at or above this value are treated as fully in-domain.
+     */
+    @DecimalMin("0.0") @DecimalMax("1.0")
+    private float anomalySoftThreshold = 0.40f;
+
+    /**
+     * Retrieval similarity threshold applied when a soft anomaly is detected.
+     * Replaces the default {@link #similarityThreshold} for that request only,
+     * requiring retrieved chunks to be a closer match before they pass into the LLM context.
+     *
+     * <p>Should be higher than {@link #similarityThreshold} (default 0.75).
+     * A value of {@code 0.82} allows 7 pp extra headroom before a chunk is accepted.
+     */
+    @DecimalMin("0.0") @DecimalMax("1.0")
+    private float anomalySoftSimilarityThreshold = 0.82f;
+
+    /**
      * Prompt sent to the LLM to both resolve pronoun references and enrich the raw user question
      * into a structured four-part form (CONTEXT / TASK / CONSTRAINTS / OUTPUT_FORMAT).
      * The LLM response must contain five labelled lines (STANDALONE, CONTEXT, TASK,

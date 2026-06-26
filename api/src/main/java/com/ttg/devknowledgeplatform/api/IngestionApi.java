@@ -43,4 +43,17 @@ public interface IngestionApi {
      */
     @DeleteMapping("/content/{contentItemId}")
     ResponseEntity<Void> deleteIndex(@PathVariable Integer contentItemId);
+
+    /**
+     * Manually triggers an immediate corpus centroid refresh, bypassing the scheduled interval.
+     *
+     * <p>Useful after a large content import when waiting up to 6 hours for the next scheduled
+     * refresh would leave the anomaly detector working with a stale centroid.
+     * The operation is synchronous — the response is returned once all centroids have been
+     * recomputed and persisted.
+     *
+     * @return {@code 204 No Content}
+     */
+    @PostMapping("/corpus/refresh")
+    ResponseEntity<Void> refreshCorpus();
 }

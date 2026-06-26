@@ -7,9 +7,11 @@ import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @Configuration
 @EnableConfigurationProperties(EmbeddingProperties.class)
+@EnableScheduling
 public class AiServiceConfig {
 
     @Bean

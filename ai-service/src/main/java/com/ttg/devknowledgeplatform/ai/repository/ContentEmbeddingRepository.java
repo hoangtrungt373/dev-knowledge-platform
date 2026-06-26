@@ -38,4 +38,37 @@ public interface ContentEmbeddingRepository extends JpaRepository<ContentEmbeddi
     @Modifying
     @Query("DELETE FROM ContentEmbedding ce WHERE ce.contentItem.id = :contentItemId")
     void deleteByContentItem_Id(@Param("contentItemId") Integer contentItemId);
+
+    /**
+     * Computes the average embedding vector for all chunks of the given source type.
+     *
+     * <p>Uses the pgvector {@code avg()} aggregate. The result is cast to text using
+     * pgvector notation {@code [f1,f2,...,f1536]}, ready to be stored directly in
+     * {@code SysParam.value}. Returns {@code null} when no rows match (e.g. that
+     * content type has not been indexed yet).
+     *
+     * @param sourceType the {@code SOURCE_TYPE} column value
+     *                   (e.g. {@code "ARTICLE"}, {@code "INTERVIEW_QUESTION"}, {@code "BLOG_POST"})
+     * @return pgvector text representation of the centroid, or {@code null}
+     */
+    @Query(value = """
+            SELECT avg(embedding)::text
+            FROM product.content_embedding
+            WHERE source_type = :sourceType
+            """, nativeQuery = true)
+    String computeCentroidBySourceType(@Param("sourceType") String sourceType);
+
+    /**
+     * Computes the average embedding vector across all content embeddings regardless of source type.
+     *
+     * <p>Produces the global corpus centroid ({@code CENTROID_ALL}) used during anomaly
+     * detection for unfiltered queries. Returns {@code null} if the table is empty.
+     *
+     * @return pgvector text representation of the global centroid, or {@code null}
+     */
+    @Query(value = """
+            SELECT avg(embedding)::text
+            FROM product.content_embedding
+            """, nativeQuery = true)
+    String computeGlobalCentroid();
 }

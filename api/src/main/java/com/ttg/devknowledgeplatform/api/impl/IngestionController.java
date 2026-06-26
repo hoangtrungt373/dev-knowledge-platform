@@ -1,5 +1,6 @@
 package com.ttg.devknowledgeplatform.api.impl;
 
+import com.ttg.devknowledgeplatform.ai.service.CorpusStatisticsService;
 import com.ttg.devknowledgeplatform.api.IngestionApi;
 import com.ttg.devknowledgeplatform.service.ContentIndexingService;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class IngestionController implements IngestionApi {
 
     private final ContentIndexingService contentIndexingService;
+    private final CorpusStatisticsService corpusStatisticsService;
 
     @Override
     public ResponseEntity<Void> index(Integer contentItemId) {
@@ -35,6 +37,13 @@ public class IngestionController implements IngestionApi {
     public ResponseEntity<Void> deleteIndex(Integer contentItemId) {
         log.info("Delete index requested for content item id={}", contentItemId);
         contentIndexingService.deleteIndex(contentItemId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Override
+    public ResponseEntity<Void> refreshCorpus() {
+        log.info("Manual corpus centroid refresh requested");
+        corpusStatisticsService.refresh();
         return ResponseEntity.noContent().build();
     }
 }

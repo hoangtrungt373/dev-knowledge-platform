@@ -44,19 +44,23 @@ public class ScoringStage implements RagPipelineStage {
 
     @Override
     public void process(RagPipelineContext ctx) {
+        // QueryAnomalyStage may raise the threshold for borderline queries; fall back to config default.
+        float threshold = ctx.getEffectiveSimilarityThreshold() != null
+                ? ctx.getEffectiveSimilarityThreshold()
+                : properties.getSimilarityThreshold();
+
         Predicate<ContentEmbedding> predicate = buildPredicate(ctx.getFilter());
 
         List<ScoredChunk> scored = ctx.getCandidates().stream()
                 .filter(predicate)
                 .map(ce -> new ScoredChunk(ce,
                         VectorUtils.dotProduct(ctx.getQueryEmbedding(), ce.getEmbedding())))
-                .filter(sc -> sc.score() >= properties.getSimilarityThreshold())
+                .filter(sc -> sc.score() >= threshold)
                 .sorted(Comparator.comparingDouble(ScoredChunk::score).reversed())
                 .toList();
 
         if (scored.isEmpty()) {
-            log.warn("No chunks passed filter + similarity threshold {}",
-                    properties.getSimilarityThreshold());
+            log.warn("No chunks passed filter + similarity threshold {}", threshold);
             ctx.abort(RagPipelineContext.NO_CONTEXT_ANSWER);
             return;
         }
