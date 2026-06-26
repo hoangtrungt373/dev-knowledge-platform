@@ -16,15 +16,19 @@ import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
  * {@link RagPipelineContext#abort(String)}, the runner stops immediately — remaining stages
  * are skipped and the abort reason becomes the user-facing response.
  *
- * <p>Stage order is fixed (contextualize → embed → query-anomaly → retrieve → score → retrieval-anomaly → MMR → evidence-quality → build messages)
+ * <p>Stage order is fixed (prompt-guard → contextualize → embed → query-anomaly → retrieve → score
+ * → retrieval-anomaly → MMR → retrieved-content-guard → evidence-quality → build messages)
  * and matches the information dependency between steps: each stage needs outputs from all
- * previous stages.
+ * previous stages. Two complementary guards protect different injection channels:
+ * {@code PromptGuardStage} first (user input), {@code RetrievedContentGuardStage} after MMR
+ * (corpus data channel).
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class RagPipelineRunner {
 
+    private final PromptGuardStage promptGuardStage;
     private final ContextualizationStage contextualizationStage;
     private final EmbeddingStage embeddingStage;
     private final QueryAnomalyStage queryAnomalyStage;
@@ -32,6 +36,7 @@ public class RagPipelineRunner {
     private final ScoringStage scoringStage;
     private final RetrievalAnomalyStage retrievalAnomalyStage;
     private final MmrStage mmrStage;
+    private final RetrievedContentGuardStage retrievedContentGuardStage;
     private final EvidenceQualityStage evidenceQualityStage;
     private final MessageBuildingStage messageBuildingStage;
 
@@ -41,14 +46,16 @@ public class RagPipelineRunner {
     @PostConstruct
     public void init() {
         stages = List.of(
+                promptGuardStage,         // first — injection guard on raw query; before any LLM call
                 contextualizationStage,
                 embeddingStage,
                 queryAnomalyStage,        // after embedding — needs queryEmbedding; before retrieval
                 retrievalStage,
                 scoringStage,
-                retrievalAnomalyStage,    // after scoring — needs sorted scoredChunks; before MMR
+                retrievalAnomalyStage,      // after scoring — needs sorted scoredChunks; before MMR
+                retrievedContentGuardStage, // cleans scoredChunks before MMR — so MMR fills every slot from safe candidates
                 mmrStage,
-                evidenceQualityStage,     // after MMR — evaluates final selected chunks; before LLM call
+                evidenceQualityStage,       // validates clean chunk count + mean score; before LLM call
                 messageBuildingStage
         );
     }

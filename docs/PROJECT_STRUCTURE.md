@@ -61,7 +61,10 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │                                        systemPrompt, inputEnrichmentPrompt, summarisationPrompt,
 │                                        centroidRefreshInterval,
 │                                        anomalyHardThreshold (0.20), anomalySoftThreshold (0.40),
-│                                        anomalySoftSimilarityThreshold (0.82)
+│                                        anomalySoftSimilarityThreshold (0.82),
+│                                        injectionDetection (nested InjectionDetectionProperties:
+│                                          maxQueryLength, patterns, prototypes, similarityThreshold,
+│                                          rejectionMessage)
 ├── converter/
 │   └── FloatArrayToVectorConverter.java  — JPA AttributeConverter for pgvector column type
 ├── dto/
@@ -79,6 +82,7 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── RagPipelineRunner.java        — assembles ordered stages, stops on abort
 │   ├── ScoredChunk.java              — package-private record: ContentEmbedding + float score
 │   ├── VectorUtils.java              — package-private: dotProduct, toVectorString
+│   ├── PromptGuardStage.java         — FIRST stage: user-input injection guard (length + lexical + semantic similarity); runs before any LLM call
 │   ├── ContextualizationStage.java   — LLM enrichment: resolves pronouns → STANDALONE (for embedding) + CONTEXT/TASK/CONSTRAINTS/OUTPUT_FORMAT (for generation)
 │   ├── EmbeddingStage.java           — OpenAI embed of contextualized question
 │   ├── QueryAnomalyStage.java        — cosine similarity vs L2-normalised corpus centroid; hard abort or soft threshold raise
@@ -87,6 +91,7 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── RetrievalAnomalyStage.java    — largest-gap pruning of scored chunks; removes relative outliers before MMR
 │   ├── DeduplicationStage.java       — NOT in active pipeline; retained for reference (see class Javadoc)
 │   ├── MmrStage.java                 — greedy MMR selection of topK from scored chunks; handles diversity
+│   ├── RetrievedContentGuardStage.java — pre-MMR corpus data-channel guard: lexical scan of scoredChunks; removes infected chunks so MMR fills every topK slot from safe candidates
 │   ├── EvidenceQualityStage.java     — post-MMR hallucination guard: mean score + min chunk count; aborts if either fails
 │   └── MessageBuildingStage.java     — assembles List<ChatMessage> + List<RagSource>
 ├── filter/                           — dynamic post-retrieval filter package
@@ -165,13 +170,15 @@ GUI (React)
         └─→ RagQueryServiceImpl
               creates RagPipelineContext
               └─→ RagPipelineRunner (Pipes-and-Filters)
+                    PromptGuardStage        — user-input injection guard: length + lexical + semantic prototype similarity
                     ContextualizationStage  — LLM enrichment (STANDALONE + Context+Task+Constraints+OutputFormat)
                     EmbeddingStage          — OpenAI text-embedding-3-small
                     QueryAnomalyStage       — cosine sim vs corpus centroid; hard abort or soft threshold raise
                     RetrievalStage          — pgvector ANN (HNSW <=>); always oversamples topK×oversampleFactor
                     ScoringStage            — AND-compose RagFilter predicates + dotProduct + threshold
                     RetrievalAnomalyStage   — largest-gap pruning; removes relative outliers from scored chunks
-                    MmrStage                — greedy MMR topK selection; handles cross-doc + within-doc diversity
+                    RetrievedContentGuardStage — corpus data-channel guard: lexical scan of scoredChunks; removes infected chunks before MMR
+                    MmrStage                — greedy MMR topK selection from clean candidate pool; handles cross-doc + within-doc diversity
                     EvidenceQualityStage    — post-MMR hallucination guard: mean score + min chunk count
                     MessageBuildingStage    — List<ChatMessage> + List<RagSource>
               └─→ ChatLanguageModel (blocking) OR StreamingChatLanguageModel (SSE)

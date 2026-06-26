@@ -1,5 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.config;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -10,6 +11,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @ConfigurationProperties(prefix = "app.ai.embedding")
 @Validated
@@ -244,6 +248,17 @@ public class EmbeddingProperties {
     private float anomalySoftSimilarityThreshold = 0.82f;
 
     /**
+     * Prompt injection detection configuration.
+     *
+     * <p>Groups all settings for {@code PromptGuardStage}: lexical patterns, semantic
+     * prototype phrases, the similarity threshold, and the rejection message. Nested
+     * so that all injection-detection settings appear under a single YAML key rather
+     * than scattered among the flat {@code EmbeddingProperties} fields.
+     */
+    @Valid
+    private InjectionDetectionProperties injectionDetection = new InjectionDetectionProperties();
+
+    /**
      * Prompt sent to the LLM to both resolve pronoun references and enrich the raw user question
      * into a structured four-part form (CONTEXT / TASK / CONSTRAINTS / OUTPUT_FORMAT).
      * The LLM response must contain five labelled lines (STANDALONE, CONTEXT, TASK,
@@ -267,4 +282,84 @@ public class EmbeddingProperties {
      */
     @NotBlank
     private String summarisationPrompt;
+
+    // -------------------------------------------------------------------------
+    // Nested configuration classes
+    // -------------------------------------------------------------------------
+
+    /**
+     * Configuration for the two-layer prompt injection detection guard in {@code PromptGuardStage}.
+     *
+     * <h3>Option A — Lexical (zero latency)</h3>
+     * <p>Checks the raw user query against {@link #patterns} using case-insensitive substring
+     * matching. Fires instantly, with no network call. Effective against known, unmodified
+     * injection phrases.
+     *
+     * <h3>Option B — Semantic (one embedding call)</h3>
+     * <p>At startup, each phrase in {@link #prototypes} is embedded once via
+     * {@code EmbeddingService.embedBatch()}. At request time, the raw user query is embedded and
+     * its max cosine similarity to all prototypes is compared against {@link #similarityThreshold}.
+     * Catches paraphrases and novel phrasings that evade the lexical layer.
+     *
+     * <p>Option A always runs first. Option B's embedding call is only made when the query passes
+     * the lexical check — so caught injections never incur an embedding cost.
+     */
+    @Getter
+    @Setter
+    public static class InjectionDetectionProperties {
+
+        /**
+         * Maximum allowed query length in characters.
+         * Oversized inputs are a common prompt-stuffing vector; an extremely long query
+         * may attempt to bury injection instructions inside legitimate-looking text.
+         * Queries exceeding this length are rejected before any pattern check.
+         */
+        @Positive
+        private int maxQueryLength = 1000;
+
+        /**
+         * Known injection phrases for Option A (lexical layer).
+         * Each entry is a case-insensitive substring pattern checked against the raw user query.
+         * Configure via {@code injection-detection.patterns} in YAML.
+         *
+         * <p>When defined in YAML, the YAML list replaces this default (Spring Boot list
+         * properties are not merged). Operators must include all desired phrases explicitly.
+         */
+        private List<String> patterns = new ArrayList<>();
+
+        /**
+         * Canonical injection example sentences for Option B (semantic layer).
+         * Each entry is embedded once at startup; at request time, the query is rejected when
+         * its cosine similarity to any prototype equals or exceeds {@link #similarityThreshold}.
+         * Configure via {@code injection-detection.prototypes} in YAML.
+         *
+         * <p>Prototypes should cover diverse phrasings of the same intent — "ignore previous
+         * instructions", "you are now", "reveal your system prompt" — so the semantic space
+         * around injection attempts is densely covered. More prototypes increase recall with
+         * negligible runtime cost (dot products are cheap compared to the embedding call itself).
+         */
+        private List<String> prototypes = new ArrayList<>();
+
+        /**
+         * Cosine similarity threshold for the semantic layer.
+         * Queries whose max similarity to any prototype equals or exceeds this value are rejected.
+         *
+         * <p>A conservative default of {@code 0.80} limits false positives on legitimate
+         * technical questions that share vocabulary with injection phrases (e.g.
+         * "how do I ignore a Spring configuration?"). Tune downward if paraphrased injections
+         * are bypassing the guard; tune upward if legitimate queries are being rejected.
+         */
+        @DecimalMin("0.0") @DecimalMax("1.0")
+        private float similarityThreshold = 0.80f;
+
+        /**
+         * User-facing message returned when any injection guard fires.
+         *
+         * <p>Intentionally vague — does not reveal which layer triggered (lexical vs semantic)
+         * or which pattern matched. Giving precise feedback would help an attacker refine
+         * their payload. Operators may customise the wording without changing the non-disclosure intent.
+         */
+        private String rejectionMessage =
+                "Your question could not be processed. Please rephrase and try again.";
+    }
 }
