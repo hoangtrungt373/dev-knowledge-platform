@@ -82,7 +82,7 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         List<ChatMessage> chronological = new ArrayList<>(recent);
         Collections.reverse(chronological);
         return chronological.stream()
-                .map(m -> new ConversationTurn(m.getRole().name(), m.getContent()))
+                .map(m -> new ConversationTurn(m.getRole(), m.getContent()))
                 .toList();
     }
 
@@ -175,7 +175,7 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         }
 
         List<ConversationTurn> toCompress = all.subList(0, all.size() - verbatimCount).stream()
-                .map(m -> new ConversationTurn(m.getRole().name(), m.getContent()))
+                .map(m -> new ConversationTurn(m.getRole(), m.getContent()))
                 .toList();
 
         String newSummary = conversationSummarisationService.summarise(session.getSummary(), toCompress);

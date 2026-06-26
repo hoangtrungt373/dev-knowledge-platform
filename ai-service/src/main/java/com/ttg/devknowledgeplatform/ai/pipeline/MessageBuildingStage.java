@@ -5,6 +5,7 @@ import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.dto.RagSource;
 import com.ttg.devknowledgeplatform.ai.dto.ScoredChunk;
+import com.ttg.devknowledgeplatform.common.enums.ChatMessageRole;
 import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
 import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
@@ -91,7 +92,7 @@ public class MessageBuildingStage implements RagPipelineStage {
         }
 
         for (ConversationTurn turn : context.recentTurns()) {
-            if ("USER".equals(turn.role())) {
+            if (ChatMessageRole.USER == turn.role()) {
                 messages.add(UserMessage.from(turn.content()));
             } else {
                 messages.add(AiMessage.from(turn.content()));

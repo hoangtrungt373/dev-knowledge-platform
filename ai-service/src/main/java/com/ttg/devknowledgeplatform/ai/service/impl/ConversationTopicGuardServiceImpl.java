@@ -6,6 +6,7 @@ import com.ttg.devknowledgeplatform.ai.service.EmbeddingService;
 import com.ttg.devknowledgeplatform.ai.utils.VectorUtils;
 import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
 import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
+import com.ttg.devknowledgeplatform.common.enums.ChatMessageRole;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -106,7 +107,7 @@ public class ConversationTopicGuardServiceImpl implements ConversationTopicGuard
             return context.summary();
         }
         return context.recentTurns().stream()
-                .filter(t -> "USER".equals(t.role()))
+                .filter(t -> ChatMessageRole.USER == t.role())
                 .map(ConversationTurn::content)
                 .collect(Collectors.joining(" "));
     }

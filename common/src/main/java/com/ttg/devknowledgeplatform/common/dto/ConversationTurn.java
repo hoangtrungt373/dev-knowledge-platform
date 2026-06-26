@@ -1,5 +1,7 @@
 package com.ttg.devknowledgeplatform.common.dto;
 
+import com.ttg.devknowledgeplatform.common.enums.ChatMessageRole;
+
 /**
  * Represents a single turn in a multi-turn conversation — either a user question or an AI answer.
  *
@@ -7,7 +9,8 @@ package com.ttg.devknowledgeplatform.common.dto;
  * without leaking LangChain4j types across module boundaries. The {@code ai-service} converts
  * these records into LangChain4j {@code UserMessage}/{@code AiMessage} objects internally.
  *
- * @param role    {@code "USER"} for a user question, {@code "ASSISTANT"} for an AI answer
+ * @param role    {@link ChatMessageRole#USER} for a user question,
+ *                {@link ChatMessageRole#ASSISTANT} for an AI answer
  * @param content the full text of this message turn
  */
-public record ConversationTurn(String role, String content) {}
+public record ConversationTurn(ChatMessageRole role, String content) {}
