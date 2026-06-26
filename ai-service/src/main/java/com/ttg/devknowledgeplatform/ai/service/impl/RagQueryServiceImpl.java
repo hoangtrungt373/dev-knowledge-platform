@@ -7,6 +7,7 @@ import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.pipeline.RagPipelineRunner;
 import com.ttg.devknowledgeplatform.ai.service.AnswerQualityService;
+import com.ttg.devknowledgeplatform.ai.service.ConversationTopicGuardService;
 import com.ttg.devknowledgeplatform.ai.service.RagQueryService;
 import com.ttg.devknowledgeplatform.ai.service.RagStreamHandler;
 import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
@@ -50,6 +51,7 @@ public class RagQueryServiceImpl implements RagQueryService {
     private final ChatLanguageModel chatLanguageModel;
     private final StreamingChatLanguageModel streamingChatLanguageModel;
     private final AnswerQualityService answerQualityService;
+    private final ConversationTopicGuardService conversationTopicGuardService;
 
     @Override
     public RagAnswer query(String question, ConversationContext context, RagFilter filter) {
@@ -57,7 +59,8 @@ public class RagQueryServiceImpl implements RagQueryService {
                 context.recentTurns().size(), context.hasSummary(),
                 filter.isEmpty() ? "none" : filter);
         try {
-            RagPipelineContext pipelineCtx = new RagPipelineContext(question, context, filter);
+            ConversationContext effectiveContext = conversationTopicGuardService.guard(question, context);
+            RagPipelineContext pipelineCtx = new RagPipelineContext(question, effectiveContext, filter);
             pipelineRunner.run(pipelineCtx);
 
             if (pipelineCtx.isAborted()) {
@@ -84,7 +87,8 @@ public class RagQueryServiceImpl implements RagQueryService {
                 context.recentTurns().size(), context.hasSummary(),
                 filter.isEmpty() ? "none" : filter);
         try {
-            RagPipelineContext pipelineCtx = new RagPipelineContext(question, context, filter);
+            ConversationContext effectiveContext = conversationTopicGuardService.guard(question, context);
+            RagPipelineContext pipelineCtx = new RagPipelineContext(question, effectiveContext, filter);
             pipelineRunner.run(pipelineCtx);
 
             if (pipelineCtx.isAborted()) {

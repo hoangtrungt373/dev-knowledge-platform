@@ -248,6 +248,27 @@ public class EmbeddingProperties {
     private float anomalySoftSimilarityThreshold = 0.82f;
 
     /**
+     * Cosine similarity floor below which a new question is considered a sudden topic shift
+     * relative to the current conversation history.
+     *
+     * <p>Computed by {@code ConversationTopicGuardService} as
+     * {@code dotProduct(newQuestionEmbedding, historyFingerprintEmbedding)}, where the history
+     * fingerprint is the rolling summary (if present) or the concatenated recent user turns.
+     *
+     * <p>When similarity falls below this value, {@code ConversationTopicGuardService} strips
+     * recent turns from the {@link com.ttg.devknowledgeplatform.common.dto.ConversationContext}
+     * before the RAG pipeline runs. {@code ContextualizationStage} then treats the new question
+     * as standalone, preventing cross-topic pronoun resolution errors.
+     *
+     * <p>Hard out-of-domain pivots (Backend → Medicine) produce similarity ~0.05–0.20.
+     * Developer-adjacent pivots (Spring → Cryptography) produce ~0.40–0.60 and should not
+     * trigger a reset on a developer platform. The default {@code 0.35} sits in the gap between
+     * those two bands — calibrate from real traffic logs.
+     */
+    @DecimalMin("0.0") @DecimalMax("1.0")
+    private float conversationTopicShiftThreshold = 0.35f;
+
+    /**
      * Minimum cosine similarity between the generated answer embedding and the normalised
      * centroid of the MMR-selected context chunks. Answers below this threshold are logged
      * as potential hallucinations — the LLM may have departed from the retrieved material

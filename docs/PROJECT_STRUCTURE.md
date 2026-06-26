@@ -106,16 +106,18 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
     ├── CorpusStatisticsService.java          — interface: getCentroidFor(RagFilter), refresh(); in ai-service so stages can inject it
     ├── EmbeddingService.java                 — wraps OpenAI embedding API
     ├── AnswerQualityService.java             — post-generation drift detection: answer vs context centroid + answer vs query
+    ├── ConversationTopicGuardService.java    — pre-pipeline topic shift guard: embeds question + history fingerprint; strips recent turns on shift
     ├── RagQueryService.java                  — interface: query() + queryStream();
     │                                            primary overloads accept ConversationContext + RagFilter
     ├── RagStreamHandler.java                 — SSE callback interface
     └── impl/
-        ├── AnswerQualityServiceImpl.java     — embeds answer; computes normalised context centroid from selectedChunks;
-        │                                        evaluates contextSimilarity + querySimilarity; logs WARN on drift
+        ├── AnswerQualityServiceImpl.java          — embeds answer; computes normalised context centroid from selectedChunks;
+        │                                            evaluates contextSimilarity + querySimilarity; logs WARN on drift
         ├── ConversationSummarisationServiceImpl.java — ChatLanguageModel-backed summarisation
-        └── RagQueryServiceImpl.java          — thin orchestrator: create context → RagPipelineRunner
-                                                 → call ChatLanguageModel / StreamingChatLanguageModel
-                                                 → assessAnswerQuality() (monitoring-only, both paths)
+        ├── ConversationTopicGuardServiceImpl.java — embedBatch(question + historyFingerprint); strips recentTurns on shift
+        └── RagQueryServiceImpl.java               — thin orchestrator: topicGuard → create context → RagPipelineRunner
+                                                      → call ChatLanguageModel / StreamingChatLanguageModel
+                                                      → assessAnswerQuality() (monitoring-only, both paths)
 ```
 
 ---
