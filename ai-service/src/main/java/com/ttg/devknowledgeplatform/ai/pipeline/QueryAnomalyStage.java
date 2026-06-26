@@ -84,16 +84,6 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class QueryAnomalyStage implements RagPipelineStage {
 
-    /**
-     * User-facing message returned when a query is classified as a hard anomaly.
-     * Intentionally broad — it should steer the user back without over-explaining
-     * the internal classification logic.
-     */
-    static final String OUT_OF_SCOPE_ANSWER =
-            "This platform covers software engineering topics such as programming, architecture, " +
-            "system design, algorithms, and developer tooling. Your question appears to be outside " +
-            "that scope — please ask something related to software development.";
-
     private final CorpusStatisticsService corpusStatisticsService;
     private final EmbeddingProperties properties;
 
@@ -120,7 +110,7 @@ public class QueryAnomalyStage implements RagPipelineStage {
         if (similarity < properties.getAnomalyHardThreshold()) {
             log.warn("Hard anomaly detected — similarity={} below hard threshold={}; aborting pipeline",
                     similarity, properties.getAnomalyHardThreshold());
-            ctx.abort(OUT_OF_SCOPE_ANSWER);
+            ctx.abort(properties.getOutOfScopeAnswer());
             return;
         }
 

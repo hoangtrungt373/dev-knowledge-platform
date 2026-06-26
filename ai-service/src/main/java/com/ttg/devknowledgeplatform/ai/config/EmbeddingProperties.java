@@ -148,6 +148,18 @@ public class EmbeddingProperties {
     private String centroidRefreshInterval = "PT6H";
 
     /**
+     * Minimum score gap between consecutive chunks (sorted descending) that triggers outlier
+     * pruning in {@code RetrievalAnomalyStage}.
+     *
+     * <p>When the largest consecutive gap in the scored chunk list exceeds this value, every
+     * chunk below the gap is discarded before MMR selection runs. A gap of {@code 0.15} means
+     * a drop of 15 percentage points in a single step is treated as a categorical relevance
+     * boundary, not a gradual decrease. Set to {@code 0.0} to disable pruning entirely.
+     */
+    @DecimalMin("0.0") @DecimalMax("1.0")
+    private float retrievalOutlierGapThreshold = 0.15f;
+
+    /**
      * Cosine similarity floor below which a query is considered completely outside the
      * platform's knowledge domain. {@code QueryAnomalyStage} aborts the pipeline and
      * returns an out-of-scope message — no retrieval or LLM call is made.
@@ -190,6 +202,15 @@ public class EmbeddingProperties {
      */
     @NotBlank
     private String inputEnrichmentPrompt;
+
+    /**
+     * User-facing message returned by {@code QueryAnomalyStage} when a query is classified
+     * as a hard anomaly (cosine similarity to corpus centroid below {@link #anomalyHardThreshold}).
+     * Externalised so operators can tailor the wording to the platform's audience without a
+     * code change or redeploy.
+     */
+    @NotBlank
+    private String outOfScopeAnswer;
 
     /**
      * Prompt prefix sent to the LLM when compressing old conversation turns into a rolling summary.

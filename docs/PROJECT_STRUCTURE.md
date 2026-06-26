@@ -83,6 +83,7 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── QueryAnomalyStage.java        — cosine similarity vs L2-normalised corpus centroid; hard abort or soft threshold raise
 │   ├── RetrievalStage.java           — pgvector ANN search + eager-load; always oversamples topK×oversampleFactor
 │   ├── ScoringStage.java             — AND-compose filter predicates from RagFilter + dot-product + threshold (effectiveSimilarityThreshold takes precedence); aborts if empty
+│   ├── RetrievalAnomalyStage.java    — largest-gap pruning of scored chunks; removes relative outliers before MMR
 │   ├── DeduplicationStage.java       — NOT in active pipeline; retained for reference (see class Javadoc)
 │   ├── MmrStage.java                 — greedy MMR selection of topK from scored chunks; handles diversity
 │   └── MessageBuildingStage.java     — assembles List<ChatMessage> + List<RagSource>
@@ -164,6 +165,7 @@ GUI (React)
                     QueryAnomalyStage       — cosine sim vs corpus centroid; hard abort or soft threshold raise
                     RetrievalStage          — pgvector ANN (HNSW <=>); always oversamples topK×oversampleFactor
                     ScoringStage            — AND-compose RagFilter predicates + dotProduct + threshold
+                    RetrievalAnomalyStage   — largest-gap pruning; removes relative outliers from scored chunks
                     MmrStage                — greedy MMR topK selection; handles cross-doc + within-doc diversity
                     MessageBuildingStage    — List<ChatMessage> + List<RagSource>
               └─→ ChatLanguageModel (blocking) OR StreamingChatLanguageModel (SSE)
