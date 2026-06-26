@@ -68,6 +68,7 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ├── converter/
 │   └── FloatArrayToVectorConverter.java  — JPA AttributeConverter for pgvector column type
 ├── dto/
+│   ├── AnswerQualityVerdict.java     — record: boolean drifted, float contextSimilarity, float querySimilarity; skipped() sentinel
 │   ├── RagAnswer.java                — answer text + List<RagSource>
 │   └── RagSource.java                — contentItemId, sourceType, title, chunkText, similarity
 ├── entity/
@@ -104,13 +105,17 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
     ├── ConversationSummarisationService.java — compresses old turns into a rolling summary (LLM)
     ├── CorpusStatisticsService.java          — interface: getCentroidFor(RagFilter), refresh(); in ai-service so stages can inject it
     ├── EmbeddingService.java                 — wraps OpenAI embedding API
+    ├── AnswerQualityService.java             — post-generation drift detection: answer vs context centroid + answer vs query
     ├── RagQueryService.java                  — interface: query() + queryStream();
     │                                            primary overloads accept ConversationContext + RagFilter
     ├── RagStreamHandler.java                 — SSE callback interface
     └── impl/
+        ├── AnswerQualityServiceImpl.java     — embeds answer; computes normalised context centroid from selectedChunks;
+        │                                        evaluates contextSimilarity + querySimilarity; logs WARN on drift
         ├── ConversationSummarisationServiceImpl.java — ChatLanguageModel-backed summarisation
         └── RagQueryServiceImpl.java          — thin orchestrator: create context → RagPipelineRunner
                                                  → call ChatLanguageModel / StreamingChatLanguageModel
+                                                 → assessAnswerQuality() (monitoring-only, both paths)
 ```
 
 ---

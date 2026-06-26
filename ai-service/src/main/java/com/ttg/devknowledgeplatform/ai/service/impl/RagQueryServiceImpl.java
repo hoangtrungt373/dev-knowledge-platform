@@ -1,10 +1,12 @@
 package com.ttg.devknowledgeplatform.ai.service.impl;
 
+import com.ttg.devknowledgeplatform.ai.dto.AnswerQualityVerdict;
 import com.ttg.devknowledgeplatform.ai.dto.RagAnswer;
 import com.ttg.devknowledgeplatform.ai.exception.RagQueryException;
 import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.pipeline.RagPipelineRunner;
+import com.ttg.devknowledgeplatform.ai.service.AnswerQualityService;
 import com.ttg.devknowledgeplatform.ai.service.RagQueryService;
 import com.ttg.devknowledgeplatform.ai.service.RagStreamHandler;
 import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
@@ -47,6 +49,7 @@ public class RagQueryServiceImpl implements RagQueryService {
     private final RagPipelineRunner pipelineRunner;
     private final ChatLanguageModel chatLanguageModel;
     private final StreamingChatLanguageModel streamingChatLanguageModel;
+    private final AnswerQualityService answerQualityService;
 
     @Override
     public RagAnswer query(String question, ConversationContext context, RagFilter filter) {
@@ -62,6 +65,7 @@ public class RagQueryServiceImpl implements RagQueryService {
             }
 
             String answer = chatLanguageModel.generate(pipelineCtx.getMessages()).content().text();
+            assessAnswerQuality(answer, pipelineCtx);
             log.info("RAG query completed: {} sources, answer length={}",
                     pipelineCtx.getSources().size(), answer.length());
             return new RagAnswer(answer, pipelineCtx.getSources());
@@ -102,6 +106,7 @@ public class RagQueryServiceImpl implements RagQueryService {
 
                         @Override
                         public void onComplete(Response<AiMessage> response) {
+                            assessAnswerQuality(response.content().text(), pipelineCtx);
                             log.info("RAG stream completed: {} sources", pipelineCtx.getSources().size());
                             handler.onComplete();
                         }
@@ -118,6 +123,26 @@ public class RagQueryServiceImpl implements RagQueryService {
         } catch (Exception e) {
             log.error("RAG stream query failed: {}", e.getMessage(), e);
             handler.onError(new RagQueryException(GENERIC_ERROR_MESSAGE, e));
+        }
+    }
+
+    /**
+     * Runs the post-generation answer quality check (Case 6 — monitoring only).
+     *
+     * <p>Failures in the quality check are caught and logged rather than propagated —
+     * a failed assessment must not affect the answer already returned to the user.
+     * In the streaming path this runs inside {@code onComplete}, after all tokens
+     * have been sent, so a failure here would otherwise swallow the {@code done} event.
+     */
+    private void assessAnswerQuality(String answer, RagPipelineContext pipelineCtx) {
+        try {
+            AnswerQualityVerdict verdict = answerQualityService.assess(answer, pipelineCtx);
+            if (!verdict.wasSkipped() && verdict.drifted()) {
+                log.warn("Answer drift detected — contextSimilarity={} querySimilarity={}",
+                        verdict.contextSimilarity(), verdict.querySimilarity());
+            }
+        } catch (Exception e) {
+            log.warn("Answer quality check failed — skipping (cause: {})", e.getMessage());
         }
     }
 }

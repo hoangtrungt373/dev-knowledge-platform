@@ -248,6 +248,32 @@ public class EmbeddingProperties {
     private float anomalySoftSimilarityThreshold = 0.82f;
 
     /**
+     * Minimum cosine similarity between the generated answer embedding and the normalised
+     * centroid of the MMR-selected context chunks. Answers below this threshold are logged
+     * as potential hallucinations — the LLM may have departed from the retrieved material
+     * and drawn on training data instead.
+     *
+     * <p>Softer than the per-chunk retrieval threshold ({@link #similarityThreshold}) because
+     * generated text is more verbose: bridging prose, hedges, and transitional sentences
+     * naturally dilute the pure topical signal. Tune downward if legitimate answers are
+     * flagged; tune upward if hallucinations pass undetected.
+     */
+    @DecimalMin("0.0") @DecimalMax("1.0")
+    private float answerContextSimilarityThreshold = 0.70f;
+
+    /**
+     * Minimum cosine similarity between the generated answer embedding and the query embedding.
+     * Answers below this threshold are logged as potentially off-topic — the LLM answered a
+     * different question than was asked, even if the answer text is internally coherent.
+     *
+     * <p>Complements {@link #answerContextSimilarityThreshold}: context similarity catches
+     * hallucination (answer not grounded in retrieved chunks); query similarity catches
+     * topic drift (answer grounded but addresses the wrong question).
+     */
+    @DecimalMin("0.0") @DecimalMax("1.0")
+    private float answerQuerySimilarityThreshold = 0.65f;
+
+    /**
      * Prompt injection detection configuration.
      *
      * <p>Groups all settings for {@code PromptGuardStage}: lexical patterns, semantic
