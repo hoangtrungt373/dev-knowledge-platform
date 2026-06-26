@@ -16,7 +16,7 @@ import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
  * {@link RagPipelineContext#abort(String)}, the runner stops immediately — remaining stages
  * are skipped and the abort reason becomes the user-facing response.
  *
- * <p>Stage order is fixed (contextualize → embed → query-anomaly → retrieve → score → retrieval-anomaly → MMR → build messages)
+ * <p>Stage order is fixed (contextualize → embed → query-anomaly → retrieve → score → retrieval-anomaly → MMR → evidence-quality → build messages)
  * and matches the information dependency between steps: each stage needs outputs from all
  * previous stages.
  */
@@ -32,6 +32,7 @@ public class RagPipelineRunner {
     private final ScoringStage scoringStage;
     private final RetrievalAnomalyStage retrievalAnomalyStage;
     private final MmrStage mmrStage;
+    private final EvidenceQualityStage evidenceQualityStage;
     private final MessageBuildingStage messageBuildingStage;
 
     private List<RagPipelineStage> stages;
@@ -47,6 +48,7 @@ public class RagPipelineRunner {
                 scoringStage,
                 retrievalAnomalyStage,    // after scoring — needs sorted scoredChunks; before MMR
                 mmrStage,
+                evidenceQualityStage,     // after MMR — evaluates final selected chunks; before LLM call
                 messageBuildingStage
         );
     }

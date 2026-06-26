@@ -148,6 +148,55 @@ public class EmbeddingProperties {
     private String centroidRefreshInterval = "PT6H";
 
     /**
+     * Minimum mean cosine similarity between a document's chunk embeddings and the corpus
+     * centroid for the document to be considered good quality at indexing time.
+     *
+     * <p>Computed by {@code IndexingQualityServiceImpl} after all chunks are embedded.
+     * Documents scoring below this threshold have their {@code ContentItem.qualityScore} recorded
+     * but are still stored — the score is surfaced for admin review rather than silently discarded.
+     * Set to {@code 0.0} to disable the check without a code change.
+     *
+     * <p>Should be calibrated against real data: log {@code qualityScore} values for known-good
+     * and known-bad documents, then set the threshold at the distribution boundary.
+     */
+    @DecimalMin("0.0") @DecimalMax("1.0")
+    private float indexingCoherenceThreshold = 0.35f;
+
+    /**
+     * User-facing message returned by {@code EvidenceQualityStage} when the final MMR-selected
+     * chunks fail the mean score or minimum count guards.
+     *
+     * <p>Distinct from {@link RagPipelineContext#NO_CONTEXT_ANSWER} (used by {@code ScoringStage}
+     * when <em>zero</em> chunks survive the absolute threshold) — this message applies when chunks
+     * were found but are collectively too weak to support a reliable answer. A more specific
+     * message helps the user understand that the topic exists in the corpus but is not covered
+     * well enough, rather than implying it does not exist at all.
+     */
+    @NotBlank
+    private String evidenceInsufficientAnswer;
+
+    /**
+     * Minimum number of chunks that must survive MMR selection for the pipeline to continue.
+     * Fewer chunks than this threshold means the corpus coverage is too thin to support a
+     * reliable answer — the LLM would likely hallucinate or over-extrapolate from a single source.
+     * {@code EvidenceQualityStage} aborts the pipeline if this condition is not met.
+     */
+    @Positive
+    private int evidenceMinChunks = 2;
+
+    /**
+     * Minimum arithmetic mean of similarity scores across all MMR-selected chunks.
+     * Even when individual chunks clear the absolute {@link #similarityThreshold} floor,
+     * a low collective mean indicates borderline evidence that the LLM cannot reliably use.
+     * {@code EvidenceQualityStage} aborts the pipeline if the mean falls below this value.
+     *
+     * <p>Should be set above {@link #similarityThreshold} (the per-chunk floor) but tuned
+     * to the typical mean observed for well-matched queries in your corpus.
+     */
+    @DecimalMin("0.0") @DecimalMax("1.0")
+    private float evidenceMeanThreshold = 0.82f;
+
+    /**
      * Minimum score gap between consecutive chunks (sorted descending) that triggers outlier
      * pruning in {@code RetrievalAnomalyStage}.
      *

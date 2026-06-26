@@ -13,6 +13,8 @@ import com.ttg.devknowledgeplatform.repository.ArticleRepository;
 import com.ttg.devknowledgeplatform.repository.ContentItemRepository;
 import com.ttg.devknowledgeplatform.repository.InterviewQuestionRepository;
 import com.ttg.devknowledgeplatform.service.ContentIndexingService;
+import com.ttg.devknowledgeplatform.service.IndexingQualityService;
+import com.ttg.devknowledgeplatform.service.QualityVerdict;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -34,6 +36,7 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
     private final InterviewQuestionRepository interviewQuestionRepository;
     private final ArticleRepository articleRepository;
     private final ContentIngestionService contentIngestionService;
+    private final IndexingQualityService indexingQualityService;
 
     @Override
     public void index(Integer contentItemId) {
@@ -68,6 +71,59 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
             case INTERVIEW_QUESTION -> ingestInterviewQuestion(contentItem);
             case ARTICLE, BLOG_POST -> ingestArticle(contentItem);
             default -> log.warn("Unsupported content type for indexing: {}", type);
+        }
+        assessAndRecordQuality(contentItem);
+    }
+
+    /**
+     * Runs the quality check against the embeddings just stored by {@code ContentIngestionService}
+     * and persists the raw score onto the {@code ContentItem}. A {@code null} score means the
+     * check was skipped (cold-start — no corpus centroid available yet).
+     *
+     * <p>The score is stored for admin visibility regardless of whether it is below the threshold.
+     * Admins can query {@code WHERE quality_score < :threshold} to review flagged documents.
+     *
+     * <h3>TODO — Low-quality embeddings are currently retained (not yet implemented)</h3>
+     * <p>When {@link QualityVerdict#lowQuality()} is {@code true}, the {@code ContentEmbedding}
+     * rows written by {@code ContentIngestionService} are <strong>not</strong> removed. This is
+     * intentional during the calibration period — automatically discarding content an admin
+     * deliberately published before the threshold is validated is too aggressive.
+     *
+     * <p>The two consequences of retaining bad embeddings are:
+     * <ol>
+     *   <li><strong>Corpus centroid drift (primary risk)</strong> — {@code CorpusStatisticsService}
+     *       computes the centroid as {@code avg(embedding)} over all rows. Near-random vectors
+     *       from corrupted documents pull the centroid away from the true domain centre, silently
+     *       degrading {@code QueryAnomalyStage} accuracy for every future request. This effect is
+     *       cumulative and invisible from query logs.</li>
+     *   <li><strong>False-positive retrieval (low risk)</strong> — near-random embeddings score
+     *       poorly against real queries and are largely filtered by {@code ScoringStage} (absolute
+     *       threshold) and {@code RetrievalAnomalyStage} (relative outlier removal) before reaching
+     *       the LLM. Retrieval damage is limited.</li>
+     * </ol>
+     *
+     * <p><strong>Proposed resolution:</strong> once {@link com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties#getIndexingCoherenceThreshold()}
+     * is validated against real traffic, add an admin endpoint
+     * {@code DELETE /api/v1/admin/indexing/content?maxQualityScore=:threshold} that bulk-removes
+     * embeddings for flagged documents after human review. Additionally, consider calling
+     * {@code contentIngestionService.deleteEmbeddings(contentItem.getId())} here when
+     * {@code verdict.lowQuality()} is {@code true} — both calls share the same {@code @Transactional}
+     * boundary in {@link ContentIndexingServiceImpl}, so the write-then-delete produces no net
+     * commit for bad documents.
+     */
+    private void assessAndRecordQuality(ContentItem contentItem) {
+        QualityVerdict verdict = indexingQualityService.assess(contentItem.getId(), contentItem.getType());
+
+        if (verdict.wasSkipped()) {
+            return;
+        }
+
+        contentItem.setQualityScore((double) verdict.score());
+        contentItemRepository.save(contentItem);
+
+        if (verdict.lowQuality()) {
+            log.warn("Content item id={} title='{}' flagged as low quality (score={})",
+                    contentItem.getId(), contentItem.getTitle(), verdict.score());
         }
     }
 

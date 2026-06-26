@@ -61,6 +61,20 @@ public class ContentItem extends AbstractEntity {
     @Column(name = "PUBLISHED_AT")
     private Instant publishedAt;
 
+    /**
+     * Mean cosine similarity between this document's chunk embeddings and the corpus centroid,
+     * computed by {@code IndexingQualityServiceImpl} immediately after ingestion.
+     *
+     * <p>{@code null} indicates the document has not been assessed yet (pre-existing content
+     * or cold-start with no corpus centroid available). A non-null value below
+     * {@code app.ai.embedding.indexing-coherence-threshold} signals a low-quality document
+     * (corrupted OCR, random HTML, off-domain content). The raw score is stored rather than
+     * a boolean flag so that the interpretation threshold can be changed in config without
+     * requiring a DB migration or re-assessment.
+     */
+    @Column(name = "QUALITY_SCORE", precision = 5, scale = 4)
+    private Double qualityScore;
+
     @BatchSize(size = 32)
     @OneToMany(mappedBy = "contentItem", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private Set<ContentItemTag> contentItemTags = new HashSet<>();

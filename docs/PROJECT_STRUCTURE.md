@@ -37,6 +37,7 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │   ├── ParamKey.java                 — typed keys for SYS_PARAM.NAME; renaming a constant requires a DB migration
 │   └── UserRole.java
 ├── entity/
+│   ├── ContentItem.java              — qualityScore (Double, nullable): mean centroid similarity set at indexing time
 │   └── SysParam.java                 — @Entity for SYS_PARAM; fields: name (ParamKey), value (TEXT), computedAt
 └── exception/
     ├── ApiException.java
@@ -86,6 +87,7 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── RetrievalAnomalyStage.java    — largest-gap pruning of scored chunks; removes relative outliers before MMR
 │   ├── DeduplicationStage.java       — NOT in active pipeline; retained for reference (see class Javadoc)
 │   ├── MmrStage.java                 — greedy MMR selection of topK from scored chunks; handles diversity
+│   ├── EvidenceQualityStage.java     — post-MMR hallucination guard: mean score + min chunk count; aborts if either fails
 │   └── MessageBuildingStage.java     — assembles List<ChatMessage> + List<RagSource>
 ├── filter/                           — dynamic post-retrieval filter package
 │   └── RagFilter.java                — Java 21 record: sourceTypes, tags, categoryId
@@ -140,7 +142,10 @@ api/src/main/java/com/ttg/devknowledgeplatform/
     ├── ChatSessionService.java       — getOrCreateSessionId, getConversationContext (primary),
     │                                   getRecentTurns, addTurn (triggers rolling summary), listSessions, getHistory
     ├── ContentIndexingService.java   — index / reindex / deleteIndex per contentItemId
+    ├── IndexingQualityService.java   — assess(contentItemId, contentType) → QualityVerdict; centroid distance check at indexing time
+    ├── QualityVerdict.java           — record: boolean lowQuality, float score; factories pass/flag/skipped
     └── impl/
+        ├── IndexingQualityServiceImpl.java  — loads embeddings from ContentEmbeddingRepository; mean centroid dotProduct; graceful cold-start
         ├── CorpusStatisticsServiceImpl.java — @PostConstruct loads centroids from SYS_PARAM; @Scheduled refresh
         │                                       recomputes via SQL avg(embedding); volatile float[] cache; upsert via SysParamRepository
         └── ContentIndexingServiceImpl.java  — type-specific ingestion; buildCommonMetadata()
@@ -167,6 +172,7 @@ GUI (React)
                     ScoringStage            — AND-compose RagFilter predicates + dotProduct + threshold
                     RetrievalAnomalyStage   — largest-gap pruning; removes relative outliers from scored chunks
                     MmrStage                — greedy MMR topK selection; handles cross-doc + within-doc diversity
+                    EvidenceQualityStage    — post-MMR hallucination guard: mean score + min chunk count
                     MessageBuildingStage    — List<ChatMessage> + List<RagSource>
               └─→ ChatLanguageModel (blocking) OR StreamingChatLanguageModel (SSE)
 ```
