@@ -4,8 +4,8 @@ import java.util.List;
 
 /**
  * Splits a long text into overlapping chunks suitable for embedding.
- * Chunk size and overlap are controlled by {@code app.ai.embedding.chunk-size}
- * and {@code app.ai.embedding.chunk-overlap}.
+ * Chunk size and overlap are controlled by {@code app.ai.indexing.chunk-size}
+ * and {@code app.ai.indexing.chunk-overlap}.
  */
 public interface TextChunkingService {
 

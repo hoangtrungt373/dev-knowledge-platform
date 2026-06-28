@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.service.impl;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.ModelConfig;
 import com.ttg.devknowledgeplatform.ai.dto.ContentEmbeddingMetadata;
 import com.ttg.devknowledgeplatform.ai.entity.ContentEmbedding;
 import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;
@@ -33,14 +33,14 @@ public class ContentIngestionServiceImpl implements ContentIngestionService {
     private final TextChunkingService chunkingService;
     private final EmbeddingService embeddingService;
     private final ContentEmbeddingRepository repository;
-    private final EmbeddingProperties properties;
+    private final ModelConfig model;
 
     @Override
     public void ingest(ContentItem contentItem, String fullText, ContentEmbeddingMetadata metadata) {
         Integer contentItemId = contentItem.getId();
         log.info("Ingesting content item id={} type={}", contentItemId, contentItem.getType());
 
-        repository.deleteByContentItem_IdAndModelName(contentItemId, properties.getModel());
+        repository.deleteByContentItem_IdAndModelName(contentItemId, model.getModel());
 
         List<String> chunks = chunkingService.chunk(fullText);
         if (chunks.isEmpty()) {
@@ -59,8 +59,8 @@ public class ContentIngestionServiceImpl implements ContentIngestionService {
             ce.setChunkIndex(i);
             ce.setChunkText(chunk);
             ce.setEmbedding(embeddings.get(i));
-            ce.setModelName(properties.getModel());
-            ce.setDimensions(properties.getDimensions());
+            ce.setModelName(model.getModel());
+            ce.setDimensions(model.getDimensions());
             ce.setTokenCount(chunkingService.estimateTokens(chunk));
             ce.setMetadata(metadata);
             rows.add(ce);
@@ -68,7 +68,7 @@ public class ContentIngestionServiceImpl implements ContentIngestionService {
 
         repository.saveAll(rows);
         log.info("Stored {} embeddings for content item id={} model={}",
-                rows.size(), contentItemId, properties.getModel());
+                rows.size(), contentItemId, model.getModel());
     }
 
     @Override

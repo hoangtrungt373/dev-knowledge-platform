@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.RetrievalConfig;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.entity.ContentEmbedding;
 import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;
@@ -40,13 +40,13 @@ import java.util.List;
 public class RetrievalStage implements RagPipelineStage {
 
     private final ContentEmbeddingRepository contentEmbeddingRepository;
-    private final EmbeddingProperties properties;
+    private final RetrievalConfig retrieval;
 
     @Override
     public void process(RagPipelineContext ctx) {
         // Always oversample: gives MmrStage enough diverse candidates regardless of whether
         // a filter is active or many top candidates happen to come from the same document.
-        int candidateLimit = properties.getTopK() * properties.getOversampleFactor();
+        int candidateLimit = retrieval.getTopK() * retrieval.getOversampleFactor();
 
         List<Integer> ids = contentEmbeddingRepository.findTopSimilarIds(
                 VectorUtils.toVectorString(ctx.getQueryEmbedding()), candidateLimit);

@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.GuardConfig;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.dto.ScoredChunk;
 import lombok.RequiredArgsConstructor;
@@ -59,7 +59,7 @@ import java.util.List;
 @Slf4j
 public class EvidenceQualityStage implements RagPipelineStage {
 
-    private final EmbeddingProperties properties;
+    private final GuardConfig guards;
 
     /**
      * Evaluates the mean similarity score and chunk count of the MMR-selected chunks.
@@ -73,19 +73,19 @@ public class EvidenceQualityStage implements RagPipelineStage {
         List<ScoredChunk> selected = ctx.getSelectedChunks();
 
         // ── Guard 1: minimum chunk count ────────────────────────────────────────
-        if (selected.size() < properties.getEvidenceMinChunks()) {
+        if (selected.size() < guards.getEvidenceMinChunks()) {
             log.warn("Insufficient evidence — only {}/{} chunk(s) selected; aborting",
-                    selected.size(), properties.getEvidenceMinChunks());
-            ctx.abort(properties.getEvidenceInsufficientAnswer());
+                    selected.size(), guards.getEvidenceMinChunks());
+            ctx.abort(guards.getEvidenceInsufficientAnswer());
             return;
         }
 
         // ── Guard 2: mean similarity score ──────────────────────────────────────
         float mean = computeMean(selected);
-        if (mean < properties.getEvidenceMeanThreshold()) {
+        if (mean < guards.getEvidenceMeanThreshold()) {
             log.warn("Insufficient evidence — mean score={} below threshold={}; aborting",
-                    mean, properties.getEvidenceMeanThreshold());
-            ctx.abort(properties.getEvidenceInsufficientAnswer());
+                    mean, guards.getEvidenceMeanThreshold());
+            ctx.abort(guards.getEvidenceInsufficientAnswer());
             return;
         }
 

@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.service.impl;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.GuardConfig;
 import com.ttg.devknowledgeplatform.ai.service.ConversationTopicGuardService;
 import com.ttg.devknowledgeplatform.ai.service.EmbeddingService;
 import com.ttg.devknowledgeplatform.ai.utils.VectorUtils;
@@ -60,7 +60,7 @@ import java.util.stream.Collectors;
 public class ConversationTopicGuardServiceImpl implements ConversationTopicGuardService {
 
     private final EmbeddingService embeddingService;
-    private final EmbeddingProperties properties;
+    private final GuardConfig guards;
 
     @Override
     public ConversationContext guard(String question, ConversationContext context) {
@@ -74,7 +74,7 @@ public class ConversationTopicGuardServiceImpl implements ConversationTopicGuard
         float[] historyEmbedding  = embeddings.get(1);
 
         float similarity = VectorUtils.dotProduct(questionEmbedding, historyEmbedding);
-        float threshold  = properties.getConversationTopicShiftThreshold();
+        float threshold  = guards.getConversationTopicShiftThreshold();
 
         if (similarity < threshold) {
             log.warn("ConversationTopicGuard: topic shift detected — similarity={} threshold={} — "

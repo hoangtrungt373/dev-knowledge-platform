@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.GuardConfig;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.service.CorpusStatisticsService;
 import com.ttg.devknowledgeplatform.ai.utils.VectorUtils;
@@ -39,7 +39,7 @@ import org.springframework.stereotype.Component;
  *
  * <h3>TODO — Case 2: Centroid drift detection (not yet implemented)</h3>
  * <p>The centroid used here is refreshed on a fixed schedule (default 6 h via
- * {@code app.ai.embedding.centroid-refresh-interval}). After a large content import the centroid
+ * {@code app.ai.indexing.centroid-refresh-interval}). After a large content import the centroid
  * shifts immediately, but this stage stays blind to the change until the next scheduled refresh —
  * potentially misclassifying queries about newly indexed topics as soft anomalies.
  *
@@ -66,8 +66,8 @@ import org.springframework.stereotype.Component;
  *       (fields: {@code contentItemId}, {@code sourceType})</li>
  *   <li>{@code ContentIndexingServiceImpl} — inject {@code ApplicationEventPublisher};
  *       publish {@code ContentIndexedEvent} after {@code embeddingService.store(...)}</li>
- *   <li>{@code EmbeddingProperties} — new {@code centroidDriftThreshold} field (ISO-8601 duration,
- *       default {@code PT1H}); bound to {@code app.ai.embedding.centroid-drift-threshold}</li>
+ *   <li>{@code IndexingConfig} — new {@code centroidDriftThreshold} field (ISO-8601 duration,
+ *       default {@code PT1H}); bound to {@code app.ai.indexing.centroid-drift-threshold}</li>
  *   <li>{@code ContentEmbeddingRepository} — new {@code findMaxDteCreation()} native query</li>
  *   <li>{@code CorpusStatisticsServiceImpl} — add {@code @TransactionalEventListener} method;
  *       staleness guard before delegating to {@code refresh()}</li>
@@ -85,7 +85,7 @@ import org.springframework.stereotype.Component;
 public class QueryAnomalyStage implements RagPipelineStage {
 
     private final CorpusStatisticsService corpusStatisticsService;
-    private final EmbeddingProperties properties;
+    private final GuardConfig guards;
 
     /**
      * Computes the cosine similarity between the query embedding and the corpus centroid,
@@ -107,19 +107,19 @@ public class QueryAnomalyStage implements RagPipelineStage {
 
         log.debug("Query-to-centroid cosine similarity: {}", similarity);
 
-        if (similarity < properties.getAnomalyHardThreshold()) {
+        if (similarity < guards.getAnomalyHardThreshold()) {
             log.warn("Hard anomaly detected — similarity={} below hard threshold={}; aborting pipeline",
-                    similarity, properties.getAnomalyHardThreshold());
-            ctx.abort(properties.getOutOfScopeAnswer());
+                    similarity, guards.getAnomalyHardThreshold());
+            ctx.abort(guards.getOutOfScopeAnswer());
             return;
         }
 
-        if (similarity < properties.getAnomalySoftThreshold()) {
+        if (similarity < guards.getAnomalySoftThreshold()) {
             log.warn("Soft anomaly detected — similarity={} below soft threshold={}; " +
                      "applying stricter retrieval threshold={}",
-                    similarity, properties.getAnomalySoftThreshold(),
-                    properties.getAnomalySoftSimilarityThreshold());
-            ctx.setEffectiveSimilarityThreshold(properties.getAnomalySoftSimilarityThreshold());
+                    similarity, guards.getAnomalySoftThreshold(),
+                    guards.getAnomalySoftSimilarityThreshold());
+            ctx.setEffectiveSimilarityThreshold(guards.getAnomalySoftSimilarityThreshold());
         }
     }
 }

@@ -12,7 +12,7 @@ import org.springframework.validation.annotation.Validated;
 /**
  * Configuration properties for the AI chat endpoint rate limiter.
  *
- * <p>Bound from the {@code app.ai.embedding.rate-limit} prefix in {@code application.yml}.
+ * <p>Bound from the {@code app.ai.rate-limit} prefix in {@code application.yml}.
  * Both limits are enforced simultaneously per authenticated user — whichever
  * bucket empties first will block further requests.
  *
@@ -23,7 +23,7 @@ import org.springframework.validation.annotation.Validated;
  *   <li>{@code RATE_LIMIT_BUCKET_EXPIRATION} — Redis key TTL for inactive buckets (default: PT2H)</li>
  * </ul>
  */
-@ConfigurationProperties(prefix = "app.ai.embedding.rate-limit")
+@ConfigurationProperties(prefix = "app.ai.rate-limit")
 @Validated
 @Getter
 @Setter

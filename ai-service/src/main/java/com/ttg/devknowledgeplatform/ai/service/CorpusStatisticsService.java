@@ -39,7 +39,7 @@ public interface CorpusStatisticsService {
      * Recomputes all corpus centroids, persists them to {@code SYS_PARAM}, and refreshes
      * the in-memory cache.
      *
-     * <p>Called automatically on a configurable schedule ({@code app.ai.embedding.centroid-refresh-interval}).
+     * <p>Called automatically on a configurable schedule ({@code app.ai.indexing.centroid-refresh-interval}).
      * May also be called manually after a large content import to avoid waiting for the next
      * scheduled run.
      *

@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.GuardConfig;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.dto.ScoredChunk;
 import lombok.RequiredArgsConstructor;
@@ -59,7 +59,7 @@ import java.util.List;
  * malicious document without manual corpus scanning.
  *
  * <h3>Configuration</h3>
- * <p>Reuses {@link EmbeddingProperties.InjectionDetectionProperties#getPatterns()} — the same
+ * <p>Reuses {@link GuardConfig.InjectionDetectionProperties#getPatterns()} — the same
  * lexical pattern list used by {@code PromptGuardStage} for user-input scanning. No additional
  * configuration is needed; a pattern added to protect user input automatically also protects
  * the retrieved content channel.
@@ -69,7 +69,7 @@ import java.util.List;
 @Slf4j
 public class RetrievedContentGuardStage implements RagPipelineStage {
 
-    private final EmbeddingProperties properties;
+    private final GuardConfig guards;
 
     /**
      * Scans each candidate chunk's text for known injection patterns and removes infected chunks
@@ -89,7 +89,7 @@ public class RetrievedContentGuardStage implements RagPipelineStage {
             return;
         }
 
-        List<String> patterns = properties.getInjectionDetection().getPatterns();
+        List<String> patterns = guards.getInjectionDetection().getPatterns();
         if (patterns.isEmpty()) {
             return;
         }

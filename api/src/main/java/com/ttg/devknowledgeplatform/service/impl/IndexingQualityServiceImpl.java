@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.service.impl;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.IndexingConfig;
 import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
 import com.ttg.devknowledgeplatform.ai.entity.ContentEmbedding;
 import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;
@@ -29,7 +29,7 @@ import java.util.Set;
  *       the global centroid. If neither is cached, returns {@link QualityVerdict#skipped()}.</li>
  *   <li>Compute the mean cosine similarity across all chunk embeddings.
  *       Both embeddings and the centroid are L2-normalised, so dot product equals cosine similarity.</li>
- *   <li>Compare the mean against {@code app.ai.embedding.indexing-coherence-threshold}.
+ *   <li>Compare the mean against {@code app.ai.indexing.indexing-coherence-threshold}.
  *       Below threshold → {@link QualityVerdict#flag(float)};
  *       at or above → {@link QualityVerdict#pass(float)}.</li>
  * </ol>
@@ -48,7 +48,7 @@ public class IndexingQualityServiceImpl implements IndexingQualityService {
 
     private final ContentEmbeddingRepository embeddingRepository;
     private final CorpusStatisticsService corpusStatisticsService;
-    private final EmbeddingProperties properties;
+    private final IndexingConfig indexing;
 
     @Override
     public QualityVerdict assess(Integer contentItemId, ContentType contentType) {
@@ -68,7 +68,7 @@ public class IndexingQualityServiceImpl implements IndexingQualityService {
         }
 
         float meanSimilarity = computeMeanCentroidSimilarity(embeddings, centroid);
-        float threshold = properties.getIndexingCoherenceThreshold();
+        float threshold = indexing.getIndexingCoherenceThreshold();
 
         if (meanSimilarity < threshold) {
             log.warn("Low-quality document detected — content item id={} type={} meanSimilarity={} threshold={}",

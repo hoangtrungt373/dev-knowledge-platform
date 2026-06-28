@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.service.impl;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.GuardConfig;
 import com.ttg.devknowledgeplatform.ai.dto.AnswerQualityVerdict;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.dto.ScoredChunk;
@@ -51,7 +51,7 @@ import java.util.List;
 public class AnswerQualityServiceImpl implements AnswerQualityService {
 
     private final EmbeddingService embeddingService;
-    private final EmbeddingProperties properties;
+    private final GuardConfig guards;
 
     @Override
     public AnswerQualityVerdict assess(String answer, RagPipelineContext pipelineCtx) {
@@ -69,15 +69,15 @@ public class AnswerQualityServiceImpl implements AnswerQualityService {
         float contextSimilarity = VectorUtils.dotProduct(answerEmbedding, contextCentroid);
         float querySimilarity   = VectorUtils.dotProduct(answerEmbedding, queryEmbedding);
 
-        boolean contextDrift = contextSimilarity < properties.getAnswerContextSimilarityThreshold();
-        boolean queryDrift   = querySimilarity   < properties.getAnswerQuerySimilarityThreshold();
+        boolean contextDrift = contextSimilarity < guards.getAnswerContextSimilarityThreshold();
+        boolean queryDrift   = querySimilarity   < guards.getAnswerQuerySimilarityThreshold();
         boolean drifted      = contextDrift || queryDrift;
 
         if (drifted) {
             log.warn("AnswerQualityService: drift detected — contextSimilarity={} (threshold={}) "
                             + "querySimilarity={} (threshold={}) contextDrift={} queryDrift={}",
-                    contextSimilarity, properties.getAnswerContextSimilarityThreshold(),
-                    querySimilarity,   properties.getAnswerQuerySimilarityThreshold(),
+                    contextSimilarity, guards.getAnswerContextSimilarityThreshold(),
+                    querySimilarity,   guards.getAnswerQuerySimilarityThreshold(),
                     contextDrift, queryDrift);
         } else {
             log.debug("AnswerQualityService: answer grounded — contextSimilarity={} querySimilarity={}",

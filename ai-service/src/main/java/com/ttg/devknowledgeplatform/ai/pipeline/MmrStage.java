@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.RetrievalConfig;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.dto.ScoredChunk;
 import com.ttg.devknowledgeplatform.ai.utils.VectorUtils;
@@ -21,7 +21,7 @@ import java.util.List;
  *   MMR = λ × sim(chunk, query) − (1 − λ) × max sim(chunk, already_selected)
  * </pre>
  * The first term rewards relevance to the query; the second penalises redundancy with chunks
- * already chosen. λ = {@link EmbeddingProperties#getMmrLambda()} controls the trade-off:
+ * already chosen. λ = {@link RetrievalConfig#getMmrLambda()} controls the trade-off:
  * {@code 1.0} = pure relevance (no diversity), {@code 0.0} = pure diversity (ignores scores).
  *
  * <p>The greedy selection always starts with the highest-relevance chunk (already at index 0
@@ -44,12 +44,12 @@ import java.util.List;
 @Slf4j
 public class MmrStage implements RagPipelineStage {
 
-    private final EmbeddingProperties properties;
+    private final RetrievalConfig retrieval;
 
     @Override
     public void process(RagPipelineContext ctx) {
         List<ScoredChunk> candidates = ctx.getScoredChunks();
-        int topK = properties.getTopK();
+        int topK = retrieval.getTopK();
 
         if (candidates.size() <= topK) {
             ctx.setSelectedChunks(candidates);
@@ -58,7 +58,7 @@ public class MmrStage implements RagPipelineStage {
             return;
         }
 
-        float lambda = properties.getMmrLambda();
+        float lambda = retrieval.getMmrLambda();
         List<ScoredChunk> selected = new ArrayList<>(topK);
         List<ScoredChunk> remaining = new ArrayList<>(candidates);
 

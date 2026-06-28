@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.GuardConfig;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.service.EmbeddingService;
 import com.ttg.devknowledgeplatform.ai.utils.VectorUtils;
@@ -62,7 +62,7 @@ import java.util.List;
 @Slf4j
 public class PromptGuardStage implements RagPipelineStage {
 
-    private final EmbeddingProperties properties;
+    private final GuardConfig guards;
     private final EmbeddingService embeddingService;
 
     /** L2-normalised prototype embeddings; empty list when startup embedding failed or no prototypes configured. */
@@ -81,7 +81,7 @@ public class PromptGuardStage implements RagPipelineStage {
      */
     @PostConstruct
     public void init() {
-        List<String> prototypes = properties.getInjectionDetection().getPrototypes();
+        List<String> prototypes = guards.getInjectionDetection().getPrototypes();
         if (prototypes.isEmpty()) {
             log.info("PromptGuardStage: no injection prototypes configured — semantic layer (Option B) disabled");
             return;
@@ -111,7 +111,7 @@ public class PromptGuardStage implements RagPipelineStage {
     @Override
     public void process(RagPipelineContext ctx) {
         String query = ctx.getOriginalQuestion();
-        EmbeddingProperties.InjectionDetectionProperties config = properties.getInjectionDetection();
+        GuardConfig.InjectionDetectionProperties config = guards.getInjectionDetection();
 
         // Layer 1: length guard
         if (query.length() > config.getMaxQueryLength()) {

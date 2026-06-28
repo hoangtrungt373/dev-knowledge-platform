@@ -11,7 +11,7 @@
 --   can be changed in config without a migration.
 --
 -- NULL   = not yet assessed (pre-existing content, or cold-start with no corpus centroid)
--- 0.0–1.0 = assessed; values below app.ai.embedding.indexing-coherence-threshold are low quality
+-- 0.0–1.0 = assessed; values below app.ai.indexing.indexing-coherence-threshold are low quality
 
 ALTER TABLE product.CONTENT_ITEM
     ADD COLUMN IF NOT EXISTS QUALITY_SCORE DECIMAL(5, 4);

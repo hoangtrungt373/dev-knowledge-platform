@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.LabelsConfig;
+import com.ttg.devknowledgeplatform.ai.config.LoadedPrompts;
 import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.dto.RagSource;
@@ -56,7 +57,8 @@ import java.util.stream.IntStream;
 @RequiredArgsConstructor
 public class MessageBuildingStage implements RagPipelineStage {
 
-    private final EmbeddingProperties properties;
+    private final LoadedPrompts prompts;
+    private final LabelsConfig labels;
 
     @Override
     public void process(RagPipelineContext ctx) {
@@ -87,8 +89,8 @@ public class MessageBuildingStage implements RagPipelineStage {
         messages.add(SystemMessage.from(buildSystemPrompt(selected, filter)));
 
         if (context.hasSummary()) {
-            messages.add(UserMessage.from(properties.getHistorySummaryLabel() + context.summary()));
-            messages.add(AiMessage.from(properties.getHistorySummaryAck()));
+            messages.add(UserMessage.from(labels.getHistorySummaryLabel() + context.summary()));
+            messages.add(AiMessage.from(labels.getHistorySummaryAck()));
         }
 
         for (ConversationTurn turn : context.recentTurns()) {
@@ -120,12 +122,12 @@ public class MessageBuildingStage implements RagPipelineStage {
      */
     private String resolvePromptPrefix(RagFilter filter) {
         if (filter.sourceTypes() == null || filter.sourceTypes().size() != 1) {
-            return properties.getSystemPrompt();
+            return prompts.system();
         }
         return switch (filter.sourceTypes().iterator().next()) {
-            case ARTICLE -> properties.getSystemPromptArticle();
-            case INTERVIEW_QUESTION -> properties.getSystemPromptInterviewQuestion();
-            case BLOG_POST -> properties.getSystemPromptBlogPost();
+            case ARTICLE -> prompts.article();
+            case INTERVIEW_QUESTION -> prompts.interviewQuestion();
+            case BLOG_POST -> prompts.blogPost();
         };
     }
 }

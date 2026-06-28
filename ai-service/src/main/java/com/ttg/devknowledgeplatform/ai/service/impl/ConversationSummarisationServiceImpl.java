@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.ai.service.impl;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.LabelsConfig;
+import com.ttg.devknowledgeplatform.ai.config.LoadedPrompts;
 import com.ttg.devknowledgeplatform.ai.service.ConversationSummarisationService;
 import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
 import dev.langchain4j.data.message.UserMessage;
@@ -17,7 +18,7 @@ import java.util.List;
  *
  * <p>The prompt is assembled in three parts:
  * <ol>
- *   <li>The configurable {@link EmbeddingProperties#getSummarisationPrompt()} prefix
+ *   <li>The configurable summarisation prompt loaded from {@code prompts/summarisation-prompt.txt}
  *       (instructs the model on the desired output format and length).</li>
  *   <li>An optional "Previous summary" section so the model can build on, rather than
  *       replace, the existing compressed history.</li>
@@ -33,18 +34,19 @@ import java.util.List;
 public class ConversationSummarisationServiceImpl implements ConversationSummarisationService {
 
     private final ChatLanguageModel chatLanguageModel;
-    private final EmbeddingProperties properties;
+    private final LoadedPrompts prompts;
+    private final LabelsConfig labels;
 
     @Override
     public String summarise(String previousSummary, List<ConversationTurn> turnsToCompress) {
-        StringBuilder prompt = new StringBuilder(properties.getSummarisationPrompt());
+        StringBuilder prompt = new StringBuilder(prompts.summarisation());
 
         if (previousSummary != null && !previousSummary.isBlank()) {
-            prompt.append(properties.getCompressionPreviousSummaryLabel())
+            prompt.append(labels.getCompressionPreviousSummaryLabel())
                   .append(previousSummary);
         }
 
-        prompt.append(properties.getCompressionTurnsLabel());
+        prompt.append(labels.getCompressionTurnsLabel());
         turnsToCompress.forEach(t ->
                 prompt.append(t.role()).append(": ").append(t.content()).append("\n"));
 

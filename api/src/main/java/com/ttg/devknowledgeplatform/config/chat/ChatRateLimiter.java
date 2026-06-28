@@ -29,7 +29,7 @@ import java.time.Duration;
  * allow users to bypass limits by hitting different nodes.
  *
  * <p>Bucket keys are stored under the {@code rate:chat:{userId}} namespace and expire
- * automatically after {@code app.ai.embedding.rate-limit.bucket-expiration} of inactivity.
+ * automatically after {@code app.ai.rate-limit.bucket-expiration} of inactivity.
  */
 @Component
 @Slf4j

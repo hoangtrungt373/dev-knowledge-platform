@@ -53,18 +53,23 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 ```
 ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ├── config/
-│   ├── AiServiceConfig.java          — wires ChatLanguageModel + StreamingChatLanguageModel beans
-│   └── EmbeddingProperties.java      — @ConfigurationProperties at app.ai.embedding.*
-│                                        fields: apiKey, model, dimensions, chunkSize, chunkOverlap,
-│                                        chatModel, maxTokens, temperature, maxRetries,
-│                                        topK, similarityThreshold, oversampleFactor, mmrLambda,
-│                                        systemPrompt, inputEnrichmentPrompt, summarisationPrompt,
-│                                        centroidRefreshInterval,
-│                                        anomalyHardThreshold (0.20), anomalySoftThreshold (0.40),
-│                                        anomalySoftSimilarityThreshold (0.82),
-│                                        injectionDetection (nested InjectionDetectionProperties:
-│                                          maxQueryLength, patterns, prototypes, similarityThreshold,
-│                                          rejectionMessage)
+│   ├── AiServiceConfig.java   — wires ChatLanguageModel + StreamingChatLanguageModel beans
+│   ├── ModelConfig.java       — @ConfigurationProperties at app.ai.model.*
+│   │                             fields: apiKey, model, dimensions, chatModel, maxTokens, temperature, maxRetries
+│   ├── IndexingConfig.java    — @ConfigurationProperties at app.ai.indexing.*
+│   │                             fields: chunkSize, chunkOverlap, centroidRefreshInterval, indexingCoherenceThreshold
+│   ├── RetrievalConfig.java   — @ConfigurationProperties at app.ai.retrieval.*
+│   │                             fields: topK, similarityThreshold, oversampleFactor, mmrLambda, outlierGapThreshold
+│   ├── GuardConfig.java       — @ConfigurationProperties at app.ai.guards.*
+│   │                             fields: anomaly thresholds, evidence thresholds, answer thresholds,
+│   │                             conversationTopicShiftThreshold, outOfScopeAnswer, evidenceInsufficientAnswer,
+│   │                             injectionDetection (nested: maxQueryLength, patterns, prototypes,
+│   │                             similarityThreshold, rejectionMessage)
+│   ├── LabelsConfig.java      — @ConfigurationProperties at app.ai.labels.*
+│   │                             fields: contextSummaryLabel, contextFollowUpLabel, historySummaryLabel,
+│   │                             historySummaryAck, compressionPreviousSummaryLabel, compressionTurnsLabel
+│   ├── LoadedPrompts.java     — record holding 6 prompt strings loaded from classpath at startup
+│   └── PromptsLoader.java     — @Configuration that reads prompts/*.txt and produces LoadedPrompts bean
 ├── converter/
 │   └── FloatArrayToVectorConverter.java  — JPA AttributeConverter for pgvector column type
 ├── dto/

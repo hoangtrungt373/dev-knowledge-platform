@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.LabelsConfig;
+import com.ttg.devknowledgeplatform.ai.config.LoadedPrompts;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
 import dev.langchain4j.data.message.UserMessage;
@@ -50,7 +51,8 @@ public class ContextualizationStage implements RagPipelineStage {
     private static final String OUTPUT_FORMAT_KEY = "OUTPUT_FORMAT";
 
     private final ChatLanguageModel chatLanguageModel;
-    private final EmbeddingProperties properties;
+    private final LoadedPrompts prompts;
+    private final LabelsConfig labels;
 
     @Override
     public void process(RagPipelineContext ctx) {
@@ -80,16 +82,16 @@ public class ContextualizationStage implements RagPipelineStage {
      */
     private String buildPrompt(RagPipelineContext ctx) {
         ConversationContext conversationContext = ctx.getConversationContext();
-        StringBuilder prompt = new StringBuilder(properties.getInputEnrichmentPrompt());
+        StringBuilder prompt = new StringBuilder(prompts.inputEnrichment());
 
         if (conversationContext.hasSummary()) {
-            prompt.append(properties.getContextSummaryLabel())
+            prompt.append(labels.getContextSummaryLabel())
                   .append(conversationContext.summary())
                   .append("\n\n");
         }
         conversationContext.recentTurns().forEach(t ->
                 prompt.append(t.role()).append(": ").append(t.content()).append("\n"));
-        prompt.append(properties.getContextFollowUpLabel()).append(ctx.getOriginalQuestion());
+        prompt.append(labels.getContextFollowUpLabel()).append(ctx.getOriginalQuestion());
 
         return prompt.toString();
     }

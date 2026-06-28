@@ -80,7 +80,7 @@ public class CorpusStatisticsServiceImpl implements CorpusStatisticsService {
      * Each centroid is a single SQL {@code avg(embedding)} aggregation — fast even for
      * large corpora because the work is done inside PostgreSQL with SIMD-accelerated pgvector.
      */
-    @Scheduled(fixedDelayString = "${app.ai.embedding.centroid-refresh-interval:PT6H}")
+    @Scheduled(fixedDelayString = "${app.ai.indexing.centroid-refresh-interval:PT6H}")
     @Override
     public void refresh() {
         log.info("Refreshing corpus centroids...");

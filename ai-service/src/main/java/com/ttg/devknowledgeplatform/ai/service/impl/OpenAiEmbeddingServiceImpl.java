@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.service.impl;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.ModelConfig;
 import com.ttg.devknowledgeplatform.ai.service.EmbeddingService;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
@@ -17,15 +17,15 @@ public class OpenAiEmbeddingServiceImpl implements EmbeddingService {
 
     private final EmbeddingModel embeddingModel;
 
-    public OpenAiEmbeddingServiceImpl(EmbeddingProperties properties) {
+    public OpenAiEmbeddingServiceImpl(ModelConfig model) {
         this.embeddingModel = OpenAiEmbeddingModel.builder()
-                .apiKey(properties.getApiKey())
-                .modelName(properties.getModel())
-                .dimensions(properties.getDimensions())
-                .maxRetries(properties.getMaxRetries())
+                .apiKey(model.getApiKey())
+                .modelName(model.getModel())
+                .dimensions(model.getDimensions())
+                .maxRetries(model.getMaxRetries())
                 .build();
         log.info("EmbeddingService initialised: model={} dimensions={}",
-                properties.getModel(), properties.getDimensions());
+                model.getModel(), model.getDimensions());
     }
 
     @Override

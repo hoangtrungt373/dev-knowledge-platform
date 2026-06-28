@@ -102,7 +102,7 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
      *       the LLM. Retrieval damage is limited.</li>
      * </ol>
      *
-     * <p><strong>Proposed resolution:</strong> once {@link com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties#getIndexingCoherenceThreshold()}
+     * <p><strong>Proposed resolution:</strong> once {@link com.ttg.devknowledgeplatform.ai.config.IndexingConfig#getIndexingCoherenceThreshold()}
      * is validated against real traffic, add an admin endpoint
      * {@code DELETE /api/v1/admin/indexing/content?maxQualityScore=:threshold} that bulk-removes
      * embeddings for flagged documents after human review. Additionally, consider calling

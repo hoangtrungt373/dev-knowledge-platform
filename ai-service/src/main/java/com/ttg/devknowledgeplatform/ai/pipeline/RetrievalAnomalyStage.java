@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.RetrievalConfig;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.dto.ScoredChunk;
 import lombok.RequiredArgsConstructor;
@@ -57,7 +57,7 @@ import java.util.List;
 @Slf4j
 public class RetrievalAnomalyStage implements RagPipelineStage {
 
-    private final EmbeddingProperties properties;
+    private final RetrievalConfig retrieval;
 
     /**
      * Applies largest-gap pruning to the scored chunk list.
@@ -76,9 +76,9 @@ public class RetrievalAnomalyStage implements RagPipelineStage {
         int maxGapIndex = findMaxGapIndex(chunks);
         float maxGap = chunks.get(maxGapIndex).score() - chunks.get(maxGapIndex + 1).score();
 
-        if (maxGap < properties.getRetrievalOutlierGapThreshold()) {
+        if (maxGap < retrieval.getOutlierGapThreshold()) {
             log.debug("No significant gap found (max gap={}, threshold={}) — keeping all {} chunks",
-                    maxGap, properties.getRetrievalOutlierGapThreshold(), chunks.size());
+                    maxGap, retrieval.getOutlierGapThreshold(), chunks.size());
             return;
         }
 

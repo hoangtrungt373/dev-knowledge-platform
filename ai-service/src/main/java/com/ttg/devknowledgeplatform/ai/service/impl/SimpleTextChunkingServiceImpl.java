@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.service.impl;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.IndexingConfig;
 import com.ttg.devknowledgeplatform.ai.service.TextChunkingService;
 import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.DocumentSplitter;
@@ -27,9 +27,9 @@ public class SimpleTextChunkingServiceImpl implements TextChunkingService {
 
     private final DocumentSplitter splitter;
 
-    public SimpleTextChunkingServiceImpl(EmbeddingProperties properties) {
-        int maxSegmentSize = properties.getChunkSize() * CHARS_PER_TOKEN;
-        int maxOverlapSize = properties.getChunkOverlap() * CHARS_PER_TOKEN;
+    public SimpleTextChunkingServiceImpl(IndexingConfig indexing) {
+        int maxSegmentSize = indexing.getChunkSize() * CHARS_PER_TOKEN;
+        int maxOverlapSize = indexing.getChunkOverlap() * CHARS_PER_TOKEN;
         this.splitter = DocumentSplitters.recursive(maxSegmentSize, maxOverlapSize);
         log.info("TextChunkingService initialised: maxSegmentSize={}chars maxOverlapSize={}chars",
                 maxSegmentSize, maxOverlapSize);

@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
-import com.ttg.devknowledgeplatform.ai.config.EmbeddingProperties;
+import com.ttg.devknowledgeplatform.ai.config.RetrievalConfig;
 import com.ttg.devknowledgeplatform.ai.dto.ContentEmbeddingMetadata;
 import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
@@ -40,14 +40,14 @@ import java.util.function.Predicate;
 @Slf4j
 public class ScoringStage implements RagPipelineStage {
 
-    private final EmbeddingProperties properties;
+    private final RetrievalConfig retrieval;
 
     @Override
     public void process(RagPipelineContext ctx) {
         // QueryAnomalyStage may raise the threshold for borderline queries; fall back to config default.
         float threshold = ctx.getEffectiveSimilarityThreshold() != null
                 ? ctx.getEffectiveSimilarityThreshold()
-                : properties.getSimilarityThreshold();
+                : retrieval.getSimilarityThreshold();
 
         Predicate<ContentEmbedding> predicate = buildPredicate(ctx.getFilter());
 
