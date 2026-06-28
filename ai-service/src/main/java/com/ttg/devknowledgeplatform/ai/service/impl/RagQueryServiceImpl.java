@@ -64,13 +64,14 @@ public class RagQueryServiceImpl implements RagQueryService {
             pipelineRunner.run(pipelineCtx);
 
             if (pipelineCtx.isAborted()) {
+                log.info("RAG query [traceId={}] pipeline aborted — returning soft answer", pipelineCtx.getTraceId());
                 return new RagAnswer(pipelineCtx.getAbortReason(), List.of());
             }
 
             String answer = chatLanguageModel.generate(pipelineCtx.getMessages()).content().text();
             assessAnswerQuality(answer, pipelineCtx);
-            log.info("RAG query completed: {} sources, answer length={}",
-                    pipelineCtx.getSources().size(), answer.length());
+            log.info("RAG query [traceId={}] completed: {} sources, answer length={}",
+                    pipelineCtx.getTraceId(), pipelineCtx.getSources().size(), answer.length());
             return new RagAnswer(answer, pipelineCtx.getSources());
         } catch (RagQueryException e) {
             throw e;
@@ -92,6 +93,7 @@ public class RagQueryServiceImpl implements RagQueryService {
             pipelineRunner.run(pipelineCtx);
 
             if (pipelineCtx.isAborted()) {
+                log.info("RAG stream [traceId={}] pipeline aborted — returning soft answer", pipelineCtx.getTraceId());
                 handler.onToken(pipelineCtx.getAbortReason());
                 handler.onComplete();
                 return;
@@ -111,7 +113,8 @@ public class RagQueryServiceImpl implements RagQueryService {
                         @Override
                         public void onComplete(Response<AiMessage> response) {
                             assessAnswerQuality(response.content().text(), pipelineCtx);
-                            log.info("RAG stream completed: {} sources", pipelineCtx.getSources().size());
+                            log.info("RAG stream [traceId={}] completed: {} sources",
+                                    pipelineCtx.getTraceId(), pipelineCtx.getSources().size());
                             handler.onComplete();
                         }
 
@@ -142,11 +145,12 @@ public class RagQueryServiceImpl implements RagQueryService {
         try {
             AnswerQualityVerdict verdict = answerQualityService.assess(answer, pipelineCtx);
             if (!verdict.wasSkipped() && verdict.drifted()) {
-                log.warn("Answer drift detected — contextSimilarity={} querySimilarity={}",
-                        verdict.contextSimilarity(), verdict.querySimilarity());
+                log.warn("Answer drift detected [traceId={}] — contextSimilarity={} querySimilarity={}",
+                        pipelineCtx.getTraceId(), verdict.contextSimilarity(), verdict.querySimilarity());
             }
         } catch (Exception e) {
-            log.warn("Answer quality check failed — skipping (cause: {})", e.getMessage());
+            log.warn("Answer quality check failed [traceId={}] — skipping (cause: {})",
+                    pipelineCtx.getTraceId(), e.getMessage());
         }
     }
 }

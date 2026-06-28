@@ -1,13 +1,14 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
+import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
+import com.ttg.devknowledgeplatform.ai.dto.StageSpan;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-
-import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
+import java.util.stream.Collectors;
 
 /**
  * Assembles the ordered RAG pipeline and executes it against a {@link RagPipelineContext}.
@@ -63,17 +64,32 @@ public class RagPipelineRunner {
     /**
      * Runs the pipeline against {@code ctx}, stopping early if any stage aborts.
      *
+     * <p>Each stage is invoked via {@link RagPipelineStage#execute(RagPipelineContext)}, which
+     * times the call and appends a {@link StageSpan} to the context before returning. A
+     * {@code PIPELINE_TRACE} log line is always emitted at INFO level after the loop —
+     * regardless of whether the pipeline completed or aborted — so every request produces a
+     * single structured latency record.
+     *
      * @param ctx mutable pipeline context pre-populated with the request inputs
      * @return the same {@code ctx} instance, populated with stage outputs (or abort state)
      */
     public RagPipelineContext run(RagPipelineContext ctx) {
         for (RagPipelineStage stage : stages) {
-            stage.process(ctx);
+            stage.execute(ctx);
             if (ctx.isAborted()) {
                 log.debug("Pipeline aborted after '{}': {}", stage.name(), ctx.getAbortReason());
-                return ctx;
+                break;
             }
         }
+        log.info("PIPELINE_TRACE [{}]: totalMs={} aborted={} stages=[{}]",
+                ctx.getTraceId(),
+                ctx.elapsedMs(),
+                ctx.isAborted() ? ctx.getSpans().stream()
+                        .filter(StageSpan::aborted).map(StageSpan::stage).findFirst().orElse("unknown")
+                        : "none",
+                ctx.getSpans().stream()
+                        .map(s -> s.stage() + "(" + s.durationMs() + "ms" + (s.aborted() ? ",ABORTED" : "") + ")")
+                        .collect(Collectors.joining(" → ")));
         return ctx;
     }
 }

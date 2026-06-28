@@ -8,7 +8,9 @@ import dev.langchain4j.data.message.ChatMessage;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Mutable context carrier that flows through the RAG pipeline stages.
@@ -28,6 +30,22 @@ public class RagPipelineContext {
     /** User-facing message returned when no relevant context exists in the knowledge base. */
     public static final String NO_CONTEXT_ANSWER =
             "I don't have relevant information in my knowledge base to answer this question.";
+
+    // -------------------------------------------------------------------------
+    // Trace state — generated once per context, immutable
+    // -------------------------------------------------------------------------
+
+    /**
+     * Unique identifier for this pipeline execution. Included in every emitted log line so
+     * that all stage events and the final {@link StageSpan} list can be correlated across log files.
+     */
+    private final UUID traceId = UUID.randomUUID();
+
+    /** Absolute epoch-ms at which this context was constructed, used to compute total pipeline latency. */
+    private final long pipelineStartMs = System.currentTimeMillis();
+
+    /** Ordered list of spans appended by each stage as it completes. */
+    private final List<StageSpan> spans = new ArrayList<>();
 
     // -------------------------------------------------------------------------
     // Immutable request inputs — set only via constructor
@@ -115,5 +133,31 @@ public class RagPipelineContext {
     public void abort(String reason) {
         this.aborted = true;
         this.abortReason = reason;
+    }
+
+    // -------------------------------------------------------------------------
+    // Trace helpers — called by pipeline infrastructure, not by stage logic
+    // -------------------------------------------------------------------------
+
+    /**
+     * Appends a completed-stage span to the trace. Called exclusively by
+     * {@link RagPipelineStage#execute(RagPipelineContext)} — stage implementations
+     * should not call this directly.
+     *
+     * @param stage      stage name (from {@link RagPipelineStage#name()})
+     * @param durationMs wall-clock execution time measured by the runner
+     * @param aborted    whether this stage triggered an abort
+     */
+    public void recordSpan(String stage, long durationMs, boolean aborted) {
+        spans.add(new StageSpan(stage, durationMs, aborted));
+    }
+
+    /**
+     * Wall-clock milliseconds elapsed since this context was constructed.
+     *
+     * @return total pipeline elapsed time in milliseconds
+     */
+    public long elapsedMs() {
+        return System.currentTimeMillis() - pipelineStartMs;
     }
 }

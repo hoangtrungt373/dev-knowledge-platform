@@ -36,4 +36,21 @@ public interface RagPipelineStage {
     default String name() {
         return getClass().getSimpleName();
     }
+
+    /**
+     * Times {@link #process(RagPipelineContext)} and appends a {@link com.ttg.devknowledgeplatform.ai.dto.StageSpan}
+     * to the context. Called by {@link RagPipelineRunner} for every stage in the ordered list.
+     *
+     * <p>This is a Template Method hook — the timing-and-recording scaffold is defined once here;
+     * each stage supplies only its own {@code process()} body. The {@code @FunctionalInterface}
+     * constraint is satisfied because {@code process()} remains the sole abstract method; default
+     * methods are explicitly permitted alongside it.
+     *
+     * @param ctx shared mutable pipeline context
+     */
+    default void execute(RagPipelineContext ctx) {
+        long start = System.currentTimeMillis();
+        process(ctx);
+        ctx.recordSpan(name(), System.currentTimeMillis() - start, ctx.isAborted());
+    }
 }

@@ -75,7 +75,9 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ├── dto/
 │   ├── AnswerQualityVerdict.java     — record: boolean drifted, float contextSimilarity, float querySimilarity; skipped() sentinel
 │   ├── RagAnswer.java                — answer text + List<RagSource>
-│   └── RagSource.java                — contentItemId, sourceType, title, chunkText, similarity
+│   ├── RagSource.java                — contentItemId, sourceType, title, chunkText, similarity
+│   ├── ScoredChunk.java              — record: ContentEmbedding + float score (post-scoring candidates)
+│   └── StageSpan.java                — record: stage name, durationMs, aborted flag; one per pipeline stage per request
 ├── entity/
 │   └── ContentEmbedding.java         — embedding vector (1536-dim), chunkText, sourceType,
 │                                        chunkIndex, modelName, tokenCount,
@@ -83,10 +85,10 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ├── exception/
 │   └── RagQueryException.java
 ├── pipeline/                         — Pipes-and-Filters RAG pipeline (Pipes-and-Filters pattern)
-│   ├── RagPipelineContext.java       — mutable per-request carrier: inputs, stage outputs (contextualizedQuestion, enrichedQuestion, queryEmbedding, effectiveSimilarityThreshold, …), abort state
-│   ├── RagPipelineStage.java         — @FunctionalInterface: void process(RagPipelineContext)
-│   ├── RagPipelineRunner.java        — assembles ordered stages, stops on abort
-│   ├── ScoredChunk.java              — package-private record: ContentEmbedding + float score
+│   ├── RagPipelineContext.java       — mutable per-request carrier: inputs, stage outputs, abort state;
+│   │                                    trace fields: traceId (UUID), spans (List<StageSpan>), elapsedMs()
+│   ├── RagPipelineStage.java         — @FunctionalInterface: process(ctx) + default execute(ctx) (Template Method: times process + records span)
+│   ├── RagPipelineRunner.java        — assembles ordered stages, stops on abort; emits PIPELINE_TRACE log after every run
 │   ├── VectorUtils.java              — package-private: dotProduct, toVectorString
 │   ├── PromptGuardStage.java         — FIRST stage: user-input injection guard (length + lexical + semantic similarity); runs before any LLM call
 │   ├── ContextualizationStage.java   — LLM enrichment: resolves pronouns → STANDALONE (for embedding) + CONTEXT/TASK/CONSTRAINTS/OUTPUT_FORMAT (for generation)
