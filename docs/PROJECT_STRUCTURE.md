@@ -78,6 +78,8 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── RetrievalConfig.java   — @ConfigurationProperties at app.ai.retrieval.*
 │   │                             fields: topK, similarityThreshold, oversampleFactor, mmrLambda, outlierGapThreshold
 │   ├── GuardConfig.java       — @ConfigurationProperties at app.ai.guards.*
+│   ├── MonitoringConfig.java  — @ConfigurationProperties at app.ai.monitoring.*;
+│   │                             slowRequestThresholdMs (default 5000), highCostThresholdUsd (default 0.01); 0 = disabled
 │   │                             fields: anomaly thresholds, evidence thresholds, answer thresholds,
 │   │                             conversationTopicShiftThreshold, outOfScopeAnswer, evidenceInsufficientAnswer,
 │   │                             injectionDetection (nested: maxQueryLength, patterns, prototypes,

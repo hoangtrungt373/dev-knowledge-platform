@@ -1,5 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.event;
 
+import com.ttg.devknowledgeplatform.ai.config.MonitoringConfig;
 import com.ttg.devknowledgeplatform.ai.dto.AnswerQualityVerdict;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.dto.StageSpan;
@@ -14,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+
+import static java.math.BigDecimal.ZERO;
 
 /**
  * Persists one {@link PipelineMetrics} row per RAG pipeline execution by listening
@@ -43,6 +46,7 @@ import java.time.Instant;
 public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCompletedEvent> {
 
     private final PipelineMetricsRepository repository;
+    private final MonitoringConfig monitoring;
 
     /**
      * Exposes the pipeline trace ID so {@link AsyncEventHandler} can bind it to
@@ -56,6 +60,10 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
     // Pricing constants for cost estimation (as of 2026-06; update if OpenAI changes rates).
     // gpt-4o-mini: $0.15/1M input tokens, $0.60/1M output tokens.
     // text-embedding-3-small: $0.020/1M tokens.
+    // TODO: Move these into MonitoringConfig (or a dedicated PricingConfig) so rate changes
+    //       require only a config update rather than a code change + redeploy.
+    // TODO: Add a PRICING_VERSION column to PIPELINE_METRICS so historical rows remain
+    //       unambiguous after a rate change (e.g. "gpt-4o-mini-2026-06").
     private static final BigDecimal LLM_INPUT_COST_PER_TOKEN  = new BigDecimal("0.00000015");
     private static final BigDecimal LLM_OUTPUT_COST_PER_TOKEN = new BigDecimal("0.00000060");
     private static final BigDecimal EMBEDDING_COST_PER_TOKEN  = new BigDecimal("0.00000002");
@@ -99,6 +107,8 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
         }
 
         // Feature 1: Stage latencies — derived from StageSpan list; LLM time tracked separately
+        // TODO: Use StageName.CONTEXTUALIZATION.key() (or ContextualizationStage.class.getSimpleName())
+        //       instead of plain strings so stage renames are caught at compile time.
         metrics.setContextualizationMs(spanMs(ctx, "ContextualizationStage"));
         metrics.setEmbeddingMs(spanMs(ctx, "EmbeddingStage"));
         metrics.setRetrievalMs(spanMs(ctx, "RetrievalStage"));
@@ -117,9 +127,63 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
         // Feature 3: User attribution
         metrics.setUserId(ctx.getUserId());
 
+        // TODO: Extract entity mapping (lines above) to a MapStruct mapper (PipelineMetricsMapper).
+        //       doHandle() currently does mapping, cost computation, persistence, and alerting —
+        //       each is a distinct responsibility that will grow independently.
         repository.save(metrics);
         log.debug("Pipeline metrics recorded [traceId={} userId={} totalMs={} estimatedCost={}]",
                 ctx.getTraceId(), ctx.getUserId(), ctx.elapsedMs(), metrics.getEstimatedCostUsd());
+
+        checkThresholds(metrics, ctx);
+    }
+
+    /**
+     * Emits structured {@code WARN} log events when the just-persisted row exceeds a
+     * configured threshold. Two independent checks fire separately so that alerting rules
+     * in a log aggregator (Grafana Loki, ELK, Datadog) can be routed to different teams.
+     *
+     * <p>Fixed message keys ({@code SLOW_REQUEST}, {@code HIGH_COST}) are intentional —
+     * a log aggregator can match on the literal string without a regex, and the key=value
+     * pairs carry all diagnostic context needed to investigate without a DB query.
+     *
+     * <p>Each check is guarded by its threshold being {@code > 0}: setting a threshold to
+     * {@code 0} in config disables the corresponding alert without any code change.
+     *
+     * @param metrics the just-persisted row (all fields already set)
+     * @param ctx     the pipeline context for supplementary fields not on the entity
+     */
+    // TODO: Skip threshold checks when ctx.isAborted() is true — latency for a domain-rejected
+    //       query is not actionable and will generate noise in the SLOW_REQUEST alert channel.
+    private void checkThresholds(PipelineMetrics metrics, RagPipelineContext ctx) {
+        if (monitoring.getSlowRequestThresholdMs() > 0
+                && metrics.getTotalPipelineMs() != null
+                && metrics.getTotalPipelineMs() > monitoring.getSlowRequestThresholdMs()) {
+            log.warn("SLOW_REQUEST traceId={} totalPipelineMs={} thresholdMs={} llmGenerationMs={}"
+                            + " contextualizationMs={} userId={} estimatedCostUsd={}",
+                    ctx.getTraceId(),
+                    metrics.getTotalPipelineMs(),
+                    monitoring.getSlowRequestThresholdMs(),
+                    metrics.getLlmGenerationMs(),
+                    metrics.getContextualizationMs(),
+                    ctx.getUserId(),
+                    metrics.getEstimatedCostUsd());
+        }
+
+        if (monitoring.getHighCostThresholdUsd().compareTo(ZERO) > 0
+                && metrics.getEstimatedCostUsd() != null
+                && metrics.getEstimatedCostUsd().compareTo(monitoring.getHighCostThresholdUsd()) > 0) {
+            log.warn("HIGH_COST traceId={} estimatedCostUsd={} thresholdUsd={}"
+                            + " generationInputTokens={} generationOutputTokens={}"
+                            + " contextualizationInputTokens={} contextualizationOutputTokens={} userId={}",
+                    ctx.getTraceId(),
+                    metrics.getEstimatedCostUsd(),
+                    monitoring.getHighCostThresholdUsd(),
+                    metrics.getGenerationInputTokens(),
+                    metrics.getGenerationOutputTokens(),
+                    metrics.getContextualizationInputTokens(),
+                    metrics.getContextualizationOutputTokens(),
+                    ctx.getUserId());
+        }
     }
 
     /**
@@ -129,6 +193,9 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
      * @param stageName simple class name of the stage (e.g. {@code "RetrievalStage"})
      * @return duration in ms, or {@code null} if the stage did not execute
      */
+    // TODO: Replace List<StageSpan> scan with Map<String, Long> on RagPipelineContext so
+    //       lookups are O(1). Currently O(n) per lookup × n lookups = O(n²) — acceptable
+    //       for ~11 stages today, but noisy if the stage count grows significantly.
     private Long spanMs(RagPipelineContext ctx, String stageName) {
         return ctx.getSpans().stream()
                 .filter(s -> stageName.equals(s.stage()))
