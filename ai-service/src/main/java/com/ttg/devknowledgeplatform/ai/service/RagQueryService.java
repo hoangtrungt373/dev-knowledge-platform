@@ -42,7 +42,7 @@ public interface RagQueryService {
      * @return the LLM answer together with the source chunks used as context
      */
     default RagAnswer query(String question) {
-        return query(question, ConversationContext.withoutSummary(List.of()), RagFilter.none());
+        return query(question, ConversationContext.withoutSummary(List.of()), RagFilter.none(), null);
     }
 
     /**
@@ -54,7 +54,7 @@ public interface RagQueryService {
      * @return the LLM answer together with the source chunks used as context
      */
     default RagAnswer query(String question, List<ConversationTurn> history) {
-        return query(question, ConversationContext.withoutSummary(history), RagFilter.none());
+        return query(question, ConversationContext.withoutSummary(history), RagFilter.none(), null);
     }
 
     /**
@@ -67,7 +67,24 @@ public interface RagQueryService {
      * @return the LLM answer together with the source chunks used as context
      */
     default RagAnswer query(String question, List<ConversationTurn> history, RagFilter filter) {
-        return query(question, ConversationContext.withoutSummary(history), filter);
+        return query(question, ConversationContext.withoutSummary(history), filter, null);
+    }
+
+    /**
+     * Answers {@code question} using the RAG pipeline (blocking), applying {@code filter} to
+     * narrow the vector-search candidate set before scoring and threshold filtering.
+     *
+     * <p>Delegates to {@link #query(String, ConversationContext, RagFilter, Integer)} with
+     * {@code userId = null}. Use the four-argument overload when the caller has an authenticated
+     * user ID to attribute cost and usage to.
+     *
+     * @param question natural-language question; must not be blank
+     * @param context  full conversation context: optional rolling summary + recent verbatim turns
+     * @param filter   retrieval filter; use {@link RagFilter#none()} to disable filtering
+     * @return the LLM answer together with the source chunks used as context
+     */
+    default RagAnswer query(String question, ConversationContext context, RagFilter filter) {
+        return query(question, context, filter, null);
     }
 
     /**
@@ -83,9 +100,10 @@ public interface RagQueryService {
      * @param question natural-language question; must not be blank
      * @param context  full conversation context: optional rolling summary + recent verbatim turns
      * @param filter   retrieval filter; use {@link RagFilter#none()} to disable filtering
+     * @param userId   authenticated user ID for cost attribution; {@code null} for anonymous calls
      * @return the LLM answer together with the source chunks used as context
      */
-    RagAnswer query(String question, ConversationContext context, RagFilter filter);
+    RagAnswer query(String question, ConversationContext context, RagFilter filter, Integer userId);
 
     // -------------------------------------------------------------------------
     // Streaming
@@ -98,7 +116,7 @@ public interface RagQueryService {
      * @param handler  callbacks to receive sources, tokens, completion, and errors
      */
     default void queryStream(String question, RagStreamHandler handler) {
-        queryStream(question, ConversationContext.withoutSummary(List.of()), RagFilter.none(), handler);
+        queryStream(question, ConversationContext.withoutSummary(List.of()), RagFilter.none(), null, handler);
     }
 
     /**
@@ -110,7 +128,7 @@ public interface RagQueryService {
      * @param handler  callbacks to receive sources, tokens, completion, and errors
      */
     default void queryStream(String question, List<ConversationTurn> history, RagStreamHandler handler) {
-        queryStream(question, ConversationContext.withoutSummary(history), RagFilter.none(), handler);
+        queryStream(question, ConversationContext.withoutSummary(history), RagFilter.none(), null, handler);
     }
 
     /**
@@ -123,7 +141,24 @@ public interface RagQueryService {
      * @param handler  callbacks to receive sources, tokens, completion, and errors
      */
     default void queryStream(String question, List<ConversationTurn> history, RagFilter filter, RagStreamHandler handler) {
-        queryStream(question, ConversationContext.withoutSummary(history), filter, handler);
+        queryStream(question, ConversationContext.withoutSummary(history), filter, null, handler);
+    }
+
+    /**
+     * Answers {@code question} using the RAG pipeline (streaming), applying {@code filter} to
+     * narrow the retrieval candidate set.
+     *
+     * <p>Delegates to {@link #queryStream(String, ConversationContext, RagFilter, Integer, RagStreamHandler)}
+     * with {@code userId = null}. Use the five-argument overload when the caller has an authenticated
+     * user ID to attribute cost and usage to.
+     *
+     * @param question natural-language question; must not be blank
+     * @param context  full conversation context: optional rolling summary + recent verbatim turns
+     * @param filter   retrieval filter; use {@link RagFilter#none()} to disable filtering
+     * @param handler  callbacks to receive sources, tokens, completion, and errors
+     */
+    default void queryStream(String question, ConversationContext context, RagFilter filter, RagStreamHandler handler) {
+        queryStream(question, context, filter, null, handler);
     }
 
     /**
@@ -140,7 +175,8 @@ public interface RagQueryService {
      * @param question natural-language question; must not be blank
      * @param context  full conversation context: optional rolling summary + recent verbatim turns
      * @param filter   retrieval filter; use {@link RagFilter#none()} to disable filtering
+     * @param userId   authenticated user ID for cost attribution; {@code null} for anonymous calls
      * @param handler  callbacks to receive sources, tokens, completion, and errors
      */
-    void queryStream(String question, ConversationContext context, RagFilter filter, RagStreamHandler handler);
+    void queryStream(String question, ConversationContext context, RagFilter filter, Integer userId, RagStreamHandler handler);
 }

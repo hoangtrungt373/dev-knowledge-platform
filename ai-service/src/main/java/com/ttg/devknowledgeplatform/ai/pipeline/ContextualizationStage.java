@@ -4,8 +4,11 @@ import com.ttg.devknowledgeplatform.ai.config.LabelsConfig;
 import com.ttg.devknowledgeplatform.ai.config.LoadedPrompts;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.output.Response;
+import dev.langchain4j.model.output.TokenUsage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -58,10 +61,10 @@ public class ContextualizationStage implements RagPipelineStage {
     public void process(RagPipelineContext ctx) {
         try {
             String prompt = buildPrompt(ctx);
-            String response = chatLanguageModel.generate(UserMessage.from(prompt))
-                                               .content().text().strip();
+            Response<AiMessage> response = chatLanguageModel.generate(UserMessage.from(prompt));
+            recordTokenUsage(ctx, response.tokenUsage());
 
-            EnrichedQuery parsed = parseResponse(response);
+            EnrichedQuery parsed = parseResponse(response.content().text().strip());
             if (parsed != null) {
                 log.debug("Contextualized: [{}] → [{}]", ctx.getOriginalQuestion(), parsed.standalone());
                 ctx.setContextualizedQuestion(parsed.standalone());
@@ -74,6 +77,17 @@ public class ContextualizationStage implements RagPipelineStage {
             log.warn("Contextualization/enrichment failed, using original question: {}", e.getMessage());
             ctx.setContextualizedQuestion(ctx.getOriginalQuestion());
         }
+    }
+
+    /**
+     * Copies input/output token counts from the LangChain4j {@link TokenUsage} onto the
+     * pipeline context. All counts are nullable in the LangChain4j API — defensive null
+     * checks prevent any monitoring failure from propagating into the main pipeline flow.
+     */
+    private void recordTokenUsage(RagPipelineContext ctx, TokenUsage usage) {
+        if (usage == null) return;
+        if (usage.inputTokenCount() != null)  ctx.setContextualizationInputTokens(usage.inputTokenCount());
+        if (usage.outputTokenCount() != null) ctx.setContextualizationOutputTokens(usage.outputTokenCount());
     }
 
     /**

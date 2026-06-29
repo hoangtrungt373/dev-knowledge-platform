@@ -11,6 +11,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
@@ -107,4 +108,80 @@ public class PipelineMetrics {
     /** Whether the answer quality check flagged drift; {@code NULL} for aborted pipelines. */
     @Column(name = "ANSWER_DRIFTED")
     private Boolean answerDrifted;
+
+    // =========================================================================
+    // Feature 1 — Stage latencies
+    // =========================================================================
+
+    /** Wall-clock ms for {@code ContextualizationStage}; {@code NULL} if aborted before that stage. */
+    @Column(name = "CONTEXTUALIZATION_MS")
+    private Long contextualizationMs;
+
+    /** Wall-clock ms for {@code EmbeddingStage}; {@code NULL} if aborted before that stage. */
+    @Column(name = "EMBEDDING_MS")
+    private Long embeddingMs;
+
+    /** Wall-clock ms for {@code RetrievalStage}; {@code NULL} if aborted before that stage. */
+    @Column(name = "RETRIEVAL_MS")
+    private Long retrievalMs;
+
+    /** Wall-clock ms for the final LLM generation call; {@code NULL} for aborted pipelines. */
+    @Column(name = "LLM_GENERATION_MS")
+    private Long llmGenerationMs;
+
+    /**
+     * Total end-to-end wall-clock time in ms (pipeline stages + LLM generation + quality check).
+     * {@code NULL} when not recorded (should always be set on success and abort alike).
+     */
+    @Column(name = "TOTAL_PIPELINE_MS")
+    private Long totalPipelineMs;
+
+    // =========================================================================
+    // Feature 2 — Token usage & estimated cost
+    // =========================================================================
+
+    /** Prompt tokens consumed by the {@code ContextualizationStage} LLM call. */
+    @Column(name = "CONTEXTUALIZATION_INPUT_TOKENS")
+    private Integer contextualizationInputTokens;
+
+    /** Completion tokens produced by the {@code ContextualizationStage} LLM call. */
+    @Column(name = "CONTEXTUALIZATION_OUTPUT_TOKENS")
+    private Integer contextualizationOutputTokens;
+
+    /** Input tokens consumed by the {@code EmbeddingStage} query embedding call. */
+    @Column(name = "EMBEDDING_TOKENS")
+    private Integer embeddingTokens;
+
+    /** Input tokens consumed by the answer quality check embedding call. */
+    @Column(name = "QUALITY_EMBEDDING_TOKENS")
+    private Integer qualityEmbeddingTokens;
+
+    /** Prompt tokens consumed by the final LLM generation call. */
+    @Column(name = "GENERATION_INPUT_TOKENS")
+    private Integer generationInputTokens;
+
+    /** Completion tokens produced by the final LLM generation call. */
+    @Column(name = "GENERATION_OUTPUT_TOKENS")
+    private Integer generationOutputTokens;
+
+    /**
+     * Estimated USD cost for this request, computed from token counts and model pricing
+     * at record-write time. Stored for dashboard queries; recomputable from raw token columns.
+     * {@code NULL} when all token counts are zero (aborted pipeline with no LLM calls).
+     */
+    @Column(name = "ESTIMATED_COST_USD", precision = 12, scale = 8)
+    private BigDecimal estimatedCostUsd;
+
+    // =========================================================================
+    // Feature 3 — User attribution
+    // =========================================================================
+
+    /**
+     * ID of the authenticated user who triggered this pipeline execution.
+     * {@code NULL} for anonymous calls or internal non-HTTP invocations.
+     * Intentionally not a foreign key — this is an analytics table; user deletion
+     * must not cascade into historical cost records.
+     */
+    @Column(name = "USER_ID")
+    private Integer userId;
 }

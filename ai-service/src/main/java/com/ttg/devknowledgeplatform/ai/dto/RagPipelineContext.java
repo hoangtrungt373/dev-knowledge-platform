@@ -104,6 +104,38 @@ public class RagPipelineContext {
     private Float evidenceMeanScore;
 
     // -------------------------------------------------------------------------
+    // Cost & latency monitoring (Features 1–3)
+    // -------------------------------------------------------------------------
+
+    /** User ID from the authenticated session; {@code null} for anonymous or internal calls. */
+    private Integer userId;
+
+    /**
+     * Wall-clock time in milliseconds for the final LLM generation call.
+     * Set by {@link com.ttg.devknowledgeplatform.ai.service.impl.RagQueryServiceImpl} after
+     * the model responds; 0 when the pipeline was aborted before generation.
+     */
+    private long llmGenerationMs;
+
+    /** Input token count from the {@code ContextualizationStage} LLM call; 0 if the stage was skipped or failed. */
+    private int contextualizationInputTokens;
+
+    /** Output token count from the {@code ContextualizationStage} LLM call; 0 if the stage was skipped or failed. */
+    private int contextualizationOutputTokens;
+
+    /** Token count from the {@code EmbeddingStage} query embedding call; 0 if unavailable. */
+    private int embeddingTokens;
+
+    /** Token count from the {@code AnswerQualityService} answer embedding call; 0 if the check was skipped. */
+    private int qualityEmbeddingTokens;
+
+    /** Input (prompt) token count from the final LLM generation call; 0 when pipeline aborted. */
+    private int generationInputTokens;
+
+    /** Output (completion) token count from the final LLM generation call; 0 when pipeline aborted. */
+    private int generationOutputTokens;
+
+    // -------------------------------------------------------------------------
     // Abort state
     // -------------------------------------------------------------------------
 

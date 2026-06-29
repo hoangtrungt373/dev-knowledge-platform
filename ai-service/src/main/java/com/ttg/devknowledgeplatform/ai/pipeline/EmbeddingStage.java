@@ -1,5 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
+import com.ttg.devknowledgeplatform.ai.dto.EmbedResult;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.service.EmbeddingService;
 import lombok.RequiredArgsConstructor;
@@ -12,8 +13,11 @@ import org.springframework.stereotype.Component;
  * is used downstream by {@link RetrievalStage} (pgvector cosine search) and by
  * {@link ScoringStage} and {@link MmrStage} (dot-product similarity scoring).
  *
+ * <p>The token count from the embedding API call is recorded on the context for cost tracking.
+ *
  * <p><strong>Reads:</strong> {@link RagPipelineContext#getContextualizedQuestion()}.<br>
- * <strong>Writes:</strong> {@link RagPipelineContext#setQueryEmbedding(float[])}.
+ * <strong>Writes:</strong> {@link RagPipelineContext#setQueryEmbedding(float[])},
+ * {@link RagPipelineContext#setEmbeddingTokens(int)}.
  */
 @Component
 @RequiredArgsConstructor
@@ -23,7 +27,8 @@ public class EmbeddingStage implements RagPipelineStage {
 
     @Override
     public void process(RagPipelineContext ctx) {
-        float[] embedding = embeddingService.embed(ctx.getContextualizedQuestion());
-        ctx.setQueryEmbedding(embedding);
+        EmbedResult result = embeddingService.embed(ctx.getContextualizedQuestion());
+        ctx.setQueryEmbedding(result.vector());
+        ctx.setEmbeddingTokens(result.tokenCount());
     }
 }

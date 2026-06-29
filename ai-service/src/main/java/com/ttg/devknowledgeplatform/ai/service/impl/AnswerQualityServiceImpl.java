@@ -2,6 +2,7 @@ package com.ttg.devknowledgeplatform.ai.service.impl;
 
 import com.ttg.devknowledgeplatform.ai.config.GuardConfig;
 import com.ttg.devknowledgeplatform.ai.dto.AnswerQualityVerdict;
+import com.ttg.devknowledgeplatform.ai.dto.EmbedResult;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.dto.ScoredChunk;
 import com.ttg.devknowledgeplatform.ai.service.AnswerQualityService;
@@ -63,7 +64,9 @@ public class AnswerQualityServiceImpl implements AnswerQualityService {
             return AnswerQualityVerdict.skipped();
         }
 
-        float[] answerEmbedding = embeddingService.embed(answer);
+        EmbedResult answerEmbedResult = embeddingService.embed(answer);
+        float[] answerEmbedding = answerEmbedResult.vector();
+        pipelineCtx.setQualityEmbeddingTokens(answerEmbedResult.tokenCount());
         float[] contextCentroid = computeNormalizedContextCentroid(selected);
 
         float contextSimilarity = VectorUtils.dotProduct(answerEmbedding, contextCentroid);

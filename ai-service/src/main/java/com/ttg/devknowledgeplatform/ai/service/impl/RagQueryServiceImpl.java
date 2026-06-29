@@ -5,11 +5,11 @@ import com.ttg.devknowledgeplatform.ai.dto.RagAnswer;
 import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.dto.StageSpan;
+import com.ttg.devknowledgeplatform.ai.event.PipelineCompletedEvent;
 import com.ttg.devknowledgeplatform.ai.exception.RagQueryException;
 import com.ttg.devknowledgeplatform.ai.pipeline.RagPipelineRunner;
 import com.ttg.devknowledgeplatform.ai.service.AnswerQualityService;
 import com.ttg.devknowledgeplatform.ai.service.ConversationTopicGuardService;
-import com.ttg.devknowledgeplatform.ai.event.PipelineMetricsEvent;
 import com.ttg.devknowledgeplatform.ai.service.RagQueryService;
 import com.ttg.devknowledgeplatform.ai.service.RagStreamHandler;
 import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
@@ -18,6 +18,7 @@ import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.output.Response;
+import dev.langchain4j.model.output.TokenUsage;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -64,27 +65,34 @@ public class RagQueryServiceImpl implements RagQueryService {
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
-    public RagAnswer query(String question, ConversationContext context, RagFilter filter) {
-        log.info("RAG query: history={} turns, hasSummary={}, filter={}",
+    public RagAnswer query(String question, ConversationContext context, RagFilter filter, Integer userId) {
+        log.info("RAG query: history={} turns, hasSummary={}, filter={}, userId={}",
                 context.recentTurns().size(), context.hasSummary(),
-                filter.isEmpty() ? "none" : filter);
+                filter.isEmpty() ? "none" : filter, userId);
         try {
             ConversationContext effectiveContext = conversationTopicGuardService.guard(question, context);
             RagPipelineContext pipelineCtx = new RagPipelineContext(question, effectiveContext, filter);
+            pipelineCtx.setUserId(userId);
             pipelineRunner.run(pipelineCtx);
             recordPipelineMetrics(pipelineCtx);
 
             if (pipelineCtx.isAborted()) {
                 log.info("RAG query [traceId={}] pipeline aborted — returning soft answer", pipelineCtx.getTraceId());
-                eventPublisher.publishEvent(new PipelineMetricsEvent(pipelineCtx, null));
+                eventPublisher.publishEvent(new PipelineCompletedEvent(pipelineCtx, null));
                 return new RagAnswer(pipelineCtx.getAbortReason(), List.of());
             }
 
-            String answer = chatLanguageModel.generate(pipelineCtx.getMessages()).content().text();
+            long llmStart = System.currentTimeMillis();
+            Response<AiMessage> generationResponse = chatLanguageModel.generate(pipelineCtx.getMessages());
+            pipelineCtx.setLlmGenerationMs(System.currentTimeMillis() - llmStart);
+            captureGenerationTokens(pipelineCtx, generationResponse.tokenUsage());
+
+            String answer = generationResponse.content().text();
             AnswerQualityVerdict verdict = assessAnswerQuality(answer, pipelineCtx);
-            eventPublisher.publishEvent(new PipelineMetricsEvent(pipelineCtx, verdict));
-            log.info("RAG query [traceId={}] completed: {} sources, answer length={}",
-                    pipelineCtx.getTraceId(), pipelineCtx.getSources().size(), answer.length());
+            eventPublisher.publishEvent(new PipelineCompletedEvent(pipelineCtx, verdict));
+            log.info("RAG query [traceId={}] completed: {} sources, answer length={}, llmMs={}",
+                    pipelineCtx.getTraceId(), pipelineCtx.getSources().size(),
+                    answer.length(), pipelineCtx.getLlmGenerationMs());
             return new RagAnswer(answer, pipelineCtx.getSources());
         } catch (RagQueryException e) {
             throw e;
@@ -96,19 +104,20 @@ public class RagQueryServiceImpl implements RagQueryService {
 
     @Override
     public void queryStream(String question, ConversationContext context,
-                            RagFilter filter, RagStreamHandler handler) {
-        log.info("RAG stream query: history={} turns, hasSummary={}, filter={}",
+                            RagFilter filter, Integer userId, RagStreamHandler handler) {
+        log.info("RAG stream query: history={} turns, hasSummary={}, filter={}, userId={}",
                 context.recentTurns().size(), context.hasSummary(),
-                filter.isEmpty() ? "none" : filter);
+                filter.isEmpty() ? "none" : filter, userId);
         try {
             ConversationContext effectiveContext = conversationTopicGuardService.guard(question, context);
             RagPipelineContext pipelineCtx = new RagPipelineContext(question, effectiveContext, filter);
+            pipelineCtx.setUserId(userId);
             pipelineRunner.run(pipelineCtx);
             recordPipelineMetrics(pipelineCtx);
 
             if (pipelineCtx.isAborted()) {
                 log.info("RAG stream [traceId={}] pipeline aborted — returning soft answer", pipelineCtx.getTraceId());
-                eventPublisher.publishEvent(new PipelineMetricsEvent(pipelineCtx, null));
+                eventPublisher.publishEvent(new PipelineCompletedEvent(pipelineCtx, null));
                 handler.onToken(pipelineCtx.getAbortReason());
                 handler.onComplete();
                 return;
@@ -117,6 +126,7 @@ public class RagQueryServiceImpl implements RagQueryService {
             // Send source citations before LLM generation so the client can render them immediately
             handler.onSources(pipelineCtx.getSources());
 
+            final long llmStart = System.currentTimeMillis();
             streamingChatLanguageModel.generate(
                     pipelineCtx.getMessages(),
                     new StreamingResponseHandler<AiMessage>() {
@@ -127,10 +137,13 @@ public class RagQueryServiceImpl implements RagQueryService {
 
                         @Override
                         public void onComplete(Response<AiMessage> response) {
+                            pipelineCtx.setLlmGenerationMs(System.currentTimeMillis() - llmStart);
+                            captureGenerationTokens(pipelineCtx, response.tokenUsage());
                             AnswerQualityVerdict verdict = assessAnswerQuality(response.content().text(), pipelineCtx);
-                            eventPublisher.publishEvent(new PipelineMetricsEvent(pipelineCtx, verdict));
-                            log.info("RAG stream [traceId={}] completed: {} sources",
-                                    pipelineCtx.getTraceId(), pipelineCtx.getSources().size());
+                            eventPublisher.publishEvent(new PipelineCompletedEvent(pipelineCtx, verdict));
+                            log.info("RAG stream [traceId={}] completed: {} sources, llmMs={}",
+                                    pipelineCtx.getTraceId(), pipelineCtx.getSources().size(),
+                                    pipelineCtx.getLlmGenerationMs());
                             handler.onComplete();
                         }
 
@@ -147,6 +160,17 @@ public class RagQueryServiceImpl implements RagQueryService {
             log.error("RAG stream query failed: {}", e.getMessage(), e);
             handler.onError(new RagQueryException(GENERIC_ERROR_MESSAGE, e));
         }
+    }
+
+    /**
+     * Copies input/output token counts from the LangChain4j {@link TokenUsage} of the final
+     * LLM generation call onto the pipeline context. All counts are nullable — defensive null
+     * checks prevent any monitoring failure from propagating into the main response path.
+     */
+    private void captureGenerationTokens(RagPipelineContext ctx, TokenUsage usage) {
+        if (usage == null) return;
+        if (usage.inputTokenCount() != null)  ctx.setGenerationInputTokens(usage.inputTokenCount());
+        if (usage.outputTokenCount() != null) ctx.setGenerationOutputTokens(usage.outputTokenCount());
     }
 
     /**
@@ -217,7 +241,7 @@ public class RagQueryServiceImpl implements RagQueryService {
 
     /**
      * Runs the post-generation answer quality check (Case 6 — monitoring only) and returns
-     * the verdict so callers can publish it via {@link PipelineMetricsEvent}.
+     * the verdict so callers can publish it via {@link PipelineCompletedEvent}.
      *
      * <p>Failures are caught and logged; a failed assessment returns
      * {@link AnswerQualityVerdict#skipped()} so callers always receive a non-null verdict.

@@ -8,8 +8,9 @@ import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
  *
  * <p>Published by {@link com.ttg.devknowledgeplatform.ai.service.impl.RagQueryServiceImpl}
  * immediately after the pipeline completes (or aborts) and answer quality is assessed.
- * The event carries the full pipeline context and quality verdict so that any listener
- * can act without needing additional service calls.
+ * The event represents a domain fact — "the pipeline finished" — not a specific consumer's
+ * intent. Any number of listeners can react independently: persisting quality metrics,
+ * feeding a monitoring dashboard, or triggering alerts on consecutive guard firings.
  *
  * <p>Using a record as the event type is intentional: records are immutable, which
  * prevents a listener from accidentally mutating shared state on a different thread.
@@ -18,5 +19,5 @@ import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
  * @param verdict answer quality verdict; {@code null} for aborted pipelines where
  *                no LLM generation occurred
  */
-public record PipelineMetricsEvent(RagPipelineContext ctx, AnswerQualityVerdict verdict) {
+public record PipelineCompletedEvent(RagPipelineContext ctx, AnswerQualityVerdict verdict) {
 }

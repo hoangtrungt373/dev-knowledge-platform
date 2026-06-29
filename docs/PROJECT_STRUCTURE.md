@@ -91,14 +91,15 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   └── FloatArrayToVectorConverter.java  — JPA AttributeConverter for pgvector column type
 ├── dto/
 │   ├── AnswerQualityVerdict.java     — record: boolean drifted, float contextSimilarity, float querySimilarity; skipped() sentinel
+│   ├── EmbedResult.java              — record: float[] vector + int tokenCount; return type of EmbeddingService.embed()
 │   ├── RagAnswer.java                — answer text + List<RagSource>
 │   ├── RagSource.java                — contentItemId, sourceType, title, chunkText, similarity
 │   ├── ScoredChunk.java              — record: ContentEmbedding + float score (post-scoring candidates)
 │   └── StageSpan.java                — record: stage name, durationMs, aborted flag; one per pipeline stage per request
 ├── event/
-│   ├── PipelineMetricsEvent.java         — record event published by RagQueryServiceImpl after each pipeline execution;
+│   ├── PipelineCompletedEvent.java         — record event published by RagQueryServiceImpl after each pipeline execution;
 │   │                                        carries RagPipelineContext + AnswerQualityVerdict
-│   └── PipelineMetricsEventListener.java — extends AsyncEventHandler<PipelineMetricsEvent>; @Transactional;
+│   └── PipelineCompletedEventListener.java — extends AsyncEventHandler<PipelineCompletedEvent>; @Transactional;
 │                                            maps event → PipelineMetrics entity; resolveTraceId() binds MDC for logging
 ├── entity/
 │   ├── ContentEmbedding.java         — embedding vector (1536-dim), chunkText, sourceType,
@@ -106,12 +107,19 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   │                                    metadata (JSONB: categoryId, categoryName, tagIds, tagNames)
 │   └── PipelineMetrics.java          — append-only analytics entity (no AbstractEntity); columns: traceId, createdAt,
 │                                        abortedAt, candidateCount, afterScoringCount, selectedCount,
-│                                        evidenceMeanScore, effectiveSimThreshold, answerContextSim, answerQuerySim, answerDrifted
+│                                        evidenceMeanScore, effectiveSimThreshold, answerContextSim, answerQuerySim, answerDrifted;
+│                                        latency: contextualizationMs, embeddingMs, retrievalMs, llmGenerationMs, totalPipelineMs;
+│                                        tokens: contextualizationInputTokens, contextualizationOutputTokens, embeddingTokens,
+│                                        qualityEmbeddingTokens, generationInputTokens, generationOutputTokens, estimatedCostUsd;
+│                                        attribution: userId (no FK — analytics rows must survive user deletion)
 ├── exception/
 │   └── RagQueryException.java
 ├── pipeline/                         — Pipes-and-Filters RAG pipeline (Pipes-and-Filters pattern)
 │   ├── RagPipelineContext.java       — mutable per-request carrier: inputs, stage outputs, abort state;
-│   │                                    trace fields: traceId (UUID), spans (List<StageSpan>), elapsedMs()
+│   │                                    trace: traceId (UUID), spans (List<StageSpan>), elapsedMs();
+│   │                                    cost/latency: llmGenerationMs, contextualizationInput/OutputTokens,
+│   │                                    embeddingTokens, qualityEmbeddingTokens, generationInput/OutputTokens;
+│   │                                    attribution: userId (nullable)
 │   ├── RagPipelineStage.java         — @FunctionalInterface: process(ctx) + default execute(ctx) (Template Method: times process + records span)
 │   ├── RagPipelineRunner.java        — assembles ordered stages, stops on abort; emits PIPELINE_TRACE log after every run
 │   ├── VectorUtils.java              — package-private: dotProduct, toVectorString
@@ -150,7 +158,7 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
         ├── ConversationTopicGuardServiceImpl.java — embedBatch(question + historyFingerprint); strips recentTurns on shift
         └── RagQueryServiceImpl.java               — thin orchestrator: topicGuard → pipeline → recordPipelineMetrics()
                                                       (6 Micrometer instruments) → LLM call → assessAnswerQuality()
-                                                      → publishEvent(PipelineMetricsEvent) in all four outcome paths
+                                                      → publishEvent(PipelineCompletedEvent) in all four outcome paths
 ```
 
 ---
