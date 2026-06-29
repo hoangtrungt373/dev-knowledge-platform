@@ -38,6 +38,11 @@
             <artifactId>pgvector</artifactId>
         </dependency>
 
+        <!-- Micrometer — pipeline metrics recorded in RagQueryServiceImpl -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
 
     </dependencies>
 

@@ -96,6 +96,13 @@ public class RagPipelineContext {
      */
     private Float effectiveSimilarityThreshold;
 
+    /**
+     * Arithmetic mean cosine similarity of MMR-selected chunks, set by {@code EvidenceQualityStage}
+     * after calling {@code computeMean()}. Stored here so {@link PipelineMetricsRecorder} can
+     * persist it without re-computing. {@code null} if the pipeline aborted before that stage.
+     */
+    private Float evidenceMeanScore;
+
     // -------------------------------------------------------------------------
     // Abort state
     // -------------------------------------------------------------------------

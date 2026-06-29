@@ -79,9 +79,12 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── ScoredChunk.java              — record: ContentEmbedding + float score (post-scoring candidates)
 │   └── StageSpan.java                — record: stage name, durationMs, aborted flag; one per pipeline stage per request
 ├── entity/
-│   └── ContentEmbedding.java         — embedding vector (1536-dim), chunkText, sourceType,
-│                                        chunkIndex, modelName, tokenCount,
-│                                        metadata (JSONB: categoryId, categoryName, tagIds, tagNames)
+│   ├── ContentEmbedding.java         — embedding vector (1536-dim), chunkText, sourceType,
+│   │                                    chunkIndex, modelName, tokenCount,
+│   │                                    metadata (JSONB: categoryId, categoryName, tagIds, tagNames)
+│   └── PipelineMetrics.java          — append-only analytics entity (no AbstractEntity); columns: traceId, createdAt,
+│                                        abortedAt, candidateCount, afterScoringCount, selectedCount,
+│                                        evidenceMeanScore, effectiveSimThreshold, answerContextSim, answerQuerySim, answerDrifted
 ├── exception/
 │   └── RagQueryException.java
 ├── pipeline/                         — Pipes-and-Filters RAG pipeline (Pipes-and-Filters pattern)
@@ -105,8 +108,9 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ├── filter/                           — dynamic post-retrieval filter package
 │   └── RagFilter.java                — Java 21 record: sourceTypes, tags, categoryId
 ├── repository/
-│   └── ContentEmbeddingRepository.java   — findTopSimilarIds (pgvector <=>), findAllByIdWithContentItem,
-│                                           computeGlobalCentroid(), computeCentroidBySourceType(String)
+│   ├── ContentEmbeddingRepository.java   — findTopSimilarIds (pgvector <=>), findAllByIdWithContentItem,
+│   │                                       computeGlobalCentroid(), computeCentroidBySourceType(String)
+│   └── PipelineMetricsRepository.java    — JpaRepository<PipelineMetrics, Integer>; append-only analytics writes
 └── service/
     ├── ContentIngestionService.java          — chunks text + stores embeddings
     ├── ConversationSummarisationService.java — compresses old turns into a rolling summary (LLM)
@@ -114,6 +118,7 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
     ├── EmbeddingService.java                 — wraps OpenAI embedding API
     ├── AnswerQualityService.java             — post-generation drift detection: answer vs context centroid + answer vs query
     ├── ConversationTopicGuardService.java    — pre-pipeline topic shift guard: embeds question + history fingerprint; strips recent turns on shift
+    ├── PipelineMetricsRecorder.java          — port interface: record(RagPipelineContext, AnswerQualityVerdict); implemented by PipelineMetricsRecorderImpl in ai-service
     ├── RagQueryService.java                  — interface: query() + queryStream();
     │                                            primary overloads accept ConversationContext + RagFilter
     ├── RagStreamHandler.java                 — SSE callback interface
@@ -122,7 +127,10 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
         │                                            evaluates contextSimilarity + querySimilarity; logs WARN on drift
         ├── ConversationSummarisationServiceImpl.java — ChatLanguageModel-backed summarisation
         ├── ConversationTopicGuardServiceImpl.java — embedBatch(question + historyFingerprint); strips recentTurns on shift
+        ├── PipelineMetricsRecorderImpl.java       — JPA adapter for PipelineMetricsRecorder port; @Async + @Transactional;
+        │                                            writes one PIPELINE_METRICS row per pipeline execution
         └── RagQueryServiceImpl.java               — thin orchestrator: topicGuard → create context → RagPipelineRunner
+                                                      → recordPipelineMetrics() (6 Micrometer instruments, both paths)
                                                       → call ChatLanguageModel / StreamingChatLanguageModel
                                                       → assessAnswerQuality() (monitoring-only, both paths)
 ```
@@ -153,7 +161,7 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │       └── ChatSessionSummaryDto.java
 ├── mapper/                           — MapStruct mappers (DTO ↔ entity)
 ├── repository/
-│   ├── SysParamRepository.java       — JpaRepository<SysParam, Integer>; findByName(ParamKey); in api/ (ai-service has no JPA context)
+│   ├── SysParamRepository.java       — JpaRepository<SysParam, Integer>; findByName(ParamKey)
 │   ├── spec/                         — JPA Specification implementations for dynamic filtering
 │   └── …
 ├── security/                         — JwtProvider, OAuth2 handlers, UserUtils

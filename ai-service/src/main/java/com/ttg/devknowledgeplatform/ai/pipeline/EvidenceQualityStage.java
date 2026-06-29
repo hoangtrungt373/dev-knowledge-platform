@@ -82,6 +82,7 @@ public class EvidenceQualityStage implements RagPipelineStage {
 
         // ── Guard 2: mean similarity score ──────────────────────────────────────
         float mean = computeMean(selected);
+        ctx.setEvidenceMeanScore(mean);  // persist for metrics even if the guard below aborts
         if (mean < guards.getEvidenceMeanThreshold()) {
             log.warn("Insufficient evidence — mean score={} below threshold={}; aborting",
                     mean, guards.getEvidenceMeanThreshold());
