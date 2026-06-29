@@ -5,12 +5,13 @@
 ```
 dev-knowledge-platform/
 ├── common/          — shared entities, enums, exceptions, DTOs; no Spring dependencies
+├── infra/           — shared Spring infrastructure: event base classes, composed annotations, MDC utilities
 ├── ai-service/      — RAG pipeline: embedding, vector search, LLM generation (LangChain4j)
 ├── api/             — REST endpoints, security, Liquibase migrations, Spring Boot entry point
 └── gui/             — React 18 + TypeScript + MUI frontend (Vite)
 ```
 
-Dependency order: `common` ← `ai-service` ← `api`. `gui` is independent.
+Dependency order: `common` ← `infra` ← `ai-service` ← `api`. `gui` is independent.
 
 ---
 
@@ -48,6 +49,22 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 
 ---
 
+## infra
+
+```
+infra/src/main/java/com/ttg/devknowledgeplatform/infra/
+├── context/
+│   └── MdcKeys.java              — MDC key constants shared across modules (e.g. TRACE_ID = "traceId")
+└── event/
+    ├── ApplicationEventHandler.java  — marker interface; Find Implementations = full event bus registry across modules
+    ├── EventHandler.java             — composed @EventListener + @Async; enforces async on every listener
+    └── AsyncEventHandler.java        — abstract base class (Template Method); provides async dispatch via @EventHandler,
+                                         MDC TRACE_ID binding (opt-in via resolveTraceId()), timing, and exception safety;
+                                         subclasses implement doHandle(); @WriteTransactional at class level if DB writes needed
+```
+
+---
+
 ## ai-service
 
 ```
@@ -78,6 +95,11 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── RagSource.java                — contentItemId, sourceType, title, chunkText, similarity
 │   ├── ScoredChunk.java              — record: ContentEmbedding + float score (post-scoring candidates)
 │   └── StageSpan.java                — record: stage name, durationMs, aborted flag; one per pipeline stage per request
+├── event/
+│   ├── PipelineMetricsEvent.java         — record event published by RagQueryServiceImpl after each pipeline execution;
+│   │                                        carries RagPipelineContext + AnswerQualityVerdict
+│   └── PipelineMetricsEventListener.java — extends AsyncEventHandler<PipelineMetricsEvent>; @Transactional;
+│                                            maps event → PipelineMetrics entity; resolveTraceId() binds MDC for logging
 ├── entity/
 │   ├── ContentEmbedding.java         — embedding vector (1536-dim), chunkText, sourceType,
 │   │                                    chunkIndex, modelName, tokenCount,
@@ -118,7 +140,6 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
     ├── EmbeddingService.java                 — wraps OpenAI embedding API
     ├── AnswerQualityService.java             — post-generation drift detection: answer vs context centroid + answer vs query
     ├── ConversationTopicGuardService.java    — pre-pipeline topic shift guard: embeds question + history fingerprint; strips recent turns on shift
-    ├── PipelineMetricsRecorder.java          — port interface: record(RagPipelineContext, AnswerQualityVerdict); implemented by PipelineMetricsRecorderImpl in ai-service
     ├── RagQueryService.java                  — interface: query() + queryStream();
     │                                            primary overloads accept ConversationContext + RagFilter
     ├── RagStreamHandler.java                 — SSE callback interface
@@ -127,12 +148,9 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
         │                                            evaluates contextSimilarity + querySimilarity; logs WARN on drift
         ├── ConversationSummarisationServiceImpl.java — ChatLanguageModel-backed summarisation
         ├── ConversationTopicGuardServiceImpl.java — embedBatch(question + historyFingerprint); strips recentTurns on shift
-        ├── PipelineMetricsRecorderImpl.java       — JPA adapter for PipelineMetricsRecorder port; @Async + @Transactional;
-        │                                            writes one PIPELINE_METRICS row per pipeline execution
-        └── RagQueryServiceImpl.java               — thin orchestrator: topicGuard → create context → RagPipelineRunner
-                                                      → recordPipelineMetrics() (6 Micrometer instruments, both paths)
-                                                      → call ChatLanguageModel / StreamingChatLanguageModel
-                                                      → assessAnswerQuality() (monitoring-only, both paths)
+        └── RagQueryServiceImpl.java               — thin orchestrator: topicGuard → pipeline → recordPipelineMetrics()
+                                                      (6 Micrometer instruments) → LLM call → assessAnswerQuality()
+                                                      → publishEvent(PipelineMetricsEvent) in all four outcome paths
 ```
 
 ---

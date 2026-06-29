@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.ttg</groupId>
+        <artifactId>dev-knowledge-platform</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>infra</artifactId>
+    <name>Infra</name>
+    <description>Shared Spring infrastructure: event handler base classes, composed annotations, MDC utilities</description>
+
+    <dependencies>
+        <!--
+            spring-boot-starter transitively provides:
+              - spring-context  (@EventListener, @Async, ApplicationEventPublisher)
+              - spring-tx       (@Transactional, @TransactionalEventListener)
+              - slf4j-api       (MDC)
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+    </dependencies>
+
+</project>

@@ -9,7 +9,7 @@ import com.ttg.devknowledgeplatform.ai.exception.RagQueryException;
 import com.ttg.devknowledgeplatform.ai.pipeline.RagPipelineRunner;
 import com.ttg.devknowledgeplatform.ai.service.AnswerQualityService;
 import com.ttg.devknowledgeplatform.ai.service.ConversationTopicGuardService;
-import com.ttg.devknowledgeplatform.ai.service.PipelineMetricsRecorder;
+import com.ttg.devknowledgeplatform.ai.event.PipelineMetricsEvent;
 import com.ttg.devknowledgeplatform.ai.service.RagQueryService;
 import com.ttg.devknowledgeplatform.ai.service.RagStreamHandler;
 import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
@@ -24,6 +24,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -60,7 +61,7 @@ public class RagQueryServiceImpl implements RagQueryService {
     private final AnswerQualityService answerQualityService;
     private final ConversationTopicGuardService conversationTopicGuardService;
     private final MeterRegistry meterRegistry;
-    private final PipelineMetricsRecorder pipelineMetricsRecorder;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public RagAnswer query(String question, ConversationContext context, RagFilter filter) {
@@ -75,13 +76,13 @@ public class RagQueryServiceImpl implements RagQueryService {
 
             if (pipelineCtx.isAborted()) {
                 log.info("RAG query [traceId={}] pipeline aborted — returning soft answer", pipelineCtx.getTraceId());
-                pipelineMetricsRecorder.record(pipelineCtx, null);
+                eventPublisher.publishEvent(new PipelineMetricsEvent(pipelineCtx, null));
                 return new RagAnswer(pipelineCtx.getAbortReason(), List.of());
             }
 
             String answer = chatLanguageModel.generate(pipelineCtx.getMessages()).content().text();
             AnswerQualityVerdict verdict = assessAnswerQuality(answer, pipelineCtx);
-            pipelineMetricsRecorder.record(pipelineCtx, verdict);
+            eventPublisher.publishEvent(new PipelineMetricsEvent(pipelineCtx, verdict));
             log.info("RAG query [traceId={}] completed: {} sources, answer length={}",
                     pipelineCtx.getTraceId(), pipelineCtx.getSources().size(), answer.length());
             return new RagAnswer(answer, pipelineCtx.getSources());
@@ -107,7 +108,7 @@ public class RagQueryServiceImpl implements RagQueryService {
 
             if (pipelineCtx.isAborted()) {
                 log.info("RAG stream [traceId={}] pipeline aborted — returning soft answer", pipelineCtx.getTraceId());
-                pipelineMetricsRecorder.record(pipelineCtx, null);
+                eventPublisher.publishEvent(new PipelineMetricsEvent(pipelineCtx, null));
                 handler.onToken(pipelineCtx.getAbortReason());
                 handler.onComplete();
                 return;
@@ -127,7 +128,7 @@ public class RagQueryServiceImpl implements RagQueryService {
                         @Override
                         public void onComplete(Response<AiMessage> response) {
                             AnswerQualityVerdict verdict = assessAnswerQuality(response.content().text(), pipelineCtx);
-                            pipelineMetricsRecorder.record(pipelineCtx, verdict);
+                            eventPublisher.publishEvent(new PipelineMetricsEvent(pipelineCtx, verdict));
                             log.info("RAG stream [traceId={}] completed: {} sources",
                                     pipelineCtx.getTraceId(), pipelineCtx.getSources().size());
                             handler.onComplete();
@@ -216,7 +217,7 @@ public class RagQueryServiceImpl implements RagQueryService {
 
     /**
      * Runs the post-generation answer quality check (Case 6 — monitoring only) and returns
-     * the verdict so callers can pass it to {@link PipelineMetricsRecorder}.
+     * the verdict so callers can publish it via {@link PipelineMetricsEvent}.
      *
      * <p>Failures are caught and logged; a failed assessment returns
      * {@link AnswerQualityVerdict#skipped()} so callers always receive a non-null verdict.

@@ -1,32 +1,37 @@
 package com.ttg.devknowledgeplatform.event;
 
+import com.ttg.devknowledgeplatform.infra.event.AsyncEventHandler;
 import com.ttg.devknowledgeplatform.service.ContentIndexingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.event.EventListener;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
+/**
+ * Indexes a content item into the RAG vector store when it transitions to PUBLISHED status.
+ *
+ * <p>Async dispatch and exception safety are provided by {@link AsyncEventHandler}. This
+ * class only contains the indexing call. No {@code @Async}, {@code @EventListener}, or
+ * {@code try/catch} is needed here.
+ *
+ * <p>No {@code @Transactional} is declared because {@link ContentIndexingService#index}
+ * manages its own transaction boundary; this handler is purely a coordinator.
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class ContentPublishedEventListener {
+public class ContentPublishedEventListener extends AsyncEventHandler<ContentPublishedEvent> {
 
     private final ContentIndexingService contentIndexingService;
 
     /**
-     * Runs asynchronously so publishing an article does not block the HTTP response
-     * while waiting for the OpenAI embedding API call.
+     * Triggers RAG indexing for the published content item.
+     *
+     * @param event carries the content item that was just published
      */
-    @Async
-    @EventListener
-    public void onContentPublished(ContentPublishedEvent event) {
+    @Override
+    protected void doHandle(ContentPublishedEvent event) throws Exception {
         Integer contentItemId = event.getContentItem().getId();
-        log.info("ContentPublishedEvent received for content item id={} — starting indexing", contentItemId);
-        try {
-            contentIndexingService.index(contentItemId);
-        } catch (Exception e) {
-            log.error("Failed to index content item id={}: {}", contentItemId, e.getMessage(), e);
-        }
+        log.info("ContentPublishedEvent received for contentItemId={} — starting indexing", contentItemId);
+        contentIndexingService.index(contentItemId);
     }
 }
