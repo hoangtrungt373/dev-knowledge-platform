@@ -90,12 +90,15 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ├── converter/
 │   └── FloatArrayToVectorConverter.java  — JPA AttributeConverter for pgvector column type
 ├── dto/
-│   ├── AnswerQualityVerdict.java     — record: boolean drifted, float contextSimilarity, float querySimilarity; skipped() sentinel
-│   ├── EmbedResult.java              — record: float[] vector + int tokenCount; return type of EmbeddingService.embed()
-│   ├── RagAnswer.java                — answer text + List<RagSource>
-│   ├── RagSource.java                — contentItemId, sourceType, title, chunkText, similarity
-│   ├── ScoredChunk.java              — record: ContentEmbedding + float score (post-scoring candidates)
-│   └── StageSpan.java                — record: stage name, durationMs, aborted flag; one per pipeline stage per request
+│   ├── AnswerQualityVerdict.java          — record: boolean drifted, float contextSimilarity, float querySimilarity; skipped() sentinel
+│   ├── EmbedResult.java                   — record: float[] vector + int tokenCount; return type of EmbeddingService.embed()
+│   ├── MetricsPeriod.java                 — enum: LAST_24H / LAST_7_DAYS / LAST_30_DAYS; each holds Duration getLookback()
+│   ├── PipelineMetricsSummary.java        — record: aggregated cost/latency response; nested TokenUsageSummary record
+│   ├── PipelineMetricsSummaryProjection.java — Spring Data JPA interface projection for native aggregate query
+│   ├── RagAnswer.java                     — answer text + List<RagSource>
+│   ├── RagSource.java                     — contentItemId, sourceType, title, chunkText, similarity
+│   ├── ScoredChunk.java                   — record: ContentEmbedding + float score (post-scoring candidates)
+│   └── StageSpan.java                     — record: stage name, durationMs, aborted flag; one per pipeline stage per request
 ├── event/
 │   ├── PipelineCompletedEvent.java         — record event published by RagQueryServiceImpl after each pipeline execution;
 │   │                                        carries RagPipelineContext + AnswerQualityVerdict
@@ -140,25 +143,30 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ├── repository/
 │   ├── ContentEmbeddingRepository.java   — findTopSimilarIds (pgvector <=>), findAllByIdWithContentItem,
 │   │                                       computeGlobalCentroid(), computeCentroidBySourceType(String)
-│   └── PipelineMetricsRepository.java    — JpaRepository<PipelineMetrics, Integer>; append-only analytics writes
+│   ├── ContentEmbeddingRepository.java   — findTopSimilarIds (pgvector <=>), findAllByIdWithContentItem,
+│   │                                       computeGlobalCentroid(), computeCentroidBySourceType(String)
+│   └── PipelineMetricsRepository.java    — JpaRepository<PipelineMetrics, Integer>; append-only analytics writes;
+│                                            fetchSummary(Instant) — native query using percentile_cont WITHIN GROUP
 └── service/
-    ├── ContentIngestionService.java          — chunks text + stores embeddings
-    ├── ConversationSummarisationService.java — compresses old turns into a rolling summary (LLM)
-    ├── CorpusStatisticsService.java          — interface: getCentroidFor(RagFilter), refresh(); in ai-service so stages can inject it
-    ├── EmbeddingService.java                 — wraps OpenAI embedding API
-    ├── AnswerQualityService.java             — post-generation drift detection: answer vs context centroid + answer vs query
-    ├── ConversationTopicGuardService.java    — pre-pipeline topic shift guard: embeds question + history fingerprint; strips recent turns on shift
-    ├── RagQueryService.java                  — interface: query() + queryStream();
-    │                                            primary overloads accept ConversationContext + RagFilter
-    ├── RagStreamHandler.java                 — SSE callback interface
+    ├── ContentIngestionService.java             — chunks text + stores embeddings
+    ├── ConversationSummarisationService.java    — compresses old turns into a rolling summary (LLM)
+    ├── CorpusStatisticsService.java             — interface: getCentroidFor(RagFilter), refresh(); in ai-service so stages can inject it
+    ├── EmbeddingService.java                    — wraps OpenAI embedding API; embed() returns EmbedResult
+    ├── AnswerQualityService.java                — post-generation drift detection: answer vs context centroid + answer vs query
+    ├── ConversationTopicGuardService.java       — pre-pipeline topic shift guard: embeds question + history fingerprint; strips recent turns on shift
+    ├── PipelineMetricsSummaryService.java       — interface: getSummary(MetricsPeriod); returns PipelineMetricsSummary
+    ├── RagQueryService.java                     — interface: query() + queryStream();
+    │                                               primary overloads accept ConversationContext + RagFilter + userId
+    ├── RagStreamHandler.java                    — SSE callback interface
     └── impl/
-        ├── AnswerQualityServiceImpl.java          — embeds answer; computes normalised context centroid from selectedChunks;
-        │                                            evaluates contextSimilarity + querySimilarity; logs WARN on drift
+        ├── AnswerQualityServiceImpl.java             — embeds answer; computes normalised context centroid from selectedChunks;
+        │                                               evaluates contextSimilarity + querySimilarity; logs WARN on drift
         ├── ConversationSummarisationServiceImpl.java — ChatLanguageModel-backed summarisation
-        ├── ConversationTopicGuardServiceImpl.java — embedBatch(question + historyFingerprint); strips recentTurns on shift
-        └── RagQueryServiceImpl.java               — thin orchestrator: topicGuard → pipeline → recordPipelineMetrics()
-                                                      (6 Micrometer instruments) → LLM call → assessAnswerQuality()
-                                                      → publishEvent(PipelineCompletedEvent) in all four outcome paths
+        ├── ConversationTopicGuardServiceImpl.java    — embedBatch(question + historyFingerprint); strips recentTurns on shift
+        ├── PipelineMetricsSummaryServiceImpl.java    — @Transactional(readOnly=true); calls fetchSummary(); maps projection to record
+        └── RagQueryServiceImpl.java                  — thin orchestrator: topicGuard → pipeline → recordPipelineMetrics()
+                                                         (6 Micrometer instruments) → LLM call + timing + token capture
+                                                         → assessAnswerQuality() → publishEvent(PipelineCompletedEvent)
 ```
 
 ---
@@ -168,10 +176,12 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ```
 api/src/main/java/com/ttg/devknowledgeplatform/
 ├── api/                              — controller interfaces (HTTP annotations live here)
+│   ├── PipelineMetricsApi.java       — GET /api/v1/admin/pipeline-metrics/summary?period=LAST_7_DAYS (admin-only)
 │   └── impl/
-│       ├── ChatController.java       — POST /api/v1/chat, POST /api/v1/chat/stream;
-│       │                               builds RagFilter from ChatRequest and passes to RagQueryService
-│       └── …                         — other controllers
+│       ├── ChatController.java            — POST /api/v1/chat, POST /api/v1/chat/stream;
+│       │                                    builds RagFilter from ChatRequest and passes to RagQueryService
+│       ├── PipelineMetricsController.java — delegates to PipelineMetricsSummaryService; no mapping logic
+│       └── …                              — other controllers
 ├── config/
 │   ├── AsyncConfig.java              — ragStreamExecutor thread pool (10 core, 50 max, queue 100)
 │   ├── SecurityConfig.java           — JWT + OAuth2 filter chain
