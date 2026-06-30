@@ -45,7 +45,7 @@ public class SysParam extends AbstractEntity {
 
     /** The parameter identifier; maps to the {@code NAME} column and the {@link ParamKey} enum. */
     @Enumerated(EnumType.STRING)
-    @Column(name = "NAME", nullable = false, unique = true, length = 100)
+    @Column(name = "NAME", nullable = false, length = 100)
     private ParamKey name;
 
     /**

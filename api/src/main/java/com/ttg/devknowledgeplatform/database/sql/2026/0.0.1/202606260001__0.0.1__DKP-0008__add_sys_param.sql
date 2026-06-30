@@ -6,7 +6,6 @@
 -- SYS_PARAM
 -- General-purpose key-value store for system-managed persistent parameters.
 -- NAME        — a ParamKey enum value (e.g. CENTROID_ARTICLE, ANOMALY_HARD_THRESHOLD).
---               Unique: only one active value per parameter name.
 -- VALUE       — serialized as text: vectors use pgvector notation [f1,f2,...],
 --               numeric values are plain decimal strings (e.g. "0.45").
 -- COMPUTED_AT — when the value was last computed or refreshed by the application.
@@ -32,13 +31,6 @@ CREATE TABLE IF NOT EXISTS product.SYS_PARAM (
     VERSION                 INTEGER                         NOT NULL,
 
     CONSTRAINT PK_SYS_PARAM PRIMARY KEY (SYS_PARAM_ID),
-
-    -- One active value per parameter name; application always upserts by name
-    CONSTRAINT UQ_SYS_PARAM_NAME UNIQUE (NAME)
 );
 
 ALTER SEQUENCE product.SYS_PARAM_SEQ OWNED BY product.SYS_PARAM.SYS_PARAM_ID;
-
--- Primary access pattern: SELECT … WHERE NAME = ?
--- The UNIQUE constraint above already creates an implicit index on NAME in PostgreSQL,
--- so no additional index is needed.

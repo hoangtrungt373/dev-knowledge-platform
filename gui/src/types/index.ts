@@ -10,3 +10,6 @@ export * from './user.types';
 
 // Common/shared types
 export * from './common.types';
+
+// Chat types
+export * from './chat.types';

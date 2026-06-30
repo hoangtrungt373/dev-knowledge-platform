@@ -12,22 +12,29 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * Spring configuration that wires the LangChain4j LLM beans.
  *
  * <p>All {@code @ConfigurationProperties} classes ({@link ModelConfig}, {@link IndexingConfig},
- * {@link RetrievalConfig}, {@link GuardConfig}, {@link LabelsConfig}) are auto-registered by
- * {@code @ConfigurationPropertiesScan} on the main application class — no explicit
- * {@code @EnableConfigurationProperties} is needed here.
+ * {@link RetrievalConfig}, {@link GuardConfig}, {@link LabelsConfig}, {@link OkHttpProperties})
+ * are auto-registered by {@code @ConfigurationPropertiesScan} on the main application class —
+ * no explicit {@code @EnableConfigurationProperties} is needed here.
  */
 @Configuration
 @EnableScheduling
 public class AiServiceConfig {
 
+    /**
+     * Blocking chat model for synchronous RAG queries.
+     *
+     * @param model  LLM model config (api key, model name, tokens, temperature, retries)
+     * @param okHttp HTTP client config (overall timeout per API call)
+     */
     @Bean
-    public ChatLanguageModel chatLanguageModel(ModelConfig model) {
+    public ChatLanguageModel chatLanguageModel(ModelConfig model, OkHttpProperties okHttp) {
         return OpenAiChatModel.builder()
                 .apiKey(model.getApiKey())
                 .modelName(model.getChatModel())
                 .maxTokens(model.getMaxTokens())
                 .temperature(model.getTemperature())
                 .maxRetries(model.getMaxRetries())
+                .timeout(okHttp.getTimeout())
                 .build();
     }
 
@@ -37,14 +44,18 @@ public class AiServiceConfig {
      *
      * <p>Note: {@code maxRetries} is intentionally omitted — retrying mid-stream is not
      * meaningful because partial token output cannot be rolled back.
+     *
+     * @param model  LLM model config
+     * @param okHttp HTTP client config (overall timeout per API call)
      */
     @Bean
-    public StreamingChatLanguageModel streamingChatLanguageModel(ModelConfig model) {
+    public StreamingChatLanguageModel streamingChatLanguageModel(ModelConfig model, OkHttpProperties okHttp) {
         return OpenAiStreamingChatModel.builder()
                 .apiKey(model.getApiKey())
                 .modelName(model.getChatModel())
                 .maxTokens(model.getMaxTokens())
                 .temperature(model.getTemperature())
+                .timeout(okHttp.getTimeout())
                 .build();
     }
 }

@@ -14,6 +14,8 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import LabelIcon from '@mui/icons-material/Label';
 import FolderIcon from '@mui/icons-material/Folder';
 import QuizIcon from '@mui/icons-material/Quiz';
+import QueryStatsIcon from '@mui/icons-material/QueryStats';
+import DataArrayIcon from '@mui/icons-material/DataArray';
 import HomeIcon from '@mui/icons-material/Home';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { adminAuthService } from '../../services';
@@ -21,10 +23,12 @@ import { adminAuthService } from '../../services';
 const SIDEBAR_WIDTH = 220;
 
 const NAV_ITEMS = [
-  { label: 'Overview',              icon: <DashboardIcon fontSize="small" />, path: '/admin/dashboard' },
-  { label: 'Tags',                  icon: <LabelIcon fontSize="small" />,     path: '/admin/tags' },
-  { label: 'Categories',            icon: <FolderIcon fontSize="small" />,    path: '/admin/categories' },
-  { label: 'Interview Questions',   icon: <QuizIcon fontSize="small" />,      path: '/admin/interview-questions' },
+  { label: 'Overview',              icon: <DashboardIcon fontSize="small" />,  path: '/admin/dashboard' },
+  { label: 'Tags',                  icon: <LabelIcon fontSize="small" />,      path: '/admin/tags' },
+  { label: 'Categories',            icon: <FolderIcon fontSize="small" />,     path: '/admin/categories' },
+  { label: 'Interview Questions',   icon: <QuizIcon fontSize="small" />,       path: '/admin/interview-questions' },
+  { label: 'Pipeline Metrics',      icon: <QueryStatsIcon fontSize="small" />, path: '/admin/pipeline-metrics' },
+  { label: 'Embeddings',            icon: <DataArrayIcon fontSize="small" />,  path: '/admin/embeddings' },
 ];
 
 export default function AdminLayout(): JSX.Element {

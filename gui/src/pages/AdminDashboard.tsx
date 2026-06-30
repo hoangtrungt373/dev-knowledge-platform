@@ -3,6 +3,8 @@ import LabelIcon from '@mui/icons-material/Label';
 import FolderIcon from '@mui/icons-material/Folder';
 import ArticleIcon from '@mui/icons-material/Article';
 import QuizIcon from '@mui/icons-material/Quiz';
+import QueryStatsIcon from '@mui/icons-material/QueryStats';
+import DataArrayIcon from '@mui/icons-material/DataArray';
 import { adminAuthService } from '../services';
 
 const FEATURE_CARDS = [
@@ -19,15 +21,27 @@ const FEATURE_CARDS = [
     status: 'ready' as const,
   },
   {
-    label: 'Articles',
-    icon: <ArticleIcon fontSize="small" />,
-    description: 'Create and publish articles.',
-    status: 'soon' as const,
-  },
-  {
     label: 'Interview Questions',
     icon: <QuizIcon fontSize="small" />,
     description: 'Manage interview question bank.',
+    status: 'ready' as const,
+  },
+  {
+    label: 'Pipeline Metrics',
+    icon: <QueryStatsIcon fontSize="small" />,
+    description: 'RAG pipeline cost, latency, and token usage analytics.',
+    status: 'ready' as const,
+  },
+  {
+    label: 'Embeddings',
+    icon: <DataArrayIcon fontSize="small" />,
+    description: 'View and manage the RAG vector embedding index.',
+    status: 'ready' as const,
+  },
+  {
+    label: 'Articles',
+    icon: <ArticleIcon fontSize="small" />,
+    description: 'Create and publish articles.',
     status: 'soon' as const,
   },
 ];

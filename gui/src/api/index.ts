@@ -19,3 +19,4 @@ export { httpClient } from './httpClient';
 export { authApi } from './authApi';
 export { userApi } from './userApi';
 export { adminApi } from './adminApi';
+export { chatApi } from './chatApi';

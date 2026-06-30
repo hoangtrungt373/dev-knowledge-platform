@@ -51,7 +51,7 @@ public class PipelineMetrics {
     private Integer id;
 
     /** UUID string from {@link com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext#getTraceId()}. */
-    @Column(name = "TRACE_ID", length = 36, nullable = false, unique = true)
+    @Column(name = "TRACE_ID", length = 36, nullable = false)
     private String traceId;
 
     /** When this record was written; used as the time-series axis for dashboard queries. */

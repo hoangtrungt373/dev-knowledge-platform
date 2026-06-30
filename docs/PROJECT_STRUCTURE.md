@@ -60,7 +60,7 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
     ├── EventHandler.java             — composed @EventListener + @Async; enforces async on every listener
     └── AsyncEventHandler.java        — abstract base class (Template Method); provides async dispatch via @EventHandler,
                                          MDC TRACE_ID binding (opt-in via resolveTraceId()), timing, and exception safety;
-                                         subclasses implement doHandle(); @WriteTransactional at class level if DB writes needed
+                                         subclasses implement doHandle(); subclasses that need DB writes declare @Transactional themselves
 ```
 
 ---
@@ -70,9 +70,10 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
 ```
 ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ├── config/
-│   ├── AiServiceConfig.java   — wires ChatLanguageModel + StreamingChatLanguageModel beans
+│   ├── AiServiceConfig.java   — wires ChatLanguageModel + StreamingChatLanguageModel beans; injects OkHttpProperties for timeout
 │   ├── ModelConfig.java       — @ConfigurationProperties at app.ai.model.*
 │   │                             fields: apiKey, model, dimensions, chatModel, maxTokens, temperature, maxRetries
+│   ├── OkHttpProperties.java  — @ConfigurationProperties at app.ai.okhttp.*; timeout (default 60s); passed to LangChain4j builders
 │   ├── IndexingConfig.java    — @ConfigurationProperties at app.ai.indexing.*
 │   │                             fields: chunkSize, chunkOverlap, centroidRefreshInterval, indexingCoherenceThreshold
 │   ├── RetrievalConfig.java   — @ConfigurationProperties at app.ai.retrieval.*
@@ -97,6 +98,8 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── MetricsPeriod.java                 — enum: LAST_24H / LAST_7_DAYS / LAST_30_DAYS; each holds Duration getLookback()
 │   ├── PipelineMetricsSummary.java        — record: aggregated cost/latency response; nested TokenUsageSummary record
 │   ├── PipelineMetricsSummaryProjection.java — Spring Data JPA interface projection for native aggregate query
+│   ├── EmbeddingStatsProjection.java      — interface projection: contentItemId, chunkCount, totalTokens, modelName, lastIndexedAt;
+│   │                                        returned by ContentEmbeddingRepository.findStatsByContentItemIds for admin embedding list
 │   ├── RagAnswer.java                     — answer text + List<RagSource>
 │   ├── RagSource.java                     — contentItemId, sourceType, title, chunkText, similarity
 │   ├── ScoredChunk.java                   — record: ContentEmbedding + float score (post-scoring candidates)
@@ -144,8 +147,8 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   └── RagFilter.java                — Java 21 record: sourceTypes, tags, categoryId
 ├── repository/
 │   ├── ContentEmbeddingRepository.java   — findTopSimilarIds (pgvector <=>), findAllByIdWithContentItem,
-│   │                                       computeGlobalCentroid(), computeCentroidBySourceType(String)
-│   ├── ContentEmbeddingRepository.java   — findTopSimilarIds (pgvector <=>), findAllByIdWithContentItem,
+│   │                                       findStatsByContentItemIds(List<Integer>) → List<EmbeddingStatsProjection>
+│   │                                       (JPQL: COUNT/SUM/MAX grouped by content item ID),
 │   │                                       computeGlobalCentroid(), computeCentroidBySourceType(String)
 │   └── PipelineMetricsRepository.java    — JpaRepository<PipelineMetrics, Integer>; append-only analytics writes;
 │                                            fetchSummary(Instant) — native query using percentile_cont WITHIN GROUP
@@ -178,15 +181,25 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ```
 api/src/main/java/com/ttg/devknowledgeplatform/
 ├── api/                              — controller interfaces (HTTP annotations live here)
+│   ├── EmbeddingIndexApi.java        — GET /api/v1/admin/embeddings?page&size&q&contentType&contentStatus&indexed (admin-only)
 │   ├── PipelineMetricsApi.java       — GET /api/v1/admin/pipeline-metrics/summary?period=LAST_7_DAYS (admin-only)
 │   └── impl/
 │       ├── ChatController.java            — POST /api/v1/chat, POST /api/v1/chat/stream;
 │       │                                    builds RagFilter from ChatRequest and passes to RagQueryService
+│       ├── EmbeddingIndexController.java  — delegates to EmbeddingIndexService; no mapping logic
 │       ├── PipelineMetricsController.java — delegates to PipelineMetricsSummaryService; no mapping logic
 │       └── …                              — other controllers
 ├── config/
-│   ├── AsyncConfig.java              — ragStreamExecutor thread pool (10 core, 50 max, queue 100)
 │   ├── SecurityConfig.java           — JWT + OAuth2 filter chain
+│   ├── thread/
+│   │   ├── ThreadPoolProperties.java — @ConfigurationProperties at app.threads.*;
+│   │   │                               nested SseExecutor: corePoolSize (10), maxPoolSize (50),
+│   │   │                               queueCapacity (100), awaitTerminationSeconds (30); env-var overrides
+│   │   └── ThreadPoolConfig.java     — Factory Method: creates sseStreamExecutor bean, registers
+│   │                                   ExecutorServiceMetrics (Micrometer Decorator); all pool sizing from ThreadPoolProperties
+│   ├── web/
+│   │   └── WebMvcConfig.java         — @EnableAsync; injects sseStreamExecutor; configureAsyncSupport (timeout 60 s);
+│   │                                   rate-limit interceptor; CurrentUserIdArgumentResolver
 │   └── sse/
 │       └── SseStreamTemplate.java    — SSE writer abstraction
 ├── database/
@@ -207,15 +220,19 @@ api/src/main/java/com/ttg/devknowledgeplatform/
     ├── ChatSessionService.java       — getOrCreateSessionId, getConversationContext (primary),
     │                                   getRecentTurns, addTurn (triggers rolling summary), listSessions, getHistory
     ├── ContentIndexingService.java   — index / reindex / deleteIndex per contentItemId
+    ├── EmbeddingIndexService.java    — list(page,size,q,contentType,contentStatus,indexed) → PagedResponse<EmbeddingIndexItemResponse>
     ├── IndexingQualityService.java   — assess(contentItemId, contentType) → QualityVerdict; centroid distance check at indexing time
     ├── QualityVerdict.java           — record: boolean lowQuality, float score; factories pass/flag/skipped
     └── impl/
         ├── IndexingQualityServiceImpl.java  — loads embeddings from ContentEmbeddingRepository; mean centroid dotProduct; graceful cold-start
         ├── CorpusStatisticsServiceImpl.java — @PostConstruct loads centroids from SYS_PARAM; @Scheduled refresh
         │                                       recomputes via SQL avg(embedding); volatile float[] cache; upsert via SysParamRepository
-        └── ContentIndexingServiceImpl.java  — type-specific ingestion; buildCommonMetadata()
-                                               writes categoryId, categoryName, tagIds, tagNames
-                                               to every chunk's JSONB metadata
+        ├── ContentIndexingServiceImpl.java  — type-specific ingestion; buildCommonMetadata()
+        │                                       writes categoryId, categoryName, tagIds, tagNames
+        │                                       to every chunk's JSONB metadata
+        └── EmbeddingIndexServiceImpl.java   — two-query pattern: Specification page query (ContentItemRepository)
+                                               + batch JPQL aggregate (ContentEmbeddingRepository.findStatsByContentItemIds);
+                                               EXISTS subquery Specification for indexed filter
 ```
 
 ---

@@ -30,7 +30,7 @@ public class Category extends AbstractEntity {
     @Column(name = "NAME", length = 100, nullable = false)
     private String name;
 
-    @Column(name = "SLUG", length = 100, nullable = false, unique = true)
+    @Column(name = "SLUG", length = 100, nullable = false)
     private String slug;
 
     @ManyToOne(fetch = FetchType.LAZY)

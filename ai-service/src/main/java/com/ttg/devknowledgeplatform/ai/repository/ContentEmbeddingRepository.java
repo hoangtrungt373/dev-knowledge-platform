@@ -1,5 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.repository;
 
+import com.ttg.devknowledgeplatform.ai.dto.EmbeddingStatsProjection;
 import com.ttg.devknowledgeplatform.ai.entity.ContentEmbedding;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -38,6 +39,30 @@ public interface ContentEmbeddingRepository extends JpaRepository<ContentEmbeddi
     @Modifying
     @Query("DELETE FROM ContentEmbedding ce WHERE ce.contentItem.id = :contentItemId")
     void deleteByContentItem_Id(@Param("contentItemId") Integer contentItemId);
+
+    /**
+     * Aggregates embedding statistics grouped by content item ID.
+     *
+     * <p>Returns one row per content item present in {@code ids}. Items with no embeddings
+     * are absent from the result; callers should default missing entries to zero counts.
+     * Uses {@code MAX(modelName)} and {@code MAX(dteLastModification)} to pick representative
+     * values — valid because all chunks for a given item are (re)indexed together with the
+     * same model, so all rows share the same model name.
+     *
+     * @param ids list of content item IDs to aggregate; must be non-empty
+     * @return one projection per content item that has at least one embedding
+     */
+    @Query("""
+            SELECT ce.contentItem.id AS contentItemId,
+                   COUNT(ce.id) AS chunkCount,
+                   COALESCE(SUM(ce.tokenCount), 0) AS totalTokens,
+                   MAX(ce.modelName) AS modelName,
+                   MAX(ce.dteLastModification) AS lastIndexedAt
+            FROM ContentEmbedding ce
+            WHERE ce.contentItem.id IN :ids
+            GROUP BY ce.contentItem.id
+            """)
+    List<EmbeddingStatsProjection> findStatsByContentItemIds(@Param("ids") List<Integer> ids);
 
     /**
      * Computes the average embedding vector for all chunks of the given source type.

@@ -25,7 +25,6 @@
 --   - No audit columns (USR_CREATION etc.): this is machine-generated analytics, not
 --     user-managed content. CREATED_AT alone serves the time-series axis.
 --   - No VERSION column: the table is append-only; optimistic locking has no meaning.
---   - UNIQUE on TRACE_ID enforces one row per request and enables JOIN with application logs.
 --   - DECIMAL(5,4) gives four decimal places of precision for similarity scores in [0,1].
 --   - Index on CREATED_AT supports time-range queries in monitoring dashboards.
 -- =============================================================================
@@ -51,7 +50,6 @@ CREATE TABLE IF NOT EXISTS product.PIPELINE_METRICS (
     ANSWER_DRIFTED          BOOLEAN,
 
     CONSTRAINT PK_PIPELINE_METRICS PRIMARY KEY (PIPELINE_METRICS_ID),
-    CONSTRAINT UQ_PIPELINE_METRICS_TRACE_ID UNIQUE (TRACE_ID)
 );
 
 ALTER SEQUENCE product.PIPELINE_METRICS_SEQ OWNED BY product.PIPELINE_METRICS.PIPELINE_METRICS_ID;

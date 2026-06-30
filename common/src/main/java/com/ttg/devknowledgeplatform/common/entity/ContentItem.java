@@ -45,7 +45,7 @@ public class ContentItem extends AbstractEntity {
     @Column(name = "TITLE", length = 500, nullable = false)
     private String title;
 
-    @Column(name = "SLUG", length = 500, nullable = false, unique = true)
+    @Column(name = "SLUG", length = 500, nullable = false)
     private String slug;
 
     @Column(name = "AUTHOR_ID")

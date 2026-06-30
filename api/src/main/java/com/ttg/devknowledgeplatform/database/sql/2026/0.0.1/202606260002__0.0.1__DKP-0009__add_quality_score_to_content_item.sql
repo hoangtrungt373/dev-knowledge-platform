@@ -1,3 +1,7 @@
+-- liquibase formatted sql
+-- changeset ttg:202606260002__0.0.1__DKP-0009__add_quality_score_to_content_item logicalFilePath:DevKnowledgePlatform
+-- comment: Add QUALITY_SCORE column to CONTENT_ITEM for indexing quality tracking
+--
 -- DKP-0009: Add QUALITY_SCORE column to CONTENT_ITEM.
 --
 -- QUALITY_SCORE stores the mean cosine similarity between a document's chunk embeddings

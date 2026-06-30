@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.repository;
 import com.ttg.devknowledgeplatform.common.entity.ContentItem;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -12,7 +13,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface ContentItemRepository extends JpaRepository<ContentItem, Integer> {
+public interface ContentItemRepository extends JpaRepository<ContentItem, Integer>, JpaSpecificationExecutor<ContentItem> {
 
     Optional<ContentItem> findBySlug(String slug);
 

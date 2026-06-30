@@ -9,11 +9,14 @@ import TagListPage from './pages/admin/TagListPage';
 import CategoryListPage from './pages/admin/CategoryListPage';
 import InterviewQuestionListPage from './pages/admin/InterviewQuestionListPage';
 import InterviewQuestionFormPage from './pages/admin/InterviewQuestionFormPage';
+import PipelineMetricsPage from './pages/admin/PipelineMetricsPage';
+import EmbeddingsPage from './pages/admin/EmbeddingsPage';
 import { NotificationProvider } from './contexts/NotificationContext';
 import Login from './pages/Login';
 import SignUp from './pages/SignUp';
 import VerifyOtp from './pages/VerifyOtp';
 import Dashboard from './pages/Dashboard';
+import ChatPage from './pages/ChatPage';
 import AuthCallback from './pages/AuthCallback';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
@@ -55,6 +58,18 @@ function App() {
             </PrivateRoute>
           } />
 
+          {/* Chat — full-page layout, NavBar is hidden on these routes */}
+          <Route path="/chat" element={
+            <PrivateRoute>
+              <ChatPage mode={mode} onToggleMode={toggleMode} />
+            </PrivateRoute>
+          } />
+          <Route path="/chat/:sessionId" element={
+            <PrivateRoute>
+              <ChatPage mode={mode} onToggleMode={toggleMode} />
+            </PrivateRoute>
+          } />
+
           {/* Admin routes — nested under AdminLayout */}
           <Route
             path="/admin"
@@ -70,6 +85,8 @@ function App() {
             <Route path="interview-questions" element={<InterviewQuestionListPage />} />
             <Route path="interview-questions/new" element={<InterviewQuestionFormPage />} />
             <Route path="interview-questions/:id/edit" element={<InterviewQuestionFormPage />} />
+            <Route path="pipeline-metrics" element={<PipelineMetricsPage />} />
+            <Route path="embeddings" element={<EmbeddingsPage />} />
             <Route index element={<Navigate to="dashboard" replace />} />
           </Route>
 

@@ -10,7 +10,7 @@ import org.springframework.data.domain.Pageable;
 /**
  * Manages the lifecycle of content tags.
  *
- * <p>Tag names are case-insensitively unique. Each tag automatically receives a
+ * <p>Tag names are case-insensitively. Each tag automatically receives a
  * URL-safe slug derived from its name. A tag cannot be deleted while it is still
  * referenced by any content item.
  */

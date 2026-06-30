@@ -26,7 +26,7 @@ import lombok.ToString;
 public class SearchDocument extends AbstractEntity {
 
     @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "CONTENT_ITEM_ID", nullable = false, unique = true)
+    @JoinColumn(name = "CONTENT_ITEM_ID", nullable = false)
     private ContentItem contentItem;
 
     @Column(name = "TITLE", nullable = false, columnDefinition = "TEXT")
