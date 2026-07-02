@@ -25,8 +25,15 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  *
  * <p>Current pools:
  * <ul>
- *   <li><strong>sseStreamExecutor</strong> — handles all SSE streaming requests; shared by
- *       Spring MVC async support and the {@code @Async} dispatcher.</li>
+ *   <li><strong>sseStreamExecutor</strong> — handles all SSE streaming requests; used by
+ *       Spring MVC async support ({@code configureAsyncSupport}) and by
+ *       {@link com.ttg.devknowledgeplatform.config.sse.SseStreamTemplate}.</li>
+ *   <li><strong>asyncEventExecutor</strong> — dedicated pool for {@code @EventHandler}
+ *       (application event) dispatch. Kept separate from {@code sseStreamExecutor} as a
+ *       bulkhead: an SSE stream holds its thread for up to the full 60&nbsp;s request timeout,
+ *       so a burst of concurrent chat streams must not be able to starve or reject background
+ *       event handling (e.g. content indexing after a bulk publish) — and conversely, a bulk
+ *       reindex must not be able to delay chat responses.</li>
  * </ul>
  */
 @Configuration
@@ -84,6 +91,40 @@ public class ThreadPoolConfig {
                 Tags.empty());
 
         log.info("SSE stream executor initialised: core={} max={} queue={}",
+                cfg.getCorePoolSize(), cfg.getMaxPoolSize(), cfg.getQueueCapacity());
+        return executor;
+    }
+
+    /**
+     * Dedicated executor for {@code @EventHandler} (application event) dispatch.
+     *
+     * <p>Isolated from {@code sseStreamExecutor} so the two workloads cannot contend for the
+     * same threads — see the bulkhead rationale on the class-level Javadoc. Sizing rationale
+     * mirrors {@link #sseStreamExecutor()}; {@code queueCapacity} is larger here because a
+     * queued event handler only delays a background task rather than a live HTTP response.
+     *
+     * @return fully initialised and instrumented executor
+     */
+    @Bean(name = "asyncEventExecutor")
+    public ThreadPoolTaskExecutor asyncEventExecutor() {
+        ThreadPoolProperties.AsyncEventExecutor cfg = properties.getAsyncEventExecutor();
+
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(cfg.getCorePoolSize());
+        executor.setMaxPoolSize(cfg.getMaxPoolSize());
+        executor.setQueueCapacity(cfg.getQueueCapacity());
+        executor.setThreadNamePrefix("async-event-");
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(cfg.getAwaitTerminationSeconds());
+        executor.initialize();
+
+        ExecutorServiceMetrics.monitor(
+                meterRegistry,
+                executor.getThreadPoolExecutor(),
+                "async-event",
+                Tags.empty());
+
+        log.info("Async event executor initialised: core={} max={} queue={}",
                 cfg.getCorePoolSize(), cfg.getMaxPoolSize(), cfg.getQueueCapacity());
         return executor;
     }

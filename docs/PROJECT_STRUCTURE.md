@@ -57,7 +57,8 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
 │   └── MdcKeys.java              — MDC key constants shared across modules (e.g. TRACE_ID = "traceId")
 └── event/
     ├── ApplicationEventHandler.java  — marker interface; Find Implementations = full event bus registry across modules
-    ├── EventHandler.java             — composed @EventListener + @Async; enforces async on every listener
+    ├── EventHandler.java             — composed @EventListener + @Async("asyncEventExecutor"); enforces async on
+    │                                    every listener and pins dispatch to a dedicated pool (bulkhead vs sseStreamExecutor)
     └── AsyncEventHandler.java        — abstract base class (Template Method); provides async dispatch via @EventHandler,
                                          MDC TRACE_ID binding (opt-in via resolveTraceId()), timing, and exception safety;
                                          subclasses implement doHandle(); subclasses that need DB writes declare @Transactional themselves
@@ -85,6 +86,10 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   │                             conversationTopicShiftThreshold, outOfScopeAnswer, evidenceInsufficientAnswer,
 │   │                             injectionDetection (nested: maxQueryLength, patterns, prototypes,
 │   │                             similarityThreshold, rejectionMessage)
+│   ├── PricingConfig.java     — @ConfigurationProperties at app.ai.pricing.*
+│   │                             fields: llmInputCostPerToken, llmOutputCostPerToken, embeddingCostPerToken;
+│   │                             consumed by PipelineCompletedEventListener#computeEstimatedCost();
+│   │                             update whenever chat-model or embedding model changes
 │   ├── LabelsConfig.java      — @ConfigurationProperties at app.ai.labels.*
 │   │                             fields: contextSummaryLabel, contextFollowUpLabel, historySummaryLabel,
 │   │                             historySummaryAck, compressionPreviousSummaryLabel, compressionTurnsLabel
@@ -194,12 +199,18 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │   ├── thread/
 │   │   ├── ThreadPoolProperties.java — @ConfigurationProperties at app.threads.*;
 │   │   │                               nested SseExecutor: corePoolSize (10), maxPoolSize (50),
-│   │   │                               queueCapacity (100), awaitTerminationSeconds (30); env-var overrides
-│   │   └── ThreadPoolConfig.java     — Factory Method: creates sseStreamExecutor bean, registers
-│   │                                   ExecutorServiceMetrics (Micrometer Decorator); all pool sizing from ThreadPoolProperties
+│   │   │                               queueCapacity (100), awaitTerminationSeconds (30);
+│   │   │                               nested AsyncEventExecutor: corePoolSize (5), maxPoolSize (20),
+│   │   │                               queueCapacity (200), awaitTerminationSeconds (30); env-var overrides
+│   │   └── ThreadPoolConfig.java     — Factory Method: creates sseStreamExecutor (SSE/MVC async dispatch) and
+│   │                                   asyncEventExecutor (@EventHandler dispatch) beans as separate bulkheads;
+│   │                                   registers both with ExecutorServiceMetrics (Micrometer Decorator); all
+│   │                                   pool sizing from ThreadPoolProperties
 │   ├── web/
-│   │   └── WebMvcConfig.java         — @EnableAsync; injects sseStreamExecutor; configureAsyncSupport (timeout 60 s);
-│   │                                   rate-limit interceptor; CurrentUserIdArgumentResolver
+│   │   └── WebMvcConfig.java         — @EnableAsync; wires sseStreamExecutor into configureAsyncSupport
+│   │                                   (timeout 60 s) only — @Async dispatch uses asyncEventExecutor via an
+│   │                                   explicit qualifier on @EventHandler; rate-limit interceptor;
+│   │                                   CurrentUserIdArgumentResolver
 │   └── sse/
 │       └── SseStreamTemplate.java    — SSE writer abstraction
 ├── database/

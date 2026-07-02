@@ -23,8 +23,11 @@ import java.util.List;
  *   <li>Registers the {@link CurrentUserIdArgumentResolver} for {@code @CurrentUserId} parameters.</li>
  * </ul>
  *
- * <p>{@code @EnableAsync} is declared here so that the injected {@code sseStreamExecutor} bean
- * is also used as the Spring {@code @Async} default executor.
+ * <p>{@code @EnableAsync} is declared here to activate Spring's {@code @Async} support.
+ * {@code sseStreamExecutor} is wired only into Spring MVC's async request dispatch below;
+ * {@code @Async} method dispatch uses its own explicitly-qualified pool
+ * ({@code asyncEventExecutor}, see {@code com.ttg.devknowledgeplatform.infra.event.EventHandler})
+ * so the two workloads never contend for the same threads.
  */
 @Configuration
 @EnableAsync

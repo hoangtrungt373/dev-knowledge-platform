@@ -32,7 +32,7 @@ public class ModelConfig {
     private int dimensions = 1536;
 
     @NotBlank
-    private String chatModel = "gpt-4o-mini";
+    private String chatModel = "gpt-5.4-mini";
 
     @Positive
     private int maxTokens = 1024;

@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.ai.event;
 
 import com.ttg.devknowledgeplatform.ai.config.MonitoringConfig;
+import com.ttg.devknowledgeplatform.ai.config.PricingConfig;
 import com.ttg.devknowledgeplatform.ai.dto.AnswerQualityVerdict;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.dto.StageSpan;
@@ -47,6 +48,7 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
 
     private final PipelineMetricsRepository repository;
     private final MonitoringConfig monitoring;
+    private final PricingConfig pricing;
 
     /**
      * Exposes the pipeline trace ID so {@link AsyncEventHandler} can bind it to
@@ -57,16 +59,10 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
         return event.ctx().getTraceId().toString();
     }
 
-    // Pricing constants for cost estimation (as of 2026-06; update if OpenAI changes rates).
-    // gpt-4o-mini: $0.15/1M input tokens, $0.60/1M output tokens.
-    // text-embedding-3-small: $0.020/1M tokens.
-    // TODO: Move these into MonitoringConfig (or a dedicated PricingConfig) so rate changes
-    //       require only a config update rather than a code change + redeploy.
     // TODO: Add a PRICING_VERSION column to PIPELINE_METRICS so historical rows remain
-    //       unambiguous after a rate change (e.g. "gpt-4o-mini-2026-06").
-    private static final BigDecimal LLM_INPUT_COST_PER_TOKEN  = new BigDecimal("0.00000015");
-    private static final BigDecimal LLM_OUTPUT_COST_PER_TOKEN = new BigDecimal("0.00000060");
-    private static final BigDecimal EMBEDDING_COST_PER_TOKEN  = new BigDecimal("0.00000002");
+    //       unambiguous after a rate change (e.g. "gpt-5.4-mini-2026-07"). Rates themselves now
+    //       live in PricingConfig (app.ai.pricing.*) — see its Javadoc for what to update when
+    //       the chat or embedding model changes.
 
     /**
      * Maps the event payload to a {@link PipelineMetrics} entity and persists it.
@@ -214,14 +210,8 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
     }
 
     /**
-     * Estimates the USD cost for this request from raw token counts and current model pricing.
-     *
-     * <p>Pricing model:
-     * <ul>
-     *   <li>LLM input (contextualization + generation): $0.15 / 1M tokens</li>
-     *   <li>LLM output (contextualization + generation): $0.60 / 1M tokens</li>
-     *   <li>Embedding (query + quality check): $0.020 / 1M tokens</li>
-     * </ul>
+     * Estimates the USD cost for this request from raw token counts and the per-token rates
+     * configured in {@link PricingConfig}.
      *
      * <p>Returns {@code null} when all token counts are zero — this means the pipeline aborted
      * before any LLM call, so storing $0.00 would be misleading (it implies an LLM ran for free).
@@ -238,9 +228,9 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
             return null;
         }
 
-        BigDecimal cost = BigDecimal.valueOf(totalInput).multiply(LLM_INPUT_COST_PER_TOKEN)
-                .add(BigDecimal.valueOf(totalOutput).multiply(LLM_OUTPUT_COST_PER_TOKEN))
-                .add(BigDecimal.valueOf(totalEmbedding).multiply(EMBEDDING_COST_PER_TOKEN));
+        BigDecimal cost = BigDecimal.valueOf(totalInput).multiply(pricing.getLlmInputCostPerToken())
+                .add(BigDecimal.valueOf(totalOutput).multiply(pricing.getLlmOutputCostPerToken()))
+                .add(BigDecimal.valueOf(totalEmbedding).multiply(pricing.getEmbeddingCostPerToken()));
 
         return cost.setScale(8, RoundingMode.HALF_UP);
     }
