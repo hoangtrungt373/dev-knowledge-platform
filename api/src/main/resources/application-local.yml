@@ -1,0 +1,64 @@
+spring:
+  # OAuth 2.0 — client credentials must be set via env vars or IDE run config
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+          facebook:
+            client-id: ${FACEBOOK_CLIENT_ID:your-facebook-client-id}
+            client-secret: ${FACEBOOK_CLIENT_SECRET:your-facebook-client-secret}
+
+  # Database
+  datasource:
+    url: jdbc:postgresql://localhost:5432/dev-premier
+    username: postgres
+    password: password
+    driver-class-name: org.postgresql.Driver
+
+  # JPA — looser than base for local dev
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: false
+        highlight_sql: true
+
+  # Redis — only password differs from base defaults
+  data:
+    redis:
+      password: password
+
+# JWT
+jwt:
+  secret: ${JWT_SECRET:change-me-local-dev-only-not-for-production-use}
+
+# Application
+app:
+  mail:
+    from: ${MAIL_FROM:local-dev@devknowledge.local}
+  ai:
+    model:
+      api-key: ${OPENAI_API_KEY:}
+
+# Logging
+logging:
+  level:
+    com.ttg.devknowledgeplatform: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+# Management — expose more endpoints locally
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env,configprops
+  endpoint:
+    health:
+      show-details: always

@@ -82,28 +82,28 @@ public class PipelineMetrics {
      * {@code NULL} if the pipeline aborted before reaching that stage.
      */
     @Column(name = "EVIDENCE_MEAN_SCORE", precision = 5, scale = 4)
-    private Float evidenceMeanScore;
+    private BigDecimal evidenceMeanScore;
 
     /**
      * Per-request similarity threshold raised by {@code QueryAnomalyStage} on soft-anomaly detection.
      * {@code NULL} when the query was fully in-domain and the configured default applied.
      */
     @Column(name = "EFFECTIVE_SIM_THRESHOLD", precision = 5, scale = 4)
-    private Float effectiveSimThreshold;
+    private BigDecimal effectiveSimThreshold;
 
     /**
      * Cosine similarity between the generated answer and the centroid of retrieved chunks.
      * {@code NULL} for aborted pipelines or when the quality check was skipped.
      */
     @Column(name = "ANSWER_CONTEXT_SIM", precision = 5, scale = 4)
-    private Float answerContextSim;
+    private BigDecimal answerContextSim;
 
     /**
      * Cosine similarity between the generated answer and the query embedding.
      * {@code NULL} for aborted pipelines or when the quality check was skipped.
      */
     @Column(name = "ANSWER_QUERY_SIM", precision = 5, scale = 4)
-    private Float answerQuerySim;
+    private BigDecimal answerQuerySim;
 
     /** Whether the answer quality check flagged drift; {@code NULL} for aborted pipelines. */
     @Column(name = "ANSWER_DRIFTED")

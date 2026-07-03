@@ -20,6 +20,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
@@ -73,7 +74,7 @@ public class ContentItem extends AbstractEntity {
      * requiring a DB migration or re-assessment.
      */
     @Column(name = "QUALITY_SCORE", precision = 5, scale = 4)
-    private Double qualityScore;
+    private BigDecimal qualityScore;
 
     @BatchSize(size = 32)
     @OneToMany(mappedBy = "contentItem", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)

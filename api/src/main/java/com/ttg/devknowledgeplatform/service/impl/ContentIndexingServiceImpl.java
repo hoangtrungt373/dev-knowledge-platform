@@ -22,6 +22,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 
 @Service
@@ -118,7 +120,7 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
             return;
         }
 
-        contentItem.setQualityScore((double) verdict.score());
+        contentItem.setQualityScore(BigDecimal.valueOf(verdict.score()).setScale(4, RoundingMode.HALF_UP));
         contentItemRepository.save(contentItem);
 
         if (verdict.lowQuality()) {

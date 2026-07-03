@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.ai.pipeline;
 
 import com.ttg.devknowledgeplatform.ai.config.GuardConfig;
+import com.ttg.devknowledgeplatform.ai.dto.EmbedResult;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.service.EmbeddingService;
 import com.ttg.devknowledgeplatform.ai.utils.VectorUtils;
@@ -133,8 +134,8 @@ public class PromptGuardStage implements RagPipelineStage {
 
         // Layer 3: semantic similarity to injection prototypes (Option B)
         if (!prototypeEmbeddings.isEmpty()) {
-            float[] queryEmbedding = embeddingService.embed(query);
-            float maxSimilarity = computeMaxSimilarity(queryEmbedding, prototypeEmbeddings);
+            EmbedResult result = embeddingService.embed(query);
+            float maxSimilarity = computeMaxSimilarity(result.vector(), prototypeEmbeddings);
             if (maxSimilarity >= config.getSimilarityThreshold()) {
                 log.warn("PromptGuardStage: query rejected — semantic similarity {} to injection prototypes",
                         maxSimilarity);

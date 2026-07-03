@@ -93,12 +93,12 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
         if (ctx.getScoredChunks() != null)  metrics.setAfterScoringCount(ctx.getScoredChunks().size());
         if (ctx.getSelectedChunks() != null) metrics.setSelectedCount(ctx.getSelectedChunks().size());
 
-        metrics.setEvidenceMeanScore(ctx.getEvidenceMeanScore());
-        metrics.setEffectiveSimThreshold(ctx.getEffectiveSimilarityThreshold());
+        metrics.setEvidenceMeanScore(toScaledDecimal(ctx.getEvidenceMeanScore()));
+        metrics.setEffectiveSimThreshold(toScaledDecimal(ctx.getEffectiveSimilarityThreshold()));
 
         if (verdict != null && !verdict.wasSkipped()) {
-            metrics.setAnswerContextSim(verdict.contextSimilarity());
-            metrics.setAnswerQuerySim(verdict.querySimilarity());
+            metrics.setAnswerContextSim(toScaledDecimal(verdict.contextSimilarity()));
+            metrics.setAnswerQuerySim(toScaledDecimal(verdict.querySimilarity()));
             metrics.setAnswerDrifted(verdict.drifted());
         }
 
@@ -210,6 +210,23 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
      */
     private Integer nullIfZero(int value) {
         return value == 0 ? null : value;
+    }
+
+    /**
+     * Converts a cosine-similarity {@code float} to the {@code DECIMAL(5, 4)} shape stored in
+     * {@code PipelineMetrics}. Values come from {@code float} arithmetic (dot products, means),
+     * so they carry binary-to-decimal noise beyond four places; rounding here keeps the stored
+     * value consistent with the column's declared scale.
+     *
+     * @param value raw similarity/threshold value, or {@code null} if the producing stage did not run
+     * @return the value rounded to 4 decimal places, or {@code null} if {@code value} is {@code null}
+     */
+    private BigDecimal toScaledDecimal(Float value) {
+        return value == null ? null : toScaledDecimal(value.floatValue());
+    }
+
+    private BigDecimal toScaledDecimal(float value) {
+        return BigDecimal.valueOf(value).setScale(4, RoundingMode.HALF_UP);
     }
 
     /**

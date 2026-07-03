@@ -101,7 +101,7 @@ public class EmbeddingIndexServiceImpl implements EmbeddingIndexService {
                 .title(ci.getTitle())
                 .contentType(ci.getType().name())
                 .contentStatus(ci.getStatus().name())
-                .qualityScore(ci.getQualityScore())
+                .qualityScore(ci.getQualityScore() != null ? ci.getQualityScore().doubleValue() : null)
                 .chunkCount(stats != null ? stats.getChunkCount() : 0L)
                 .totalTokens(stats != null ? stats.getTotalTokens() : 0L)
                 .modelName(stats != null ? stats.getModelName() : null)
