@@ -8,11 +8,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 /**
- * Configuration properties for the embedding and chat language models.
+ * Configuration properties for the embedding model.
  *
  * <p>Bound from the {@code app.ai.model} prefix. Override via environment variables:
- * {@code OPENAI_API_KEY}, {@code EMBEDDING_MODEL}, {@code EMBEDDING_DIMENSIONS},
- * {@code CHAT_MODEL}, {@code CHAT_MAX_TOKENS}, {@code CHAT_TEMPERATURE}, {@code AI_MAX_RETRIES}.
+ * {@code OPENAI_API_KEY}, {@code EMBEDDING_MODEL}, {@code EMBEDDING_DIMENSIONS}.
+ *
+ * <p>Chat model settings live separately in {@code ChatModelsConfig} — this class used to hold
+ * both, but embeddings and chat generation can now be served by different providers (only OpenAI
+ * offers an embedding product; chat generation can run on OpenAI or Anthropic), so a single
+ * {@code apiKey} could no longer represent "the" provider for both concerns.
  */
 @ConfigurationProperties(prefix = "app.ai.model")
 @Validated
@@ -20,6 +24,7 @@ import org.springframework.validation.annotation.Validated;
 @Setter
 public class ModelConfig {
 
+    /** OpenAI API key — the only supported embedding provider. */
     @NotBlank
     private String apiKey;
 
@@ -31,19 +36,7 @@ public class ModelConfig {
     @Positive
     private int dimensions = 1536;
 
-    @NotBlank
-    private String chatModel = "gpt-5.4-mini";
-
-    @Positive
-    private int maxTokens = 1024;
-
-    private double temperature = 0.7;
-
-    /**
-     * Maximum number of retries for failed LLM API calls.
-     * Not applied to streaming calls — retrying mid-stream is not meaningful
-     * because partial token output cannot be rolled back.
-     */
+    /** Maximum number of retries for failed embedding API calls. */
     @Positive
     private int maxRetries = 3;
 }

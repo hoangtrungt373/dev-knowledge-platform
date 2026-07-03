@@ -123,6 +123,9 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
         // Feature 3: User attribution
         metrics.setUserId(ctx.getUserId());
 
+        // Chat model attribution — id of the profile actually resolved for this request.
+        metrics.setChatModel(ctx.getResolvedChatModel());
+
         // TODO: Extract entity mapping (lines above) to a MapStruct mapper (PipelineMetricsMapper).
         //       doHandle() currently does mapping, cost computation, persistence, and alerting —
         //       each is a distinct responsibility that will grow independently.
@@ -211,12 +214,19 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
 
     /**
      * Estimates the USD cost for this request from raw token counts and the per-token rates
-     * configured in {@link PricingConfig}.
+     * configured in {@link PricingConfig}, looking up the chat rate by
+     * {@link RagPipelineContext#getResolvedChatModel()} since different chat models price
+     * differently.
      *
      * <p>Returns {@code null} when all token counts are zero — this means the pipeline aborted
      * before any LLM call, so storing $0.00 would be misleading (it implies an LLM ran for free).
      *
-     * @param ctx pipeline context carrying raw token counts
+     * <p>If the resolved chat model has no matching entry under {@code app.ai.pricing.chat-models}
+     * (e.g. a profile was added to {@code ChatModelsConfig} without a matching pricing entry),
+     * the LLM-generation portion of the cost is omitted and a warning is logged — the embedding
+     * portion is still computed, so the estimate degrades rather than throwing.
+     *
+     * @param ctx pipeline context carrying raw token counts and the resolved chat model id
      * @return estimated cost as a {@link BigDecimal} with 8 decimal places, or {@code null}
      */
     private BigDecimal computeEstimatedCost(RagPipelineContext ctx) {
@@ -228,9 +238,16 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
             return null;
         }
 
-        BigDecimal cost = BigDecimal.valueOf(totalInput).multiply(pricing.getLlmInputCostPerToken())
-                .add(BigDecimal.valueOf(totalOutput).multiply(pricing.getLlmOutputCostPerToken()))
-                .add(BigDecimal.valueOf(totalEmbedding).multiply(pricing.getEmbeddingCostPerToken()));
+        BigDecimal cost = BigDecimal.valueOf(totalEmbedding).multiply(pricing.getEmbeddingCostPerToken());
+
+        PricingConfig.ChatModelPricing chatPricing = pricing.getChatModels().get(ctx.getResolvedChatModel());
+        if (chatPricing != null) {
+            cost = cost.add(BigDecimal.valueOf(totalInput).multiply(chatPricing.getInputCostPerToken()))
+                    .add(BigDecimal.valueOf(totalOutput).multiply(chatPricing.getOutputCostPerToken()));
+        } else if (totalInput > 0 || totalOutput > 0) {
+            log.warn("No pricing entry for chat model '{}' [traceId={}] — LLM cost omitted from estimate",
+                    ctx.getResolvedChatModel(), ctx.getTraceId());
+        }
 
         return cost.setScale(8, RoundingMode.HALF_UP);
     }

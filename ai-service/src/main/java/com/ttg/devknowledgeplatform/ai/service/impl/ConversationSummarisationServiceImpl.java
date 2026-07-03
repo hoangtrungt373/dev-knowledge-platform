@@ -2,10 +2,10 @@ package com.ttg.devknowledgeplatform.ai.service.impl;
 
 import com.ttg.devknowledgeplatform.ai.config.LabelsConfig;
 import com.ttg.devknowledgeplatform.ai.config.LoadedPrompts;
+import com.ttg.devknowledgeplatform.ai.service.ChatModelResolver;
 import com.ttg.devknowledgeplatform.ai.service.ConversationSummarisationService;
 import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
 import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.ChatLanguageModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -13,8 +13,10 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 
 /**
- * Default {@link ConversationSummarisationService} implementation backed by the
- * configured blocking {@link ChatLanguageModel}.
+ * Default {@link ConversationSummarisationService} implementation backed by the server's
+ * default blocking chat model ({@code ChatModelResolver.resolveBlocking(null)}) — history
+ * compression is an internal pipeline utility call, not part of the user-facing answer
+ * generation that {@code ChatRequest.chatModel} controls, so it always runs on one fixed model.
  *
  * <p>The prompt is assembled in three parts:
  * <ol>
@@ -33,7 +35,7 @@ import java.util.List;
 @Slf4j
 public class ConversationSummarisationServiceImpl implements ConversationSummarisationService {
 
-    private final ChatLanguageModel chatLanguageModel;
+    private final ChatModelResolver chatModelResolver;
     private final LoadedPrompts prompts;
     private final LabelsConfig labels;
 
@@ -51,7 +53,7 @@ public class ConversationSummarisationServiceImpl implements ConversationSummari
                 prompt.append(t.role()).append(": ").append(t.content()).append("\n"));
 
         try {
-            String result = chatLanguageModel.generate(UserMessage.from(prompt.toString()))
+            String result = chatModelResolver.resolveBlocking(null).generate(UserMessage.from(prompt.toString()))
                                              .content().text().strip();
             log.debug("Generated rolling summary: {} chars from {} turns",
                     result.length(), turnsToCompress.size());

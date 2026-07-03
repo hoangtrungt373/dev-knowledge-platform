@@ -35,6 +35,13 @@
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-open-ai</artifactId>
         </dependency>
+        <!-- Version-less: resolved via the langchain4j-bom above. If this fails to resolve,
+             langchain4j-anthropic hasn't been published for the pinned langchain4j.version yet —
+             pin an explicit <version> here as a fallback. -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-anthropic</artifactId>
+        </dependency>
 
         <!-- pgvector — vector similarity search -->
         <dependency>

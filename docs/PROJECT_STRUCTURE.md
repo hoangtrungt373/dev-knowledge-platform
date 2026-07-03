@@ -33,6 +33,7 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │   ├── ChatSession.java              — userId, title, lastActivityAt, summary (TEXT); parent of ChatMessage rows
 │   └── ChatMessage.java              — role, content, turnIndex; child of ChatSession
 ├── enums/
+│   ├── ChatProvider.java             — OPENAI, ANTHROPIC; selects LangChain4j builder family per chat model profile
 │   ├── ContentStatus.java            — DRAFT, PUBLISHED, …
 │   ├── ContentType.java              — INTERVIEW_QUESTION, ARTICLE, BLOG_POST
 │   ├── ParamKey.java                 — typed keys for SYS_PARAM.NAME; renaming a constant requires a DB migration
@@ -71,9 +72,15 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
 ```
 ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ├── config/
-│   ├── AiServiceConfig.java   — wires ChatLanguageModel + StreamingChatLanguageModel beans; injects OkHttpProperties for timeout
-│   ├── ModelConfig.java       — @ConfigurationProperties at app.ai.model.*
-│   │                             fields: apiKey, model, dimensions, chatModel, maxTokens, temperature, maxRetries
+│   ├── AiServiceConfig.java   — builds Map<String,ChatLanguageModel> + Map<String,StreamingChatLanguageModel>,
+│   │                             one entry per ChatModelsConfig.ChatModelProfile (OpenAI or Anthropic builder
+│   │                             depending on provider), keyed by profile id; injects OkHttpProperties for timeout
+│   ├── ModelConfig.java       — @ConfigurationProperties at app.ai.model.* (embedding settings only)
+│   │                             fields: apiKey, model, dimensions
+│   ├── ChatModelsConfig.java  — @ConfigurationProperties at app.ai.chat-models.*
+│   │                             fields: defaultModel, profiles (List<ChatModelProfile>: id, provider,
+│   │                             apiKey, maxTokens, temperature, maxRetries) — each profile self-contained;
+│   │                             the profile list is the request-time allow-list for ChatRequest.chatModel
 │   ├── OkHttpProperties.java  — @ConfigurationProperties at app.ai.okhttp.*; timeout (default 60s); passed to LangChain4j builders
 │   ├── IndexingConfig.java    — @ConfigurationProperties at app.ai.indexing.*
 │   │                             fields: chunkSize, chunkOverlap, centroidRefreshInterval, indexingCoherenceThreshold
@@ -87,9 +94,10 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   │                             injectionDetection (nested: maxQueryLength, patterns, prototypes,
 │   │                             similarityThreshold, rejectionMessage)
 │   ├── PricingConfig.java     — @ConfigurationProperties at app.ai.pricing.*
-│   │                             fields: llmInputCostPerToken, llmOutputCostPerToken, embeddingCostPerToken;
+│   │                             fields: embeddingCostPerToken (flat), chatModels (Map<String,ChatModelPricing>
+│   │                             keyed by chat model id: inputCostPerToken, outputCostPerToken);
 │   │                             consumed by PipelineCompletedEventListener#computeEstimatedCost();
-│   │                             update whenever chat-model or embedding model changes
+│   │                             update whenever a profile is added to ChatModelsConfig or a provider's rates change
 │   ├── LabelsConfig.java      — @ConfigurationProperties at app.ai.labels.*
 │   │                             fields: contextSummaryLabel, contextFollowUpLabel, historySummaryLabel,
 │   │                             historySummaryAck, compressionPreviousSummaryLabel, compressionTurnsLabel
@@ -124,7 +132,8 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │                                        latency: contextualizationMs, embeddingMs, retrievalMs, llmGenerationMs, totalPipelineMs;
 │                                        tokens: contextualizationInputTokens, contextualizationOutputTokens, embeddingTokens,
 │                                        qualityEmbeddingTokens, generationInputTokens, generationOutputTokens, estimatedCostUsd;
-│                                        attribution: userId (no FK — analytics rows must survive user deletion)
+│                                        attribution: userId (no FK — analytics rows must survive user deletion),
+│                                        chatModel (id of the resolved chat model profile; NULL pre-DKP-0012 rows)
 ├── exception/
 │   └── RagQueryException.java
 ├── pipeline/                         — Pipes-and-Filters RAG pipeline (Pipes-and-Filters pattern)
@@ -163,20 +172,26 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
     ├── CorpusStatisticsService.java             — interface: getCentroidFor(RagFilter), refresh(); in ai-service so stages can inject it
     ├── EmbeddingService.java                    — wraps OpenAI embedding API; embed() returns EmbedResult
     ├── AnswerQualityService.java                — post-generation drift detection: answer vs context centroid + answer vs query
+    ├── ChatModelResolver.java                   — interface: resolveBlocking(modelId), resolveStreaming(modelId),
+    │                                               resolveModelId(modelId); null modelId falls back to ChatModelsConfig.defaultModel;
+    │                                               throws BusinessException(AI_MODEL_UNSUPPORTED) for an unconfigured id
     ├── ConversationTopicGuardService.java       — pre-pipeline topic shift guard: embeds question + history fingerprint; strips recent turns on shift
     ├── PipelineMetricsSummaryService.java       — interface: getSummary(MetricsPeriod); returns PipelineMetricsSummary
     ├── RagQueryService.java                     — interface: query() + queryStream();
-    │                                               primary overloads accept ConversationContext + RagFilter + userId
+    │                                               primary overloads accept ConversationContext + RagFilter + userId + chatModel
     ├── RagStreamHandler.java                    — SSE callback interface
     └── impl/
         ├── AnswerQualityServiceImpl.java             — embeds answer; computes normalised context centroid from selectedChunks;
         │                                               evaluates contextSimilarity + querySimilarity; logs WARN on drift
+        ├── ChatModelResolverImpl.java                 — looks up Map<String,ChatLanguageModel> / Map<String,StreamingChatLanguageModel>
+        │                                                (built by AiServiceConfig) by resolved model id
         ├── ConversationSummarisationServiceImpl.java — ChatLanguageModel-backed summarisation
         ├── ConversationTopicGuardServiceImpl.java    — embedBatch(question + historyFingerprint); strips recentTurns on shift
         ├── PipelineMetricsSummaryServiceImpl.java    — @Transactional(readOnly=true); calls fetchSummary(); maps projection to record
-        └── RagQueryServiceImpl.java                  — thin orchestrator: topicGuard → pipeline → recordPipelineMetrics()
-                                                         (6 Micrometer instruments) → LLM call + timing + token capture
-                                                         → assessAnswerQuality() → publishEvent(PipelineCompletedEvent)
+        └── RagQueryServiceImpl.java                  — thin orchestrator: resolve chat model (before any pipeline work) →
+                                                         topicGuard → pipeline → recordPipelineMetrics() (6 Micrometer instruments)
+                                                         → LLM call + timing + token capture → assessAnswerQuality()
+                                                         → publishEvent(PipelineCompletedEvent)
 ```
 
 ---
@@ -217,7 +232,8 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │   └── sql/                          — Liquibase changelogs (master: dev-knowledge-platform.xml)
 ├── dto/
 │   └── chat/
-│       ├── ChatRequest.java          — question, sessionId, sourceTypes, categoryId, tags
+│       ├── ChatRequest.java          — question, sessionId, sourceTypes, categoryId, tags, chatModel
+│       │                                (chatModel: optional model id, e.g. "claude-sonnet-5"; null = server default)
 │       ├── ChatResponse.java
 │       ├── ChatSessionHistoryDto.java
 │       └── ChatSessionSummaryDto.java

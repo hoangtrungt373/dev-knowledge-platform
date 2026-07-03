@@ -95,6 +95,7 @@ public enum ErrorCode {
     // AI / RAG Errors (AI_*)
     AI_SERVICE_UNAVAILABLE("AI_001", "AI service is temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE),
     AI_EMBEDDING_FAILED("AI_002", "Failed to generate embedding for the provided text", HttpStatus.SERVICE_UNAVAILABLE),
+    AI_MODEL_UNSUPPORTED("AI_003", "Requested chat model is not supported", HttpStatus.BAD_REQUEST),
 
     // Rate Limiting (RATE_*)
     RATE_LIMIT_EXCEEDED("RATE_001", "Too many requests — please slow down and try again", HttpStatus.TOO_MANY_REQUESTS),

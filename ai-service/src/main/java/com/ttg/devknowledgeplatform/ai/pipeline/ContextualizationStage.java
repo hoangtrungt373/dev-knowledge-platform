@@ -3,10 +3,10 @@ package com.ttg.devknowledgeplatform.ai.pipeline;
 import com.ttg.devknowledgeplatform.ai.config.LabelsConfig;
 import com.ttg.devknowledgeplatform.ai.config.LoadedPrompts;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
+import com.ttg.devknowledgeplatform.ai.service.ChatModelResolver;
 import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.model.output.TokenUsage;
 import lombok.RequiredArgsConstructor;
@@ -53,7 +53,15 @@ public class ContextualizationStage implements RagPipelineStage {
     private static final String CONSTRAINTS_KEY   = "CONSTRAINTS";
     private static final String OUTPUT_FORMAT_KEY = "OUTPUT_FORMAT";
 
-    private final ChatLanguageModel chatLanguageModel;
+    /**
+     * Resolved to the server's default chat model ({@code resolveBlocking(null)}), not the
+     * model the caller selected via {@code ChatRequest.chatModel}. Question rewriting is an
+     * internal pipeline utility call, not part of the user-facing answer generation the
+     * per-request model choice is meant to control — keeping it on one fixed model avoids
+     * mixing providers within a single request and avoids threading model choice through
+     * every pipeline stage that happens to make an LLM call.
+     */
+    private final ChatModelResolver chatModelResolver;
     private final LoadedPrompts prompts;
     private final LabelsConfig labels;
 
@@ -61,7 +69,7 @@ public class ContextualizationStage implements RagPipelineStage {
     public void process(RagPipelineContext ctx) {
         try {
             String prompt = buildPrompt(ctx);
-            Response<AiMessage> response = chatLanguageModel.generate(UserMessage.from(prompt));
+            Response<AiMessage> response = chatModelResolver.resolveBlocking(null).generate(UserMessage.from(prompt));
             recordTokenUsage(ctx, response.tokenUsage());
 
             EnrichedQuery parsed = parseResponse(response.content().text().strip());

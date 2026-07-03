@@ -9,6 +9,7 @@ import com.ttg.devknowledgeplatform.ai.event.PipelineCompletedEvent;
 import com.ttg.devknowledgeplatform.ai.exception.RagQueryException;
 import com.ttg.devknowledgeplatform.ai.pipeline.RagPipelineRunner;
 import com.ttg.devknowledgeplatform.ai.service.AnswerQualityService;
+import com.ttg.devknowledgeplatform.ai.service.ChatModelResolver;
 import com.ttg.devknowledgeplatform.ai.service.ConversationTopicGuardService;
 import com.ttg.devknowledgeplatform.ai.service.RagQueryService;
 import com.ttg.devknowledgeplatform.ai.service.RagStreamHandler;
@@ -57,22 +58,25 @@ public class RagQueryServiceImpl implements RagQueryService {
             "Failed to process your question. Please try again later.";
 
     private final RagPipelineRunner pipelineRunner;
-    private final ChatLanguageModel chatLanguageModel;
-    private final StreamingChatLanguageModel streamingChatLanguageModel;
+    private final ChatModelResolver chatModelResolver;
     private final AnswerQualityService answerQualityService;
     private final ConversationTopicGuardService conversationTopicGuardService;
     private final MeterRegistry meterRegistry;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
-    public RagAnswer query(String question, ConversationContext context, RagFilter filter, Integer userId) {
-        log.info("RAG query: history={} turns, hasSummary={}, filter={}, userId={}",
+    public RagAnswer query(String question, ConversationContext context, RagFilter filter, Integer userId, String chatModel) {
+        log.info("RAG query: history={} turns, hasSummary={}, filter={}, userId={}, chatModel={}",
                 context.recentTurns().size(), context.hasSummary(),
-                filter.isEmpty() ? "none" : filter, userId);
+                filter.isEmpty() ? "none" : filter, userId, chatModel);
+        // Resolved before any pipeline work starts: an unsupported model id must reject the
+        // request outright (400), not after retrieval has already spent embedding calls.
+        ChatLanguageModel model = chatModelResolver.resolveBlocking(chatModel);
         try {
             ConversationContext effectiveContext = conversationTopicGuardService.guard(question, context);
             RagPipelineContext pipelineCtx = new RagPipelineContext(question, effectiveContext, filter);
             pipelineCtx.setUserId(userId);
+            pipelineCtx.setResolvedChatModel(chatModelResolver.resolveModelId(chatModel));
             pipelineRunner.run(pipelineCtx);
             recordPipelineMetrics(pipelineCtx);
 
@@ -83,7 +87,7 @@ public class RagQueryServiceImpl implements RagQueryService {
             }
 
             long llmStart = System.currentTimeMillis();
-            Response<AiMessage> generationResponse = chatLanguageModel.generate(pipelineCtx.getMessages());
+            Response<AiMessage> generationResponse = model.generate(pipelineCtx.getMessages());
             pipelineCtx.setLlmGenerationMs(System.currentTimeMillis() - llmStart);
             captureGenerationTokens(pipelineCtx, generationResponse.tokenUsage());
 
@@ -104,14 +108,18 @@ public class RagQueryServiceImpl implements RagQueryService {
 
     @Override
     public void queryStream(String question, ConversationContext context,
-                            RagFilter filter, Integer userId, RagStreamHandler handler) {
-        log.info("RAG stream query: history={} turns, hasSummary={}, filter={}, userId={}",
+                            RagFilter filter, Integer userId, String chatModel, RagStreamHandler handler) {
+        log.info("RAG stream query: history={} turns, hasSummary={}, filter={}, userId={}, chatModel={}",
                 context.recentTurns().size(), context.hasSummary(),
-                filter.isEmpty() ? "none" : filter, userId);
+                filter.isEmpty() ? "none" : filter, userId, chatModel);
+        // Resolved before any pipeline work starts: an unsupported model id must reject the
+        // request outright (400), not after retrieval has already spent embedding calls.
+        StreamingChatLanguageModel model = chatModelResolver.resolveStreaming(chatModel);
         try {
             ConversationContext effectiveContext = conversationTopicGuardService.guard(question, context);
             RagPipelineContext pipelineCtx = new RagPipelineContext(question, effectiveContext, filter);
             pipelineCtx.setUserId(userId);
+            pipelineCtx.setResolvedChatModel(chatModelResolver.resolveModelId(chatModel));
             pipelineRunner.run(pipelineCtx);
             recordPipelineMetrics(pipelineCtx);
 
@@ -127,7 +135,7 @@ public class RagQueryServiceImpl implements RagQueryService {
             handler.onSources(pipelineCtx.getSources());
 
             final long llmStart = System.currentTimeMillis();
-            streamingChatLanguageModel.generate(
+            model.generate(
                     pipelineCtx.getMessages(),
                     new StreamingResponseHandler<AiMessage>() {
                         @Override

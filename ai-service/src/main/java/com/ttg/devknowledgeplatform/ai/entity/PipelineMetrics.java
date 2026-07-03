@@ -184,4 +184,17 @@ public class PipelineMetrics {
      */
     @Column(name = "USER_ID")
     private Integer userId;
+
+    // =========================================================================
+    // Chat model attribution
+    // =========================================================================
+
+    /**
+     * Id of the chat model profile resolved for this request (e.g. {@code "gpt-5.4-mini"},
+     * {@code "claude-sonnet-5"}) — see {@code ChatModelResolver}. Always set once a request
+     * reaches pipeline execution; historical rows written before this column existed are
+     * {@code NULL}, not attributable to any particular model.
+     */
+    @Column(name = "CHAT_MODEL", length = 100)
+    private String chatModel;
 }

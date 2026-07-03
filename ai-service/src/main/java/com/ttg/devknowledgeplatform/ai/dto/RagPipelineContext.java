@@ -111,6 +111,14 @@ public class RagPipelineContext {
     private Integer userId;
 
     /**
+     * Id of the chat model profile actually resolved for this request (see
+     * {@code ChatModelResolver}) — never {@code null} once set, since resolution defaults to
+     * the configured default model rather than leaving this unset. Recorded before generation
+     * runs so it is available for cost attribution even if the pipeline aborts beforehand.
+     */
+    private String resolvedChatModel;
+
+    /**
      * Wall-clock time in milliseconds for the final LLM generation call.
      * Set by {@link com.ttg.devknowledgeplatform.ai.service.impl.RagQueryServiceImpl} after
      * the model responds; 0 when the pipeline was aborted before generation.

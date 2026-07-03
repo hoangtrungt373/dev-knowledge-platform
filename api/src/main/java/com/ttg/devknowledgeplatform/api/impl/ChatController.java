@@ -46,7 +46,7 @@ public class ChatController implements ChatApi {
         Integer sessionId = chatSessionService.getOrCreateSessionId(request.sessionId(), userId);
         ConversationContext context = chatSessionService.getConversationContext(sessionId, MAX_CONTEXT_TURNS);
 
-        var answer = ragQueryService.query(request.question(), context, buildFilter(request), userId);
+        var answer = ragQueryService.query(request.question(), context, buildFilter(request), userId, request.chatModel());
         chatSessionService.addTurn(sessionId, request.question(), answer.answer());
 
         log.info("Chat query completed: sessionId={} questionLength={}", sessionId, request.question().length());
@@ -61,7 +61,7 @@ public class ChatController implements ChatApi {
 
         return sseStreamTemplate.stream(writer -> {
             writer.send("session", Map.of("sessionId", sessionId));
-            ragQueryService.queryStream(request.question(), context, buildFilter(request), userId, new RagStreamHandler() {
+            ragQueryService.queryStream(request.question(), context, buildFilter(request), userId, request.chatModel(), new RagStreamHandler() {
                 @Override
                 public void onSources(List<RagSource> sources) {
                     writer.send("sources", sources);

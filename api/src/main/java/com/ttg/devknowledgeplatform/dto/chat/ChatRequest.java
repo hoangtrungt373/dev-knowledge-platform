@@ -19,6 +19,10 @@ import java.util.Set;
  *                    {@code null} means no category constraint
  * @param tags        optional set of tag names; retrieval is restricted to chunks that share at
  *                    least one tag with this set; {@code null} means no tag constraint
+ * @param chatModel   optional id of the chat model to generate the answer with (e.g.
+ *                    {@code "gpt-5.4-mini"}, {@code "claude-sonnet-5"}) — must match one of the
+ *                    server's configured chat model profiles or the request is rejected;
+ *                    {@code null} uses the server's configured default model
  */
 public record ChatRequest(
         @NotBlank(message = "question must not be blank")
@@ -27,5 +31,7 @@ public record ChatRequest(
         Integer sessionId,
         Set<ContentType> sourceTypes,
         Integer categoryId,
-        Set<String> tags
+        Set<String> tags,
+        @Size(max = 100, message = "chatModel must not exceed 100 characters")
+        String chatModel
 ) {}
