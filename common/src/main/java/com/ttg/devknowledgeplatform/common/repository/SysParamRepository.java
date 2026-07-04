@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.repository;
+package com.ttg.devknowledgeplatform.common.repository;
 
 import com.ttg.devknowledgeplatform.common.entity.SysParam;
 import com.ttg.devknowledgeplatform.common.enums.ParamKey;
@@ -11,8 +11,8 @@ import java.util.Optional;
  * Persistence operations for {@link SysParam}.
  *
  * <p>The primary access pattern is lookup by {@link ParamKey} name — used by
- * {@code CorpusStatisticsService} to load cached centroid vectors and thresholds
- * at startup and after each scheduled refresh.
+ * {@link com.ttg.devknowledgeplatform.common.service.SysParamService} to load and upsert
+ * cached vectors and thresholds computed by both the {@code ai-service} and {@code api} modules.
  */
 @Repository
 public interface SysParamRepository extends JpaRepository<SysParam, Integer> {

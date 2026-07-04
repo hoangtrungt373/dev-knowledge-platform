@@ -10,7 +10,7 @@ import org.springframework.validation.annotation.Validated;
 /**
  * Configuration properties for the embedding model.
  *
- * <p>Bound from the {@code app.ai.model} prefix. Override via environment variables:
+ * <p>Bound from the {@code app.ai.embedding-model} prefix. Override via environment variables:
  * {@code OPENAI_API_KEY}, {@code EMBEDDING_MODEL}, {@code EMBEDDING_DIMENSIONS}.
  *
  * <p>Chat model settings live separately in {@code ChatModelsConfig} — this class used to hold
@@ -18,7 +18,7 @@ import org.springframework.validation.annotation.Validated;
  * offers an embedding product; chat generation can run on OpenAI or Anthropic), so a single
  * {@code apiKey} could no longer represent "the" provider for both concerns.
  */
-@ConfigurationProperties(prefix = "app.ai.model")
+@ConfigurationProperties(prefix = "app.ai.embedding-model")
 @Validated
 @Getter
 @Setter

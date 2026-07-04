@@ -9,15 +9,40 @@ import org.slf4j.MDC;
  * Base class for asynchronous Spring application event handlers (Template Method pattern).
  *
  * <h3>Template Method</h3>
- * <p>{@link #handle(Object)} is the fixed algorithm skeleton — it runs on a background thread
- * via {@link EventHandler}, sets up MDC context, times execution, delegates to
- * {@link #doHandle(Object)}, and guarantees exception safety. Subclasses implement only
- * {@code doHandle()}, the variable step.
+ * <p>{@link #handle(Object)} is the fixed algorithm skeleton — it sets up MDC context, times
+ * execution, delegates to {@link #doHandle(Object)}, and guarantees exception safety. Subclasses
+ * implement only {@code doHandle()}, the variable step.
  *
- * <h3>Cross-cutting concerns provided for free</h3>
+ * <h3>Why the Spring listener entry point is NOT this class's {@code handle()} method</h3>
+ * <p>An earlier version of this class placed {@code @EventListener} directly on
+ * {@code handle(E event)} in this abstract base class, relying on Spring resolving the generic
+ * type parameter {@code E} from each concrete subclass's {@code extends AsyncEventHandler<Foo>}
+ * declaration. This does not work: Spring's own reference documentation states that
+ * <em>"generic types may not be resolved through inheritance"</em> for {@code @EventListener}
+ * methods — the type must be declared directly on the annotated method's own class. With the
+ * type unresolved, Spring fell back to an unbounded match, so every subclass silently received
+ * <strong>every</strong> application event ever published, including framework-internal ones
+ * (e.g. {@code ServletWebServerInitializedEvent}), producing a {@code ClassCastException} inside
+ * {@code doHandle()} on the very first mismatched event.
+ *
+ * <p>Compounding that, {@code handle()} used to be {@code final} and directly carried
+ * {@code @EventHandler} (composing {@code @Async}). CGLIB — required here since there is no
+ * interface declaring {@code handle()} for a JDK dynamic proxy — cannot override a {@code final}
+ * method, so {@code @Async} silently never applied: every invocation ran synchronously on the
+ * publishing thread, and because it reached the method via reflection directly on the raw,
+ * Objenesis-constructed proxy shell (never through an advised override), even the
+ * {@code private final Logger log} field on that shell was left uninitialized — turning the
+ * mismatched-event {@code ClassCastException} into an unrelated {@code NullPointerException}
+ * inside the {@code catch} block trying to log it.
+ *
+ * <p><strong>Fix:</strong> each concrete subclass declares its own small, concretely-typed
+ * listener method (see "Usage" below) carrying {@code @EventHandler}. A concrete parameter type
+ * declared directly on the listening class's own method is exactly the case Spring resolves
+ * correctly, and since it is a plain (non-final) method on a concrete class, CGLIB can advise it
+ * for {@code @Async} without issue.
+ *
+ * <h3>Cross-cutting concerns provided for free by {@link #handle(Object)}</h3>
  * <ul>
- *   <li><strong>Async dispatch</strong> — {@code @EventHandler} composes
- *       {@code @EventListener + @Async}; the handler always runs off the publishing thread.</li>
  *   <li><strong>MDC trace propagation</strong> — if {@link #resolveTraceId(Object)} returns a
  *       non-null value, it is bound to {@code MDC[}{@link MdcKeys#TRACE_ID}{@code ]} for the
  *       duration of the handler so every log line emitted inside {@code doHandle()} carries the
@@ -32,14 +57,20 @@ import org.slf4j.MDC;
  * <h3>Transaction handling</h3>
  * <p>This class is intentionally not annotated with {@code @Transactional}. Subclasses that
  * write to the database should annotate their own class with {@code @Transactional} — Spring
- * will proxy the concrete bean and the transaction will wrap the inherited
- * {@link #handle(Object)} entry point correctly.
+ * will proxy the concrete bean and the transaction will wrap the listener entry point correctly.
  *
  * <h3>Usage</h3>
  * <pre>{@code
  * @Service
  * @WriteTransactional     // optional: only if the handler writes to the DB
  * public class MyHandler extends AsyncEventHandler<MyEvent> {
+ *
+ *     // Required: Spring needs a concretely-typed method to resolve the event type correctly
+ *     // and to advise for @Async. Always just one line — delegate straight to handle().
+ *     @EventHandler
+ *     public void onEvent(MyEvent event) {
+ *         handle(event);
+ *     }
  *
  *     @Override
  *     protected String resolveTraceId(MyEvent event) {
@@ -48,13 +79,12 @@ import org.slf4j.MDC;
  *
  *     @Override
  *     protected void doHandle(MyEvent event) throws Exception {
- *         // handler logic — no try/catch, no @Async, no @EventListener needed
+ *         // handler logic — no try/catch needed here
  *     }
  * }
  * }</pre>
  *
- * @param <E> the application event type this handler listens for; resolved from the concrete
- *            subclass at runtime via Spring's {@code ResolvableType}
+ * @param <E> the application event type this handler processes
  * @see EventHandler
  * @see ApplicationEventHandler
  */
@@ -64,15 +94,15 @@ public abstract class AsyncEventHandler<E> implements ApplicationEventHandler {
     private final Logger log = LoggerFactory.getLogger(getClass());
 
     /**
-     * Entry point invoked by the Spring event bus.
+     * Fixed algorithm skeleton, invoked by each subclass's own {@code @EventHandler}-annotated
+     * listener method (see class Javadoc) rather than directly by Spring.
      *
-     * <p>This method is {@code final} to enforce the Template Method contract — all handler
-     * logic must go in {@link #doHandle(Object)}.
+     * <p>{@code final} to enforce the Template Method contract — all handler logic must go in
+     * {@link #doHandle(Object)}.
      *
      * @param event the published event; never {@code null}
      */
-    @EventHandler
-    public final void handle(E event) {
+    protected final void handle(E event) {
         String traceId = resolveTraceId(event);
         if (traceId != null) {
             MDC.put(MdcKeys.TRACE_ID, traceId);
@@ -97,7 +127,6 @@ public abstract class AsyncEventHandler<E> implements ApplicationEventHandler {
      *
      * <p>Runs on a background thread inside the lifecycle managed by {@link #handle(Object)}.
      * Uncaught exceptions are logged by the base class — no {@code try/catch} needed here.
-     * Do not add {@code @EventListener} or {@code @Async} — both are provided by the base class.
      *
      * @param event the published event
      * @throws Exception any exception; caught and logged by {@link #handle(Object)}

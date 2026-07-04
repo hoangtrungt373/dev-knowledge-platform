@@ -4,11 +4,9 @@ import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
 import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;
 import com.ttg.devknowledgeplatform.ai.service.CorpusStatisticsService;
 import com.ttg.devknowledgeplatform.ai.utils.VectorUtils;
-import com.ttg.devknowledgeplatform.common.entity.SysParam;
 import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import com.ttg.devknowledgeplatform.common.enums.ParamKey;
-import com.ttg.devknowledgeplatform.common.util.DateUtils;
-import com.ttg.devknowledgeplatform.repository.SysParamRepository;
+import com.ttg.devknowledgeplatform.common.service.SysParamService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,9 +34,10 @@ import java.util.Optional;
  * occurs after assignment, so no further locking is needed.
  *
  * <h3>Upsert pattern</h3>
- * <p>{@code findByName(key).orElseGet(SysParam::new)} — if a row exists it is updated in place;
- * if not, a new row is inserted. The {@code @Version} field on {@link com.ttg.devknowledgeplatform.common.entity.AbstractEntity}
- * guards against concurrent writes during the rare case of two refresh cycles overlapping.
+ * <p>Persistence (find-or-create, stamp {@code computedAt}, save) is delegated to
+ * {@link SysParamService#upsert}, shared with other {@code SYS_PARAM}-backed caches such as
+ * {@code PromptGuardStage}'s injection-prototype embedding cache — this class only owns the
+ * centroid computation and in-memory cache, not the persistence mechanics.
  */
 @Service
 @RequiredArgsConstructor
@@ -47,7 +46,7 @@ import java.util.Optional;
 public class CorpusStatisticsServiceImpl implements CorpusStatisticsService {
 
     private final ContentEmbeddingRepository embeddingRepository;
-    private final SysParamRepository sysParamRepository;
+    private final SysParamService sysParamService;
 
     // ── In-memory cache ─────────────────────────────────────────────────────────
     // One writer (scheduler), many readers (pipeline threads) — volatile is sufficient.
@@ -135,11 +134,7 @@ public class CorpusStatisticsServiceImpl implements CorpusStatisticsService {
             log.debug("Skipping {} — no embeddings found for this content type", key);
             return;
         }
-        SysParam param = sysParamRepository.findByName(key).orElseGet(SysParam::new);
-        param.setName(key);
-        param.setValue(vectorText);
-        param.setComputedAt(DateUtils.getCurrentDateTime());
-        sysParamRepository.save(param);
+        sysParamService.upsert(key, vectorText);
         log.debug("Persisted {}", key);
     }
 
@@ -148,8 +143,8 @@ public class CorpusStatisticsServiceImpl implements CorpusStatisticsService {
      * Returns {@code null} if the row does not exist yet.
      */
     private float[] loadCached(ParamKey key) {
-        return sysParamRepository.findByName(key)
-                .map(p -> VectorUtils.normalize(VectorUtils.parseVector(p.getValue())))
+        return sysParamService.getValue(key)
+                .map(value -> VectorUtils.normalize(VectorUtils.parseVector(value)))
                 .orElse(null);
     }
 

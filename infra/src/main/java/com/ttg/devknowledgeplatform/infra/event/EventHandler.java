@@ -29,9 +29,13 @@ import java.lang.annotation.Target;
  *       capacity problem into a correctness one.</li>
  * </ol>
  *
- * <p>This annotation is placed on {@link AsyncEventHandler#handle(Object)} in the abstract base
- * class. Individual handlers only implement {@link AsyncEventHandler#doHandle(Object)} — they
- * do not need to repeat this annotation.
+ * <p>This annotation is placed on the small, concretely-typed listener method that each concrete
+ * {@link AsyncEventHandler} subclass declares (see its class Javadoc for why this cannot live on
+ * the shared abstract {@code handle(Object)} method instead — in short, Spring cannot resolve a
+ * generic event type inherited from a superclass, and CGLIB cannot advise a {@code final}
+ * method). That listener method should do nothing but delegate to
+ * {@link AsyncEventHandler#handle}; the actual handling logic goes in
+ * {@link AsyncEventHandler#doHandle(Object)}.
  *
  * @see AsyncEventHandler
  */

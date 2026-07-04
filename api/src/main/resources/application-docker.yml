@@ -43,7 +43,7 @@ app:
   storage:
     endpoint: ${MINIO_ENDPOINT:http://minio:9000}
   ai:
-    model:
+    embedding-model:
       api-key: ${OPENAI_API_KEY}
 
 # Logging

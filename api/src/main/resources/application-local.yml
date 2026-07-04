@@ -33,18 +33,6 @@ spring:
     redis:
       password: password
 
-# JWT
-jwt:
-  secret: ${JWT_SECRET:change-me-local-dev-only-not-for-production-use}
-
-# Application
-app:
-  mail:
-    from: ${MAIL_FROM:local-dev@devknowledge.local}
-  ai:
-    model:
-      api-key: ${OPENAI_API_KEY:}
-
 # Logging
 logging:
   level:

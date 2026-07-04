@@ -77,7 +77,7 @@ public interface ContentEmbeddingRepository extends JpaRepository<ContentEmbeddi
      * @return pgvector text representation of the centroid, or {@code null}
      */
     @Query(value = """
-            SELECT avg(embedding)::text
+            SELECT CAST(avg(embedding) AS text)
             FROM product.content_embedding
             WHERE source_type = :sourceType
             """, nativeQuery = true)
@@ -92,7 +92,7 @@ public interface ContentEmbeddingRepository extends JpaRepository<ContentEmbeddi
      * @return pgvector text representation of the global centroid, or {@code null}
      */
     @Query(value = """
-            SELECT avg(embedding)::text
+            SELECT CAST(avg(embedding) AS text)
             FROM product.content_embedding
             """, nativeQuery = true)
     String computeGlobalCentroid();

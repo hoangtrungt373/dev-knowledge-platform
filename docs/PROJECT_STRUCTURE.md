@@ -4,7 +4,7 @@
 
 ```
 dev-knowledge-platform/
-├── common/          — shared entities, enums, exceptions, DTOs; no Spring dependencies
+├── common/          — shared entities, enums, exceptions, DTOs; depends on Spring Data JPA (for @Entity), validation, web, security (all as annotation/type support, not full autoconfiguration)
 ├── infra/           — shared Spring infrastructure: event base classes, composed annotations, MDC utilities
 ├── ai-service/      — RAG pipeline: embedding, vector search, LLM generation (LangChain4j)
 ├── api/             — REST endpoints, security, Liquibase migrations, Spring Boot entry point
@@ -36,11 +36,23 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │   ├── ChatProvider.java             — OPENAI, ANTHROPIC; selects LangChain4j builder family per chat model profile
 │   ├── ContentStatus.java            — DRAFT, PUBLISHED, …
 │   ├── ContentType.java              — INTERVIEW_QUESTION, ARTICLE, BLOG_POST
-│   ├── ParamKey.java                 — typed keys for SYS_PARAM.NAME; renaming a constant requires a DB migration
+│   ├── ParamKey.java                 — typed keys for SYS_PARAM.NAME; renaming a constant requires a DB migration;
+│   │                                   includes PROMPT_INJECTION_PROTOTYPE_EMBEDDINGS (fingerprinted vector-list cache
+│   │                                   for PromptGuardStage — see repository/service below)
 │   └── UserRole.java
 ├── entity/
-│   ├── ContentItem.java              — qualityScore (Double, nullable): mean centroid similarity set at indexing time
+│   ├── ContentItem.java              — qualityScore (BigDecimal, nullable): mean centroid similarity set at indexing time
 │   └── SysParam.java                 — @Entity for SYS_PARAM; fields: name (ParamKey), value (TEXT), computedAt
+├── repository/
+│   └── SysParamRepository.java       — JpaRepository<SysParam, Integer>; findByName(ParamKey); moved here from
+│                                        api/repository so ai-service (which cannot depend on api) can reach it
+│                                        via SysParamService below
+├── service/
+│   ├── SysParamService.java          — interface: getValue(ParamKey), upsert(ParamKey, String); string-in/string-out,
+│   │                                   no opinion on value encoding — callers own their own serialization format
+│   └── impl/
+│       └── SysParamServiceImpl.java  — find-or-create-and-save upsert pattern, shared by CorpusStatisticsServiceImpl (api)
+│                                        and PromptGuardStage (ai-service)
 └── exception/
     ├── ApiException.java
     ├── BusinessException.java
@@ -75,7 +87,7 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── AiServiceConfig.java   — builds Map<String,ChatLanguageModel> + Map<String,StreamingChatLanguageModel>,
 │   │                             one entry per ChatModelsConfig.ChatModelProfile (OpenAI or Anthropic builder
 │   │                             depending on provider), keyed by profile id; injects OkHttpProperties for timeout
-│   ├── ModelConfig.java       — @ConfigurationProperties at app.ai.model.* (embedding settings only)
+│   ├── ModelConfig.java       — @ConfigurationProperties at app.ai.embedding-model.* (embedding settings only)
 │   │                             fields: apiKey, model, dimensions
 │   ├── ChatModelsConfig.java  — @ConfigurationProperties at app.ai.chat-models.*
 │   │                             fields: defaultModel, profiles (List<ChatModelProfile>: id, provider,
@@ -145,7 +157,10 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── RagPipelineStage.java         — @FunctionalInterface: process(ctx) + default execute(ctx) (Template Method: times process + records span)
 │   ├── RagPipelineRunner.java        — assembles ordered stages, stops on abort; emits PIPELINE_TRACE log after every run
 │   ├── VectorUtils.java              — package-private: dotProduct, toVectorString
-│   ├── PromptGuardStage.java         — FIRST stage: user-input injection guard (length + lexical + semantic similarity); runs before any LLM call
+│   ├── PromptGuardStage.java         — FIRST stage: user-input injection guard (length + lexical + semantic similarity); runs before any LLM call;
+│   │                                   caches prototype embeddings in SYS_PARAM (via SysParamService) keyed by a SHA-256
+│   │                                   fingerprint of the embedding model + prototype list, so restarts skip re-embedding
+│   │                                   until either config value actually changes
 │   ├── ContextualizationStage.java   — LLM enrichment: resolves pronouns → STANDALONE (for embedding) + CONTEXT/TASK/CONSTRAINTS/OUTPUT_FORMAT (for generation)
 │   ├── EmbeddingStage.java           — OpenAI embed of contextualized question
 │   ├── QueryAnomalyStage.java        — cosine similarity vs L2-normalised corpus centroid; hard abort or soft threshold raise
@@ -239,7 +254,6 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │       └── ChatSessionSummaryDto.java
 ├── mapper/                           — MapStruct mappers (DTO ↔ entity)
 ├── repository/
-│   ├── SysParamRepository.java       — JpaRepository<SysParam, Integer>; findByName(ParamKey)
 │   ├── spec/                         — JPA Specification implementations for dynamic filtering
 │   └── …
 ├── security/                         — JwtProvider, OAuth2 handlers, UserUtils
@@ -253,7 +267,8 @@ api/src/main/java/com/ttg/devknowledgeplatform/
     └── impl/
         ├── IndexingQualityServiceImpl.java  — loads embeddings from ContentEmbeddingRepository; mean centroid dotProduct; graceful cold-start
         ├── CorpusStatisticsServiceImpl.java — @PostConstruct loads centroids from SYS_PARAM; @Scheduled refresh
-        │                                       recomputes via SQL avg(embedding); volatile float[] cache; upsert via SysParamRepository
+        │                                       recomputes via SQL avg(embedding); volatile float[] cache; persistence
+        │                                       delegated to common's SysParamService (find-or-create-and-save owned there)
         ├── ContentIndexingServiceImpl.java  — type-specific ingestion; buildCommonMetadata()
         │                                       writes categoryId, categoryName, tagIds, tagNames
         │                                       to every chunk's JSONB metadata

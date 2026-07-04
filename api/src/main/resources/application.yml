@@ -79,7 +79,7 @@ spring:
 
 # Server
 server:
-  port: ${SERVER_PORT:8081}
+  port: ${SERVER_PORT:8080}
   tomcat:
     threads:
       # Worker threads that process HTTP requests (Tomcat default: 200).
@@ -115,7 +115,7 @@ app:
     bucket: ${MINIO_BUCKET:user-avatars}
     presigned-url-expiry-minutes: ${MINIO_PRESIGNED_EXPIRY:60}
   ai:
-    model:
+    embedding-model:
       api-key: ${OPENAI_API_KEY:}
       model: ${EMBEDDING_MODEL:text-embedding-3-small}
       dimensions: ${EMBEDDING_DIMENSIONS:1536}

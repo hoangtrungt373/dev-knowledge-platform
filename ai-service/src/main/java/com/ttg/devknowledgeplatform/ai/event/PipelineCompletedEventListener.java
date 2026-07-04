@@ -8,6 +8,7 @@ import com.ttg.devknowledgeplatform.ai.dto.StageSpan;
 import com.ttg.devknowledgeplatform.ai.entity.PipelineMetrics;
 import com.ttg.devknowledgeplatform.ai.repository.PipelineMetricsRepository;
 import com.ttg.devknowledgeplatform.infra.event.AsyncEventHandler;
+import com.ttg.devknowledgeplatform.infra.event.EventHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -28,8 +29,8 @@ import static java.math.BigDecimal.ZERO;
  * {@code ContentPublishedEvent} and {@code ContentPublishedEventListener} in {@code api}.
  *
  * <p>Async dispatch, MDC trace propagation, timing, and exception safety are all
- * provided by {@link AsyncEventHandler}. This class only contains the mapping logic
- * from event → entity.
+ * provided by {@link AsyncEventHandler}; this class only contains the one-line {@code @EventHandler}
+ * listener shim ({@link #onEvent}) it requires plus the mapping logic from event → entity.
  *
  * <p>Nullable columns are populated only when the corresponding pipeline stage ran:
  * <ul>
@@ -49,6 +50,16 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
     private final PipelineMetricsRepository repository;
     private final MonitoringConfig monitoring;
     private final PricingConfig pricing;
+
+    /**
+     * Spring listener entry point — see {@link AsyncEventHandler} class Javadoc for why this
+     * concretely-typed method must live here rather than on the generic base class. Does nothing
+     * but delegate; all actual logic is in {@link #doHandle}.
+     */
+    @EventHandler
+    public void onEvent(PipelineCompletedEvent event) {
+        handle(event);
+    }
 
     /**
      * Exposes the pipeline trace ID so {@link AsyncEventHandler} can bind it to
