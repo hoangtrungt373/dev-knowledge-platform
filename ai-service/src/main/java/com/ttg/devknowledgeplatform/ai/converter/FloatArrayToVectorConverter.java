@@ -6,11 +6,19 @@ import jakarta.persistence.Converter;
 import java.util.StringJoiner;
 
 /**
- * Maps {@code float[]} (Java) ↔ pgvector's {@code vector} SQL type.
+ * Maps {@code float[]} (Java) ↔ pgvector's {@code vector} SQL type, using the string format
+ * {@code [x,y,z,...]} pgvector's input/output functions accept.
  *
- * pgvector accepts the string format {@code [x,y,z,...]} via an implicit
- * cast from {@code varchar} → {@code vector}, and returns it the same way
- * when read back via JDBC as a String.
+ * <p>This converter alone is not sufficient for writes: a JDBC prepared-statement parameter
+ * bound as a plain {@code String} is sent to PostgreSQL typed as {@code varchar}, which does
+ * <strong>not</strong> implicitly cast to {@code vector} the way a string literal written
+ * directly in SQL text does — that mismatch fails with "column is of type vector but expression
+ * is of type character varying". Every entity field using this converter must also declare
+ * {@code @JdbcTypeCode(SqlTypes.OTHER)} (see {@code ContentEmbedding.embedding}) so Hibernate
+ * binds the parameter via {@code setObject(index, value, Types.OTHER)} instead of
+ * {@code setString(...)}, letting Postgres resolve the value's type from the target column
+ * instead of the bind's declared type. Reads are unaffected — pgvector always returns the value
+ * as a String regardless of how it was written.
  */
 @Converter
 public class FloatArrayToVectorConverter implements AttributeConverter<float[], String> {

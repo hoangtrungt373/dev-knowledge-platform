@@ -7,6 +7,7 @@ import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.ttg.devknowledgeplatform.service.EmailService;
 
@@ -18,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Transactional(rollbackFor = Throwable.class)
 public class EmailServiceImpl implements EmailService {
 
     private final JavaMailSender mailSender;

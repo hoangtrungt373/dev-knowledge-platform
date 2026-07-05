@@ -8,6 +8,7 @@ import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 
@@ -18,6 +19,7 @@ import java.util.Map;
  */
 @Service
 @RequiredArgsConstructor
+@Transactional(rollbackFor = Throwable.class)
 public class ChatModelResolverImpl implements ChatModelResolver {
 
     private final Map<String, ChatLanguageModel> chatLanguageModels;

@@ -27,7 +27,7 @@ import java.time.Instant;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional(readOnly = true)
+@Transactional(rollbackFor = Throwable.class)
 public class PipelineMetricsSummaryServiceImpl implements PipelineMetricsSummaryService {
 
     private final PipelineMetricsRepository repository;

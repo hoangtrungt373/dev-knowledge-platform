@@ -27,7 +27,7 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional
+@Transactional(rollbackFor = Throwable.class)
 public class ContentIngestionServiceImpl implements ContentIngestionService {
 
     private final TextChunkingService chunkingService;

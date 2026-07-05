@@ -52,7 +52,13 @@ public class ContentEmbedding extends AbstractEntity {
     @Column(name = "CHUNK_TEXT", nullable = false, columnDefinition = "TEXT")
     private String chunkText;
 
+    // JdbcTypeCode(OTHER) makes Hibernate bind the converted String via
+    // PreparedStatement.setObject(index, value, Types.OTHER) instead of setString(...) —
+    // required for pgvector: a plain varchar-typed bind parameter doesn't implicitly cast to
+    // `vector` the way a string literal written directly in SQL text does, so without this the
+    // insert fails with "column is of type vector but expression is of type character varying".
     @Convert(converter = FloatArrayToVectorConverter.class)
+    @JdbcTypeCode(SqlTypes.OTHER)
     @Column(name = "EMBEDDING", nullable = false, columnDefinition = "vector(1536)")
     private float[] embedding;
 

@@ -43,7 +43,7 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional(readOnly = true)
+@Transactional(rollbackFor = Throwable.class)
 public class IndexingQualityServiceImpl implements IndexingQualityService {
 
     private final ContentEmbeddingRepository embeddingRepository;

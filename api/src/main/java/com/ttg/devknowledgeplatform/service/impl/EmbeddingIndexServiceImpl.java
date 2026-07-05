@@ -42,6 +42,7 @@ import java.util.stream.Collectors;
  */
 @Service
 @RequiredArgsConstructor
+@Transactional(rollbackFor = Throwable.class)
 public class EmbeddingIndexServiceImpl implements EmbeddingIndexService {
 
     private final ContentItemRepository contentItemRepository;

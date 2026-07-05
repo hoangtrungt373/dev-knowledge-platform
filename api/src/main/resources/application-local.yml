@@ -33,11 +33,6 @@ spring:
     redis:
       password: password
 
-# Application
-app:
-  seed:
-    enabled: true
-
 # Logging
 logging:
   level:

@@ -29,7 +29,7 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional
+@Transactional(rollbackFor = Throwable.class)
 public class ContentIndexingServiceImpl implements ContentIndexingService {
 
     private static final String SYSTEM_PRINCIPAL = "system";

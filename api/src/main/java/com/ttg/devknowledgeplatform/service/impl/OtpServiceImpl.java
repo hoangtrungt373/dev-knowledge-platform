@@ -6,6 +6,7 @@ import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.ttg.devknowledgeplatform.service.OtpService;
 
@@ -15,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Transactional(rollbackFor = Throwable.class)
 public class OtpServiceImpl implements OtpService {
 
     private static final String KEY_PREFIX = "otp:email:";

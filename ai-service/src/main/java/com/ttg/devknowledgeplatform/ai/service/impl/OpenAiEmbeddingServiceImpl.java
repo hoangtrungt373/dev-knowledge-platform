@@ -10,11 +10,13 @@ import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.model.output.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 @Service
 @Slf4j
+@Transactional(rollbackFor = Throwable.class)
 public class OpenAiEmbeddingServiceImpl implements EmbeddingService {
 
     private final EmbeddingModel embeddingModel;

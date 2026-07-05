@@ -7,12 +7,14 @@ import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
 import com.ttg.devknowledgeplatform.service.SlugService;
 
 @Service
+@Transactional(rollbackFor = Throwable.class)
 public class SlugServiceImpl implements SlugService {
 
     private static final Pattern NON_ALPHANUMERIC = Pattern.compile("[^a-z0-9]+");

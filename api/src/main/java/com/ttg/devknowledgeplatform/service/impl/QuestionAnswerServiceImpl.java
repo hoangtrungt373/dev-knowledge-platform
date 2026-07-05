@@ -42,7 +42,7 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional
+@Transactional(rollbackFor = Throwable.class)
 public class QuestionAnswerServiceImpl implements QuestionAnswerService {
 
     private final QuestionAnswerRepository questionAnswerRepository;

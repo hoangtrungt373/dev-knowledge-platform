@@ -121,7 +121,10 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── LoadedPrompts.java     — record holding 6 prompt strings loaded from classpath at startup
 │   └── PromptsLoader.java     — @Configuration that reads prompts/*.txt and produces LoadedPrompts bean
 ├── converter/
-│   └── FloatArrayToVectorConverter.java  — JPA AttributeConverter for pgvector column type
+│   └── FloatArrayToVectorConverter.java  — JPA AttributeConverter for pgvector column type;
+│                                            any field using it also needs @JdbcTypeCode(SqlTypes.OTHER)
+│                                            (see ContentEmbedding.embedding) or writes fail —
+│                                            a plain varchar-typed bind doesn't implicitly cast to vector
 ├── dto/
 │   ├── AnswerQualityVerdict.java          — record: boolean drifted, float contextSimilarity, float querySimilarity; skipped() sentinel
 │   ├── EmbedResult.java                   — record: float[] vector + int tokenCount; return type of EmbeddingService.embed()

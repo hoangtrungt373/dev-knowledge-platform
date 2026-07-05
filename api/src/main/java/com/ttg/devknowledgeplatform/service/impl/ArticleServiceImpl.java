@@ -40,7 +40,7 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional
+@Transactional(rollbackFor = Throwable.class)
 public class ArticleServiceImpl implements ArticleService {
 
     private final ArticleRepository articleRepository;

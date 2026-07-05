@@ -32,7 +32,7 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional
+@Transactional(rollbackFor = Throwable.class)
 public class CategoryServiceImpl implements CategoryService {
 
     private final CategoryRepository categoryRepository;

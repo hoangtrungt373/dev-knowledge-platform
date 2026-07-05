@@ -26,7 +26,7 @@ import lombok.ToString;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(callSuper = true)
+@EqualsAndHashCode(callSuper = true, exclude = "contentItemTags")
 @ToString(exclude = "contentItemTags")
 public class Tag extends AbstractEntity {
 
