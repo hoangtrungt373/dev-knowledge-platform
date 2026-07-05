@@ -25,7 +25,7 @@ public class EmbeddingIndexItemResponse {
     /** Content item title. */
     private String title;
 
-    /** Content type: {@code ARTICLE}, {@code BLOG_POST}, or {@code INTERVIEW_QUESTION}. */
+    /** Content type: {@code ARTICLE}, {@code BLOG_POST}, or {@code QUESTION_ANSWER}. */
     private String contentType;
 
     /** Publication status: {@code DRAFT}, {@code PUBLISHED}, or {@code ARCHIVED}. */

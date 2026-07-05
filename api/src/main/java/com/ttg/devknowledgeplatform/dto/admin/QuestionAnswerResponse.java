@@ -2,7 +2,7 @@ package com.ttg.devknowledgeplatform.dto.admin;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.common.enums.InterviewQuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
 import lombok.Builder;
 import lombok.Data;
 
@@ -12,13 +12,13 @@ import java.util.Set;
 @Data
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class InterviewQuestionResponse {
+public class QuestionAnswerResponse {
 
     private Integer id;
     private Integer contentItemId;
     private String title;
     private String slug;
-    private InterviewQuestionDifficulty difficulty;
+    private QuestionDifficulty difficulty;
     private String questionBody;
     private String shortAnswer;
     private String detailedAnswer;

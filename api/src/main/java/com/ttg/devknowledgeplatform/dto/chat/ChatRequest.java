@@ -14,7 +14,7 @@ import java.util.Set;
  * @param sessionId   optional ID of an existing conversation session; {@code null} creates a new session.
  *                    The session must belong to the authenticated user — a mismatched ID returns 404.
  * @param sourceTypes optional set of content types to restrict retrieval to (e.g. only
- *                    {@code INTERVIEW_QUESTION}); {@code null} means no type constraint
+ *                    {@code QUESTION_ANSWER}); {@code null} means no type constraint
  * @param categoryId  optional category ID to restrict retrieval to chunks from that category;
  *                    {@code null} means no category constraint
  * @param tags        optional set of tag names; retrieval is restricted to chunks that share at

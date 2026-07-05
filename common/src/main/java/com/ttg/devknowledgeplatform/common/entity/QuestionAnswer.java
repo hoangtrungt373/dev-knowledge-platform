@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.common.entity;
 
-import com.ttg.devknowledgeplatform.common.enums.InterviewQuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
 
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
@@ -17,23 +17,31 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
+/**
+ * A question-and-answer content item — general dev-knowledge Q&A, not just interview prep.
+ *
+ * <p>{@code difficulty} and {@code isCommon} are nullable: they're interview-specific metadata,
+ * populated when a question genuinely has that framing, left {@code null} for plain "how does
+ * X work" knowledge content where forcing an interview-difficulty/frequency judgment call
+ * wouldn't mean anything.
+ */
 @Entity
-@Table(name = "INTERVIEW_QUESTION", schema = "product")
-@AttributeOverride(name = "id", column = @Column(name = "INTERVIEW_QUESTION_ID"))
+@Table(name = "QUESTION_ANSWER", schema = "product")
+@AttributeOverride(name = "id", column = @Column(name = "QUESTION_ANSWER_ID"))
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true, exclude = {"contentItem"})
 @ToString(exclude = {"contentItem"})
-public class InterviewQuestion extends AbstractEntity {
+public class QuestionAnswer extends AbstractEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "CONTENT_ITEM_ID", nullable = false)
     private ContentItem contentItem;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "DIFFICULTY", length = 50, nullable = false)
-    private InterviewQuestionDifficulty difficulty = InterviewQuestionDifficulty.INTERMEDIATE;
+    @Column(name = "DIFFICULTY", length = 50)
+    private QuestionDifficulty difficulty;
 
     @Column(name = "QUESTION_BODY", nullable = false, columnDefinition = "TEXT")
     private String questionBody;
@@ -44,6 +52,6 @@ public class InterviewQuestion extends AbstractEntity {
     @Column(name = "DETAILED_ANSWER", columnDefinition = "TEXT")
     private String detailedAnswer;
 
-    @Column(name = "IS_COMMON", nullable = false)
-    private Boolean isCommon = false;
+    @Column(name = "IS_COMMON")
+    private Boolean isCommon;
 }

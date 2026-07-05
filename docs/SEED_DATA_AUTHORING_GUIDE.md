@@ -2,17 +2,21 @@
 
 Reference for writing new seed content under `api/src/main/resources/data/`, consumed by
 `DataSeedingRunner` (see `api/service/seed/`, `docs/PROJECT_STRUCTURE.md`). Read this before
-generating a new batch of interview questions (or any future content type seeded the same way).
+generating a new batch of questions (or any future content type seeded the same way).
+
+`QuestionAnswer` (formerly named `InterviewQuestion`) is general dev-knowledge Q&A, not only
+interview prep — see `CHANGELOG.md` for the rename rationale. `difficulty`/`isCommon` are
+optional, interview-specific metadata, not defining characteristics of the content type.
 
 ---
 
-## Format decision (why Markdown + front matter for InterviewQuestion)
+## Format decision (why Markdown + front matter for QuestionAnswer)
 
 `Category`/`Tag` stay **CSV** (`data/csv/*.csv`) — genuinely flat, short, tabular data, CSV's
 sweet spot.
 
-`InterviewQuestion` uses **one Markdown file per question**, front matter + body
-(`data/interview-questions/*.md`), not CSV or JSON. Reason: `detailedAnswer` is long,
+`QuestionAnswer` uses **one Markdown file per question**, front matter + body
+(`data/question-answers/*.md`), not CSV or JSON. Reason: `detailedAnswer` is long,
 multi-paragraph markdown with code blocks — CSV requires quoting/escaping that's error-prone by
 hand and produces unreadable git diffs (one word changed inside a giant quoted field shows as a
 full-blob diff); JSON has no native multi-line string, so the same content becomes one
@@ -32,7 +36,7 @@ tables** — it is not throwaway dev/demo data that gets wiped and reseeded. Tha
 drives the identity design below: whatever field a seeder checks "does this already exist"
 against must never change across re-runs, or an edit to that field causes a **duplicate INSERT**
 (the seeders are insert-only; they never update an existing row). Early versions of this
-mechanism used `name` (Category/Tag) or a title-derived `slug` (InterviewQuestion) for that
+mechanism used `name` (Category/Tag) or a title-derived `slug` (QuestionAnswer) for that
 check — both are real content fields a human will reasonably want to edit later, which would
 have silently duplicated the row on the next seeding run.
 
@@ -41,7 +45,7 @@ The fix: every seed row carries a permanent, seed-file-only **`id`**, persisted 
 for every user/admin-created row — see Liquibase `DKP-0013`). `id` is the *only* thing a seeder
 checks for idempotency. `name`/`title`/`slug` stay completely free to edit going forward without
 any risk of a duplicate row appearing on the next run — **and cross-file references use `id`
-too** (`categories.csv`'s `parentId`; `InterviewQuestion`'s `categoryId`/`tagIds`), not `name`,
+too** (`categories.csv`'s `parentId`; `QuestionAnswer`'s `categoryId`/`tagIds`), not `name`,
 for the same reason: a reference by `name` would silently break the moment that name was edited.
 
 Two things this deliberately does **not** solve, so expectations stay calibrated:
@@ -62,16 +66,16 @@ since a child's parent is resolved by `id` lookup against already-persisted rows
 `data/csv/tags.csv` — columns: `id, name, status` (empty `status` defaults to `ACTIVE`; tags have
 no hierarchy, so no cross-reference concept applies here).
 
-`data/interview-questions/*.md` — one file per question:
+`data/question-answers/*.md` — one file per question:
 
 ```markdown
 ---
-id: iq-some-permanent-identifier   # required — see "Identity" above
-title: "Exact interview-style phrasing of the question"
+id: qa-some-permanent-identifier   # required — see "Identity" above
+title: "Exact phrasing of the question"
 categoryId: An existing category's id (exactly as written in categories.csv, e.g. cat-java)
 tagIds: [An existing tag's id, Another existing tag's id]
-difficulty: BEGINNER | INTERMEDIATE | ADVANCED
-isCommon: true | false
+difficulty: BEGINNER | INTERMEDIATE | ADVANCED   # optional — see below
+isCommon: true | false                            # optional — see below
 questionBody: "Full question text, can differ slightly from title"
 shortAnswer: "2-4 sentence answer, quotable on its own"
 ---
@@ -82,16 +86,21 @@ shortAnswer: "2-4 sentence answer, quotable on its own"
 ... full markdown body — this entire block, verbatim, becomes `detailedAnswer` ...
 ```
 
+`difficulty`/`isCommon` are optional — this is general dev-knowledge Q&A, not only interview
+prep. Leave them out entirely for plain "how does X work" content where forcing an
+interview-difficulty/frequency judgment call wouldn't mean anything; set them only when a
+question genuinely has that framing.
+
 `categoryId`/`tagIds` reference `categories.csv`/`tags.csv` rows by their `id` column, not their
 `name` — the same rationale as `parentId` above: a category/tag's `name` can be edited freely
 without breaking every question that references it.
 
 `id` values are permanent once assigned — pick something short and topic-descriptive
-(`iq-react-useeffect-hook`), and never reuse it for a different question later.
+(`qa-react-useeffect-hook`), and never reuse it for a different question later.
 
-An optional `slug` field can still be supplied on an interview question — it's a completely
+An optional `slug` field can still be supplied on a question — it's a completely
 separate, independent thing from `id`: the production-facing URL column, unrelated to
-idempotency. Omit it (the current convention for all 6 existing files) to derive it from `title`
+idempotency. Omit it (the current convention for all existing files) to derive it from `title`
 via `SlugService.toSlug()` (guaranteed-aligned with production content creation, but verbose
 since titles are full sentences — e.g.
 `how-does-the-react-useeffect-hook-work-what-is-the-dependency-array`), or supply a short
@@ -113,7 +122,7 @@ a second same-named row. The `slug` column doesn't exist in the CSVs at all — 
 `SlugService.generateUniqueSlug(name, ..., ErrorCode.CATEGORY_SLUG_CONFLICT / TAG_SLUG_CONFLICT)`,
 the identical call the real create-category/create-tag flow makes.
 
-**`InterviewQuestion`**: `categoryId`/`tagIds` reference `Category`/`Tag` by their `seedId`,
+**`QuestionAnswer`**: `categoryId`/`tagIds` reference `Category`/`Tag` by their `seedId`,
 resolved via `findBySeedId` — not by name or slug. `id` (→ `seedId`) is the sole idempotency key
 for the question itself; if an `id` already exists but with a *different* title, that's treated
 as an accidental `id` reuse (e.g. copy-pasted from another file) and rejected rather than
@@ -121,7 +130,7 @@ silently skipped — which would otherwise drop the second question's content wi
 
 ## Mechanical rules (violating these breaks the seeder, not just one row)
 
-- `id` is **required** on every interview-question file, and on every `categories.csv`/`tags.csv`
+- `id` is **required** on every question file, and on every `categories.csv`/`tags.csv`
   row. A missing `id` throws immediately.
 - An `id` must never be reused for a different name/title. Reusing it (accidentally or
   otherwise) throws rather than silently adopting the new content under the old row, or silently
@@ -131,8 +140,9 @@ silently skipped — which would otherwise drop the second question's content wi
 - Every entry in `tagIds` **must** already exist (exact `id`) in `data/csv/tags.csv`. Same
   failure mode. Need a new category/tag? Add it to the CSV first (parent categories before
   children), in a separate step before writing question files that reference it.
-- If `slug` is supplied explicitly on an interview question, it must be unique across every file.
-- `difficulty` must be exactly `BEGINNER`, `INTERMEDIATE`, or `ADVANCED`.
+- If `slug` is supplied explicitly on a question, it must be unique across every file.
+- `difficulty`, if present, must be exactly `BEGINNER`, `INTERMEDIATE`, or `ADVANCED` — omit the
+  field entirely rather than guessing when it doesn't apply.
 - YAML quoting: wrap `title`/`questionBody`/`shortAnswer` in double quotes if they contain a
   colon or comma. Avoid literal `"` inside the text entirely (use backticks for code/emphasis
   instead) so you never need to escape a quote inside a quote.
@@ -155,18 +165,21 @@ Every `detailedAnswer` should satisfy all of these — not just "has code and is
    right language, usually a comparison table. A two-paragraph summary is not full depth.
 4. **`shortAnswer` vs `detailedAnswer` distinctness** — `shortAnswer` must be genuinely quotable
    on its own, not a truncated copy of the detailed answer's opening line.
-5. **Interview-specific framing** — this is the one most easily skipped. An interview answer
-   isn't a documentation page: include a `### Common mistakes` (or equivalent) section naming
-   the specific misconceptions or pitfalls that separate a strong candidate's answer from a
-   rote one. Every file should have this, not just the ones where it felt natural.
+5. **Practical framing, not just documentation** — this is the one most easily skipped. Include
+   a `### Common mistakes` (or equivalent) section naming specific misconceptions or pitfalls —
+   what separates a working understanding from a rote one. This is valuable regardless of
+   whether the question has interview framing; every file should have it. Only layer on
+   explicit interview-coaching language ("what an interviewer listens for") when the question
+   genuinely reads as interview prep — don't force that angle onto plain knowledge content.
 6. **RAG-retrieval self-containment** — see chunking constraints below; each major section
    should restate the core subject by name, not rely on the title surviving into that chunk.
-7. **Corpus-level consistency** — calibrate `difficulty` and `isCommon` honestly against the
-   *actual* content depth and real-world interview frequency, not by pattern-matching the
-   previous file or forcing an even spread. A forced `ADVANCED` label on inherently introductory
-   content is a worse error than an uneven distribution. Distribution only becomes a meaningful
-   target at the full-corpus scale (~100 questions), not something to engineer into any single
-   batch.
+7. **Corpus-level consistency** — calibrate `difficulty`/`isCommon` honestly, or leave them out
+   entirely. They're optional interview-specific metadata, not required fields — don't
+   pattern-match the previous file or force an even spread just to fill them in. A forced
+   `ADVANCED` label (or a forced difficulty at all) on content that doesn't call for one is a
+   worse error than leaving it unset. Difficulty distribution only becomes a meaningful target,
+   for the subset of questions that do have interview framing, at the full-corpus scale
+   (~100 questions) — not something to engineer into any single batch.
 
 ---
 

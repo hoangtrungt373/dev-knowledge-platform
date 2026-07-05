@@ -22,11 +22,11 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import {
   CategoryTreeNode,
   ContentStatus,
-  CreateInterviewQuestionPayload,
+  CreateQuestionAnswerPayload,
   Difficulty,
-  InterviewQuestion,
+  QuestionAnswer,
   Tag,
-  UpdateInterviewQuestionPayload,
+  UpdateQuestionAnswerPayload,
 } from '../../types/admin.types';
 import { adminApi } from '../../api/adminApi';
 import { useNotification } from '../../contexts/NotificationContext';
@@ -46,7 +46,7 @@ const STATUSES: ContentStatus[] = ['DRAFT', 'PUBLISHED', 'ARCHIVED'];
 const DIFFICULTY_LABEL: Record<Difficulty, string> = { BEGINNER: 'Beginner', INTERMEDIATE: 'Intermediate', ADVANCED: 'Advanced' };
 const STATUS_LABEL: Record<ContentStatus, string> = { DRAFT: 'Draft', PUBLISHED: 'Published', ARCHIVED: 'Archived' };
 
-export default function InterviewQuestionFormPage(): JSX.Element {
+export default function QuestionAnswerFormPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const isEdit = id !== undefined;
   const navigate = useNavigate();
@@ -58,7 +58,9 @@ export default function InterviewQuestionFormPage(): JSX.Element {
 
   // Form state
   const [title, setTitle] = useState('');
-  const [difficulty, setDifficulty] = useState<Difficulty>('INTERMEDIATE');
+  // Empty string means "not set" — difficulty is optional interview-specific metadata,
+  // not every question (general dev-knowledge Q&A) needs one.
+  const [difficulty, setDifficulty] = useState<Difficulty | ''>('');
   const [status, setStatus] = useState<ContentStatus>('DRAFT');
   const [categoryId, setCategoryId] = useState<number | ''>('');
   const [isCommon, setIsCommon] = useState(false);
@@ -85,13 +87,13 @@ export default function InterviewQuestionFormPage(): JSX.Element {
     });
 
     if (isEdit && id) {
-      adminApi.getInterviewQuestion(Number(id), showError)
-        .then((q: InterviewQuestion) => {
+      adminApi.getQuestionAnswer(Number(id), showError)
+        .then((q: QuestionAnswer) => {
           setTitle(q.title);
-          setDifficulty(q.difficulty);
+          setDifficulty(q.difficulty ?? '');
           setStatus(q.status);
           setCategoryId(q.categoryId ?? '');
-          setIsCommon(q.isCommon);
+          setIsCommon(q.isCommon ?? false);
           setQuestionBody(q.questionBody);
           setShortAnswer(q.shortAnswer ?? '');
           setDetailedAnswer(q.detailedAnswer ?? '');
@@ -125,7 +127,7 @@ export default function InterviewQuestionFormPage(): JSX.Element {
       const tagIds = [...selectedTagIds];
       const common = {
         title: title.trim(),
-        difficulty,
+        difficulty: difficulty === '' ? null : difficulty,
         status,
         categoryId: categoryId === '' ? null : categoryId,
         isCommon,
@@ -135,13 +137,13 @@ export default function InterviewQuestionFormPage(): JSX.Element {
         tagIds,
       };
       if (isEdit && id) {
-        await adminApi.updateInterviewQuestion(Number(id), common as UpdateInterviewQuestionPayload, showError);
-        showSuccess('Interview question updated');
+        await adminApi.updateQuestionAnswer(Number(id), common as UpdateQuestionAnswerPayload, showError);
+        showSuccess('Question updated');
       } else {
-        await adminApi.createInterviewQuestion(common as CreateInterviewQuestionPayload, showError);
-        showSuccess('Interview question created');
+        await adminApi.createQuestionAnswer(common as CreateQuestionAnswerPayload, showError);
+        showSuccess('Question created');
       }
-      navigate('/admin/interview-questions');
+      navigate('/admin/question-answers');
     } catch {
       // showError already called
     } finally {
@@ -165,19 +167,19 @@ export default function InterviewQuestionFormPage(): JSX.Element {
         <Stack direction="row" alignItems="center" spacing={1}>
           <IconButton
             size="small"
-            onClick={() => navigate('/admin/interview-questions')}
+            onClick={() => navigate('/admin/question-answers')}
             title="Back to list"
           >
             <ArrowBackIcon fontSize="small" />
           </IconButton>
           <Typography variant="h5" fontWeight={700}>
-            {isEdit ? 'Edit Interview Question' : 'New Interview Question'}
+            {isEdit ? 'Edit Question' : 'New Question'}
           </Typography>
         </Stack>
         <Stack direction="row" spacing={1}>
           <Button
             variant="outlined"
-            onClick={() => navigate('/admin/interview-questions')}
+            onClick={() => navigate('/admin/question-answers')}
             disabled={saving}
           >
             Cancel
@@ -221,7 +223,7 @@ export default function InterviewQuestionFormPage(): JSX.Element {
               minRows={6}
               error={!!errors.questionBody}
               helperText={errors.questionBody}
-              placeholder="Write the interview question here. Supports Markdown."
+              placeholder="Write the question here. Supports Markdown."
             />
 
             <Divider textAlign="left">
@@ -278,8 +280,9 @@ export default function InterviewQuestionFormPage(): JSX.Element {
                   <Select
                     label="Difficulty"
                     value={difficulty}
-                    onChange={e => setDifficulty(e.target.value as Difficulty)}
+                    onChange={e => setDifficulty(e.target.value as Difficulty | '')}
                   >
+                    <MenuItem value=""><em>Not set</em></MenuItem>
                     {DIFFICULTIES.map(d => (
                       <MenuItem key={d} value={d}>{DIFFICULTY_LABEL[d]}</MenuItem>
                     ))}
@@ -307,7 +310,7 @@ export default function InterviewQuestionFormPage(): JSX.Element {
                       size="small"
                     />
                   }
-                  label={<Typography variant="body2">Mark as common</Typography>}
+                  label={<Typography variant="body2">Mark as common (interview-prep)</Typography>}
                 />
 
               </Stack>

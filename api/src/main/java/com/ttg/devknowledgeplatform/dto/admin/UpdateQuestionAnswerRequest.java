@@ -1,23 +1,22 @@
 package com.ttg.devknowledgeplatform.dto.admin;
 
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.common.enums.InterviewQuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.util.Set;
 
 @Data
-public class CreateInterviewQuestionRequest {
+public class UpdateQuestionAnswerRequest {
 
     @NotBlank(message = "Title is required")
     @Size(max = 500, message = "Title must not exceed 500 characters")
     private String title;
 
-    @NotNull(message = "Difficulty is required")
-    private InterviewQuestionDifficulty difficulty;
+    /** Optional — interview-specific metadata; leave null for general knowledge content. */
+    private QuestionDifficulty difficulty;
 
     @NotBlank(message = "Question body is required")
     private String questionBody;
@@ -26,12 +25,12 @@ public class CreateInterviewQuestionRequest {
 
     private String detailedAnswer;
 
-    private Boolean isCommon = false;
+    private Boolean isCommon;
 
-    private ContentStatus status = ContentStatus.DRAFT;
+    private ContentStatus status;
 
     private Integer categoryId;
 
-    /** Deduped in service; null or empty means no tags. */
+    /** Null = leave tags unchanged; empty = clear all; otherwise replace (deduped in service). */
     private Set<Integer> tagIds;
 }

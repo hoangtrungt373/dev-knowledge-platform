@@ -159,7 +159,7 @@ function WelcomeScreen({
         Dev Knowledge Platform
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 4, maxWidth: 420 }}>
-        Ask questions about your articles, interview questions, and knowledge base.
+        Ask questions about your articles, Q&A content, and knowledge base.
         I'll search for the most relevant content and answer based on what I find.
       </Typography>
 

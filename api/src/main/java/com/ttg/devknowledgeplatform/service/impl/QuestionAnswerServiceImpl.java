@@ -3,26 +3,26 @@ package com.ttg.devknowledgeplatform.service.impl;
 import com.ttg.devknowledgeplatform.common.entity.Category;
 import com.ttg.devknowledgeplatform.common.entity.ContentItem;
 import com.ttg.devknowledgeplatform.common.entity.ContentItemTag;
-import com.ttg.devknowledgeplatform.common.entity.InterviewQuestion;
+import com.ttg.devknowledgeplatform.common.entity.QuestionAnswer;
 import com.ttg.devknowledgeplatform.common.entity.Tag;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.common.enums.ContentType;
-import com.ttg.devknowledgeplatform.common.enums.InterviewQuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
 import com.ttg.devknowledgeplatform.common.enums.TagStatus;
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
 import com.ttg.devknowledgeplatform.dto.PagedResponse;
-import com.ttg.devknowledgeplatform.dto.admin.CreateInterviewQuestionRequest;
-import com.ttg.devknowledgeplatform.dto.admin.InterviewQuestionResponse;
-import com.ttg.devknowledgeplatform.dto.admin.UpdateInterviewQuestionRequest;
-import com.ttg.devknowledgeplatform.mapper.InterviewQuestionMapper;
+import com.ttg.devknowledgeplatform.dto.admin.CreateQuestionAnswerRequest;
+import com.ttg.devknowledgeplatform.dto.admin.QuestionAnswerResponse;
+import com.ttg.devknowledgeplatform.dto.admin.UpdateQuestionAnswerRequest;
+import com.ttg.devknowledgeplatform.mapper.QuestionAnswerMapper;
 import com.ttg.devknowledgeplatform.repository.CategoryRepository;
 import com.ttg.devknowledgeplatform.repository.ContentItemRepository;
-import com.ttg.devknowledgeplatform.repository.InterviewQuestionRepository;
+import com.ttg.devknowledgeplatform.repository.QuestionAnswerRepository;
 import com.ttg.devknowledgeplatform.repository.TagRepository;
-import com.ttg.devknowledgeplatform.repository.spec.InterviewQuestionSpecification;
-import com.ttg.devknowledgeplatform.service.InterviewQuestionService;
+import com.ttg.devknowledgeplatform.repository.spec.QuestionAnswerSpecification;
+import com.ttg.devknowledgeplatform.service.QuestionAnswerService;
 import com.ttg.devknowledgeplatform.service.SlugService;
 
 import lombok.RequiredArgsConstructor;
@@ -43,22 +43,22 @@ import java.util.Set;
 @RequiredArgsConstructor
 @Slf4j
 @Transactional
-public class InterviewQuestionServiceImpl implements InterviewQuestionService {
+public class QuestionAnswerServiceImpl implements QuestionAnswerService {
 
-    private final InterviewQuestionRepository interviewQuestionRepository;
+    private final QuestionAnswerRepository questionAnswerRepository;
     private final ContentItemRepository contentItemRepository;
     private final CategoryRepository categoryRepository;
     private final SlugService slugService;
     private final TagRepository tagRepository;
-    private final InterviewQuestionMapper interviewQuestionMapper;
+    private final QuestionAnswerMapper questionAnswerMapper;
 
     @Override
-    public InterviewQuestionResponse create(CreateInterviewQuestionRequest request, Integer authorId) {
+    public QuestionAnswerResponse create(CreateQuestionAnswerRequest request, Integer authorId) {
         Category category = resolveCategory(request.getCategoryId());
-        String slug = slugService.generateUniqueSlug(request.getTitle(), contentItemRepository::existsBySlug, ErrorCode.INTERVIEW_QUESTION_SLUG_CONFLICT);
+        String slug = slugService.generateUniqueSlug(request.getTitle(), contentItemRepository::existsBySlug, ErrorCode.QUESTION_ANSWER_SLUG_CONFLICT);
 
         ContentItem contentItem = new ContentItem();
-        contentItem.setType(ContentType.INTERVIEW_QUESTION);
+        contentItem.setType(ContentType.QUESTION_ANSWER);
         contentItem.setTitle(request.getTitle());
         contentItem.setSlug(slug);
         contentItem.setStatus(request.getStatus() != null ? request.getStatus() : ContentStatus.DRAFT);
@@ -75,28 +75,28 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
                 request.getTagIds() == null ? Set.of() : request.getTagIds();
         applyTagIds(savedContentItem, tagIdsToApply);
 
-        InterviewQuestion question = new InterviewQuestion();
+        QuestionAnswer question = new QuestionAnswer();
         question.setContentItem(savedContentItem);
         question.setDifficulty(request.getDifficulty());
         question.setQuestionBody(request.getQuestionBody());
         question.setShortAnswer(request.getShortAnswer());
         question.setDetailedAnswer(request.getDetailedAnswer());
-        question.setIsCommon(request.getIsCommon() != null ? request.getIsCommon() : false);
+        question.setIsCommon(request.getIsCommon());
 
-        InterviewQuestion saved = interviewQuestionRepository.save(question);
-        log.info("Created interview question id={} slug={}", saved.getId(), slug);
-        return interviewQuestionMapper.toResponse(saved);
+        QuestionAnswer saved = questionAnswerRepository.save(question);
+        log.info("Created question id={} slug={}", saved.getId(), slug);
+        return questionAnswerMapper.toResponse(saved);
     }
 
     @Override
-    public InterviewQuestionResponse update(Integer id, UpdateInterviewQuestionRequest request) {
-        InterviewQuestion question = findById(id);
+    public QuestionAnswerResponse update(Integer id, UpdateQuestionAnswerRequest request) {
+        QuestionAnswer question = findById(id);
         ContentItem contentItem = question.getContentItem();
 
         Category category = resolveCategory(request.getCategoryId());
 
         if (!contentItem.getTitle().equals(request.getTitle())) {
-            String newSlug = slugService.generateUniqueSlug(request.getTitle(), contentItemRepository::existsBySlugAndIdNot, contentItem.getId(), ErrorCode.INTERVIEW_QUESTION_SLUG_CONFLICT);
+            String newSlug = slugService.generateUniqueSlug(request.getTitle(), contentItemRepository::existsBySlugAndIdNot, contentItem.getId(), ErrorCode.QUESTION_ANSWER_SLUG_CONFLICT);
             contentItem.setSlug(newSlug);
         }
 
@@ -122,54 +122,54 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
             applyTagIds(contentItem, request.getTagIds());
         }
 
-        InterviewQuestion updated = interviewQuestionRepository.save(question);
-        log.info("Updated interview question id={}", id);
-        return interviewQuestionMapper.toResponse(updated);
+        QuestionAnswer updated = questionAnswerRepository.save(question);
+        log.info("Updated question id={}", id);
+        return questionAnswerMapper.toResponse(updated);
     }
 
     @Override
-    public InterviewQuestionResponse getById(Integer id) {
-        return interviewQuestionMapper.toResponse(findById(id));
+    public QuestionAnswerResponse getById(Integer id) {
+        return questionAnswerMapper.toResponse(findById(id));
     }
 
     @Override
-    public InterviewQuestionResponse getBySlug(String slug) {
-        InterviewQuestion question = interviewQuestionRepository.findByContentItem_Slug(slug)
+    public QuestionAnswerResponse getBySlug(String slug) {
+        QuestionAnswer question = questionAnswerRepository.findByContentItem_Slug(slug)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        ErrorCode.INTERVIEW_QUESTION_NOT_FOUND,
-                        "Interview question not found with slug: " + slug));
-        return interviewQuestionMapper.toResponse(question);
+                        ErrorCode.QUESTION_ANSWER_NOT_FOUND,
+                        "Question not found with slug: " + slug));
+        return questionAnswerMapper.toResponse(question);
     }
 
     @Override
-    public PagedResponse<InterviewQuestionResponse> list(
+    public PagedResponse<QuestionAnswerResponse> list(
             Pageable pageable,
-            InterviewQuestionDifficulty difficulty,
+            QuestionDifficulty difficulty,
             ContentStatus status,
             Boolean isCommon,
             String q) {
 
-        Specification<InterviewQuestion> spec =
-                InterviewQuestionSpecification.withFilters(difficulty, status, isCommon, q);
-        Page<InterviewQuestionResponse> page =
-                interviewQuestionRepository.findAll(spec, pageable).map(interviewQuestionMapper::toResponse);
+        Specification<QuestionAnswer> spec =
+                QuestionAnswerSpecification.withFilters(difficulty, status, isCommon, q);
+        Page<QuestionAnswerResponse> page =
+                questionAnswerRepository.findAll(spec, pageable).map(questionAnswerMapper::toResponse);
         return PagedResponse.from(page);
     }
 
     @Override
     public void delete(Integer id) {
-        InterviewQuestion question = findById(id);
+        QuestionAnswer question = findById(id);
         ContentItem contentItem = question.getContentItem();
-        interviewQuestionRepository.delete(question);
+        questionAnswerRepository.delete(question);
         contentItemRepository.delete(contentItem);
-        log.info("Deleted interview question id={} and its content item id={}", id, contentItem.getId());
+        log.info("Deleted question id={} and its content item id={}", id, contentItem.getId());
     }
 
-    private InterviewQuestion findById(Integer id) {
-        return interviewQuestionRepository.findById(id)
+    private QuestionAnswer findById(Integer id) {
+        return questionAnswerRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        ErrorCode.INTERVIEW_QUESTION_NOT_FOUND,
-                        "Interview question not found with id: " + id));
+                        ErrorCode.QUESTION_ANSWER_NOT_FOUND,
+                        "Question not found with id: " + id));
     }
 
     private Category resolveCategory(Integer categoryId) {

@@ -29,7 +29,7 @@ public class PromptsLoader {
         return new LoadedPrompts(
                 load("prompts/system-prompt.txt"),
                 load("prompts/system-prompt-article.txt"),
-                load("prompts/system-prompt-interview-question.txt"),
+                load("prompts/system-prompt-question-answer.txt"),
                 load("prompts/system-prompt-blog-post.txt"),
                 load("prompts/input-enrichment-prompt.txt"),
                 load("prompts/summarisation-prompt.txt")

@@ -14,8 +14,8 @@ public record LoadedPrompts(
         String system,
         /** System prompt used when the query is scoped exclusively to {@code ARTICLE} content. */
         String article,
-        /** System prompt used when the query is scoped exclusively to {@code INTERVIEW_QUESTION} content. */
-        String interviewQuestion,
+        /** System prompt used when the query is scoped exclusively to {@code QUESTION_ANSWER} content. */
+        String questionAnswer,
         /** System prompt used when the query is scoped exclusively to {@code BLOG_POST} content. */
         String blogPost,
         /** Prompt sent to the LLM to resolve pronouns and enrich the raw query into a structured form. */

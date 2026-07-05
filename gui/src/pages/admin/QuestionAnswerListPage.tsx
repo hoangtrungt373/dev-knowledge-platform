@@ -27,7 +27,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import { CategoryTreeNode, ContentStatus, Difficulty, InterviewQuestion } from '../../types/admin.types';
+import { CategoryTreeNode, ContentStatus, Difficulty, QuestionAnswer } from '../../types/admin.types';
 import { adminApi } from '../../api/adminApi';
 import { useNotification } from '../../contexts/NotificationContext';
 import ConfirmDialog from '../../components/admin/ConfirmDialog';
@@ -59,11 +59,11 @@ const STATUS_COLOR: Record<ContentStatus, 'default' | 'success' | 'warning'> = {
   ARCHIVED: 'warning',
 };
 
-export default function InterviewQuestionListPage(): JSX.Element {
+export default function QuestionAnswerListPage(): JSX.Element {
   const navigate = useNavigate();
   const { showError, showSuccess } = useNotification();
 
-  const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
+  const [questions, setQuestions] = useState<QuestionAnswer[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [categoryNameMap, setCategoryNameMap] = useState<Record<number, string>>({});
@@ -77,7 +77,7 @@ export default function InterviewQuestionListPage(): JSX.Element {
   const [statusFilter, setStatusFilter] = useState<ContentStatus | ''>('');
 
   // Delete dialog
-  const [deleteTarget, setDeleteTarget] = useState<InterviewQuestion | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<QuestionAnswer | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   // Load category tree once (for name display in table)
@@ -96,7 +96,7 @@ export default function InterviewQuestionListPage(): JSX.Element {
   const fetchQuestions = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await adminApi.listInterviewQuestions({
+      const data = await adminApi.listQuestionAnswers({
         page,
         size: pageSize,
         sortBy: 'id',
@@ -118,7 +118,7 @@ export default function InterviewQuestionListPage(): JSX.Element {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await adminApi.deleteInterviewQuestion(deleteTarget.id, showError);
+      await adminApi.deleteQuestionAnswer(deleteTarget.id, showError);
       showSuccess(`"${deleteTarget.title}" deleted`);
       setDeleteTarget(null);
       fetchQuestions();
@@ -135,7 +135,7 @@ export default function InterviewQuestionListPage(): JSX.Element {
       {/* Header */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2.5 }}>
         <Box>
-          <Typography variant="h5" fontWeight={700}>Interview Questions</Typography>
+          <Typography variant="h5" fontWeight={700}>Questions & Answers</Typography>
           <Typography variant="body2" color="text.secondary">
             {total} question{total !== 1 ? 's' : ''} total
           </Typography>
@@ -143,7 +143,7 @@ export default function InterviewQuestionListPage(): JSX.Element {
         <Button
           variant="contained"
           startIcon={<AddIcon />}
-          onClick={() => navigate('/admin/interview-questions/new')}
+          onClick={() => navigate('/admin/question-answers/new')}
         >
           New Question
         </Button>
@@ -231,12 +231,16 @@ export default function InterviewQuestionListPage(): JSX.Element {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Chip
-                      label={q.difficulty.charAt(0) + q.difficulty.slice(1).toLowerCase()}
-                      color={DIFFICULTY_COLOR[q.difficulty]}
-                      variant="outlined"
-                      size="small"
-                    />
+                    {q.difficulty ? (
+                      <Chip
+                        label={q.difficulty.charAt(0) + q.difficulty.slice(1).toLowerCase()}
+                        color={DIFFICULTY_COLOR[q.difficulty]}
+                        variant="outlined"
+                        size="small"
+                      />
+                    ) : (
+                      <Typography variant="body2" color="text.disabled">—</Typography>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Chip
@@ -265,7 +269,7 @@ export default function InterviewQuestionListPage(): JSX.Element {
                     <Tooltip title="Edit">
                       <IconButton
                         size="small"
-                        onClick={() => navigate(`/admin/interview-questions/${q.id}/edit`)}
+                        onClick={() => navigate(`/admin/question-answers/${q.id}/edit`)}
                       >
                         <EditIcon fontSize="small" />
                       </IconButton>
@@ -295,7 +299,7 @@ export default function InterviewQuestionListPage(): JSX.Element {
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        title="Delete Interview Question"
+        title="Delete Question"
         message={`Delete "${deleteTarget?.title}"? This cannot be undone.`}
         loading={deleting}
         onConfirm={handleDelete}

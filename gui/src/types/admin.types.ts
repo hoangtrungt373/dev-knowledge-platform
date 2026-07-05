@@ -76,21 +76,23 @@ export interface UpdateCategoryPayload {
   parentId: number | null;
 }
 
-// ── Interview Questions ─────────────────────────────────────────────────────
+// ── Question & Answer Content ───────────────────────────────────────────────
+// General dev-knowledge Q&A, not only interview prep — difficulty/isCommon are
+// interview-specific metadata, populated only when a question genuinely has that framing.
 
 export type Difficulty = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
 export type ContentStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 
-export interface InterviewQuestion {
+export interface QuestionAnswer {
   id: number;
   contentItemId: number;
   title: string;
   slug: string;
-  difficulty: Difficulty;
+  difficulty: Difficulty | null;
   questionBody: string;
   shortAnswer: string | null;
   detailedAnswer: string | null;
-  isCommon: boolean;
+  isCommon: boolean | null;
   status: ContentStatus;
   categoryId: number | null;
   tagIds: number[];
@@ -98,25 +100,25 @@ export interface InterviewQuestion {
   updatedAt: string;
 }
 
-export interface CreateInterviewQuestionPayload {
+export interface CreateQuestionAnswerPayload {
   title: string;
-  difficulty: Difficulty;
+  difficulty?: Difficulty | null;
   questionBody: string;
   shortAnswer?: string | null;
   detailedAnswer?: string | null;
-  isCommon?: boolean;
+  isCommon?: boolean | null;
   status?: ContentStatus;
   categoryId?: number | null;
   tagIds?: number[];
 }
 
-export interface UpdateInterviewQuestionPayload {
+export interface UpdateQuestionAnswerPayload {
   title: string;
-  difficulty: Difficulty;
+  difficulty?: Difficulty | null;
   questionBody: string;
   shortAnswer?: string | null;
   detailedAnswer?: string | null;
-  isCommon?: boolean;
+  isCommon?: boolean | null;
   status?: ContentStatus;
   categoryId?: number | null;
   tagIds?: number[] | null;
@@ -124,7 +126,7 @@ export interface UpdateInterviewQuestionPayload {
 
 // ── Embeddings ───────────────────────────────────────────────────────────────
 
-export type EmbeddingContentType = 'ARTICLE' | 'BLOG_POST' | 'INTERVIEW_QUESTION';
+export type EmbeddingContentType = 'ARTICLE' | 'BLOG_POST' | 'QUESTION_ANSWER';
 
 export interface EmbeddingIndexItem {
   contentItemId: number;

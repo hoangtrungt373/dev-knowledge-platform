@@ -3,7 +3,7 @@ package com.ttg.devknowledgeplatform.service;
 /**
  * Orchestrates RAG ingestion for content items.
  *
- * <p>Fetches the full text from the type-specific entity (InterviewQuestion, Article),
+ * <p>Fetches the full text from the type-specific entity (QuestionAnswer, Article),
  * then delegates chunking, embedding, and persistence to {@code ContentIngestionService}.
  */
 public interface ContentIndexingService {

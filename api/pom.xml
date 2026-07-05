@@ -142,7 +142,7 @@
             <artifactId>commons-csv</artifactId>
         </dependency>
 
-        <!-- SnakeYAML — front-matter parsing for Markdown-based seed data (InterviewQuestion);
+        <!-- SnakeYAML — front-matter parsing for Markdown-based seed data (QuestionAnswer);
              version managed by spring-boot-starter-parent's dependencyManagement -->
         <dependency>
             <groupId>org.yaml</groupId>

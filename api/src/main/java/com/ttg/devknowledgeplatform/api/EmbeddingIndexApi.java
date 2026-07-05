@@ -28,7 +28,7 @@ public interface EmbeddingIndexApi {
      * @param size          page size (default {@code 20})
      * @param q             optional case-insensitive title substring filter
      * @param contentType   optional content type filter: {@code ARTICLE}, {@code BLOG_POST},
-     *                      or {@code INTERVIEW_QUESTION}
+     *                      or {@code QUESTION_ANSWER}
      * @param contentStatus optional content status filter: {@code DRAFT}, {@code PUBLISHED},
      *                      or {@code ARCHIVED}
      * @param indexed       optional indexed status filter: {@code true} for indexed items only,

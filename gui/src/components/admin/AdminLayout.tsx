@@ -26,7 +26,7 @@ const NAV_ITEMS = [
   { label: 'Overview',              icon: <DashboardIcon fontSize="small" />,  path: '/admin/dashboard' },
   { label: 'Tags',                  icon: <LabelIcon fontSize="small" />,      path: '/admin/tags' },
   { label: 'Categories',            icon: <FolderIcon fontSize="small" />,     path: '/admin/categories' },
-  { label: 'Interview Questions',   icon: <QuizIcon fontSize="small" />,       path: '/admin/interview-questions' },
+  { label: 'Questions & Answers',   icon: <QuizIcon fontSize="small" />,       path: '/admin/question-answers' },
   { label: 'Pipeline Metrics',      icon: <QueryStatsIcon fontSize="small" />, path: '/admin/pipeline-metrics' },
   { label: 'Embeddings',            icon: <DataArrayIcon fontSize="small" />,  path: '/admin/embeddings' },
 ];

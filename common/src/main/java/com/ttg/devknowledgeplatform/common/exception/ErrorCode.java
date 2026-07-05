@@ -45,10 +45,10 @@ public enum ErrorCode {
     TAG_NAME_CONFLICT("TAG_002", "A tag with this name already exists", HttpStatus.CONFLICT),
     TAG_SLUG_CONFLICT("TAG_003", "Unable to generate unique slug for tag", HttpStatus.CONFLICT),
 
-    // Interview Question Errors (IQ_*)
-    INTERVIEW_QUESTION_NOT_FOUND("IQ_001", "Interview question not found", HttpStatus.NOT_FOUND),
-    INTERVIEW_QUESTION_SLUG_CONFLICT("IQ_002", "Slug conflict: unable to generate unique slug", HttpStatus.CONFLICT),
-    INTERVIEW_QUESTION_IN_USE("IQ_003", "Interview question is referenced and cannot be deleted", HttpStatus.CONFLICT),
+    // Question & Answer Errors (QA_*)
+    QUESTION_ANSWER_NOT_FOUND("QA_001", "Question not found", HttpStatus.NOT_FOUND),
+    QUESTION_ANSWER_SLUG_CONFLICT("QA_002", "Slug conflict: unable to generate unique slug", HttpStatus.CONFLICT),
+    QUESTION_ANSWER_IN_USE("QA_003", "Question is referenced and cannot be deleted", HttpStatus.CONFLICT),
 
     // Article Errors (ARTICLE_*)
     ARTICLE_NOT_FOUND("ARTICLE_001", "Article not found", HttpStatus.NOT_FOUND),

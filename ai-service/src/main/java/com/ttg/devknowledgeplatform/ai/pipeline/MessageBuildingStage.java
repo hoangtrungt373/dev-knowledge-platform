@@ -126,7 +126,7 @@ public class MessageBuildingStage implements RagPipelineStage {
         }
         return switch (filter.sourceTypes().iterator().next()) {
             case ARTICLE -> prompts.article();
-            case INTERVIEW_QUESTION -> prompts.interviewQuestion();
+            case QUESTION_ANSWER -> prompts.questionAnswer();
             case BLOG_POST -> prompts.blogPost();
         };
     }

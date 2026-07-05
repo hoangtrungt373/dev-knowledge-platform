@@ -7,7 +7,7 @@ import com.ttg.devknowledgeplatform.common.entity.ContentItem;
  * Chunks and embeds content text, persisting vectors to {@code CONTENT_EMBEDDING}.
  *
  * <p>The caller is responsible for extracting the full text from the type-specific
- * entity (InterviewQuestion, Article, etc.) before calling {@link #ingest}.
+ * entity (QuestionAnswer, Article, etc.) before calling {@link #ingest}.
  * This keeps ai-service free of api-module repositories.
  *
  * <p>The caller is also responsible for constructing the {@link ContentEmbeddingMetadata}

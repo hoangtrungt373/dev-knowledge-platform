@@ -5,13 +5,13 @@ import com.ttg.devknowledgeplatform.ai.service.ContentIngestionService;
 import com.ttg.devknowledgeplatform.common.entity.Article;
 import com.ttg.devknowledgeplatform.common.entity.Category;
 import com.ttg.devknowledgeplatform.common.entity.ContentItem;
-import com.ttg.devknowledgeplatform.common.entity.InterviewQuestion;
+import com.ttg.devknowledgeplatform.common.entity.QuestionAnswer;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.repository.ArticleRepository;
 import com.ttg.devknowledgeplatform.repository.ContentItemRepository;
-import com.ttg.devknowledgeplatform.repository.InterviewQuestionRepository;
+import com.ttg.devknowledgeplatform.repository.QuestionAnswerRepository;
 import com.ttg.devknowledgeplatform.service.ContentIndexingService;
 import com.ttg.devknowledgeplatform.service.IndexingQualityService;
 import com.ttg.devknowledgeplatform.service.QualityVerdict;
@@ -35,7 +35,7 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
     private static final String SYSTEM_PRINCIPAL = "system";
 
     private final ContentItemRepository contentItemRepository;
-    private final InterviewQuestionRepository interviewQuestionRepository;
+    private final QuestionAnswerRepository questionAnswerRepository;
     private final ArticleRepository articleRepository;
     private final ContentIngestionService contentIngestionService;
     private final IndexingQualityService indexingQualityService;
@@ -70,7 +70,7 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
     private void ingestContentItem(ContentItem contentItem) {
         ContentType type = contentItem.getType();
         switch (type) {
-            case INTERVIEW_QUESTION -> ingestInterviewQuestion(contentItem);
+            case QUESTION_ANSWER -> ingestQuestionAnswer(contentItem);
             case ARTICLE, BLOG_POST -> ingestArticle(contentItem);
             default -> log.warn("Unsupported content type for indexing: {}", type);
         }
@@ -129,14 +129,15 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
         }
     }
 
-    private void ingestInterviewQuestion(ContentItem contentItem) {
-        InterviewQuestion iq = interviewQuestionRepository
+    private void ingestQuestionAnswer(ContentItem contentItem) {
+        QuestionAnswer qa = questionAnswerRepository
                 .findByContentItem_Id(contentItem.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("InterviewQuestion for ContentItem",
+                .orElseThrow(() -> new ResourceNotFoundException("QuestionAnswer for ContentItem",
                         String.valueOf(contentItem.getId())));
 
-        ContentEmbeddingMetadata metadata = buildMetadata(contentItem, iq.getDifficulty().name(), iq.getIsCommon());
-        contentIngestionService.ingest(contentItem, buildInterviewQuestionText(contentItem, iq), metadata);
+        String difficulty = qa.getDifficulty() != null ? qa.getDifficulty().name() : null;
+        ContentEmbeddingMetadata metadata = buildMetadata(contentItem, difficulty, qa.getIsCommon());
+        contentIngestionService.ingest(contentItem, buildQuestionAnswerText(contentItem, qa), metadata);
     }
 
     private void ingestArticle(ContentItem contentItem) {
@@ -153,8 +154,9 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
      * Constructs the {@link ContentEmbeddingMetadata} stored on every chunk produced from
      * {@code contentItem}. This is the single source of truth for the JSONB metadata schema.
      *
-     * <p>{@code difficulty} and {@code isCommon} are non-null only for interview questions;
-     * they are {@code null} for articles and blog posts and will be omitted from the JSON
+     * <p>{@code difficulty} and {@code isCommon} are non-null only when a {@code QuestionAnswer}
+     * genuinely has interview-specific framing; they are {@code null} for general-knowledge
+     * questions, articles, and blog posts, and will be omitted from the JSON
      * by {@link com.fasterxml.jackson.annotation.JsonInclude.Include#NON_NULL}.
      */
     private ContentEmbeddingMetadata buildMetadata(ContentItem contentItem,
@@ -185,15 +187,15 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
         );
     }
 
-    private String buildInterviewQuestionText(ContentItem contentItem, InterviewQuestion iq) {
+    private String buildQuestionAnswerText(ContentItem contentItem, QuestionAnswer qa) {
         StringBuilder sb = new StringBuilder();
         sb.append(contentItem.getTitle()).append("\n\n");
-        sb.append(iq.getQuestionBody());
-        if (iq.getShortAnswer() != null && !iq.getShortAnswer().isBlank()) {
-            sb.append("\n\nShort Answer:\n").append(iq.getShortAnswer());
+        sb.append(qa.getQuestionBody());
+        if (qa.getShortAnswer() != null && !qa.getShortAnswer().isBlank()) {
+            sb.append("\n\nShort Answer:\n").append(qa.getShortAnswer());
         }
-        if (iq.getDetailedAnswer() != null && !iq.getDetailedAnswer().isBlank()) {
-            sb.append("\n\nDetailed Answer:\n").append(iq.getDetailedAnswer());
+        if (qa.getDetailedAnswer() != null && !qa.getDetailedAnswer().isBlank()) {
+            sb.append("\n\nDetailed Answer:\n").append(qa.getDetailedAnswer());
         }
         return sb.toString();
     }

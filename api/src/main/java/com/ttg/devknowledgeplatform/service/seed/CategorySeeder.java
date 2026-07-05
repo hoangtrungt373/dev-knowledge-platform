@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>{@code id} is a permanent, seed-file-only identifier (persisted as {@code Category.seedId},
  * never shown to end users) — the sole idempotency key, and also what {@code parentId} and
- * {@code InterviewQuestion}'s {@code categoryId} reference it by. It's deliberately decoupled
+ * {@code QuestionAnswer}'s {@code categoryId} reference it by. It's deliberately decoupled
  * from {@code name}/{@code slug} so those stay freely editable across re-runs — and so every
  * cross-reference to this category stays valid — without risking a duplicate insert or a broken
  * reference: this seed data is long-lived and coexists permanently with user-created categories,

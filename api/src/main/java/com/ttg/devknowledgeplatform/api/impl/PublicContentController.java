@@ -3,13 +3,13 @@ package com.ttg.devknowledgeplatform.api.impl;
 import com.ttg.devknowledgeplatform.api.PublicContentApi;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.common.enums.ContentType;
-import com.ttg.devknowledgeplatform.common.enums.InterviewQuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
 import com.ttg.devknowledgeplatform.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.dto.admin.ArticleResponse;
-import com.ttg.devknowledgeplatform.dto.admin.InterviewQuestionResponse;
+import com.ttg.devknowledgeplatform.dto.admin.QuestionAnswerResponse;
 import com.ttg.devknowledgeplatform.repository.ContentItemRepository;
 import com.ttg.devknowledgeplatform.service.ArticleService;
-import com.ttg.devknowledgeplatform.service.InterviewQuestionService;
+import com.ttg.devknowledgeplatform.service.QuestionAnswerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -29,28 +29,28 @@ import java.util.Set;
 @Slf4j
 public class PublicContentController implements PublicContentApi {
 
-    private static final Set<String> IQ_SORT_FIELDS = Set.of("id", "dteCreation", "difficulty");
+    private static final Set<String> QA_SORT_FIELDS = Set.of("id", "dteCreation", "difficulty");
     private static final Set<String> ARTICLE_SORT_FIELDS = Set.of("id", "dteCreation");
 
-    private final InterviewQuestionService interviewQuestionService;
+    private final QuestionAnswerService questionAnswerService;
     private final ArticleService articleService;
     private final ContentItemRepository contentItemRepository;
 
     @Override
-    public ResponseEntity<PagedResponse<InterviewQuestionResponse>> listInterviewQuestions(
+    public ResponseEntity<PagedResponse<QuestionAnswerResponse>> listQuestionAnswers(
             int page, int size, String sortBy, String sortDir,
-            InterviewQuestionDifficulty difficulty, Boolean isCommon, String q) {
-        Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir, IQ_SORT_FIELDS));
-        PagedResponse<InterviewQuestionResponse> response =
-                interviewQuestionService.list(pageable, difficulty, ContentStatus.PUBLISHED, isCommon, q);
+            QuestionDifficulty difficulty, Boolean isCommon, String q) {
+        Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir, QA_SORT_FIELDS));
+        PagedResponse<QuestionAnswerResponse> response =
+                questionAnswerService.list(pageable, difficulty, ContentStatus.PUBLISHED, isCommon, q);
         return ResponseEntity.ok(response);
     }
 
     @Override
     @Transactional
-    public ResponseEntity<InterviewQuestionResponse> getInterviewQuestionBySlug(String slug) {
+    public ResponseEntity<QuestionAnswerResponse> getQuestionAnswerBySlug(String slug) {
         contentItemRepository.findBySlug(slug).ifPresent(ci -> contentItemRepository.incrementViewCount(ci.getId()));
-        InterviewQuestionResponse response = interviewQuestionService.getBySlug(slug);
+        QuestionAnswerResponse response = questionAnswerService.getBySlug(slug);
         return ResponseEntity.ok(response);
     }
 

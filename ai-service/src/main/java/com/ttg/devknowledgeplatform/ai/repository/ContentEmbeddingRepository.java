@@ -73,7 +73,7 @@ public interface ContentEmbeddingRepository extends JpaRepository<ContentEmbeddi
      * content type has not been indexed yet).
      *
      * @param sourceType the {@code SOURCE_TYPE} column value
-     *                   (e.g. {@code "ARTICLE"}, {@code "INTERVIEW_QUESTION"}, {@code "BLOG_POST"})
+     *                   (e.g. {@code "ARTICLE"}, {@code "QUESTION_ANSWER"}, {@code "BLOG_POST"})
      * @return pgvector text representation of the centroid, or {@code null}
      */
     @Query(value = """

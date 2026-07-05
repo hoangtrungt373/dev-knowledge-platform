@@ -53,7 +53,7 @@ public class CorpusStatisticsServiceImpl implements CorpusStatisticsService {
 
     private volatile float[] centroidAll;
     private volatile float[] centroidArticle;
-    private volatile float[] centroidInterviewQuestion;
+    private volatile float[] centroidQuestionAnswer;
     private volatile float[] centroidBlogPost;
 
     // ── Startup ──────────────────────────────────────────────────────────────────
@@ -65,10 +65,10 @@ public class CorpusStatisticsServiceImpl implements CorpusStatisticsService {
      */
     @PostConstruct
     public void loadFromDb() {
-        centroidAll               = loadCached(ParamKey.CENTROID_ALL);
-        centroidArticle           = loadCached(ParamKey.CENTROID_ARTICLE);
-        centroidInterviewQuestion = loadCached(ParamKey.CENTROID_INTERVIEW_QUESTION);
-        centroidBlogPost          = loadCached(ParamKey.CENTROID_BLOG_POST);
+        centroidAll             = loadCached(ParamKey.CENTROID_ALL);
+        centroidArticle         = loadCached(ParamKey.CENTROID_ARTICLE);
+        centroidQuestionAnswer  = loadCached(ParamKey.CENTROID_QUESTION_ANSWER);
+        centroidBlogPost        = loadCached(ParamKey.CENTROID_BLOG_POST);
         log.info("Corpus centroids loaded from SYS_PARAM: {}/4 available", countLoaded());
     }
 
@@ -88,15 +88,15 @@ public class CorpusStatisticsServiceImpl implements CorpusStatisticsService {
                 embeddingRepository.computeGlobalCentroid());
         computeAndPersist(ParamKey.CENTROID_ARTICLE,
                 embeddingRepository.computeCentroidBySourceType(ContentType.ARTICLE.name()));
-        computeAndPersist(ParamKey.CENTROID_INTERVIEW_QUESTION,
-                embeddingRepository.computeCentroidBySourceType(ContentType.INTERVIEW_QUESTION.name()));
+        computeAndPersist(ParamKey.CENTROID_QUESTION_ANSWER,
+                embeddingRepository.computeCentroidBySourceType(ContentType.QUESTION_ANSWER.name()));
         computeAndPersist(ParamKey.CENTROID_BLOG_POST,
                 embeddingRepository.computeCentroidBySourceType(ContentType.BLOG_POST.name()));
 
-        centroidAll               = loadCached(ParamKey.CENTROID_ALL);
-        centroidArticle           = loadCached(ParamKey.CENTROID_ARTICLE);
-        centroidInterviewQuestion = loadCached(ParamKey.CENTROID_INTERVIEW_QUESTION);
-        centroidBlogPost          = loadCached(ParamKey.CENTROID_BLOG_POST);
+        centroidAll             = loadCached(ParamKey.CENTROID_ALL);
+        centroidArticle         = loadCached(ParamKey.CENTROID_ARTICLE);
+        centroidQuestionAnswer  = loadCached(ParamKey.CENTROID_QUESTION_ANSWER);
+        centroidBlogPost        = loadCached(ParamKey.CENTROID_BLOG_POST);
 
         log.info("Corpus centroids refreshed: {}/4 available", countLoaded());
     }
@@ -117,9 +117,9 @@ public class CorpusStatisticsServiceImpl implements CorpusStatisticsService {
     private float[] resolveCentroid(RagFilter filter) {
         if (filter.sourceTypes() != null && filter.sourceTypes().size() == 1) {
             return switch (filter.sourceTypes().iterator().next()) {
-                case ARTICLE            -> centroidArticle;
-                case INTERVIEW_QUESTION -> centroidInterviewQuestion;
-                case BLOG_POST          -> centroidBlogPost;
+                case ARTICLE          -> centroidArticle;
+                case QUESTION_ANSWER  -> centroidQuestionAnswer;
+                case BLOG_POST        -> centroidBlogPost;
             };
         }
         return centroidAll;
@@ -150,10 +150,10 @@ public class CorpusStatisticsServiceImpl implements CorpusStatisticsService {
 
     private int countLoaded() {
         int count = 0;
-        if (centroidAll != null)               count++;
-        if (centroidArticle != null)           count++;
-        if (centroidInterviewQuestion != null) count++;
-        if (centroidBlogPost != null)          count++;
+        if (centroidAll != null)              count++;
+        if (centroidArticle != null)          count++;
+        if (centroidQuestionAnswer != null)   count++;
+        if (centroidBlogPost != null)         count++;
         return count;
     }
 }

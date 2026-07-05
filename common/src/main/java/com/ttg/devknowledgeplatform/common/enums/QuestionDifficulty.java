@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.common.enums;
 
-public enum InterviewQuestionDifficulty {
+public enum QuestionDifficulty {
     BEGINNER,
     INTERMEDIATE,
     ADVANCED

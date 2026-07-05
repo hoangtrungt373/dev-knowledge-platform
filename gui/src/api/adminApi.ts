@@ -2,7 +2,7 @@ import { httpClient } from './httpClient';
 import {
   Tag, CreateTagPayload, UpdateTagPayload,
   Category, CategoryTreeNode, CreateCategoryPayload, UpdateCategoryPayload,
-  InterviewQuestion, CreateInterviewQuestionPayload, UpdateInterviewQuestionPayload,
+  QuestionAnswer, CreateQuestionAnswerPayload, UpdateQuestionAnswerPayload,
   PagedResponse,
   MetricsPeriod,
   PipelineMetricsSummary,
@@ -21,7 +21,7 @@ function buildQuery(params: Record<string, string | number | undefined>): string
   return s ? `?${s}` : '';
 }
 
-export interface InterviewQuestionListParams {
+export interface QuestionAnswerListParams {
   page?: number;
   size?: number;
   sortBy?: string;
@@ -98,9 +98,9 @@ export const adminApi = {
     return httpClient.delete(`/api/v1/admin/categories/${id}`, showError);
   },
 
-  // ── Interview Questions ────────────────────────────────────────────────────
+  // ── Question & Answer Content ──────────────────────────────────────────────
 
-  listInterviewQuestions(params: InterviewQuestionListParams, showError?: ShowError): Promise<PagedResponse<InterviewQuestion>> {
+  listQuestionAnswers(params: QuestionAnswerListParams, showError?: ShowError): Promise<PagedResponse<QuestionAnswer>> {
     const query: Record<string, string | number | undefined> = {
       page: params.page,
       size: params.size,
@@ -111,23 +111,23 @@ export const adminApi = {
       q: params.q,
     };
     if (params.isCommon !== undefined) query.isCommon = String(params.isCommon);
-    return httpClient.get(`/api/v1/admin/interview-questions${buildQuery(query)}`, showError);
+    return httpClient.get(`/api/v1/admin/question-answers${buildQuery(query)}`, showError);
   },
 
-  getInterviewQuestion(id: number, showError?: ShowError): Promise<InterviewQuestion> {
-    return httpClient.get(`/api/v1/admin/interview-questions/${id}`, showError);
+  getQuestionAnswer(id: number, showError?: ShowError): Promise<QuestionAnswer> {
+    return httpClient.get(`/api/v1/admin/question-answers/${id}`, showError);
   },
 
-  createInterviewQuestion(payload: CreateInterviewQuestionPayload, showError?: ShowError): Promise<InterviewQuestion> {
-    return httpClient.post('/api/v1/admin/interview-questions', payload, showError);
+  createQuestionAnswer(payload: CreateQuestionAnswerPayload, showError?: ShowError): Promise<QuestionAnswer> {
+    return httpClient.post('/api/v1/admin/question-answers', payload, showError);
   },
 
-  updateInterviewQuestion(id: number, payload: UpdateInterviewQuestionPayload, showError?: ShowError): Promise<InterviewQuestion> {
-    return httpClient.put(`/api/v1/admin/interview-questions/${id}`, payload, showError);
+  updateQuestionAnswer(id: number, payload: UpdateQuestionAnswerPayload, showError?: ShowError): Promise<QuestionAnswer> {
+    return httpClient.put(`/api/v1/admin/question-answers/${id}`, payload, showError);
   },
 
-  deleteInterviewQuestion(id: number, showError?: ShowError): Promise<void> {
-    return httpClient.delete(`/api/v1/admin/interview-questions/${id}`, showError);
+  deleteQuestionAnswer(id: number, showError?: ShowError): Promise<void> {
+    return httpClient.delete(`/api/v1/admin/question-answers/${id}`, showError);
   },
 
   // ── Pipeline Metrics ────────────────────────────────────────────────────────

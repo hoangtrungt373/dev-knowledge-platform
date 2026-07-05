@@ -16,7 +16,7 @@ import java.nio.charset.StandardCharsets;
  * The read-parse-insert-or-skip algorithm is identical for every flat, single-file seed source
  * (see {@link CategorySeeder}, {@link TagSeeder}); subclasses supply only the natural-key
  * existence check and the entity construction. Seed sources with a different shape — e.g.
- * {@link InterviewQuestionSeeder}'s one-file-per-record Markdown format — implement their own
+ * {@link QuestionAnswerSeeder}'s one-file-per-record Markdown format — implement their own
  * {@code seed()} rather than forcing that shape through this template.
  *
  * @param <T> the entity (or per-row composite holder) built from each CSV row

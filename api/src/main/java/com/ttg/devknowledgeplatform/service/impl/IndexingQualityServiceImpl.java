@@ -35,7 +35,7 @@ import java.util.Set;
  * </ol>
  *
  * <h3>Why type-specific centroid</h3>
- * <p>Articles, interview questions, and blog posts occupy overlapping but distinct regions of
+ * <p>Articles, questions, and blog posts occupy overlapping but distinct regions of
  * the embedding space. An article about Java garbage collection should be compared against the
  * article centroid rather than the global one — this gives a more accurate signal and reduces
  * false positives for documents that are legitimately in a niche sub-domain.

@@ -28,14 +28,15 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │   ├── Category.java                 — hierarchical; parent/children self-join
 │   ├── ContentItem.java              — base content record (type, status, title, slug, category)
 │   ├── ContentItemTag.java           — join entity for content ↔ tag
-│   ├── InterviewQuestion.java
+│   ├── QuestionAnswer.java           — general dev-knowledge Q&A, not only interview prep;
+│   │                                    difficulty/isCommon are nullable interview-specific metadata
 │   ├── Tag.java
 │   ├── ChatSession.java              — userId, title, lastActivityAt, summary (TEXT); parent of ChatMessage rows
 │   └── ChatMessage.java              — role, content, turnIndex; child of ChatSession
 ├── enums/
 │   ├── ChatProvider.java             — OPENAI, ANTHROPIC; selects LangChain4j builder family per chat model profile
 │   ├── ContentStatus.java            — DRAFT, PUBLISHED, …
-│   ├── ContentType.java              — INTERVIEW_QUESTION, ARTICLE, BLOG_POST
+│   ├── ContentType.java              — QUESTION_ANSWER, ARTICLE, BLOG_POST
 │   ├── ParamKey.java                 — typed keys for SYS_PARAM.NAME; renaming a constant requires a DB migration;
 │   │                                   includes PROMPT_INJECTION_PROTOTYPE_EMBEDDINGS (fingerprinted vector-list cache
 │   │                                   for PromptGuardStage — see repository/service below)
@@ -43,7 +44,7 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 ├── entity/
 │   ├── ContentItem.java              — qualityScore (BigDecimal, nullable): mean centroid similarity set at indexing time;
 │   │                                    seedId (String, nullable, DB SEED_ID): NULL for user/admin-created rows, set only
-│   │                                    by InterviewQuestionSeeder — sole idempotency key for long-lived seed data (DKP-0013)
+│   │                                    by QuestionAnswerSeeder — sole idempotency key for long-lived seed data (DKP-0013)
 │   ├── Category.java / Tag.java      — seedId (String, nullable, DB SEED_ID): same purpose as ContentItem.seedId above,
 │   │                                    set only by CategorySeeder/TagSeeder (DKP-0013)
 │   └── SysParam.java                 — @Entity for SYS_PARAM; fields: name (ParamKey), value (TEXT), computedAt
@@ -285,19 +286,20 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │   │   ├── TagSeeder.java                — extends CsvSeeder; data/csv/tags.csv (id, name,
 │   │   │                                   status); same seedId-identity + generated-slug pattern
 │   │   │                                   as CategorySeeder (no hierarchy, so no parentId)
-│   │   ├── InterviewQuestionSeeder.java  — does NOT extend CsvSeeder (one-file-per-record
+│   │   ├── QuestionAnswerSeeder.java     — does NOT extend CsvSeeder (one-file-per-record
 │   │   │                                   directory, not CSV rows — different iteration shape);
-│   │   │                                   reads data/interview-questions/*.md (YAML front
+│   │   │                                   reads data/question-answers/*.md (YAML front
 │   │   │                                   matter + markdown body via SnakeYAML/SafeConstructor);
 │   │   │                                   identity by seedId (required front-matter id, NOT
 │   │   │                                   slug/title); categoryId/tagIds resolved via
 │   │   │                                   findBySeedId (Category/Tag's own id, not name/slug);
 │   │   │                                   slug stays a separate, optional, production-URL-only
-│   │   │                                   field unrelated to idempotency; builds ContentItem +
-│   │   │                                   InterviewQuestion per file; requires categories/tags
-│   │   │                                   seeded first
+│   │   │                                   field unrelated to idempotency; difficulty/isCommon
+│   │   │                                   optional (general Q&A, not only interview prep);
+│   │   │                                   builds ContentItem + QuestionAnswer per file;
+│   │   │                                   requires categories/tags seeded first
 │   │   └── DataSeedingRunner.java        — ApplicationRunner, @ConditionalOnProperty(app.seed.enabled);
-│   │                                       runs seeders in order: category → tag → interviewQuestion
+│   │                                       runs seeders in order: category → tag → questionAnswer
 │   └── impl/
 │       ├── IndexingQualityServiceImpl.java  — loads embeddings from ContentEmbeddingRepository; mean centroid dotProduct; graceful cold-start
 │       ├── CorpusStatisticsServiceImpl.java — @PostConstruct loads centroids from SYS_PARAM; @Scheduled refresh
@@ -321,15 +323,16 @@ data/
 │   │                                    id (→ seedId), never name/slug
 │   ├── categories.csv                    — id, name, parentId (parentId references another row's id)
 │   └── tags.csv                           — id, name, status
-├── interview-questions/              — one Markdown file per question; references Category/Tag
+├── question-answers/                 — one Markdown file per question; references Category/Tag
 │   │                                    by id (categoryId/tagIds), not name or slug — see
-│   │                                    docs/SEED_DATA_AUTHORING_GUIDE.md; 100 files (iq-*.md),
-│   │                                    spread across all 12 leaf categories
+│   │                                    docs/SEED_DATA_AUTHORING_GUIDE.md; 100 files (qa-*.md),
+│   │                                    spread across all 12 leaf categories; general dev-knowledge
+│   │                                    Q&A, not only interview prep
 └── init-admin-user.sql               — local-dev admin bootstrap; NOT run by DataSeedingRunner or
                                          any other mechanism — apply manually against the local DB
 ```
 
-Before writing new `interview-questions/*.md` files, read `docs/SEED_DATA_AUTHORING_GUIDE.md` —
+Before writing new `question-answers/*.md` files, read `docs/SEED_DATA_AUTHORING_GUIDE.md` —
 schema, mechanical rules the seeder enforces, content quality criteria, and the RAG-chunking
 constraints that shape how sections should be written.
 
@@ -369,10 +372,12 @@ expected over time, and are modelled as data, not schema:
 - A "domain" is a **root-level `Category` node** (e.g. "Dev Knowledge"), not a `ContentType` or schema
   concept. `Category`'s existing hierarchy (parent/children self-join, cycle-checked by
   `CategoryServiceImpl.validateParentAssignment`) already covers this with zero code change.
-- `ContentType` (`INTERVIEW_QUESTION`, `ARTICLE`, `BLOG_POST`) discriminates content *shape*
+- `ContentType` (`QUESTION_ANSWER`, `ARTICLE`, `BLOG_POST`) discriminates content *shape*
   (which JOINed subtype table + `ContentIndexingServiceImpl` ingestion path applies), never subject
-  matter. New domains reuse the `Article`/`BlogPost` shape; `InterviewQuestion` stays dev-knowledge-only
-  because it's the sole domain with that distinct structured shape today.
+  matter. `QuestionAnswer` was originally named `InterviewQuestion` and scoped to dev-interview prep;
+  it was broadened (see `CHANGELOG.md`) once it became clear the same question/answer shape is
+  useful general dev-knowledge content across any domain, not just interview prep — `difficulty`/
+  `isCommon` are now nullable, interview-specific metadata rather than defining characteristics.
 - Adding a domain is a pure data operation: create a root `Category`, publish `Article`/`BlogPost`
   rows under it. No migration, no enum change, no new subtype table.
 - Scoping retrieval/chat to one domain is a query-time filter, not new plumbing —

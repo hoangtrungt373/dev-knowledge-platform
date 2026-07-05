@@ -21,9 +21,9 @@ const FEATURE_CARDS = [
     status: 'ready' as const,
   },
   {
-    label: 'Interview Questions',
+    label: 'Questions & Answers',
     icon: <QuizIcon fontSize="small" />,
-    description: 'Manage interview question bank.',
+    description: 'Manage the question-and-answer content bank.',
     status: 'ready' as const,
   },
   {

@@ -20,7 +20,7 @@ interface Props {
 
 function sourceTypeLabel(type: string): string {
   switch (type) {
-    case 'INTERVIEW_QUESTION': return 'Interview';
+    case 'QUESTION_ANSWER': return 'Question';
     case 'ARTICLE': return 'Article';
     case 'BLOG_POST': return 'Blog';
     default: return type;
@@ -28,7 +28,7 @@ function sourceTypeLabel(type: string): string {
 }
 
 function SourceIcon({ type }: { type: string }) {
-  return type === 'INTERVIEW_QUESTION'
+  return type === 'QUESTION_ANSWER'
     ? <QuizIcon sx={{ fontSize: 14 }} />
     : <ArticleIcon sx={{ fontSize: 14 }} />;
 }

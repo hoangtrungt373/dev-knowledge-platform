@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Runs the CSV data seeders once at application startup, in dependency order — categories,
- * then tags, then interview questions — since interview question rows reference both by slug.
+ * then tags, then question-and-answer content — since question rows reference both by id.
  * Gated by {@code app.seed.enabled} (on for {@code local}/{@code docker}, off by default) so a
  * production-like profile never seeds unintentionally.
  *
@@ -23,14 +23,14 @@ public class DataSeedingRunner implements ApplicationRunner {
 
     private final CategorySeeder categorySeeder;
     private final TagSeeder tagSeeder;
-    private final InterviewQuestionSeeder interviewQuestionSeeder;
+    private final QuestionAnswerSeeder questionAnswerSeeder;
 
     @Override
     public void run(ApplicationArguments args) {
         log.info("Starting CSV data seeding...");
         categorySeeder.seed();
         tagSeeder.seed();
-        interviewQuestionSeeder.seed();
+        questionAnswerSeeder.seed();
         log.info("CSV data seeding complete.");
     }
 }

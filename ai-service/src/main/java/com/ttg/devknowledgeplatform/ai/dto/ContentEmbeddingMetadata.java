@@ -24,10 +24,10 @@ import java.util.List;
  * @param tagNames     display names of all tags attached to the content item;
  *                     matched against {@link RagFilter#tags()}
  *                     by {@link com.ttg.devknowledgeplatform.ai.filter.MetadataTagFilterStrategy}
- * @param difficulty   difficulty level name (e.g. {@code "EASY"}); non-null only for
- *                     {@code INTERVIEW_QUESTION} content
- * @param isCommon     whether this is a frequently asked interview question; non-null only for
- *                     {@code INTERVIEW_QUESTION} content
+ * @param difficulty   difficulty level name (e.g. {@code "EASY"}); non-null only when a
+ *                     {@code QUESTION_ANSWER} genuinely has interview-specific framing
+ * @param isCommon     whether this is a frequently asked interview question; non-null only when a
+ *                     {@code QUESTION_ANSWER} genuinely has interview-specific framing
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ContentEmbeddingMetadata(

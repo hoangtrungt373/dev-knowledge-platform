@@ -3,14 +3,14 @@ package com.ttg.devknowledgeplatform.service.seed;
 import com.ttg.devknowledgeplatform.common.entity.Category;
 import com.ttg.devknowledgeplatform.common.entity.ContentItem;
 import com.ttg.devknowledgeplatform.common.entity.ContentItemTag;
-import com.ttg.devknowledgeplatform.common.entity.InterviewQuestion;
+import com.ttg.devknowledgeplatform.common.entity.QuestionAnswer;
 import com.ttg.devknowledgeplatform.common.entity.Tag;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.common.enums.ContentType;
-import com.ttg.devknowledgeplatform.common.enums.InterviewQuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
 import com.ttg.devknowledgeplatform.repository.CategoryRepository;
 import com.ttg.devknowledgeplatform.repository.ContentItemRepository;
-import com.ttg.devknowledgeplatform.repository.InterviewQuestionRepository;
+import com.ttg.devknowledgeplatform.repository.QuestionAnswerRepository;
 import com.ttg.devknowledgeplatform.repository.TagRepository;
 import com.ttg.devknowledgeplatform.service.SlugService;
 import lombok.RequiredArgsConstructor;
@@ -31,14 +31,17 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * Seeds {@link InterviewQuestion} rows — each backed by a {@link ContentItem} — from one
- * Markdown-with-YAML-front-matter file per question under {@code data/interview-questions/}.
+ * Seeds {@link QuestionAnswer} rows — each backed by a {@link ContentItem} — from one
+ * Markdown-with-YAML-front-matter file per question under {@code data/question-answers/}.
  *
  * <p>Front matter carries the short structured fields ({@code id}, {@code title}, {@code slug},
  * {@code categoryId}, {@code tagIds}, {@code difficulty}, {@code isCommon},
  * {@code questionBody}, {@code shortAnswer}); everything after the closing {@code ---} line is
  * the raw markdown {@code detailedAnswer} body — the one field that actually benefits from
- * unescaped, syntax-highlighted prose editing.
+ * unescaped, syntax-highlighted prose editing. {@code difficulty}/{@code isCommon} are optional
+ * — this content is general dev-knowledge Q&A, not only interview prep, and forcing an
+ * interview-difficulty/frequency judgment call on plain "how does X work" content wouldn't mean
+ * anything.
  *
  * <p>{@code categoryId}/{@code tagIds} reference {@link Category}/{@link Tag} by their permanent
  * {@code seedId} (the same {@code id} field {@link CategorySeeder}/{@link TagSeeder} assign),
@@ -71,9 +74,9 @@ import java.util.regex.Pattern;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class InterviewQuestionSeeder {
+public class QuestionAnswerSeeder {
 
-    private static final String QUESTIONS_CLASSPATH_LOCATION = "classpath*:data/interview-questions/*.md";
+    private static final String QUESTIONS_CLASSPATH_LOCATION = "classpath*:data/question-answers/*.md";
     private static final Pattern FRONT_MATTER_DELIMITER = Pattern.compile("(?m)^---\\s*$");
     // Body files lead with "<!-- detailedAnswer -->" purely so the field mapping is visible
     // when reading the raw file — front matter already labels questionBody/shortAnswer, so the
@@ -83,7 +86,7 @@ public class InterviewQuestionSeeder {
     private final ContentItemRepository contentItemRepository;
     private final CategoryRepository categoryRepository;
     private final TagRepository tagRepository;
-    private final InterviewQuestionRepository interviewQuestionRepository;
+    private final QuestionAnswerRepository questionAnswerRepository;
     private final SlugService slugService;
 
     // SafeConstructor restricts parsing to plain YAML types (Map/List/String/Boolean/…) —
@@ -92,7 +95,7 @@ public class InterviewQuestionSeeder {
     private final Yaml yaml = new Yaml(new SafeConstructor(new LoaderOptions()));
 
     /**
-     * Reads every {@code .md} file under {@code data/interview-questions/} and inserts the
+     * Reads every {@code .md} file under {@code data/question-answers/} and inserts the
      * ones whose {@code id} is not already present.
      *
      * @return the number of rows inserted
@@ -102,7 +105,7 @@ public class InterviewQuestionSeeder {
         try {
             files = new PathMatchingResourcePatternResolver().getResources(QUESTIONS_CLASSPATH_LOCATION);
         } catch (IOException e) {
-            throw new IllegalStateException("Failed to list interview question files: " + QUESTIONS_CLASSPATH_LOCATION, e);
+            throw new IllegalStateException("Failed to list question files: " + QUESTIONS_CLASSPATH_LOCATION, e);
         }
 
         int inserted = 0;
@@ -121,7 +124,7 @@ public class InterviewQuestionSeeder {
                             + "') — an id must never be reused for a different question");
                 }
                 skipped++;
-                log.debug("InterviewQuestionSeeder: skipping existing row '{}'", question.id());
+                log.debug("QuestionAnswerSeeder: skipping existing row '{}'", question.id());
                 continue;
             }
 
@@ -137,7 +140,7 @@ public class InterviewQuestionSeeder {
             inserted++;
         }
 
-        log.info("InterviewQuestionSeeder: inserted {} row(s), skipped {} already-present row(s)", inserted, skipped);
+        log.info("QuestionAnswerSeeder: inserted {} row(s), skipped {} already-present row(s)", inserted, skipped);
         return inserted;
     }
 
@@ -154,7 +157,7 @@ public class InterviewQuestionSeeder {
         try {
             content = file.getContentAsString(StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new IllegalStateException("Failed to read interview question file: " + file.getFilename(), e);
+            throw new IllegalStateException("Failed to read question file: " + file.getFilename(), e);
         }
 
         String[] parts = FRONT_MATTER_DELIMITER.split(content, 3);
@@ -174,7 +177,7 @@ public class InterviewQuestionSeeder {
                 (String) meta.get("categoryId"),
                 tagIds,
                 (String) meta.get("difficulty"),
-                Boolean.TRUE.equals(meta.get("isCommon")),
+                (Boolean) meta.get("isCommon"),
                 (String) meta.get("questionBody"),
                 (String) meta.get("shortAnswer"),
                 detailedAnswer
@@ -184,12 +187,12 @@ public class InterviewQuestionSeeder {
     private void persist(ParsedQuestion question, String slug) {
         Category category = categoryRepository.findBySeedId(question.categoryId())
                 .orElseThrow(() -> new IllegalStateException(
-                        "Interview question '" + question.id() + "' references unknown categoryId '"
+                        "Question '" + question.id() + "' references unknown categoryId '"
                                 + question.categoryId() + "'"));
 
         ContentItem contentItem = new ContentItem();
         contentItem.setSeedId(question.id());
-        contentItem.setType(ContentType.INTERVIEW_QUESTION);
+        contentItem.setType(ContentType.QUESTION_ANSWER);
         contentItem.setStatus(ContentStatus.PUBLISHED);
         contentItem.setTitle(question.title());
         contentItem.setSlug(slug);
@@ -200,26 +203,29 @@ public class InterviewQuestionSeeder {
         for (String tagId : question.tagIds()) {
             Tag tag = tagRepository.findBySeedId(tagId)
                     .orElseThrow(() -> new IllegalStateException(
-                            "Interview question '" + question.id() + "' references unknown tagId '" + tagId + "'"));
+                            "Question '" + question.id() + "' references unknown tagId '" + tagId + "'"));
             ContentItemTag join = new ContentItemTag();
             join.setContentItem(contentItem);
             join.setTag(tag);
             contentItem.getContentItemTags().add(join);
         }
 
-        InterviewQuestion interviewQuestion = new InterviewQuestion();
-        interviewQuestion.setDifficulty(InterviewQuestionDifficulty.valueOf(question.difficulty().trim().toUpperCase()));
-        interviewQuestion.setQuestionBody(question.questionBody());
-        interviewQuestion.setShortAnswer(question.shortAnswer());
-        interviewQuestion.setDetailedAnswer(question.detailedAnswer());
-        interviewQuestion.setIsCommon(question.isCommon());
+        QuestionAnswer questionAnswer = new QuestionAnswer();
+        String difficulty = question.difficulty();
+        questionAnswer.setDifficulty(difficulty != null && !difficulty.isBlank()
+                ? QuestionDifficulty.valueOf(difficulty.trim().toUpperCase())
+                : null);
+        questionAnswer.setQuestionBody(question.questionBody());
+        questionAnswer.setShortAnswer(question.shortAnswer());
+        questionAnswer.setDetailedAnswer(question.detailedAnswer());
+        questionAnswer.setIsCommon(question.isCommon());
 
         ContentItem savedContentItem = contentItemRepository.save(contentItem);
-        interviewQuestion.setContentItem(savedContentItem);
-        interviewQuestionRepository.save(interviewQuestion);
+        questionAnswer.setContentItem(savedContentItem);
+        questionAnswerRepository.save(questionAnswer);
     }
 
-    /** Parsed front matter + body for one interview-question file, prior to persistence. */
+    /** Parsed front matter + body for one question file, prior to persistence. */
     private record ParsedQuestion(
             String id,
             String title,
@@ -227,7 +233,7 @@ public class InterviewQuestionSeeder {
             String categoryId,
             List<String> tagIds,
             String difficulty,
-            boolean isCommon,
+            Boolean isCommon,
             String questionBody,
             String shortAnswer,
             String detailedAnswer) {

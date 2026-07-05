@@ -1,10 +1,10 @@
 package com.ttg.devknowledgeplatform.api;
 
 import com.ttg.devknowledgeplatform.common.enums.ContentType;
-import com.ttg.devknowledgeplatform.common.enums.InterviewQuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
 import com.ttg.devknowledgeplatform.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.dto.admin.ArticleResponse;
-import com.ttg.devknowledgeplatform.dto.admin.InterviewQuestionResponse;
+import com.ttg.devknowledgeplatform.dto.admin.QuestionAnswerResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,42 +15,42 @@ import org.springframework.web.bind.annotation.RequestParam;
  * HTTP contract for the public-facing content API.
  *
  * <p>Exposes read-only, unauthenticated endpoints for browsing published articles and
- * interview questions. The implementation
+ * question-and-answer content. The implementation
  * ({@link com.ttg.devknowledgeplatform.api.impl.PublicContentController}) carries no HTTP annotations.
  */
 @RequestMapping("/api/v1/public")
 public interface PublicContentApi {
 
     /**
-     * Returns a paginated, optionally filtered list of published interview questions.
+     * Returns a paginated, optionally filtered list of published questions.
      *
      * @param page       zero-based page number (default 0)
      * @param size       page size (default 20)
      * @param sortBy     field to sort by; allowed values: {@code id}, {@code dteCreation}, {@code difficulty} (default {@code id})
      * @param sortDir    sort direction: {@code asc} or {@code desc} (default {@code desc})
-     * @param difficulty optional difficulty filter
+     * @param difficulty optional difficulty filter; questions with no difficulty set are excluded when this is provided
      * @param isCommon   optional flag to filter common questions
      * @param q          optional full-text search query
-     * @return {@code 200} with a paged list of published interview questions
+     * @return {@code 200} with a paged list of published questions
      */
-    @GetMapping("/interview-questions")
-    ResponseEntity<PagedResponse<InterviewQuestionResponse>> listInterviewQuestions(
+    @GetMapping("/question-answers")
+    ResponseEntity<PagedResponse<QuestionAnswerResponse>> listQuestionAnswers(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "id") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir,
-            @RequestParam(required = false) InterviewQuestionDifficulty difficulty,
+            @RequestParam(required = false) QuestionDifficulty difficulty,
             @RequestParam(required = false) Boolean isCommon,
             @RequestParam(required = false) String q);
 
     /**
-     * Returns a published interview question by its URL slug and increments the view count.
+     * Returns a published question by its URL slug and increments the view count.
      *
-     * @param slug URL-friendly identifier of the interview question
-     * @return {@code 200} with the interview question
+     * @param slug URL-friendly identifier of the question
+     * @return {@code 200} with the question
      */
-    @GetMapping("/interview-questions/{slug}")
-    ResponseEntity<InterviewQuestionResponse> getInterviewQuestionBySlug(@PathVariable String slug);
+    @GetMapping("/question-answers/{slug}")
+    ResponseEntity<QuestionAnswerResponse> getQuestionAnswerBySlug(@PathVariable String slug);
 
     /**
      * Returns a paginated, optionally filtered list of published articles.

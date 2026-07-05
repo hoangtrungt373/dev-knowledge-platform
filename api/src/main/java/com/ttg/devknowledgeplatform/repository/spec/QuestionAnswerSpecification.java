@@ -1,9 +1,9 @@
 package com.ttg.devknowledgeplatform.repository.spec;
 
 import com.ttg.devknowledgeplatform.common.entity.ContentItem;
-import com.ttg.devknowledgeplatform.common.entity.InterviewQuestion;
+import com.ttg.devknowledgeplatform.common.entity.QuestionAnswer;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.common.enums.InterviewQuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
 import jakarta.persistence.criteria.Fetch;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
@@ -13,12 +13,12 @@ import org.springframework.data.jpa.domain.Specification;
 import java.util.ArrayList;
 import java.util.List;
 
-public class InterviewQuestionSpecification {
+public class QuestionAnswerSpecification {
 
-    private InterviewQuestionSpecification() {}
+    private QuestionAnswerSpecification() {}
 
-    public static Specification<InterviewQuestion> withFilters(
-            InterviewQuestionDifficulty difficulty,
+    public static Specification<QuestionAnswer> withFilters(
+            QuestionDifficulty difficulty,
             ContentStatus status,
             Boolean isCommon,
             String q) {
@@ -27,10 +27,10 @@ public class InterviewQuestionSpecification {
             List<Predicate> predicates = new ArrayList<>();
 
             // Use fetch join on data queries, plain join on count queries to avoid JPA errors
-            Join<InterviewQuestion, ContentItem> contentItem;
+            Join<QuestionAnswer, ContentItem> contentItem;
             if (Long.class != query.getResultType()) {
-                Fetch<InterviewQuestion, ContentItem> fetch = root.fetch("contentItem", JoinType.INNER);
-                contentItem = (Join<InterviewQuestion, ContentItem>) fetch;
+                Fetch<QuestionAnswer, ContentItem> fetch = root.fetch("contentItem", JoinType.INNER);
+                contentItem = (Join<QuestionAnswer, ContentItem>) fetch;
             } else {
                 contentItem = root.join("contentItem", JoinType.INNER);
             }

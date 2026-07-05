@@ -7,8 +7,8 @@ import GuestRoute from './components/GuestRoute';
 import AdminLayout from './components/admin/AdminLayout';
 import TagListPage from './pages/admin/TagListPage';
 import CategoryListPage from './pages/admin/CategoryListPage';
-import InterviewQuestionListPage from './pages/admin/InterviewQuestionListPage';
-import InterviewQuestionFormPage from './pages/admin/InterviewQuestionFormPage';
+import QuestionAnswerListPage from './pages/admin/QuestionAnswerListPage';
+import QuestionAnswerFormPage from './pages/admin/QuestionAnswerFormPage';
 import PipelineMetricsPage from './pages/admin/PipelineMetricsPage';
 import EmbeddingsPage from './pages/admin/EmbeddingsPage';
 import { NotificationProvider } from './contexts/NotificationContext';
@@ -82,9 +82,9 @@ function App() {
             <Route path="dashboard" element={<AdminDashboard />} />
             <Route path="tags" element={<TagListPage />} />
             <Route path="categories" element={<CategoryListPage />} />
-            <Route path="interview-questions" element={<InterviewQuestionListPage />} />
-            <Route path="interview-questions/new" element={<InterviewQuestionFormPage />} />
-            <Route path="interview-questions/:id/edit" element={<InterviewQuestionFormPage />} />
+            <Route path="question-answers" element={<QuestionAnswerListPage />} />
+            <Route path="question-answers/new" element={<QuestionAnswerFormPage />} />
+            <Route path="question-answers/:id/edit" element={<QuestionAnswerFormPage />} />
             <Route path="pipeline-metrics" element={<PipelineMetricsPage />} />
             <Route path="embeddings" element={<EmbeddingsPage />} />
             <Route index element={<Navigate to="dashboard" replace />} />

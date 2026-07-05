@@ -1,7 +1,7 @@
 package com.ttg.devknowledgeplatform.common.enums;
 
 public enum ContentType {
-    INTERVIEW_QUESTION,
+    QUESTION_ANSWER,
     ARTICLE,
     BLOG_POST
 }

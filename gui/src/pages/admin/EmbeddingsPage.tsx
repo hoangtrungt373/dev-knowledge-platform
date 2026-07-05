@@ -68,13 +68,13 @@ function fmtQuality(score: number | null): string {
 const CONTENT_TYPE_LABELS: Record<EmbeddingContentType, string> = {
   ARTICLE: 'Article',
   BLOG_POST: 'Blog Post',
-  INTERVIEW_QUESTION: 'Question',
+  QUESTION_ANSWER: 'Question',
 };
 
 const CONTENT_TYPE_COLORS: Record<EmbeddingContentType, 'primary' | 'secondary' | 'info'> = {
   ARTICLE: 'primary',
   BLOG_POST: 'secondary',
-  INTERVIEW_QUESTION: 'info',
+  QUESTION_ANSWER: 'info',
 };
 
 function TypeChip({ type }: { type: EmbeddingContentType }) {
@@ -200,7 +200,7 @@ function ConfirmDialog({ action, loading, onConfirm, onCancel }: ConfirmDialogPr
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-const CONTENT_TYPES = ['ARTICLE', 'BLOG_POST', 'INTERVIEW_QUESTION'];
+const CONTENT_TYPES = ['ARTICLE', 'BLOG_POST', 'QUESTION_ANSWER'];
 const CONTENT_STATUSES = ['DRAFT', 'PUBLISHED', 'ARCHIVED'];
 
 /** Admin page for viewing and managing the RAG content embedding index. */

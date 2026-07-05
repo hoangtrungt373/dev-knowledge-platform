@@ -28,8 +28,8 @@ public enum ParamKey {
     /** Average embedding vector of all {@code ARTICLE} content embeddings. */
     CENTROID_ARTICLE,
 
-    /** Average embedding vector of all {@code INTERVIEW_QUESTION} content embeddings. */
-    CENTROID_INTERVIEW_QUESTION,
+    /** Average embedding vector of all {@code QUESTION_ANSWER} content embeddings. */
+    CENTROID_QUESTION_ANSWER,
 
     /** Average embedding vector of all {@code BLOG_POST} content embeddings. */
     CENTROID_BLOG_POST,

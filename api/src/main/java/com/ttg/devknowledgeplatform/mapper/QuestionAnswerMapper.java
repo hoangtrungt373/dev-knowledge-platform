@@ -8,11 +8,11 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
 import com.ttg.devknowledgeplatform.common.entity.ContentItemTag;
-import com.ttg.devknowledgeplatform.common.entity.InterviewQuestion;
-import com.ttg.devknowledgeplatform.dto.admin.InterviewQuestionResponse;
+import com.ttg.devknowledgeplatform.common.entity.QuestionAnswer;
+import com.ttg.devknowledgeplatform.dto.admin.QuestionAnswerResponse;
 
 @Mapper(componentModel = "spring")
-public interface InterviewQuestionMapper {
+public interface QuestionAnswerMapper {
 
     @Mapping(source = "contentItem.id", target = "contentItemId")
     @Mapping(source = "contentItem.title", target = "title")
@@ -22,7 +22,7 @@ public interface InterviewQuestionMapper {
     @Mapping(source = "contentItem.contentItemTags", target = "tagIds")
     @Mapping(source = "dteCreation", target = "createdAt")
     @Mapping(source = "dteLastModification", target = "updatedAt")
-    InterviewQuestionResponse toResponse(InterviewQuestion question);
+    QuestionAnswerResponse toResponse(QuestionAnswer question);
 
     default Set<Integer> toTagIds(Set<ContentItemTag> tags) {
         if (tags == null || tags.isEmpty()) return Set.of();
