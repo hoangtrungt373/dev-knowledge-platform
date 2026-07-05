@@ -45,6 +45,8 @@ app:
   ai:
     embedding-model:
       api-key: ${OPENAI_API_KEY}
+  seed:
+    enabled: true
 
 # Logging
 logging:

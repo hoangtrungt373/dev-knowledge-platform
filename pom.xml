@@ -36,6 +36,7 @@
         <jjwt.version>0.12.3</jjwt.version>
         <minio.version>8.5.10</minio.version>
         <bucket4j.version>8.10.1</bucket4j.version>
+        <commons-csv.version>1.11.0</commons-csv.version>
     </properties>
 
     <dependencyManagement>
@@ -101,6 +102,13 @@
                 <groupId>com.bucket4j</groupId>
                 <artifactId>bucket4j-redis</artifactId>
                 <version>${bucket4j.version}</version>
+            </dependency>
+
+            <!-- Commons CSV — startup data seeding from CSV files -->
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-csv</artifactId>
+                <version>${commons-csv.version}</version>
             </dependency>
 
             <!-- JWT Dependencies -->

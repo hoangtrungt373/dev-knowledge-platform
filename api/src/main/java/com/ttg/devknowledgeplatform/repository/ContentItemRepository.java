@@ -17,6 +17,8 @@ public interface ContentItemRepository extends JpaRepository<ContentItem, Intege
 
     Optional<ContentItem> findBySlug(String slug);
 
+    Optional<ContentItem> findBySeedId(String seedId);
+
     boolean existsBySlug(String slug);
 
     boolean existsBySlugAndIdNot(String slug, Integer id);

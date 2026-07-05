@@ -49,6 +49,12 @@ public class ContentItem extends AbstractEntity {
     @Column(name = "SLUG", length = 500, nullable = false)
     private String slug;
 
+    // Null for every user/admin-created row; set only by InterviewQuestionSeeder (and future
+    // content seeders), purely to detect "already seeded" across re-runs without depending on
+    // TITLE/SLUG staying unchanged.
+    @Column(name = "SEED_ID", length = 100)
+    private String seedId;
+
     @Column(name = "AUTHOR_ID")
     private Integer authorId;
 

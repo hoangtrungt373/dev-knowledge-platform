@@ -41,7 +41,11 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │   │                                   for PromptGuardStage — see repository/service below)
 │   └── UserRole.java
 ├── entity/
-│   ├── ContentItem.java              — qualityScore (BigDecimal, nullable): mean centroid similarity set at indexing time
+│   ├── ContentItem.java              — qualityScore (BigDecimal, nullable): mean centroid similarity set at indexing time;
+│   │                                    seedId (String, nullable, DB SEED_ID): NULL for user/admin-created rows, set only
+│   │                                    by InterviewQuestionSeeder — sole idempotency key for long-lived seed data (DKP-0013)
+│   ├── Category.java / Tag.java      — seedId (String, nullable, DB SEED_ID): same purpose as ContentItem.seedId above,
+│   │                                    set only by CategorySeeder/TagSeeder (DKP-0013)
 │   └── SysParam.java                 — @Entity for SYS_PARAM; fields: name (ParamKey), value (TEXT), computedAt
 ├── repository/
 │   └── SysParamRepository.java       — JpaRepository<SysParam, Integer>; findByName(ParamKey); moved here from
@@ -257,25 +261,77 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │   ├── spec/                         — JPA Specification implementations for dynamic filtering
 │   └── …
 ├── security/                         — JwtProvider, OAuth2 handlers, UserUtils
-└── service/
-    ├── ChatSessionService.java       — getOrCreateSessionId, getConversationContext (primary),
-    │                                   getRecentTurns, addTurn (triggers rolling summary), listSessions, getHistory
-    ├── ContentIndexingService.java   — index / reindex / deleteIndex per contentItemId
-    ├── EmbeddingIndexService.java    — list(page,size,q,contentType,contentStatus,indexed) → PagedResponse<EmbeddingIndexItemResponse>
-    ├── IndexingQualityService.java   — assess(contentItemId, contentType) → QualityVerdict; centroid distance check at indexing time
-    ├── QualityVerdict.java           — record: boolean lowQuality, float score; factories pass/flag/skipped
-    └── impl/
-        ├── IndexingQualityServiceImpl.java  — loads embeddings from ContentEmbeddingRepository; mean centroid dotProduct; graceful cold-start
-        ├── CorpusStatisticsServiceImpl.java — @PostConstruct loads centroids from SYS_PARAM; @Scheduled refresh
-        │                                       recomputes via SQL avg(embedding); volatile float[] cache; persistence
-        │                                       delegated to common's SysParamService (find-or-create-and-save owned there)
-        ├── ContentIndexingServiceImpl.java  — type-specific ingestion; buildCommonMetadata()
-        │                                       writes categoryId, categoryName, tagIds, tagNames
-        │                                       to every chunk's JSONB metadata
-        └── EmbeddingIndexServiceImpl.java   — two-query pattern: Specification page query (ContentItemRepository)
-                                               + batch JPQL aggregate (ContentEmbeddingRepository.findStatsByContentItemIds);
-                                               EXISTS subquery Specification for indexed filter
+├── service/
+│   ├── ChatSessionService.java       — getOrCreateSessionId, getConversationContext (primary),
+│   │                                   getRecentTurns, addTurn (triggers rolling summary), listSessions, getHistory
+│   ├── ContentIndexingService.java   — index / reindex / deleteIndex per contentItemId
+│   ├── EmbeddingIndexService.java    — list(page,size,q,contentType,contentStatus,indexed) → PagedResponse<EmbeddingIndexItemResponse>
+│   ├── IndexingQualityService.java   — assess(contentItemId, contentType) → QualityVerdict; centroid distance check at indexing time
+│   ├── QualityVerdict.java           — record: boolean lowQuality, float score; factories pass/flag/skipped
+│   ├── seed/                         — startup data seeding; format chosen per content shape
+│   │   ├── CsvSeeder.java                — abstract Template Method for flat, single-file CSV
+│   │   │                                   sources: owns read/iterate/skip-or-insert loop;
+│   │   │                                   subclasses supply alreadyExists()/buildEntity()/persist()
+│   │   ├── CategorySeeder.java           — extends CsvSeeder; data/csv/categories.csv (id, name,
+│   │   │                                   parentId); identity by seedId (findBySeedId — NOT
+│   │   │                                   name/slug, see DKP-0013: seed data is long-lived
+│   │   │                                   alongside user content, so the idempotency key must
+│   │   │                                   survive a NAME edit); parentId resolved via
+│   │   │                                   findBySeedId too, not by parent name; rejects an id
+│   │   │                                   reused for a different name, and a name collision with
+│   │   │                                   an existing category; slug always generated via
+│   │   │                                   SlugService.generateUniqueSlug, never authored; parent
+│   │   │                                   rows must precede children
+│   │   ├── TagSeeder.java                — extends CsvSeeder; data/csv/tags.csv (id, name,
+│   │   │                                   status); same seedId-identity + generated-slug pattern
+│   │   │                                   as CategorySeeder (no hierarchy, so no parentId)
+│   │   ├── InterviewQuestionSeeder.java  — does NOT extend CsvSeeder (one-file-per-record
+│   │   │                                   directory, not CSV rows — different iteration shape);
+│   │   │                                   reads data/interview-questions/*.md (YAML front
+│   │   │                                   matter + markdown body via SnakeYAML/SafeConstructor);
+│   │   │                                   identity by seedId (required front-matter id, NOT
+│   │   │                                   slug/title); categoryId/tagIds resolved via
+│   │   │                                   findBySeedId (Category/Tag's own id, not name/slug);
+│   │   │                                   slug stays a separate, optional, production-URL-only
+│   │   │                                   field unrelated to idempotency; builds ContentItem +
+│   │   │                                   InterviewQuestion per file; requires categories/tags
+│   │   │                                   seeded first
+│   │   └── DataSeedingRunner.java        — ApplicationRunner, @ConditionalOnProperty(app.seed.enabled);
+│   │                                       runs seeders in order: category → tag → interviewQuestion
+│   └── impl/
+│       ├── IndexingQualityServiceImpl.java  — loads embeddings from ContentEmbeddingRepository; mean centroid dotProduct; graceful cold-start
+│       ├── CorpusStatisticsServiceImpl.java — @PostConstruct loads centroids from SYS_PARAM; @Scheduled refresh
+│       │                                       recomputes via SQL avg(embedding); volatile float[] cache; persistence
+│       │                                       delegated to common's SysParamService (find-or-create-and-save owned there)
+│       ├── ContentIndexingServiceImpl.java  — type-specific ingestion; buildCommonMetadata()
+│       │                                       writes categoryId, categoryName, tagIds, tagNames
+│       │                                       to every chunk's JSONB metadata
+│       └── EmbeddingIndexServiceImpl.java   — two-query pattern: Specification page query (ContentItemRepository)
+│                                              + batch JPQL aggregate (ContentEmbeddingRepository.findStatsByContentItemIds);
+│                                              EXISTS subquery Specification for indexed filter
 ```
+
+`api/src/main/resources/data/` (separate resources tree, not nested under the Java sources above):
+
+```
+data/
+├── csv/                              — DataSeedingRunner input (see service/seed above); no
+│   │                                    slug column — CategorySeeder/TagSeeder always generate
+│   │                                    it via SlugService; identity AND cross-references are by
+│   │                                    id (→ seedId), never name/slug
+│   ├── categories.csv                    — id, name, parentId (parentId references another row's id)
+│   └── tags.csv                           — id, name, status
+├── interview-questions/              — one Markdown file per question; references Category/Tag
+│   │                                    by id (categoryId/tagIds), not name or slug — see
+│   │                                    docs/SEED_DATA_AUTHORING_GUIDE.md; 100 files (iq-*.md),
+│   │                                    spread across all 12 leaf categories
+└── init-admin-user.sql               — local-dev admin bootstrap; NOT run by DataSeedingRunner or
+                                         any other mechanism — apply manually against the local DB
+```
+
+Before writing new `interview-questions/*.md` files, read `docs/SEED_DATA_AUTHORING_GUIDE.md` —
+schema, mechanical rules the seeder enforces, content quality criteria, and the RAG-chunking
+constraints that shape how sections should be written.
 
 ---
 
@@ -302,6 +358,28 @@ GUI (React)
                     MessageBuildingStage    — List<ChatMessage> + List<RagSource>
               └─→ ChatLanguageModel (blocking) OR StreamingChatLanguageModel (SSE)
 ```
+
+---
+
+## Content domains
+
+The platform is not limited to dev knowledge — additional knowledge domains (e.g. legal, medical) are
+expected over time, and are modelled as data, not schema:
+
+- A "domain" is a **root-level `Category` node** (e.g. "Dev Knowledge"), not a `ContentType` or schema
+  concept. `Category`'s existing hierarchy (parent/children self-join, cycle-checked by
+  `CategoryServiceImpl.validateParentAssignment`) already covers this with zero code change.
+- `ContentType` (`INTERVIEW_QUESTION`, `ARTICLE`, `BLOG_POST`) discriminates content *shape*
+  (which JOINed subtype table + `ContentIndexingServiceImpl` ingestion path applies), never subject
+  matter. New domains reuse the `Article`/`BlogPost` shape; `InterviewQuestion` stays dev-knowledge-only
+  because it's the sole domain with that distinct structured shape today.
+- Adding a domain is a pure data operation: create a root `Category`, publish `Article`/`BlogPost`
+  rows under it. No migration, no enum change, no new subtype table.
+- Scoping retrieval/chat to one domain is a query-time filter, not new plumbing —
+  `RagFilter.categoryId` already selects a category subtree independently of `sourceTypes`/`tags`.
+- Revisit this convention only if a future domain needs its own structured fields (a genuinely new
+  content *shape*, not just a new subject) — that's when `ContentType`'s closed-enum + JOINed-table
+  model would need to become extensible (e.g. Strategy pattern over ingestion, open type registry).
 
 ---
 

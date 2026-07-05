@@ -38,6 +38,11 @@ public class Tag extends AbstractEntity {
     @Column(name = "SLUG", length = 100, nullable = false)
     private String slug;
 
+    // Null for every user/admin-created row; set only by TagSeeder, purely to detect "already
+    // seeded" across re-runs without depending on NAME/SLUG staying unchanged.
+    @Column(name = "SEED_ID", length = 100)
+    private String seedId;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "STATUS", length = 10, nullable = false)

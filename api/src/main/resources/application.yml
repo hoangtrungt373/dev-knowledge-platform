@@ -269,6 +269,10 @@ app:
       summary-trigger-interval-pairs: ${CHAT_SUMMARY_TRIGGER_INTERVAL_PAIRS:4}
       summary-recent-window-pairs: ${CHAT_SUMMARY_RECENT_WINDOW_PAIRS:5}
 
+  # CSV startup data seeding (DataSeedingRunner) — off by default, enabled per profile
+  seed:
+    enabled: ${APP_SEED_ENABLED:false}
+
 # Logging
 logging:
   pattern:
