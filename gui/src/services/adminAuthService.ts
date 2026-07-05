@@ -2,7 +2,7 @@ import { authApi } from '../api';
 import { authService } from './authService';
 
 export interface AdminUser {
-  userId: string;
+  userUuid: string;
   username: string;
   email: string;
 }
@@ -53,10 +53,10 @@ export const adminAuthService: AdminAuthService = {
   },
 
   getAdminUser(): AdminUser | null {
-    const userId = authService.getUserId();
+    const userUuid = authService.getUserUuid();
     const username = authService.getUsername();
     const email = authService.getEmail();
-    if (!userId || !username || !email) return null;
-    return { userId, username, email };
+    if (!userUuid || !username || !email) return null;
+    return { userUuid, username, email };
   },
 };

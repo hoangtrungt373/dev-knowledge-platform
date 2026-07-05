@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.ai.entity;
 
 import com.ttg.devknowledgeplatform.ai.converter.FloatArrayToVectorConverter;
+import com.ttg.devknowledgeplatform.ai.converter.PgVectorJdbcType;
 import com.ttg.devknowledgeplatform.ai.dto.ContentEmbeddingMetadata;
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
 import com.ttg.devknowledgeplatform.common.entity.ContentItem;
@@ -52,13 +53,13 @@ public class ContentEmbedding extends AbstractEntity {
     @Column(name = "CHUNK_TEXT", nullable = false, columnDefinition = "TEXT")
     private String chunkText;
 
-    // JdbcTypeCode(OTHER) makes Hibernate bind the converted String via
-    // PreparedStatement.setObject(index, value, Types.OTHER) instead of setString(...) —
-    // required for pgvector: a plain varchar-typed bind parameter doesn't implicitly cast to
-    // `vector` the way a string literal written directly in SQL text does, so without this the
-    // insert fails with "column is of type vector but expression is of type character varying".
+    // PgVectorJdbcType binds the converted String via setObject(index, value, Types.OTHER)
+    // instead of setString(...) — required for pgvector: a plain varchar-typed bind parameter
+    // doesn't implicitly cast to `vector` the way a string literal written directly in SQL text
+    // does. @JdbcTypeCode(SqlTypes.OTHER) alone does NOT work here — see PgVectorJdbcType's
+    // javadoc for why a custom JdbcType is needed instead of that annotation.
     @Convert(converter = FloatArrayToVectorConverter.class)
-    @JdbcTypeCode(SqlTypes.OTHER)
+    @org.hibernate.annotations.JdbcType(PgVectorJdbcType.class)
     @Column(name = "EMBEDDING", nullable = false, columnDefinition = "vector(1536)")
     private float[] embedding;
 

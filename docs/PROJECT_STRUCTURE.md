@@ -121,10 +121,14 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── LoadedPrompts.java     — record holding 6 prompt strings loaded from classpath at startup
 │   └── PromptsLoader.java     — @Configuration that reads prompts/*.txt and produces LoadedPrompts bean
 ├── converter/
-│   └── FloatArrayToVectorConverter.java  — JPA AttributeConverter for pgvector column type;
-│                                            any field using it also needs @JdbcTypeCode(SqlTypes.OTHER)
-│                                            (see ContentEmbedding.embedding) or writes fail —
-│                                            a plain varchar-typed bind doesn't implicitly cast to vector
+│   ├── FloatArrayToVectorConverter.java  — JPA AttributeConverter for pgvector column type;
+│   │                                        any field using it also needs @JdbcType(PgVectorJdbcType.class)
+│   │                                        (see ContentEmbedding.embedding) or writes fail — a plain
+│   │                                        varchar-typed bind doesn't implicitly cast to vector, and
+│   │                                        @JdbcTypeCode(SqlTypes.OTHER) does NOT work as a substitute
+│   │                                        (resolves to VarbinaryJdbcType for this Hibernate+PG combo)
+│   └── PgVectorJdbcType.java             — custom JdbcType binding via setObject(index, value, Types.OTHER);
+│                                            required companion to FloatArrayToVectorConverter, see its javadoc
 ├── dto/
 │   ├── AnswerQualityVerdict.java          — record: boolean drifted, float contextSimilarity, float querySimilarity; skipped() sentinel
 │   ├── EmbedResult.java                   — record: float[] vector + int tokenCount; return type of EmbeddingService.embed()
@@ -265,6 +269,12 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │   ├── spec/                         — JPA Specification implementations for dynamic filtering
 │   └── …
 ├── security/                         — JwtProvider, OAuth2 handlers, UserUtils
+│   └── jwt/
+│       ├── TokenClaims.java          — sealed interface; typed JWT claim shape, permits
+│       │                                AccessTokenClaims/RefreshTokenClaims; TokenClaims.parse(Claims)
+│       ├── AccessTokenClaims.java    — record: userUuid, email, username, role
+│       └── RefreshTokenClaims.java   — record: userUuid, username, role (type=refresh claim added
+│                                        by toClaimsMap(); no email claim, unlike access tokens)
 ├── service/
 │   ├── ChatSessionService.java       — getOrCreateSessionId, getConversationContext (primary),
 │   │                                   getRecentTurns, addTurn (triggers rolling summary), listSessions, getHistory

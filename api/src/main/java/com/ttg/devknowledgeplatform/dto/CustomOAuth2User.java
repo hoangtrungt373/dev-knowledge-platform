@@ -14,7 +14,7 @@ import lombok.Setter;
 @Setter
 @Builder
 public class CustomOAuth2User implements OAuth2User {
-    private String id;
+    private String userUuid;
     private String email;
     private String name;
     private Map<String, Object> attributes;

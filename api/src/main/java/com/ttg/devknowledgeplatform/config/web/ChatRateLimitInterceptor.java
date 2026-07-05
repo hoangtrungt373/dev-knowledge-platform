@@ -47,8 +47,8 @@ public class ChatRateLimitInterceptor implements HandlerInterceptor {
         }
 
         CustomOAuth2User principal = (CustomOAuth2User) auth.getPrincipal();
-        log.debug("Rate limit check: userId={}", principal.getId());
-        rateLimiter.consume(principal.getId());
+        log.debug("Rate limit check: userUuid={}", principal.getUserUuid());
+        rateLimiter.consume(principal.getUserUuid());
         return true;
     }
 }

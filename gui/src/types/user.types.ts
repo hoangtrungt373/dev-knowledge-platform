@@ -49,7 +49,7 @@ export interface RegisterResponse {
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
-  userId: string;
+  userUuid: string;
   username: string;
   email: string;
   role?: string;

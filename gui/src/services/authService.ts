@@ -8,7 +8,7 @@ export interface AuthService {
   storeTokens(tokens: Partial<AuthTokens>): void;
   getAccessToken(): string | null;
   getRefreshToken(): string | null;
-  getUserId(): string | null;
+  getUserUuid(): string | null;
   getUsername(): string | null;
   getEmail(): string | null;
   getRole(): string | null;   // Fix 8
@@ -26,7 +26,7 @@ export const authService: AuthService = {
   storeTokens(tokens: Partial<AuthTokens>): void {
     if (tokens.accessToken) localStorage.setItem(STORAGE_KEYS.accessToken, tokens.accessToken);
     if (tokens.refreshToken) localStorage.setItem(STORAGE_KEYS.refreshToken, tokens.refreshToken);
-    if (tokens.userId) localStorage.setItem(STORAGE_KEYS.userId, tokens.userId);
+    if (tokens.userUuid) localStorage.setItem(STORAGE_KEYS.userUuid, tokens.userUuid);
     if (tokens.username) localStorage.setItem(STORAGE_KEYS.username, tokens.username);
     if (tokens.email) localStorage.setItem(STORAGE_KEYS.email, tokens.email);
     if (tokens.role) localStorage.setItem(STORAGE_KEYS.role, tokens.role);
@@ -40,8 +40,8 @@ export const authService: AuthService = {
     return localStorage.getItem(STORAGE_KEYS.refreshToken);
   },
 
-  getUserId(): string | null {
-    return localStorage.getItem(STORAGE_KEYS.userId);
+  getUserUuid(): string | null {
+    return localStorage.getItem(STORAGE_KEYS.userUuid);
   },
 
   getUsername(): string | null {

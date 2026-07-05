@@ -48,7 +48,7 @@ export default function AuthCallback(): JSX.Element | null {
         authService.storeTokens({
           accessToken: data.accessToken,
           refreshToken: data.refreshToken,
-          userId: data.userId,
+          userUuid: data.userUuid,
           username: data.username,
           email: data.email,
           role: data.role,

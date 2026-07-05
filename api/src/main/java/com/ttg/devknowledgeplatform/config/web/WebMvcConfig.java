@@ -69,7 +69,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
      * Registers {@link CurrentUserIdArgumentResolver} so any controller parameter annotated
      * with {@link com.ttg.devknowledgeplatform.annotation.CurrentUserId} is automatically
      * resolved to the authenticated user's integer primary key — no manual
-     * {@code Integer.parseInt(principal.getId())} calls required.
+     * {@code userRepository.findByUserUuid(principal.getUserUuid())} lookups required in
+     * every controller method.
      */
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {

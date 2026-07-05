@@ -3,7 +3,6 @@ package com.ttg.devknowledgeplatform.security;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.Map;
 
 import javax.crypto.SecretKey;
@@ -12,6 +11,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.ttg.devknowledgeplatform.common.entity.User;
+import com.ttg.devknowledgeplatform.security.jwt.AccessTokenClaims;
+import com.ttg.devknowledgeplatform.security.jwt.RefreshTokenClaims;
+import com.ttg.devknowledgeplatform.security.jwt.TokenClaims;
 import com.ttg.devknowledgeplatform.security.service.RefreshTokenBlacklistService;
 
 import io.jsonwebtoken.Claims;
@@ -25,13 +27,15 @@ import lombok.extern.slf4j.Slf4j;
  * Creates, parses, and validates JSON Web Tokens for the application.
  *
  * <p>All tokens are signed with HMAC-SHA-512 using a shared secret configured via
- * {@code jwt.secret}. Two token types are issued:
+ * {@code jwt.secret}. Two token types are issued, whose claim shapes are defined by
+ * {@link TokenClaims}'s two sealed implementations:
  * <ul>
- *   <li><b>Access token</b> — short-lived, carries {@code userId}, {@code email},
- *       {@code username}, and {@code role} claims. Used for authenticating API requests.</li>
- *   <li><b>Refresh token</b> — longer-lived, carries a {@code type=refresh} claim to
- *       distinguish it from access tokens. Used only to mint new access tokens via
- *       {@link #refreshToken(String)}.</li>
+ *   <li><b>Access token</b> ({@link AccessTokenClaims}) — short-lived, carries {@code userUuid},
+ *       {@code email}, {@code username}, and {@code role} claims. Used for authenticating API
+ *       requests.</li>
+ *   <li><b>Refresh token</b> ({@link RefreshTokenClaims}) — longer-lived, carries a
+ *       {@code type=refresh} claim to distinguish it from access tokens. Used only to mint new
+ *       access tokens via {@link #refreshToken(String)}.</li>
  * </ul>
  */
 @Component
@@ -61,13 +65,7 @@ public class JwtTokenProvider {
      * @return a signed JWT access token
      */
     public String generateToken(User user) {
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("userId", user.getUserUuid());
-        claims.put("email", user.getEmail());
-        claims.put("username", user.getUsername());
-        claims.put("role", "ROLE_" + user.getRole().name());
-        
-        return createToken(claims, user.getEmail(), jwtExpiration);
+        return createToken(AccessTokenClaims.from(user).toClaimsMap(), user.getEmail(), jwtExpiration);
     }
     
     /**
@@ -80,13 +78,7 @@ public class JwtTokenProvider {
      * @return a signed JWT refresh token
      */
     public String generateRefreshToken(User user) {
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("userId", user.getUserUuid());
-        claims.put("role", "ROLE_" + user.getRole().name());
-        claims.put("username", user.getUsername());
-        claims.put("type", "refresh");
-
-        return createToken(claims, user.getEmail(), refreshTokenExpiration);
+        return createToken(RefreshTokenClaims.from(user).toClaimsMap(), user.getEmail(), refreshTokenExpiration);
     }
     
     private String createToken(Map<String, Object> claims, String subject, long expiration) {
@@ -113,15 +105,29 @@ public class JwtTokenProvider {
     }
     
     /**
-     * Extracts the user's public UUID from the {@code userId} claim.
+     * Extracts the user's public UUID from the {@code userUuid} claim.
      *
      * @param token a signed JWT
      * @return the user UUID string
      */
-    public String getUserIdFromToken(String token) {
-        return getClaimFromToken(token, claims -> claims.get("userId", String.class));
+    public String getUserUuidFromToken(String token) {
+        return parseClaims(token).userUuid();
     }
-    
+
+    /**
+     * Parses and verifies a token's signature, then reconstructs its typed claim set.
+     *
+     * <p>Prefer this over repeated {@link #getClaimFromToken} calls when more than one claim is
+     * needed — each call re-verifies the HMAC signature, so reading several claims one at a time
+     * re-does that work once per claim.
+     *
+     * @param token a signed JWT
+     * @return the token's claims as an {@link AccessTokenClaims} or {@link RefreshTokenClaims}
+     */
+    public TokenClaims parseClaims(String token) {
+        return TokenClaims.parse(getAllClaimsFromToken(token));
+    }
+
     /**
      * Extracts the expiration timestamp from a token.
      *
@@ -205,7 +211,7 @@ public class JwtTokenProvider {
      *
      * <p>The refresh token must have a {@code type=refresh} claim; passing an access token
      * is rejected. The resulting access token reuses the claims from the refresh token
-     * (userId, email, role, username) and gets a fresh expiration window.
+     * (userUuid, email, role, username) and gets a fresh expiration window.
      *
      * @param refreshToken the refresh token string
      * @return a new signed access token
@@ -219,25 +225,21 @@ public class JwtTokenProvider {
             }
 
             Claims claims = getAllClaimsFromToken(refreshToken);
-            String type = claims.get("type", String.class);
-
-            if (!"refresh".equals(type)) {
+            // Sealed TokenClaims makes this exhaustive at compile time: an AccessTokenClaims
+            // presented here is a type mismatch, not just a string comparison that failed.
+            if (!(TokenClaims.parse(claims) instanceof RefreshTokenClaims refreshClaims)) {
                 throw new IllegalArgumentException("Invalid refresh token");
             }
-            
-            String userId = claims.get("userId", String.class);
-            String email = claims.getSubject();
-            String role = claims.get("role", String.class);
-            String username = claims.get("username", String.class);
 
-            Map<String, Object> newClaims = new HashMap<>();
-            newClaims.put("userId", userId);
-            newClaims.put("email", email);
-            newClaims.put("role", role != null ? role : "ROLE_USER");
-            newClaims.put("username", username);
-            
-            return createToken(newClaims, email, jwtExpiration);
-            
+            String email = claims.getSubject();
+            AccessTokenClaims newAccessClaims = new AccessTokenClaims(
+                    refreshClaims.userUuid(),
+                    email,
+                    refreshClaims.username(),
+                    refreshClaims.role() != null ? refreshClaims.role() : "ROLE_USER");
+
+            return createToken(newAccessClaims.toClaimsMap(), email, jwtExpiration);
+
         } catch (JwtException | IllegalArgumentException e) {
             log.error("Invalid refresh token: {}", e.getMessage());
             throw new IllegalArgumentException("Invalid refresh token");

@@ -13,6 +13,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
+import com.ttg.devknowledgeplatform.security.jwt.AccessTokenClaims;
+import com.ttg.devknowledgeplatform.security.jwt.TokenClaims;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -29,13 +31,17 @@ import lombok.extern.slf4j.Slf4j;
  *   <li>Reads the {@code Authorization: Bearer <token>} header.</li>
  *   <li>Validates the token's signature and expiration via {@link JwtTokenProvider}.</li>
  *   <li>Reconstructs a {@link CustomOAuth2User} principal from the token claims and
- *       sets it on the {@link org.springframework.security.core.context.SecurityContext}.</li>
+ *       sets it on the {@link org.springframework.security.core.context.SecurityContext}
+ *       — only if the claims are an {@link com.ttg.devknowledgeplatform.security.jwt.AccessTokenClaims};
+ *       a refresh token presented here is rejected, since it must only ever be exchanged via
+ *       {@link JwtTokenProvider#refreshToken(String)}, never used to authenticate a request
+ *       directly.</li>
  * </ol>
  *
- * <p>If the token is absent, invalid, or expired, the filter passes the request through
- * unauthenticated — Spring Security's access rules then decide whether to allow or deny it.
- * This design avoids short-circuiting the filter chain so that public endpoints continue
- * to work without a token.
+ * <p>If the token is absent, invalid, expired, or not an access token, the filter passes the
+ * request through unauthenticated — Spring Security's access rules then decide whether to allow
+ * or deny it. This design avoids short-circuiting the filter chain so that public endpoints
+ * continue to work without a token.
  */
 @Component
 @RequiredArgsConstructor
@@ -54,33 +60,37 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (token != null && validateToken(token)) {
                 // Extract user info from token
                 String email = jwtTokenProvider.getUsernameFromToken(token);
-                String userId = jwtTokenProvider.getUserIdFromToken(token);
-                
+
                 if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                    String role = jwtTokenProvider.getClaimFromToken(token, claims -> claims.get("role", String.class));
-                    
-                    CustomOAuth2User userDetails = CustomOAuth2User.builder()
-                            .id(userId)
-                            .email(email)
-                            .name(jwtTokenProvider.getClaimFromToken(token, claims -> claims.get("username", String.class)))
-                            .attributes(Collections.emptyMap())
-                            .authorities(Collections.singletonList(
-                                    new SimpleGrantedAuthority(role != null ? role : "ROLE_USER")))
-                            .build();
-                    
-                    // Create authentication object
-                    UsernamePasswordAuthenticationToken authentication = 
-                            new UsernamePasswordAuthenticationToken(
-                                    userDetails,
-                                    null,
-                                    userDetails.getAuthorities()
-                            );
-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    
-                    // Set authentication in SecurityContext
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
-                    
-                    log.debug("JWT authentication successful for user: {}", email);
+                    TokenClaims claims = jwtTokenProvider.parseClaims(token);
+
+                    if (!(claims instanceof AccessTokenClaims accessClaims)) {
+                        log.warn("Rejected non-access token presented for authentication (user: {})", email);
+                    } else {
+                        CustomOAuth2User userDetails = CustomOAuth2User.builder()
+                                .userUuid(accessClaims.userUuid())
+                                .email(email)
+                                .name(accessClaims.username())
+                                .attributes(Collections.emptyMap())
+                                .authorities(Collections.singletonList(
+                                        new SimpleGrantedAuthority(
+                                                accessClaims.role() != null ? accessClaims.role() : "ROLE_USER")))
+                                .build();
+
+                        // Create authentication object
+                        UsernamePasswordAuthenticationToken authentication =
+                                new UsernamePasswordAuthenticationToken(
+                                        userDetails,
+                                        null,
+                                        userDetails.getAuthorities()
+                                );
+                        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                        // Set authentication in SecurityContext
+                        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+                        log.debug("JWT authentication successful for user: {}", email);
+                    }
                 }
             }
         } catch (Exception e) {

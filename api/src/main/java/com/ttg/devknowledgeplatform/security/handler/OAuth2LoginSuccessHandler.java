@@ -85,7 +85,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         Map<String, String> tokenData = new HashMap<>();
         tokenData.put("accessToken", accessToken);
         tokenData.put("refreshToken", refreshToken);
-        tokenData.put("userId", user.getUserUuid());
+        tokenData.put("userUuid", user.getUserUuid());
         tokenData.put("username", user.getUsername());
         tokenData.put("email", user.getEmail());
         tokenData.put("role", user.getRole().name());
