@@ -16,6 +16,7 @@ import Login from './pages/Login';
 import SignUp from './pages/SignUp';
 import VerifyOtp from './pages/VerifyOtp';
 import Dashboard from './pages/Dashboard';
+import FriendsPage from './pages/FriendsPage';
 import ChatPage from './pages/ChatPage';
 import AuthCallback from './pages/AuthCallback';
 import AdminLogin from './pages/AdminLogin';
@@ -55,6 +56,12 @@ function App() {
           <Route path="/dashboard" element={
             <PrivateRoute>
               <Dashboard />
+            </PrivateRoute>
+          } />
+
+          <Route path="/friends" element={
+            <PrivateRoute>
+              <FriendsPage />
             </PrivateRoute>
           } />
 

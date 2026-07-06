@@ -1,3 +1,7 @@
+// PagedResponse now lives in common.types.ts (not admin-specific — friend-graph endpoints
+// paginate too); re-exported here so existing `from '../types/admin.types'` imports keep working.
+export type { PagedResponse } from './common.types';
+
 export type MetricsPeriod = 'LAST_24H' | 'LAST_7_DAYS' | 'LAST_30_DAYS';
 
 export interface TokenUsageSummary {
@@ -37,14 +41,6 @@ export interface CreateTagPayload {
 export interface UpdateTagPayload {
   name: string;
   status: TagStatus;
-}
-
-export interface PagedResponse<T> {
-  content: T[];
-  totalElements: number;
-  totalPages: number;
-  number: number;
-  size: number;
 }
 
 // ── Categories ──────────────────────────────────────────────────────────────

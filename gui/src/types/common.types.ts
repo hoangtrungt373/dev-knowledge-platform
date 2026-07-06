@@ -31,3 +31,15 @@ export interface Notification {
   severity: NotificationSeverity;
   duration?: number; // Auto-close duration in ms (default: 6000)
 }
+
+/**
+ * Generic paginated response shape, matching the backend's PagedResponse<T> envelope.
+ * Not admin-specific — used by every paginated endpoint (admin CRUD, friend graph, etc).
+ */
+export interface PagedResponse<T> {
+  content: T[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+  size: number;
+}

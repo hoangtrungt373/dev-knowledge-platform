@@ -46,9 +46,14 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │   │                                   for PromptGuardStage — see repository/service below)
 │   └── UserRole.java
 ├── repository/
-│   └── SysParamRepository.java       — JpaRepository<SysParam, Integer>; findByName(ParamKey); moved here from
-│                                        api/repository so ai-service (which cannot depend on api) can reach it
-│                                        via SysParamService below
+│   ├── SysParamRepository.java       — JpaRepository<SysParam, Integer>; findByName(ParamKey); moved here from
+│   │                                    api/repository so ai-service (which cannot depend on api) can reach it
+│   │                                    via SysParamService below
+│   └── UserRepository.java           — JpaRepository<User, Integer> + JpaSpecificationExecutor<User>; moved here
+│                                        from api/repository so content-service/social-service (neither of which
+│                                        can depend on api) can reach it directly — this also retired
+│                                        social-service's own SocialUserRepository, a near-duplicate that existed
+│                                        only because this repository used to live in api
 ├── service/
 │   ├── SysParamService.java          — interface: getValue(ParamKey), upsert(ParamKey, String); string-in/string-out,
 │   │                                   no opinion on value encoding — callers own their own serialization format
@@ -187,10 +192,6 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │   ├── FriendRequestRepository.java
 │   ├── FriendshipRepository.java  — findFriendUserIds() used by the service for mutual-friend-count set intersection
 │   ├── UserBlockRepository.java
-│   ├── SocialUserRepository.java  — read access to User for this module; deliberately not named
-│   │                                 UserRepository — api already has one over the same entity, and two Spring
-│   │                                 Data repositories with the same simple name in different packages collide
-│   │                                 on the default bean name at startup
 │   └── spec/
 │       └── UserSpecification.java — fuzzy username/name match, exact email match, excludes any user blocked
 │                                     in either direction relative to the viewer
@@ -210,6 +211,10 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
                                         (a lookup of a user who has blocked the viewer throws USER_NOT_FOUND, same
                                         as a nonexistent UUID, never a distinguishable "blocked" error)
 ```
+
+Read access to `User` (search, relationship resolution) goes through `common`'s own `UserRepository`
+directly — no module-local wrapper repository needed, since `UserRepository` already lives in
+`common` and extends `JpaSpecificationExecutor<User>` (for `UserSpecification` above).
 
 Chat/groups/messaging (deferred) will be added here as new packages when that phase starts, not as a
 separate module — see `docs/CHANGELOG.md` for the reasoning.
@@ -430,7 +435,8 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │                                        StorageService for presigned avatar URLs, and MapStruct interfaces
 │                                        can't hold instance fields; maps social-service entities to dto/friend/*
 ├── repository/
-│   └── …                             — ChatSessionRepository, ChatMessageRepository, UserRepository;
+│   └── …                             — ChatSessionRepository, ChatMessageRepository (UserRepository moved
+│                                        to common — see that module's section);
 │                                        Category/Tag/ContentItem*/QuestionAnswer/Article repositories +
 │                                        specifications moved to content-service (see that module's section)
 ├── security/                         — JwtProvider, OAuth2 handlers, UserUtils

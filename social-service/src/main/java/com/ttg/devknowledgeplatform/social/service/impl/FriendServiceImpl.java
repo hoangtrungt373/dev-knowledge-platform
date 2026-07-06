@@ -24,7 +24,7 @@ import com.ttg.devknowledgeplatform.social.event.FriendRequestAcceptedEvent;
 import com.ttg.devknowledgeplatform.social.event.FriendRequestSentEvent;
 import com.ttg.devknowledgeplatform.social.repository.FriendRequestRepository;
 import com.ttg.devknowledgeplatform.social.repository.FriendshipRepository;
-import com.ttg.devknowledgeplatform.social.repository.SocialUserRepository;
+import com.ttg.devknowledgeplatform.common.repository.UserRepository;
 import com.ttg.devknowledgeplatform.social.repository.UserBlockRepository;
 import com.ttg.devknowledgeplatform.social.repository.spec.UserSpecification;
 import com.ttg.devknowledgeplatform.social.service.FriendService;
@@ -41,7 +41,7 @@ public class FriendServiceImpl implements FriendService {
     private final FriendRequestRepository friendRequestRepository;
     private final FriendshipRepository friendshipRepository;
     private final UserBlockRepository userBlockRepository;
-    private final SocialUserRepository socialUserRepository;
+    private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -217,7 +217,7 @@ public class FriendServiceImpl implements FriendService {
     @Override
     public Page<User> searchUsers(Integer viewerId, String q, Pageable pageable) {
         Specification<User> spec = UserSpecification.search(q, viewerId);
-        return socialUserRepository.findAll(spec, pageable);
+        return userRepository.findAll(spec, pageable);
     }
 
     private void createFriendship(User[] canonicalPair) {
@@ -257,12 +257,12 @@ public class FriendServiceImpl implements FriendService {
     }
 
     private User resolveUser(Integer userId) {
-        return socialUserRepository.findById(userId)
+        return userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found"));
     }
 
     private User resolveUserByUuid(String userUuid) {
-        return socialUserRepository.findByUserUuid(userUuid)
+        return userRepository.findByUserUuid(userUuid)
                 .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found: " + userUuid));
     }
 

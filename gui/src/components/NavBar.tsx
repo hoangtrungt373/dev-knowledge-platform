@@ -6,6 +6,7 @@ import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { authService } from '../services';
+import { useFriendRequestsCount } from '../hooks/useFriendRequestsCount';
 import { ThemeMode } from '../theme';
 
 interface NavBarProps {
@@ -17,6 +18,9 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
   const navigate = useNavigate();
   const location = useLocation();
   const isAuthed = authService.isAuthenticated();
+  // Called unconditionally (Rules of Hooks) even on routes where NavBar renders null below —
+  // the hook itself no-ops when unauthenticated, so this is a harmless background poll.
+  const { count: friendRequestCount } = useFriendRequestsCount();
 
   if (location.pathname.startsWith('/admin')) return null;
   if (location.pathname.startsWith('/chat')) return null;
@@ -73,7 +77,7 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
               color="inherit"
               size="small"
               startIcon={
-                <Badge color="error" variant="dot">
+                <Badge badgeContent={friendRequestCount} color="error" max={9}>
                   <PeopleIcon fontSize="small" />
                 </Badge>
               }

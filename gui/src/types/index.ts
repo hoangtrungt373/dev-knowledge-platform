@@ -13,3 +13,6 @@ export * from './common.types';
 
 // Chat types
 export * from './chat.types';
+
+// Friend graph types
+export * from './friend.types';

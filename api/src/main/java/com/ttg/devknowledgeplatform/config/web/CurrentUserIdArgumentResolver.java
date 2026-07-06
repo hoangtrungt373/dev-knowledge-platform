@@ -5,7 +5,7 @@ import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
-import com.ttg.devknowledgeplatform.repository.UserRepository;
+import com.ttg.devknowledgeplatform.common.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.MethodParameter;
 import org.springframework.security.core.Authentication;

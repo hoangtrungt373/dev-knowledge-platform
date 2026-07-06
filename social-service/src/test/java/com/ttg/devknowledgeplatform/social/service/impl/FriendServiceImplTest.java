@@ -26,7 +26,7 @@ import com.ttg.devknowledgeplatform.social.entity.UserBlock;
 import com.ttg.devknowledgeplatform.social.enums.FriendRequestStatus;
 import com.ttg.devknowledgeplatform.social.repository.FriendRequestRepository;
 import com.ttg.devknowledgeplatform.social.repository.FriendshipRepository;
-import com.ttg.devknowledgeplatform.social.repository.SocialUserRepository;
+import com.ttg.devknowledgeplatform.common.repository.UserRepository;
 import com.ttg.devknowledgeplatform.social.repository.UserBlockRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,7 +39,7 @@ class FriendServiceImplTest {
     @Mock
     private UserBlockRepository userBlockRepository;
     @Mock
-    private SocialUserRepository socialUserRepository;
+    private UserRepository userRepository;
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
@@ -51,7 +51,7 @@ class FriendServiceImplTest {
     @BeforeEach
     void setUp() {
         friendService = new FriendServiceImpl(
-                friendRequestRepository, friendshipRepository, userBlockRepository, socialUserRepository, eventPublisher);
+                friendRequestRepository, friendshipRepository, userBlockRepository, userRepository, eventPublisher);
 
         alice = User.builder().build();
         alice.setId(1);
@@ -64,8 +64,8 @@ class FriendServiceImplTest {
 
     @Test
     void sendRequest_toSelf_throwsCannotFriendSelf() {
-        when(socialUserRepository.findById(1)).thenReturn(Optional.of(alice));
-        when(socialUserRepository.findByUserUuid("alice-uuid")).thenReturn(Optional.of(alice));
+        when(userRepository.findById(1)).thenReturn(Optional.of(alice));
+        when(userRepository.findByUserUuid("alice-uuid")).thenReturn(Optional.of(alice));
         when(userBlockRepository.existsByBlockerAndBlocked(alice, alice)).thenReturn(false);
 
         assertThatThrownBy(() -> friendService.sendRequest(1, "alice-uuid"))
@@ -76,8 +76,8 @@ class FriendServiceImplTest {
 
     @Test
     void sendRequest_whenPendingRequestAlreadyExists_throwsAlreadyExists() {
-        when(socialUserRepository.findById(1)).thenReturn(Optional.of(alice));
-        when(socialUserRepository.findByUserUuid("bob-uuid")).thenReturn(Optional.of(bob));
+        when(userRepository.findById(1)).thenReturn(Optional.of(alice));
+        when(userRepository.findByUserUuid("bob-uuid")).thenReturn(Optional.of(bob));
         when(userBlockRepository.existsByBlockerAndBlocked(bob, alice)).thenReturn(false);
         when(userBlockRepository.existsByBlockerAndBlocked(alice, bob)).thenReturn(false);
         when(friendshipRepository.existsByUser1AndUser2(alice, bob)).thenReturn(false);
@@ -92,8 +92,8 @@ class FriendServiceImplTest {
 
     @Test
     void sendRequest_whenReverseRequestPending_autoAcceptsIntoFriendship() {
-        when(socialUserRepository.findById(1)).thenReturn(Optional.of(alice));
-        when(socialUserRepository.findByUserUuid("bob-uuid")).thenReturn(Optional.of(bob));
+        when(userRepository.findById(1)).thenReturn(Optional.of(alice));
+        when(userRepository.findByUserUuid("bob-uuid")).thenReturn(Optional.of(bob));
         when(userBlockRepository.existsByBlockerAndBlocked(bob, alice)).thenReturn(false);
         when(userBlockRepository.existsByBlockerAndBlocked(alice, bob)).thenReturn(false);
         when(friendshipRepository.existsByUser1AndUser2(alice, bob)).thenReturn(false);
@@ -121,8 +121,8 @@ class FriendServiceImplTest {
 
     @Test
     void block_cascadesRemovalOfFriendshipAndPendingRequest() {
-        when(socialUserRepository.findById(1)).thenReturn(Optional.of(alice));
-        when(socialUserRepository.findByUserUuid("bob-uuid")).thenReturn(Optional.of(bob));
+        when(userRepository.findById(1)).thenReturn(Optional.of(alice));
+        when(userRepository.findByUserUuid("bob-uuid")).thenReturn(Optional.of(bob));
         when(userBlockRepository.existsByBlockerAndBlocked(alice, bob)).thenReturn(false);
         FriendRequest pending = FriendRequest.builder().requester(bob).addressee(alice).status(FriendRequestStatus.PENDING).build();
         when(friendRequestRepository.findPendingBetween(alice, bob)).thenReturn(Optional.of(pending));
@@ -138,8 +138,8 @@ class FriendServiceImplTest {
 
     @Test
     void block_self_throwsCannotFriendSelf() {
-        when(socialUserRepository.findById(1)).thenReturn(Optional.of(alice));
-        when(socialUserRepository.findByUserUuid("alice-uuid")).thenReturn(Optional.of(alice));
+        when(userRepository.findById(1)).thenReturn(Optional.of(alice));
+        when(userRepository.findByUserUuid("alice-uuid")).thenReturn(Optional.of(alice));
 
         assertThatThrownBy(() -> friendService.block(1, "alice-uuid"))
                 .isInstanceOf(BusinessException.class)
@@ -149,8 +149,8 @@ class FriendServiceImplTest {
 
     @Test
     void unfriend_whenNotFriends_throwsNotFriends() {
-        when(socialUserRepository.findById(1)).thenReturn(Optional.of(alice));
-        when(socialUserRepository.findByUserUuid("bob-uuid")).thenReturn(Optional.of(bob));
+        when(userRepository.findById(1)).thenReturn(Optional.of(alice));
+        when(userRepository.findByUserUuid("bob-uuid")).thenReturn(Optional.of(bob));
         when(userBlockRepository.existsByBlockerAndBlocked(bob, alice)).thenReturn(false);
         when(friendshipRepository.existsByUser1AndUser2(alice, bob)).thenReturn(false);
 
@@ -162,8 +162,8 @@ class FriendServiceImplTest {
 
     @Test
     void unfriend_whenFriends_deletesFriendshipRow() {
-        when(socialUserRepository.findById(1)).thenReturn(Optional.of(alice));
-        when(socialUserRepository.findByUserUuid("bob-uuid")).thenReturn(Optional.of(bob));
+        when(userRepository.findById(1)).thenReturn(Optional.of(alice));
+        when(userRepository.findByUserUuid("bob-uuid")).thenReturn(Optional.of(bob));
         when(userBlockRepository.existsByBlockerAndBlocked(bob, alice)).thenReturn(false);
         when(friendshipRepository.existsByUser1AndUser2(alice, bob)).thenReturn(true);
 
@@ -174,8 +174,8 @@ class FriendServiceImplTest {
 
     @Test
     void unblock_deletesTheBlockRow() {
-        when(socialUserRepository.findById(1)).thenReturn(Optional.of(alice));
-        when(socialUserRepository.findByUserUuid("bob-uuid")).thenReturn(Optional.of(bob));
+        when(userRepository.findById(1)).thenReturn(Optional.of(alice));
+        when(userRepository.findByUserUuid("bob-uuid")).thenReturn(Optional.of(bob));
 
         friendService.unblock(1, "bob-uuid");
 
@@ -184,8 +184,8 @@ class FriendServiceImplTest {
 
     @Test
     void resolveVisibleTarget_whenTargetBlockedViewer_throwsNotFoundNotBlocked() {
-        when(socialUserRepository.findById(1)).thenReturn(Optional.of(alice));
-        when(socialUserRepository.findByUserUuid("bob-uuid")).thenReturn(Optional.of(bob));
+        when(userRepository.findById(1)).thenReturn(Optional.of(alice));
+        when(userRepository.findByUserUuid("bob-uuid")).thenReturn(Optional.of(bob));
         when(userBlockRepository.existsByBlockerAndBlocked(bob, alice)).thenReturn(true);
 
         assertThatThrownBy(() -> friendService.sendRequest(1, "bob-uuid"))
