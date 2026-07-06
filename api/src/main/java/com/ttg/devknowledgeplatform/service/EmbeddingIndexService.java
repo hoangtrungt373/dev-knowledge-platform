@@ -19,8 +19,8 @@ public interface EmbeddingIndexService {
      * @param page          zero-based page number
      * @param size          page size
      * @param q             optional case-insensitive title substring filter
-     * @param contentType   optional {@link com.ttg.devknowledgeplatform.common.enums.ContentType} name filter
-     * @param contentStatus optional {@link com.ttg.devknowledgeplatform.common.enums.ContentStatus} name filter
+     * @param contentType   optional {@link com.ttg.devknowledgeplatform.content.enums.ContentType} name filter
+     * @param contentStatus optional {@link com.ttg.devknowledgeplatform.content.enums.ContentStatus} name filter
      * @param indexed       when non-null, restricts results to indexed ({@code true}) or non-indexed ({@code false}) items
      * @return paged list of embedding index items
      */

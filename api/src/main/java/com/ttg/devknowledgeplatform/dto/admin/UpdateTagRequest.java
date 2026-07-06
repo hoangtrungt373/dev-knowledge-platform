@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.dto.admin;
 
-import com.ttg.devknowledgeplatform.common.enums.TagStatus;
+import com.ttg.devknowledgeplatform.content.enums.TagStatus;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;

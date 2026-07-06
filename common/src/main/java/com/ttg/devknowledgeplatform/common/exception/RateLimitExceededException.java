@@ -10,6 +10,6 @@ package com.ttg.devknowledgeplatform.common.exception;
 public class RateLimitExceededException extends ApiException {
 
     public RateLimitExceededException() {
-        super(ErrorCode.RATE_LIMIT_EXCEEDED);
+        super(CommonErrorCode.RATE_LIMIT_EXCEEDED);
     }
 }

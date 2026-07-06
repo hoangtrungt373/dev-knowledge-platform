@@ -55,7 +55,7 @@ public class GlobalExceptionHandler {
             String field = ((FieldError) error).getField();
             errors.computeIfAbsent(field, k -> new ArrayList<>()).add(error.getDefaultMessage());
         });
-        return buildResponse(ErrorCode.VALIDATION_FAILED.getCode(), HttpStatus.BAD_REQUEST, "Validation failed", request, errors);
+        return buildResponse(CommonErrorCode.VALIDATION_FAILED.getCode(), HttpStatus.BAD_REQUEST, "Validation failed", request, errors);
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -65,7 +65,7 @@ public class GlobalExceptionHandler {
         ex.getConstraintViolations().forEach(v ->
             errors.computeIfAbsent(v.getPropertyPath().toString(), k -> new ArrayList<>()).add(v.getMessage())
         );
-        return buildResponse(ErrorCode.VALIDATION_FAILED.getCode(), HttpStatus.BAD_REQUEST, "Validation failed", request, errors);
+        return buildResponse(CommonErrorCode.VALIDATION_FAILED.getCode(), HttpStatus.BAD_REQUEST, "Validation failed", request, errors);
     }
 
     // --- HTTP / MVC exceptions ---
@@ -73,33 +73,33 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException ex, HttpServletRequest request) {
         log.warn("Malformed request body on {}: {}", request.getRequestURI(), ex.getMessage());
-        return buildResponse(ErrorCode.REQUEST_BODY_INVALID.getCode(), HttpStatus.BAD_REQUEST, "Malformed or missing request body", request, null);
+        return buildResponse(CommonErrorCode.REQUEST_BODY_INVALID.getCode(), HttpStatus.BAD_REQUEST, "Malformed or missing request body", request, null);
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ErrorResponse> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex, HttpServletRequest request) {
         log.warn("Method not allowed on {}: {}", request.getRequestURI(), ex.getMessage());
-        return buildResponse(ErrorCode.REQUEST_METHOD_NOT_ALLOWED.getCode(), HttpStatus.METHOD_NOT_ALLOWED, ex.getMessage(), request, null);
+        return buildResponse(CommonErrorCode.REQUEST_METHOD_NOT_ALLOWED.getCode(), HttpStatus.METHOD_NOT_ALLOWED, ex.getMessage(), request, null);
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<ErrorResponse> handleMissingParam(MissingServletRequestParameterException ex, HttpServletRequest request) {
         log.warn("Missing parameter '{}' on {}", ex.getParameterName(), request.getRequestURI());
         String message = "Required parameter '" + ex.getParameterName() + "' is missing";
-        return buildResponse(ErrorCode.REQUEST_PARAMETER_MISSING.getCode(), HttpStatus.BAD_REQUEST, message, request, null);
+        return buildResponse(CommonErrorCode.REQUEST_PARAMETER_MISSING.getCode(), HttpStatus.BAD_REQUEST, message, request, null);
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
         log.warn("Type mismatch for parameter '{}' on {}: {}", ex.getName(), request.getRequestURI(), ex.getMessage());
         String message = String.format("Invalid value '%s' for parameter '%s'", ex.getValue(), ex.getName());
-        return buildResponse(ErrorCode.VALIDATION_FIELD_INVALID.getCode(), HttpStatus.BAD_REQUEST, message, request, null);
+        return buildResponse(CommonErrorCode.VALIDATION_FIELD_INVALID.getCode(), HttpStatus.BAD_REQUEST, message, request, null);
     }
 
     @ExceptionHandler(NoHandlerFoundException.class)
     public ResponseEntity<ErrorResponse> handleNoHandler(NoHandlerFoundException ex, HttpServletRequest request) {
         log.warn("No handler found: {}", ex.getRequestURL());
-        return buildResponse(ErrorCode.RESOURCE_NOT_FOUND.getCode(), HttpStatus.NOT_FOUND, "Endpoint not found: " + ex.getRequestURL(), request, null);
+        return buildResponse(CommonErrorCode.RESOURCE_NOT_FOUND.getCode(), HttpStatus.NOT_FOUND, "Endpoint not found: " + ex.getRequestURL(), request, null);
     }
 
     // --- Security exceptions ---
@@ -107,13 +107,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
         log.warn("Access denied on {}: {}", request.getRequestURI(), ex.getMessage());
-        return buildResponse(ErrorCode.AUTH_FORBIDDEN.getCode(), HttpStatus.FORBIDDEN, "Access denied", request, null);
+        return buildResponse(CommonErrorCode.AUTH_FORBIDDEN.getCode(), HttpStatus.FORBIDDEN, "Access denied", request, null);
     }
 
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ErrorResponse> handleAuthentication(AuthenticationException ex, HttpServletRequest request) {
         log.warn("Authentication failed on {}: {}", request.getRequestURI(), ex.getMessage());
-        return buildResponse(ErrorCode.AUTH_UNAUTHORIZED.getCode(), HttpStatus.UNAUTHORIZED, "Authentication failed", request, null);
+        return buildResponse(CommonErrorCode.AUTH_UNAUTHORIZED.getCode(), HttpStatus.UNAUTHORIZED, "Authentication failed", request, null);
     }
 
     // --- Rate limiting ---
@@ -138,7 +138,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MailException.class)
     public ResponseEntity<ErrorResponse> handleMailException(MailException ex, HttpServletRequest request) {
         log.error("Email service error on {}: {}", request.getRequestURI(), ex.getMessage(), ex);
-        return buildResponse(ErrorCode.SERVER_EXTERNAL_SERVICE_ERROR.getCode(), HttpStatus.SERVICE_UNAVAILABLE, "Email service is currently unavailable", request, null);
+        return buildResponse(CommonErrorCode.SERVER_EXTERNAL_SERVICE_ERROR.getCode(), HttpStatus.SERVICE_UNAVAILABLE, "Email service is currently unavailable", request, null);
     }
 
     // --- Fallback ---
@@ -146,7 +146,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneric(Exception ex, HttpServletRequest request) {
         log.error("Unexpected error on {}: {}", request.getRequestURI(), ex.getMessage(), ex);
-        return buildResponse(ErrorCode.SERVER_INTERNAL_ERROR.getCode(), HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred", request, null);
+        return buildResponse(CommonErrorCode.SERVER_INTERNAL_ERROR.getCode(), HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred", request, null);
     }
 
     // --- Builder helper ---

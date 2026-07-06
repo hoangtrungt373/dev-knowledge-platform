@@ -1,7 +1,7 @@
 package com.ttg.devknowledgeplatform.dto.admin;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.ttg.devknowledgeplatform.common.enums.TagStatus;
+import com.ttg.devknowledgeplatform.content.enums.TagStatus;
 import lombok.Builder;
 import lombok.Data;
 

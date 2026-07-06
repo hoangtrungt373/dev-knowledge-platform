@@ -15,8 +15,8 @@ import java.util.List;
  * {@link JsonInclude#NON_NULL} suppresses {@code null} entries from the stored JSON to keep
  * the JSONB payload compact.
  *
- * @param type         {@link com.ttg.devknowledgeplatform.common.enums.ContentType} name
- * @param status       {@link com.ttg.devknowledgeplatform.common.enums.ContentStatus} name
+ * @param type         {@link com.ttg.devknowledgeplatform.content.enums.ContentType} name
+ * @param status       {@link com.ttg.devknowledgeplatform.content.enums.ContentStatus} name
  * @param title        human-readable title of the parent content item
  * @param categoryId   database identifier of the assigned category; {@code null} if uncategorised
  * @param categoryName display name of the assigned category; {@code null} if uncategorised

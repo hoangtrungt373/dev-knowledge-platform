@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.dto;
 
-import com.ttg.devknowledgeplatform.common.enums.ContentType;
+import com.ttg.devknowledgeplatform.content.enums.ContentType;
 
 import java.util.Set;
 

@@ -7,7 +7,7 @@ import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;
 import com.ttg.devknowledgeplatform.ai.service.ContentIngestionService;
 import com.ttg.devknowledgeplatform.ai.service.EmbeddingService;
 import com.ttg.devknowledgeplatform.ai.service.TextChunkingService;
-import com.ttg.devknowledgeplatform.common.entity.ContentItem;
+import com.ttg.devknowledgeplatform.content.entity.ContentItem;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

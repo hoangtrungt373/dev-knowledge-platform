@@ -1,7 +1,7 @@
 package com.ttg.devknowledgeplatform.api;
 
-import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.common.enums.ContentType;
+import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.content.enums.ContentType;
 import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.dto.admin.ArticleResponse;

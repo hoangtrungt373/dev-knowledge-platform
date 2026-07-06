@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ttg.devknowledgeplatform.common.dto.ErrorResponse;
-import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
+import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -39,7 +39,7 @@ public class JsonAuthenticationEntryPoint implements AuthenticationEntryPoint {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 
         ErrorResponse body = ErrorResponse.builder()
-                .errorCode(ErrorCode.AUTH_UNAUTHORIZED.getCode())
+                .errorCode(CommonErrorCode.AUTH_UNAUTHORIZED.getCode())
                 .status(HttpStatus.UNAUTHORIZED.value())
                 .errorMessage("Authentication required")
                 .timestamp(Instant.now())

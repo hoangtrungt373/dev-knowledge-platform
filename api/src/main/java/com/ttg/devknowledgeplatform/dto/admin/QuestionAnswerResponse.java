@@ -1,8 +1,8 @@
 package com.ttg.devknowledgeplatform.dto.admin;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
+import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.content.enums.QuestionDifficulty;
 import lombok.Builder;
 import lombok.Data;
 

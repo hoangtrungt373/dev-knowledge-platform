@@ -2,17 +2,21 @@ package com.ttg.devknowledgeplatform.api.impl;
 
 import com.ttg.devknowledgeplatform.api.ArticleApi;
 import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.common.enums.ContentType;
+import com.ttg.devknowledgeplatform.content.entity.Article;
+import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.content.enums.ContentType;
+import com.ttg.devknowledgeplatform.content.service.ArticleCommands;
+import com.ttg.devknowledgeplatform.content.service.ArticleService;
 import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.dto.admin.ArticleResponse;
 import com.ttg.devknowledgeplatform.dto.admin.CreateArticleRequest;
 import com.ttg.devknowledgeplatform.dto.admin.UpdateArticleRequest;
-import com.ttg.devknowledgeplatform.service.ArticleService;
+import com.ttg.devknowledgeplatform.mapper.ArticleMapper;
 import com.ttg.devknowledgeplatform.security.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -33,19 +37,26 @@ public class ArticleController implements ArticleApi {
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("id", "dteCreation");
 
     private final ArticleService articleService;
+    private final ArticleMapper articleMapper;
     private final UserService userService;
 
     @Override
     public ResponseEntity<ArticleResponse> create(CustomOAuth2User principal, CreateArticleRequest request) {
         Integer authorId = resolveAuthorId(principal);
-        ArticleResponse response = articleService.create(request, authorId);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        ArticleCommands.Create command = new ArticleCommands.Create(
+                request.getTitle(), request.getType(), request.getBody(),
+                request.getStatus(), request.getCategoryId(), request.getTagIds());
+        Article created = articleService.create(command, authorId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(articleMapper.toResponse(created));
     }
 
     @Override
     public ResponseEntity<ArticleResponse> update(Integer id, UpdateArticleRequest request) {
-        ArticleResponse response = articleService.update(id, request);
-        return ResponseEntity.ok(response);
+        ArticleCommands.Update command = new ArticleCommands.Update(
+                request.getTitle(), request.getType(), request.getBody(),
+                request.getStatus(), request.getCategoryId(), request.getTagIds());
+        Article updated = articleService.update(id, command);
+        return ResponseEntity.ok(articleMapper.toResponse(updated));
     }
 
     @Override
@@ -56,7 +67,7 @@ public class ArticleController implements ArticleApi {
 
     @Override
     public ResponseEntity<ArticleResponse> getById(Integer id) {
-        return ResponseEntity.ok(articleService.getById(id));
+        return ResponseEntity.ok(articleMapper.toResponse(articleService.getById(id)));
     }
 
     @Override
@@ -64,8 +75,9 @@ public class ArticleController implements ArticleApi {
             int page, int size, String sortBy, String sortDir,
             ContentType type, ContentStatus status, String q) {
         Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
-        PagedResponse<ArticleResponse> response = articleService.list(pageable, type, status, q);
-        return ResponseEntity.ok(response);
+        Page<ArticleResponse> responses = articleService.list(pageable, type, status, q)
+                .map(articleMapper::toResponse);
+        return ResponseEntity.ok(PagedResponse.from(responses));
     }
 
     private Integer resolveAuthorId(CustomOAuth2User principal) {

@@ -3,7 +3,7 @@ package com.ttg.devknowledgeplatform.mapper;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
-import com.ttg.devknowledgeplatform.common.entity.Tag;
+import com.ttg.devknowledgeplatform.content.entity.Tag;
 import com.ttg.devknowledgeplatform.dto.admin.TagResponse;
 
 @Mapper(componentModel = "spring")

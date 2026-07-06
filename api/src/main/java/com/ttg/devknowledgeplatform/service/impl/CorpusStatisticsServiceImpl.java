@@ -4,7 +4,7 @@ import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
 import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;
 import com.ttg.devknowledgeplatform.ai.service.CorpusStatisticsService;
 import com.ttg.devknowledgeplatform.ai.utils.VectorUtils;
-import com.ttg.devknowledgeplatform.common.enums.ContentType;
+import com.ttg.devknowledgeplatform.content.enums.ContentType;
 import com.ttg.devknowledgeplatform.common.enums.ParamKey;
 import com.ttg.devknowledgeplatform.common.service.SysParamService;
 import jakarta.annotation.PostConstruct;

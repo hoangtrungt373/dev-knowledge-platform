@@ -27,6 +27,10 @@
         </dependency>
         <dependency>
             <groupId>com.ttg</groupId>
+            <artifactId>content-service</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ttg</groupId>
             <artifactId>ai-service</artifactId>
         </dependency>
         <dependency>
@@ -138,19 +142,6 @@
         <dependency>
             <groupId>com.bucket4j</groupId>
             <artifactId>bucket4j-redis</artifactId>
-        </dependency>
-
-        <!-- Commons CSV — startup data seeding from CSV files (Category, Tag) -->
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-csv</artifactId>
-        </dependency>
-
-        <!-- SnakeYAML — front-matter parsing for Markdown-based seed data (QuestionAnswer);
-             version managed by spring-boot-starter-parent's dependencyManagement -->
-        <dependency>
-            <groupId>org.yaml</groupId>
-            <artifactId>snakeyaml</artifactId>
         </dependency>
 
         <!-- Dev Tools -->

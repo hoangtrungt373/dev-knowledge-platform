@@ -7,8 +7,8 @@ import java.util.stream.Collectors;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
-import com.ttg.devknowledgeplatform.common.entity.Article;
-import com.ttg.devknowledgeplatform.common.entity.ContentItemTag;
+import com.ttg.devknowledgeplatform.content.entity.Article;
+import com.ttg.devknowledgeplatform.content.entity.ContentItemTag;
 import com.ttg.devknowledgeplatform.dto.admin.ArticleResponse;
 
 @Mapper(componentModel = "spring")

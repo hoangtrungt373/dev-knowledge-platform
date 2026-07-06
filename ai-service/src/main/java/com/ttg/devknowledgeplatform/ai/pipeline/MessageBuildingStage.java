@@ -7,7 +7,7 @@ import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.dto.RagSource;
 import com.ttg.devknowledgeplatform.ai.dto.ScoredChunk;
 import com.ttg.devknowledgeplatform.common.enums.ChatMessageRole;
-import com.ttg.devknowledgeplatform.common.enums.ContentType;
+import com.ttg.devknowledgeplatform.content.enums.ContentType;
 import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
 import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
 import dev.langchain4j.data.message.AiMessage;
@@ -43,7 +43,7 @@ import java.util.stream.IntStream;
  * </ul>
  *
  * <p>The system prompt prefix is resolved from {@link RagPipelineContext#getFilter()}: when the
- * filter targets exactly one {@link com.ttg.devknowledgeplatform.common.enums.ContentType} a
+ * filter targets exactly one {@link com.ttg.devknowledgeplatform.content.enums.ContentType} a
  * domain-specific prompt is used; mixed or unfiltered queries fall back to the default prompt.
  *
  * <p><strong>Reads:</strong> {@link RagPipelineContext#getSelectedChunks()},

@@ -5,16 +5,20 @@
 ```
 dev-knowledge-platform/
 ├── common/          — shared entities, enums, exceptions, DTOs; depends on Spring Data JPA (for @Entity), validation, web, security (all as annotation/type support, not full autoconfiguration)
-├── infra/           — shared Spring infrastructure: event base classes, composed annotations, MDC utilities
+├── infra/           — shared Spring infrastructure: event base classes, composed annotations, MDC utilities, SlugService
+├── content-service/ — categories, tags, and content items (Q&A, articles) — the knowledge corpus surfaced by the RAG pipeline
 ├── ai-service/      — RAG pipeline: embedding, vector search, LLM generation (LangChain4j)
 ├── social-service/  — friend graph: search visibility, requests, friendships, blocking (later: chat/groups/messaging)
 ├── api/             — REST endpoints, security, Liquibase migrations, Spring Boot entry point
 └── gui/             — React 18 + TypeScript + MUI frontend (Vite)
 ```
 
-Dependency order: `common` ← `infra` ← `ai-service`/`social-service` ← `api`. `gui` is independent.
-`social-service` mirrors `ai-service`'s shape (a business-logic module `api` depends on and wires up via REST) —
-it depends only on `common` + `infra`, never on `api`, so it cannot reuse `api`'s repositories or services.
+Dependency order: `common` ← `infra` ← `content-service` ← `ai-service`/`social-service` ← `api`. `gui` is independent.
+`content-service` and `social-service` mirror each other's shape (a business-logic module `api` depends on and
+wires up via REST) — both depend only on `common` + `infra`, never on `api`, so neither can reuse `api`'s
+repositories or services. `ai-service` additionally depends on `content-service`: `ContentEmbedding` has a real
+`@ManyToOne` FK to `ContentItem`, and `ContentIngestionService.ingest(...)` takes a `ContentItem` parameter —
+unlike `social-service`, which has zero compile-time coupling from `ai-service`.
 
 ---
 
@@ -27,35 +31,20 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │   └── ConversationTurn.java         — role + content record for a single message
 ├── entity/
 │   ├── AbstractEntity.java           — audit columns (usrCreation, dteCreation, version, …)
-│   ├── Article.java
-│   ├── Category.java                 — hierarchical; parent/children self-join
-│   ├── ContentItem.java              — base content record (type, status, title, slug, category)
-│   ├── ContentItemTag.java           — join entity for content ↔ tag
-│   ├── QuestionAnswer.java           — general dev-knowledge Q&A, not only interview prep;
-│   │                                    difficulty/isCommon are nullable interview-specific metadata
-│   ├── Tag.java
 │   ├── User.java                     — userUuid, email, username, password, firstName, lastName, profilePicture,
 │   │                                    provider (UserProvider), role (UserRole), providerId, emailVerified, status
 │   │                                    (UserStatus, presence), enabled; referenced by FK from social-service's
 │   │                                    FriendRequest/Friendship/UserBlock entities (which live there, not here —
 │   │                                    see social-service section below)
 │   ├── ChatSession.java              — userId, title, lastActivityAt, summary (TEXT); parent of ChatMessage rows
-│   └── ChatMessage.java              — role, content, turnIndex; child of ChatSession
+│   ├── ChatMessage.java              — role, content, turnIndex; child of ChatSession
+│   └── SysParam.java                 — @Entity for SYS_PARAM; fields: name (ParamKey), value (TEXT), computedAt
 ├── enums/
 │   ├── ChatProvider.java             — OPENAI, ANTHROPIC; selects LangChain4j builder family per chat model profile
-│   ├── ContentStatus.java            — DRAFT, PUBLISHED, …
-│   ├── ContentType.java              — QUESTION_ANSWER, ARTICLE, BLOG_POST
 │   ├── ParamKey.java                 — typed keys for SYS_PARAM.NAME; renaming a constant requires a DB migration;
 │   │                                   includes PROMPT_INJECTION_PROTOTYPE_EMBEDDINGS (fingerprinted vector-list cache
 │   │                                   for PromptGuardStage — see repository/service below)
 │   └── UserRole.java
-├── entity/
-│   ├── ContentItem.java              — qualityScore (BigDecimal, nullable): mean centroid similarity set at indexing time;
-│   │                                    seedId (String, nullable, DB SEED_ID): NULL for user/admin-created rows, set only
-│   │                                    by QuestionAnswerSeeder — sole idempotency key for long-lived seed data (DKP-0013)
-│   ├── Category.java / Tag.java      — seedId (String, nullable, DB SEED_ID): same purpose as ContentItem.seedId above,
-│   │                                    set only by CategorySeeder/TagSeeder (DKP-0013)
-│   └── SysParam.java                 — @Entity for SYS_PARAM; fields: name (ParamKey), value (TEXT), computedAt
 ├── repository/
 │   └── SysParamRepository.java       — JpaRepository<SysParam, Integer>; findByName(ParamKey); moved here from
 │                                        api/repository so ai-service (which cannot depend on api) can reach it
@@ -69,9 +58,19 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 └── exception/
     ├── ApiException.java
     ├── BusinessException.java
-    ├── ErrorCode.java                — 88+ domain error codes
+    ├── ErrorCode.java                — interface (getCode/getMessage/getHttpStatus); one enum per module owning
+    │                                    errors implements it (CommonErrorCode here, ContentErrorCode in
+    │                                    content-service) — lets ApiException/BusinessException/GlobalExceptionHandler
+    │                                    stay module-agnostic without a compile-time dependency back onto every
+    │                                    feature module from common
+    ├── CommonErrorCode.java          — AUTH_*/OAUTH_*/USER_*/OTP_*/VALIDATION_*/SERVER_*/RESOURCE_*/REQUEST_*/
+    │                                    AI_*/RATE_*/CHAT_*/FRIEND_* codes (everything not owned by a feature module)
     └── ResourceNotFoundException.java
 ```
+
+Category/Tag/ContentItem/ContentItemTag/QuestionAnswer/Article entities and their enums
+(ContentStatus/ContentType/TagStatus/QuestionDifficulty) used to live here; they moved to
+`content-service` — see that module's section below and `CHANGELOG.md`.
 
 ---
 
@@ -81,14 +80,93 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 infra/src/main/java/com/ttg/devknowledgeplatform/infra/
 ├── context/
 │   └── MdcKeys.java              — MDC key constants shared across modules (e.g. TRACE_ID = "traceId")
-└── event/
-    ├── ApplicationEventHandler.java  — marker interface; Find Implementations = full event bus registry across modules
-    ├── EventHandler.java             — composed @EventListener + @Async("asyncEventExecutor"); enforces async on
-    │                                    every listener and pins dispatch to a dedicated pool (bulkhead vs sseStreamExecutor)
-    └── AsyncEventHandler.java        — abstract base class (Template Method); provides async dispatch via @EventHandler,
-                                         MDC TRACE_ID binding (opt-in via resolveTraceId()), timing, and exception safety;
-                                         subclasses implement doHandle(); subclasses that need DB writes declare @Transactional themselves
+├── event/
+│   ├── ApplicationEventHandler.java  — marker interface; Find Implementations = full event bus registry across modules
+│   ├── EventHandler.java             — composed @EventListener + @Async("asyncEventExecutor"); enforces async on
+│   │                                    every listener and pins dispatch to a dedicated pool (bulkhead vs sseStreamExecutor)
+│   └── AsyncEventHandler.java        — abstract base class (Template Method); provides async dispatch via @EventHandler,
+│                                        MDC TRACE_ID binding (opt-in via resolveTraceId()), timing, and exception safety;
+│                                        subclasses implement doHandle(); subclasses that need DB writes declare @Transactional themselves
+└── service/
+    ├── SlugService.java              — toSlug(String), generateUniqueSlug(...) (two overloads: create vs
+    │                                    update-excluding-self); lives here (not content-service) because it's a
+    │                                    generic utility content-service's services need but api can't be the home
+    │                                    for, since content-service cannot depend on api
+    └── impl/
+        └── SlugServiceImpl.java      — diacritic-stripping + incrementing-counter uniqueness resolution
 ```
+
+---
+
+## content-service
+
+```
+content-service/src/main/java/com/ttg/devknowledgeplatform/content/
+├── entity/
+│   ├── Category.java              — hierarchical; parent/children self-join; seedId (nullable) for CategorySeeder idempotency
+│   ├── Tag.java                   — status (TagStatus); seedId (nullable) for TagSeeder idempotency
+│   ├── ContentItem.java           — base content record (type, status, title, slug, category, viewCount,
+│   │                                 publishedAt, qualityScore); seedId (nullable) for QuestionAnswerSeeder idempotency
+│   ├── ContentItemTag.java        — join entity for content ↔ tag
+│   ├── QuestionAnswer.java        — general dev-knowledge Q&A, not only interview prep;
+│   │                                 difficulty/isCommon are nullable interview-specific metadata
+│   └── Article.java               — body text; backs both ContentType.ARTICLE and .BLOG_POST
+├── enums/
+│   ├── ContentStatus.java         — DRAFT, PUBLISHED, …
+│   ├── ContentType.java           — QUESTION_ANSWER, ARTICLE, BLOG_POST
+│   ├── TagStatus.java             — ACTIVE, INACTIVE
+│   └── QuestionDifficulty.java    — BEGINNER, INTERMEDIATE, ADVANCED
+├── event/
+│   └── ContentPublishedEvent.java — carries a ContentItem; currently has no publisher wired up (scaffold for a
+│                                     future auto-index-on-publish flow — today indexing is admin-triggered via
+│                                     api's IngestionController); listened for by api's ContentPublishedEventListener
+├── repository/
+│   ├── CategoryRepository.java / TagRepository.java / ContentItemRepository.java / ContentItemTagRepository.java
+│   │   / QuestionAnswerRepository.java / ArticleRepository.java
+│   └── spec/
+│       └── CategorySpecification.java / TagSpecification.java / QuestionAnswerSpecification.java / ArticleSpecification.java
+├── service/
+│   ├── CategoryService.java / TagService.java / QuestionAnswerService.java / ArticleService.java — return
+│   │   entities, not REST DTOs — api's Category/Tag/QuestionAnswer/ArticleMapper do entity→response mapping
+│   │   (same split as social-service's FriendService → api's FriendMapper, and ai-service's RagQueryService →
+│   │   api's ChatResponse)
+│   ├── CategoryTreeNode.java      — record (Category + resolved children) returned by CategoryService.listTree();
+│   │                                 api's CategoryMapper.toTreeNodeResponse() flattens it into CategoryTreeNodeResponse
+│   ├── QuestionAnswerCommands.java / ArticleCommands.java — Create/Update input records mirroring api's
+│   │   Create*Request/Update*Request field-for-field, without REST/validation annotations — api translates its
+│   │   request DTOs into these before calling the service, avoiding a content-service → api DTO dependency
+│   ├── seed/                      — startup data seeding; format chosen per content shape (moved here from api
+│   │   since seeders write directly via repositories, the same as production service impls)
+│   │   ├── CsvSeeder.java             — Template Method for flat, single-file CSV sources
+│   │   ├── CategorySeeder.java        — data/csv/categories.csv; identity by seedId
+│   │   ├── TagSeeder.java             — data/csv/tags.csv; identity by seedId
+│   │   └── QuestionAnswerSeeder.java  — data/question-answers/*.md (YAML front matter + markdown body);
+│   │                                     does not extend CsvSeeder (one-file-per-record, different iteration shape)
+│   └── impl/
+│       └── CategoryServiceImpl.java / TagServiceImpl.java / QuestionAnswerServiceImpl.java / ArticleServiceImpl.java
+└── exception/
+    └── ContentErrorCode.java      — CATEGORY_*/TAG_*/QA_*/ARTICLE_* codes, implements common's ErrorCode interface
+```
+
+REST controllers, DTOs (`dto/admin/*`), mappers, and the indexing/RAG orchestration layer
+(`ContentIndexingService`, `IndexingQualityService`, `EmbeddingIndexService`, `IngestionController`,
+`PublicContentController`, `ContentPublishedEventListener`) all stay in `api` — see the `api` section below.
+The orchestration layer genuinely needs both `content-service` and `ai-service`, and `content-service` cannot
+depend on `ai-service` (that would create a cycle, since `ai-service` already depends on `content-service` for
+`ContentItem`), so it lives one layer up in `api`, which depends on both.
+
+`DataSeedingRunner` (`api`) still runs the seeders above in order (category → tag → questionAnswer); the
+actual seed data files (`data/csv/*.csv`, `data/question-answers/*.md`) stay under `api/src/main/resources/`
+unchanged — only the Java seeder classes moved, following the same precedent as Liquibase migrations (see
+Database section below).
+
+Why the service layer was redesigned rather than just relocated: `CategoryService`/`TagService`/
+`QuestionAnswerService`/`ArticleService` used to accept and return `api`'s own REST DTOs directly
+(`CreateCategoryRequest`, `CategoryResponse`, `PagedResponse<...>`). Moving them into `content-service` as-is
+would have made `content-service` depend on `api`'s DTOs while `api` depends on `content-service` — circular.
+Every method now takes plain params or a content-service-owned command record and returns an entity or
+`Page<Entity>`, matching the `FriendService` precedent; `api`'s controllers build the command from the request
+DTO and its mappers convert the returned entity back to a response DTO.
 
 ---
 
@@ -338,8 +416,9 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │                                        StorageService for presigned avatar URLs, and MapStruct interfaces
 │                                        can't hold instance fields; maps social-service entities to dto/friend/*
 ├── repository/
-│   ├── spec/                         — JPA Specification implementations for dynamic filtering
-│   └── …
+│   └── …                             — ChatSessionRepository, ChatMessageRepository, UserRepository;
+│                                        Category/Tag/ContentItem*/QuestionAnswer/Article repositories +
+│                                        specifications moved to content-service (see that module's section)
 ├── security/                         — JwtProvider, OAuth2 handlers, UserUtils
 │   └── jwt/
 │       ├── TokenClaims.java          — sealed interface; typed JWT claim shape, permits
@@ -354,37 +433,12 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │   ├── EmbeddingIndexService.java    — list(page,size,q,contentType,contentStatus,indexed) → PagedResponse<EmbeddingIndexItemResponse>
 │   ├── IndexingQualityService.java   — assess(contentItemId, contentType) → QualityVerdict; centroid distance check at indexing time
 │   ├── QualityVerdict.java           — record: boolean lowQuality, float score; factories pass/flag/skipped
-│   ├── seed/                         — startup data seeding; format chosen per content shape
-│   │   ├── CsvSeeder.java                — abstract Template Method for flat, single-file CSV
-│   │   │                                   sources: owns read/iterate/skip-or-insert loop;
-│   │   │                                   subclasses supply alreadyExists()/buildEntity()/persist()
-│   │   ├── CategorySeeder.java           — extends CsvSeeder; data/csv/categories.csv (id, name,
-│   │   │                                   parentId); identity by seedId (findBySeedId — NOT
-│   │   │                                   name/slug, see DKP-0013: seed data is long-lived
-│   │   │                                   alongside user content, so the idempotency key must
-│   │   │                                   survive a NAME edit); parentId resolved via
-│   │   │                                   findBySeedId too, not by parent name; rejects an id
-│   │   │                                   reused for a different name, and a name collision with
-│   │   │                                   an existing category; slug always generated via
-│   │   │                                   SlugService.generateUniqueSlug, never authored; parent
-│   │   │                                   rows must precede children
-│   │   ├── TagSeeder.java                — extends CsvSeeder; data/csv/tags.csv (id, name,
-│   │   │                                   status); same seedId-identity + generated-slug pattern
-│   │   │                                   as CategorySeeder (no hierarchy, so no parentId)
-│   │   ├── QuestionAnswerSeeder.java     — does NOT extend CsvSeeder (one-file-per-record
-│   │   │                                   directory, not CSV rows — different iteration shape);
-│   │   │                                   reads data/question-answers/*.md (YAML front
-│   │   │                                   matter + markdown body via SnakeYAML/SafeConstructor);
-│   │   │                                   identity by seedId (required front-matter id, NOT
-│   │   │                                   slug/title); categoryId/tagIds resolved via
-│   │   │                                   findBySeedId (Category/Tag's own id, not name/slug);
-│   │   │                                   slug stays a separate, optional, production-URL-only
-│   │   │                                   field unrelated to idempotency; difficulty/isCommon
-│   │   │                                   optional (general Q&A, not only interview prep);
-│   │   │                                   builds ContentItem + QuestionAnswer per file;
-│   │   │                                   requires categories/tags seeded first
+│   ├── seed/
 │   │   └── DataSeedingRunner.java        — ApplicationRunner, @ConditionalOnProperty(app.seed.enabled);
-│   │                                       runs seeders in order: category → tag → questionAnswer
+│   │                                       runs seeders in order: category → tag → questionAnswer.
+│   │                                       CsvSeeder/CategorySeeder/TagSeeder/QuestionAnswerSeeder
+│   │                                       themselves moved to content-service/service/seed/ (see that
+│   │                                       module's section) — this runner just injects and calls them
 │   └── impl/
 │       ├── IndexingQualityServiceImpl.java  — loads embeddings from ContentEmbeddingRepository; mean centroid dotProduct; graceful cold-start
 │       ├── CorpusStatisticsServiceImpl.java — @PostConstruct loads centroids from SYS_PARAM; @Scheduled refresh
@@ -480,6 +534,8 @@ expected over time, and are modelled as data, not schema:
 - Audit columns on every entity via `AbstractEntity`
 - pgvector HNSW index on `content_embedding.embedding` (cosine distance, `vector_cosine_ops`)
 - `SYS_PARAM` — general-purpose key-value table; stores corpus centroid vectors and future AI/config parameters
+- `CATEGORY` / `TAG` / `CONTENT_ITEM` / `CONTENT_ITEM_TAG` / `QUESTION_ANSWER` / `ARTICLE` — backing
+  `content-service`'s entities of the same names (schema unchanged by the module extraction — see `CHANGELOG.md`)
 - `FRIEND_REQUEST` / `FRIENDSHIP` / `USER_BLOCK` (DKP-0015) — friend graph, backing `social-service`'s
   entities of the same names. `FRIENDSHIP` stores each pair once with `USER_ID_1 < USER_ID_2` enforced by
   a check constraint. `FRIEND_REQUEST` has a partial unique index on the unordered pair

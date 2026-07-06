@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.api;
 
-import com.ttg.devknowledgeplatform.common.enums.TagStatus;
+import com.ttg.devknowledgeplatform.content.enums.TagStatus;
 import com.ttg.devknowledgeplatform.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.dto.admin.CreateTagRequest;
 import com.ttg.devknowledgeplatform.dto.admin.TagResponse;

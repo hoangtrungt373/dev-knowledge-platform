@@ -4,7 +4,7 @@ import java.util.Set;
 
 import com.ttg.devknowledgeplatform.api.UserApi;
 import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
+import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.dto.PagedResponse;
@@ -52,7 +52,7 @@ public class UserController implements UserApi {
     public ResponseEntity<UserInfoResponse> uploadAvatar(CustomOAuth2User principal, MultipartFile file) {
         User currentUser = userService.findByEmail(principal.getEmail());
         if (currentUser == null) {
-            throw new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND, "User not found");
+            throw new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found");
         }
 
         String existing = currentUser.getProfilePicture();
@@ -69,7 +69,7 @@ public class UserController implements UserApi {
     public ResponseEntity<UserInfoResponse> getPublicProfile(CustomOAuth2User principal, String userUuid) {
         User user = userService.findByUserUuidOptional(userUuid)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        ErrorCode.USER_NOT_FOUND, "User not found: " + userUuid));
+                        CommonErrorCode.USER_NOT_FOUND, "User not found: " + userUuid));
         UserInfoResponse response = userMapper.toUserInfo(user);
 
         if (principal != null) {

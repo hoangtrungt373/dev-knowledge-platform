@@ -1,7 +1,7 @@
 package com.ttg.devknowledgeplatform.ai.service;
 
 import com.ttg.devknowledgeplatform.ai.dto.ContentEmbeddingMetadata;
-import com.ttg.devknowledgeplatform.common.entity.ContentItem;
+import com.ttg.devknowledgeplatform.content.entity.ContentItem;
 
 /**
  * Chunks and embeds content text, persisting vectors to {@code CONTENT_EMBEDDING}.

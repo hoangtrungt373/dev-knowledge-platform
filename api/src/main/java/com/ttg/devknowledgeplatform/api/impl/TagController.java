@@ -1,14 +1,17 @@
 package com.ttg.devknowledgeplatform.api.impl;
 
 import com.ttg.devknowledgeplatform.api.TagApi;
-import com.ttg.devknowledgeplatform.common.enums.TagStatus;
+import com.ttg.devknowledgeplatform.content.entity.Tag;
+import com.ttg.devknowledgeplatform.content.enums.TagStatus;
+import com.ttg.devknowledgeplatform.content.service.TagService;
 import com.ttg.devknowledgeplatform.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.dto.admin.CreateTagRequest;
 import com.ttg.devknowledgeplatform.dto.admin.TagResponse;
 import com.ttg.devknowledgeplatform.dto.admin.UpdateTagRequest;
-import com.ttg.devknowledgeplatform.service.TagService;
+import com.ttg.devknowledgeplatform.mapper.TagMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -29,17 +32,18 @@ public class TagController implements TagApi {
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("id", "name", "status", "dteCreation");
 
     private final TagService tagService;
+    private final TagMapper tagMapper;
 
     @Override
     public ResponseEntity<TagResponse> create(CreateTagRequest request) {
-        TagResponse response = tagService.create(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        Tag tag = tagService.create(request.getName(), request.getStatus());
+        return ResponseEntity.status(HttpStatus.CREATED).body(tagMapper.toResponse(tag));
     }
 
     @Override
     public ResponseEntity<TagResponse> update(Integer id, UpdateTagRequest request) {
-        TagResponse response = tagService.update(id, request);
-        return ResponseEntity.ok(response);
+        Tag tag = tagService.update(id, request.getName(), request.getStatus());
+        return ResponseEntity.ok(tagMapper.toResponse(tag));
     }
 
     @Override
@@ -50,16 +54,15 @@ public class TagController implements TagApi {
 
     @Override
     public ResponseEntity<TagResponse> getById(Integer id) {
-        TagResponse response = tagService.getById(id);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(tagMapper.toResponse(tagService.getById(id)));
     }
 
     @Override
     public ResponseEntity<PagedResponse<TagResponse>> list(
             int page, int size, String sortBy, String sortDir, TagStatus status, String q) {
         Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
-        PagedResponse<TagResponse> response = tagService.list(pageable, status, q);
-        return ResponseEntity.ok(response);
+        Page<TagResponse> responses = tagService.list(pageable, status, q).map(tagMapper::toResponse);
+        return ResponseEntity.ok(PagedResponse.from(responses));
     }
 
     private Sort buildSort(String sortBy, String sortDir) {

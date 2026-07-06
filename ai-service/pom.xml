@@ -25,6 +25,13 @@
             <groupId>com.ttg</groupId>
             <artifactId>infra</artifactId>
         </dependency>
+        <!-- ContentEmbedding has a @ManyToOne FK to ContentItem, and ContentIngestionService
+             takes ContentItem as a parameter — ai-service owns the RAG pipeline's storage of
+             embeddings for content-service's entities. -->
+        <dependency>
+            <groupId>com.ttg</groupId>
+            <artifactId>content-service</artifactId>
+        </dependency>
 
         <!-- LangChain4j (versions managed by BOM in parent) -->
         <dependency>

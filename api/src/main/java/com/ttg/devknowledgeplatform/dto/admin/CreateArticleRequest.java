@@ -1,7 +1,7 @@
 package com.ttg.devknowledgeplatform.dto.admin;
 
-import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.common.enums.ContentType;
+import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.content.enums.ContentType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;

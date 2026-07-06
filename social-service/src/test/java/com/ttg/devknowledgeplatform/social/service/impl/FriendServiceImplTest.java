@@ -19,7 +19,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
-import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
+import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.social.entity.FriendRequest;
 import com.ttg.devknowledgeplatform.social.entity.Friendship;
 import com.ttg.devknowledgeplatform.social.entity.UserBlock;
@@ -71,7 +71,7 @@ class FriendServiceImplTest {
         assertThatThrownBy(() -> friendService.sendRequest(1, "alice-uuid"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(ErrorCode.CANNOT_FRIEND_SELF);
+                .isEqualTo(CommonErrorCode.CANNOT_FRIEND_SELF);
     }
 
     @Test
@@ -87,7 +87,7 @@ class FriendServiceImplTest {
         assertThatThrownBy(() -> friendService.sendRequest(1, "bob-uuid"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(ErrorCode.FRIEND_REQUEST_ALREADY_EXISTS);
+                .isEqualTo(CommonErrorCode.FRIEND_REQUEST_ALREADY_EXISTS);
     }
 
     @Test
@@ -144,7 +144,7 @@ class FriendServiceImplTest {
         assertThatThrownBy(() -> friendService.block(1, "alice-uuid"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(ErrorCode.CANNOT_FRIEND_SELF);
+                .isEqualTo(CommonErrorCode.CANNOT_FRIEND_SELF);
     }
 
     @Test
@@ -157,7 +157,7 @@ class FriendServiceImplTest {
         assertThatThrownBy(() -> friendService.unfriend(1, "bob-uuid"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(ErrorCode.NOT_FRIENDS);
+                .isEqualTo(CommonErrorCode.NOT_FRIENDS);
     }
 
     @Test
@@ -191,6 +191,6 @@ class FriendServiceImplTest {
         assertThatThrownBy(() -> friendService.sendRequest(1, "bob-uuid"))
                 .isInstanceOf(com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(ErrorCode.USER_NOT_FOUND);
+                .isEqualTo(CommonErrorCode.USER_NOT_FOUND);
     }
 }

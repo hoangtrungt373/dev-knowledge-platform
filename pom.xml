@@ -22,6 +22,7 @@
     <modules>
         <module>common</module>
         <module>infra</module>
+        <module>content-service</module>
         <module>ai-service</module>
         <module>social-service</module>
         <module>api</module>
@@ -52,6 +53,11 @@
             <dependency>
                 <groupId>com.ttg</groupId>
                 <artifactId>infra</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ttg</groupId>
+                <artifactId>content-service</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

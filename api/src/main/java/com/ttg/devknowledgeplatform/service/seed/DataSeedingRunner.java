@@ -1,5 +1,8 @@
 package com.ttg.devknowledgeplatform.service.seed;
 
+import com.ttg.devknowledgeplatform.content.service.seed.CategorySeeder;
+import com.ttg.devknowledgeplatform.content.service.seed.QuestionAnswerSeeder;
+import com.ttg.devknowledgeplatform.content.service.seed.TagSeeder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;

@@ -8,7 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
-import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
+import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.config.storage.StorageProperties;
 import com.ttg.devknowledgeplatform.service.StorageService;
 
@@ -66,10 +66,10 @@ public class StorageServiceImpl implements StorageService {
     public String uploadImage(String keyPrefix, MultipartFile file) {
         String contentType = file.getContentType();
         if (contentType == null || !contentType.startsWith("image/")) {
-            throw new ApiException(ErrorCode.VALIDATION_FIELD_INVALID, "Only image files are allowed");
+            throw new ApiException(CommonErrorCode.VALIDATION_FIELD_INVALID, "Only image files are allowed");
         }
         if (file.getSize() > 5L * 1024 * 1024) {
-            throw new ApiException(ErrorCode.VALIDATION_FIELD_INVALID, "File must not exceed 5 MB");
+            throw new ApiException(CommonErrorCode.VALIDATION_FIELD_INVALID, "File must not exceed 5 MB");
         }
         String objectKey = keyPrefix + "." + extensionFor(contentType);
         upload(objectKey, file);

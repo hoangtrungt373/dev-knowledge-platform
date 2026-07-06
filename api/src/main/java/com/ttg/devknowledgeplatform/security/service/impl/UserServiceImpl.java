@@ -13,7 +13,7 @@ import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.common.enums.UserProvider;
 import com.ttg.devknowledgeplatform.common.enums.UserStatus;
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
-import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
+import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.dto.OAuth2UserInfo;
@@ -103,7 +103,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public User resolveCurrentUser(CustomOAuth2User principal) {
         return userRepository.findByEmail(principal.getEmail())
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND, "User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found"));
     }
 
     @Override
@@ -135,13 +135,13 @@ public class UserServiceImpl implements UserService {
     @Override
     public User updateProfile(String email, String firstName, String lastName, String username) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND, "User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found"));
         user.setFirstName(firstName != null ? firstName.trim() : user.getFirstName());
         user.setLastName(lastName != null ? lastName.trim() : user.getLastName());
         if (username != null) {
             String trimmed = username.trim().toLowerCase();
             if (userRepository.existsByUsernameAndIdNot(trimmed, user.getId())) {
-                throw new ApiException(ErrorCode.USER_USERNAME_ALREADY_EXISTS, "Username '" + trimmed + "' is already taken");
+                throw new ApiException(CommonErrorCode.USER_USERNAME_ALREADY_EXISTS, "Username '" + trimmed + "' is already taken");
             }
             user.setUsername(trimmed);
         }
@@ -151,7 +151,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public User updateAvatar(String email, String objectKey) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND, "User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found"));
         user.setProfilePicture(objectKey);
         return userRepository.save(user);
     }
@@ -159,7 +159,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public User enableUser(String email) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND, "User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found"));
         user.setEnabled(true);
         user.setEmailVerified(true);
         return userRepository.save(user);

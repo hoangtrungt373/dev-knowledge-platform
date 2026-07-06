@@ -24,7 +24,7 @@ import java.util.List;
  *
  * <p>{@code ChatRequest.chatModel()} carries the id of the profile a client wants to use;
  * {@code null} falls back to {@link #defaultModel}. An id that does not match any configured
- * profile is rejected with {@code ErrorCode.AI_MODEL_UNSUPPORTED} — the profile list doubles
+ * profile is rejected with {@code CommonErrorCode.AI_MODEL_UNSUPPORTED} — the profile list doubles
  * as the allow-list, so clients can never invoke a model this application hasn't budgeted for.
  */
 @ConfigurationProperties(prefix = "app.ai.chat-models")

@@ -1,123 +1,21 @@
 package com.ttg.devknowledgeplatform.common.exception;
 
-
 import org.springframework.http.HttpStatus;
 
-import lombok.Getter;
-
 /**
- * Error codes for API responses
- * 
- * Format: MODULE_ACTION_ERROR
- * Example: AUTH_TOKEN_INVALID, USER_NOT_FOUND
+ * Contract for a domain error code, implemented by one enum per module that owns errors
+ * (e.g. {@link CommonErrorCode} here, {@code ContentErrorCode} in {@code content-service}).
+ *
+ * <p>Splitting this out as an interface — rather than one shared enum listing every module's
+ * codes — lets {@link ApiException}/{@link BusinessException}/{@link GlobalExceptionHandler}
+ * stay module-agnostic while each feature module owns and evolves its own error codes
+ * independently, without a compile-time dependency back onto that module from {@code common}.
  */
-@Getter
-public enum ErrorCode {
-    
-    // Authentication & Authorization Errors (AUTH_*)
-    AUTH_TOKEN_INVALID("AUTH_001", "Invalid or expired token", HttpStatus.UNAUTHORIZED),
-    AUTH_TOKEN_MISSING("AUTH_002", "Authorization token is required", HttpStatus.UNAUTHORIZED),
-    AUTH_TOKEN_EXPIRED("AUTH_003", "Token has expired", HttpStatus.UNAUTHORIZED),
-    AUTH_UNAUTHORIZED("AUTH_004", "Unauthorized access", HttpStatus.UNAUTHORIZED),
-    AUTH_FORBIDDEN("AUTH_005", "Access denied", HttpStatus.FORBIDDEN),
-    
-    // OAuth2 Errors (OAUTH_*)
-    OAUTH_STATE_TOKEN_INVALID("OAUTH_001", "Invalid or expired state token", HttpStatus.UNAUTHORIZED),
-    OAUTH_STATE_TOKEN_MISSING("OAUTH_002", "State token is required", HttpStatus.BAD_REQUEST),
-    OAUTH_EMAIL_NOT_FOUND("OAUTH_003", "Email not found from OAuth2 provider", HttpStatus.BAD_REQUEST),
-    OAUTH_PROVIDER_NOT_SUPPORTED("OAUTH_004", "OAuth2 provider not supported", HttpStatus.BAD_REQUEST),
-    
-    // User Errors (USER_*)
-    USER_NOT_FOUND("USER_001", "User not found", HttpStatus.NOT_FOUND),
-    USER_ALREADY_EXISTS("USER_002", "User already exists", HttpStatus.CONFLICT),
-    USER_EMAIL_INVALID("USER_003", "Invalid email format", HttpStatus.BAD_REQUEST),
-    USER_INVALID_STATUS("USER_004", "Invalid user status", HttpStatus.BAD_REQUEST),
+public interface ErrorCode {
 
-    // Category Errors (CATEGORY_*)
-    CATEGORY_NOT_FOUND("CATEGORY_001", "Category not found", HttpStatus.NOT_FOUND),
-    CATEGORY_NAME_CONFLICT("CATEGORY_002", "A category with this name already exists", HttpStatus.CONFLICT),
-    CATEGORY_SLUG_CONFLICT("CATEGORY_003", "Unable to generate unique slug for category", HttpStatus.CONFLICT),
-    CATEGORY_CYCLIC_PARENT("CATEGORY_004", "Invalid parent: would create a cycle in the category tree", HttpStatus.BAD_REQUEST),
-    CATEGORY_LIST_FILTER_CONFLICT("CATEGORY_005", "Use only one of rootOnly or parentId", HttpStatus.BAD_REQUEST),
+    String getCode();
 
-    // Tag Errors (TAG_*)
-    TAG_NOT_FOUND("TAG_001", "Tag not found", HttpStatus.NOT_FOUND),
-    TAG_NAME_CONFLICT("TAG_002", "A tag with this name already exists", HttpStatus.CONFLICT),
-    TAG_SLUG_CONFLICT("TAG_003", "Unable to generate unique slug for tag", HttpStatus.CONFLICT),
+    String getMessage();
 
-    // Question & Answer Errors (QA_*)
-    QUESTION_ANSWER_NOT_FOUND("QA_001", "Question not found", HttpStatus.NOT_FOUND),
-    QUESTION_ANSWER_SLUG_CONFLICT("QA_002", "Slug conflict: unable to generate unique slug", HttpStatus.CONFLICT),
-    QUESTION_ANSWER_IN_USE("QA_003", "Question is referenced and cannot be deleted", HttpStatus.CONFLICT),
-
-    // Article Errors (ARTICLE_*)
-    ARTICLE_NOT_FOUND("ARTICLE_001", "Article not found", HttpStatus.NOT_FOUND),
-    ARTICLE_SLUG_CONFLICT("ARTICLE_002", "Slug conflict: unable to generate unique slug", HttpStatus.CONFLICT),
-    ARTICLE_TYPE_INVALID("ARTICLE_003", "Article type must be ARTICLE or BLOG_POST", HttpStatus.BAD_REQUEST),
-
-    // Category delete guard
-    CATEGORY_HAS_CHILDREN("CATEGORY_006", "Category has children and cannot be deleted", HttpStatus.CONFLICT),
-    CATEGORY_IN_USE("CATEGORY_007", "Category is used by content items and cannot be deleted", HttpStatus.CONFLICT),
-
-    // Tag delete guard
-    TAG_IN_USE("TAG_004", "Tag is used by content items and cannot be deleted", HttpStatus.CONFLICT),
-
-    // OTP Errors (OTP_*)
-    AUTH_OTP_INVALID("OTP_001", "Invalid OTP code", HttpStatus.BAD_REQUEST),
-    AUTH_OTP_EXPIRED("OTP_002", "OTP has expired or was not found", HttpStatus.BAD_REQUEST),
-    AUTH_OTP_EMAIL_NOT_PENDING("OTP_003", "No pending verification found for this email", HttpStatus.BAD_REQUEST),
-
-    // User errors
-    USER_PASSWORD_INVALID("USER_005", "Password must be at least 8 characters", HttpStatus.BAD_REQUEST),
-    USER_EMAIL_ALREADY_EXISTS("USER_006", "An account with this email already exists", HttpStatus.CONFLICT),
-    USER_USERNAME_ALREADY_EXISTS("USER_007", "This username is already taken", HttpStatus.CONFLICT),
-    USER_USERNAME_INVALID("USER_008", "Username must be 3–30 characters and may only contain lowercase letters, numbers, and underscores", HttpStatus.BAD_REQUEST),
-
-    // Validation Errors (VALIDATION_*)
-    VALIDATION_FAILED("VALIDATION_001", "Validation failed", HttpStatus.BAD_REQUEST),
-    VALIDATION_FIELD_REQUIRED("VALIDATION_002", "Required field is missing", HttpStatus.BAD_REQUEST),
-    VALIDATION_FIELD_INVALID("VALIDATION_003", "Invalid field value", HttpStatus.BAD_REQUEST),
-    
-    // Server Errors (SERVER_*)
-    SERVER_INTERNAL_ERROR("SERVER_001", "Internal server error", HttpStatus.INTERNAL_SERVER_ERROR),
-    SERVER_DATABASE_ERROR("SERVER_002", "Database error occurred", HttpStatus.INTERNAL_SERVER_ERROR),
-    SERVER_EXTERNAL_SERVICE_ERROR("SERVER_003", "External service error", HttpStatus.SERVICE_UNAVAILABLE),
-    
-    // Resource Errors (RESOURCE_*)
-    RESOURCE_NOT_FOUND("RESOURCE_001", "Resource not found", HttpStatus.NOT_FOUND),
-    RESOURCE_ALREADY_EXISTS("RESOURCE_002", "Resource already exists", HttpStatus.CONFLICT),
-    
-    // Request Errors (REQUEST_*)
-    REQUEST_BODY_INVALID("REQUEST_001", "Invalid request body", HttpStatus.BAD_REQUEST),
-    REQUEST_PARAMETER_MISSING("REQUEST_002", "Required parameter is missing", HttpStatus.BAD_REQUEST),
-    REQUEST_METHOD_NOT_ALLOWED("REQUEST_003", "HTTP method not allowed", HttpStatus.METHOD_NOT_ALLOWED),
-
-    // AI / RAG Errors (AI_*)
-    AI_SERVICE_UNAVAILABLE("AI_001", "AI service is temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE),
-    AI_EMBEDDING_FAILED("AI_002", "Failed to generate embedding for the provided text", HttpStatus.SERVICE_UNAVAILABLE),
-    AI_MODEL_UNSUPPORTED("AI_003", "Requested chat model is not supported", HttpStatus.BAD_REQUEST),
-
-    // Rate Limiting (RATE_*)
-    RATE_LIMIT_EXCEEDED("RATE_001", "Too many requests — please slow down and try again", HttpStatus.TOO_MANY_REQUESTS),
-
-    // Chat Session (CHAT_*)
-    CHAT_SESSION_NOT_FOUND("CHAT_001", "Chat session not found or does not belong to the current user", HttpStatus.NOT_FOUND),
-
-    // Friend Management Errors (FRIEND_*)
-    CANNOT_FRIEND_SELF("FRIEND_001", "You cannot send a friend request to yourself", HttpStatus.BAD_REQUEST),
-    FRIEND_REQUEST_ALREADY_EXISTS("FRIEND_002", "A pending friend request already exists between these users", HttpStatus.CONFLICT),
-    FRIEND_REQUEST_NOT_FOUND("FRIEND_003", "Friend request not found", HttpStatus.NOT_FOUND),
-    ALREADY_FRIENDS("FRIEND_004", "These users are already friends", HttpStatus.CONFLICT),
-    NOT_FRIENDS("FRIEND_005", "These users are not friends", HttpStatus.BAD_REQUEST),
-    USER_ALREADY_BLOCKED("FRIEND_006", "This user is already blocked", HttpStatus.CONFLICT);
-    
-    private final String code;
-    private final String message;
-    private final HttpStatus httpStatus;
-    
-    ErrorCode(String code, String message, HttpStatus httpStatus) {
-        this.code = code;
-        this.message = message;
-        this.httpStatus = httpStatus;
-    }
+    HttpStatus getHttpStatus();
 }

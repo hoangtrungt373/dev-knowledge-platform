@@ -3,7 +3,7 @@ package com.ttg.devknowledgeplatform.ai.service.impl;
 import com.ttg.devknowledgeplatform.ai.config.ChatModelsConfig;
 import com.ttg.devknowledgeplatform.ai.service.ChatModelResolver;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
-import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
+import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +31,7 @@ public class ChatModelResolverImpl implements ChatModelResolver {
         String resolvedId = resolveModelId(modelId);
         ChatLanguageModel model = chatLanguageModels.get(resolvedId);
         if (model == null) {
-            throw new BusinessException(ErrorCode.AI_MODEL_UNSUPPORTED, "Unsupported chat model: " + modelId);
+            throw new BusinessException(CommonErrorCode.AI_MODEL_UNSUPPORTED, "Unsupported chat model: " + modelId);
         }
         return model;
     }
@@ -41,7 +41,7 @@ public class ChatModelResolverImpl implements ChatModelResolver {
         String resolvedId = resolveModelId(modelId);
         StreamingChatLanguageModel model = streamingChatLanguageModels.get(resolvedId);
         if (model == null) {
-            throw new BusinessException(ErrorCode.AI_MODEL_UNSUPPORTED, "Unsupported chat model: " + modelId);
+            throw new BusinessException(CommonErrorCode.AI_MODEL_UNSUPPORTED, "Unsupported chat model: " + modelId);
         }
         return model;
     }

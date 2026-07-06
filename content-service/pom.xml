@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.ttg</groupId>
+        <artifactId>dev-knowledge-platform</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>content-service</artifactId>
+    <name>Content Service</name>
+    <description>Categories, tags, and content items (Q&amp;A, articles) — the knowledge corpus surfaced by the RAG pipeline</description>
+
+    <dependencies>
+
+        <!-- Internal -->
+        <dependency>
+            <groupId>com.ttg</groupId>
+            <artifactId>common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ttg</groupId>
+            <artifactId>infra</artifactId>
+        </dependency>
+
+        <!-- ContentErrorCode implements the common ErrorCode interface and references HttpStatus
+             directly in main code (unlike social-service, which never names HttpStatus outside
+             tests) — common declares spring-boot-starter-web as optional, so it isn't inherited
+             transitively; this module needs it on the compile classpath itself. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Commons CSV — startup data seeding from CSV files (Category, Tag) -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-csv</artifactId>
+        </dependency>
+
+        <!-- SnakeYAML — front-matter parsing for Markdown-based seed data (QuestionAnswer);
+             version managed by spring-boot-starter-parent's dependencyManagement -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+        </dependency>
+
+    </dependencies>
+
+</project>

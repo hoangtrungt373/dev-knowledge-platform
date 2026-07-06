@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.service;
 
-import com.ttg.devknowledgeplatform.common.enums.ContentType;
+import com.ttg.devknowledgeplatform.content.enums.ContentType;
 
 /**
  * Evaluates the quality of a document's embeddings after ingestion by comparing each chunk

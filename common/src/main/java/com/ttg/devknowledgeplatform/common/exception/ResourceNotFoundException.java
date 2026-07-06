@@ -16,6 +16,6 @@ public class ResourceNotFoundException extends BusinessException {
     }
     
     public ResourceNotFoundException(String resource, String identifier) {
-        super(ErrorCode.RESOURCE_NOT_FOUND, String.format("%s with identifier '%s' not found", resource, identifier));
+        super(CommonErrorCode.RESOURCE_NOT_FOUND, String.format("%s with identifier '%s' not found", resource, identifier));
     }
 }

@@ -1,17 +1,20 @@
 package com.ttg.devknowledgeplatform.api.impl;
 
 import com.ttg.devknowledgeplatform.api.PublicContentApi;
-import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.common.enums.ContentType;
-import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
+import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.content.enums.ContentType;
+import com.ttg.devknowledgeplatform.content.enums.QuestionDifficulty;
+import com.ttg.devknowledgeplatform.content.service.ArticleService;
+import com.ttg.devknowledgeplatform.content.service.QuestionAnswerService;
 import com.ttg.devknowledgeplatform.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.dto.admin.ArticleResponse;
 import com.ttg.devknowledgeplatform.dto.admin.QuestionAnswerResponse;
-import com.ttg.devknowledgeplatform.repository.ContentItemRepository;
-import com.ttg.devknowledgeplatform.service.ArticleService;
-import com.ttg.devknowledgeplatform.service.QuestionAnswerService;
+import com.ttg.devknowledgeplatform.content.repository.ContentItemRepository;
+import com.ttg.devknowledgeplatform.mapper.ArticleMapper;
+import com.ttg.devknowledgeplatform.mapper.QuestionAnswerMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -33,7 +36,9 @@ public class PublicContentController implements PublicContentApi {
     private static final Set<String> ARTICLE_SORT_FIELDS = Set.of("id", "dteCreation");
 
     private final QuestionAnswerService questionAnswerService;
+    private final QuestionAnswerMapper questionAnswerMapper;
     private final ArticleService articleService;
+    private final ArticleMapper articleMapper;
     private final ContentItemRepository contentItemRepository;
 
     @Override
@@ -41,16 +46,17 @@ public class PublicContentController implements PublicContentApi {
             int page, int size, String sortBy, String sortDir,
             QuestionDifficulty difficulty, Boolean isCommon, String q) {
         Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir, QA_SORT_FIELDS));
-        PagedResponse<QuestionAnswerResponse> response =
-                questionAnswerService.list(pageable, difficulty, ContentStatus.PUBLISHED, isCommon, q);
-        return ResponseEntity.ok(response);
+        Page<QuestionAnswerResponse> responses =
+                questionAnswerService.list(pageable, difficulty, ContentStatus.PUBLISHED, isCommon, q)
+                        .map(questionAnswerMapper::toResponse);
+        return ResponseEntity.ok(PagedResponse.from(responses));
     }
 
     @Override
     @Transactional
     public ResponseEntity<QuestionAnswerResponse> getQuestionAnswerBySlug(String slug) {
         contentItemRepository.findBySlug(slug).ifPresent(ci -> contentItemRepository.incrementViewCount(ci.getId()));
-        QuestionAnswerResponse response = questionAnswerService.getBySlug(slug);
+        QuestionAnswerResponse response = questionAnswerMapper.toResponse(questionAnswerService.getBySlug(slug));
         return ResponseEntity.ok(response);
     }
 
@@ -58,16 +64,17 @@ public class PublicContentController implements PublicContentApi {
     public ResponseEntity<PagedResponse<ArticleResponse>> listArticles(
             int page, int size, String sortBy, String sortDir, ContentType type, String q) {
         Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir, ARTICLE_SORT_FIELDS));
-        PagedResponse<ArticleResponse> response =
-                articleService.list(pageable, type, ContentStatus.PUBLISHED, q);
-        return ResponseEntity.ok(response);
+        Page<ArticleResponse> responses =
+                articleService.list(pageable, type, ContentStatus.PUBLISHED, q)
+                        .map(articleMapper::toResponse);
+        return ResponseEntity.ok(PagedResponse.from(responses));
     }
 
     @Override
     @Transactional
     public ResponseEntity<ArticleResponse> getArticleBySlug(String slug) {
         contentItemRepository.findBySlug(slug).ifPresent(ci -> contentItemRepository.incrementViewCount(ci.getId()));
-        ArticleResponse response = articleService.getBySlug(slug);
+        ArticleResponse response = articleMapper.toResponse(articleService.getBySlug(slug));
         return ResponseEntity.ok(response);
     }
 

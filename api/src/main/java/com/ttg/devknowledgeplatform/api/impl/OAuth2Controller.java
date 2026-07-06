@@ -4,7 +4,7 @@ import com.ttg.devknowledgeplatform.api.OAuth2Api;
 import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.common.enums.UserStatus;
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
-import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
+import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.dto.RegisterRequest;
@@ -64,10 +64,10 @@ public class OAuth2Controller implements OAuth2Api {
         User user = userService.findByEmail(request.getEmail());
 
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new ApiException(ErrorCode.AUTH_UNAUTHORIZED, "Invalid email or password");
+            throw new ApiException(CommonErrorCode.AUTH_UNAUTHORIZED, "Invalid email or password");
         }
         if (!user.getEnabled()) {
-            throw new ApiException(ErrorCode.AUTH_FORBIDDEN, "Account is disabled");
+            throw new ApiException(CommonErrorCode.AUTH_FORBIDDEN, "Account is disabled");
         }
 
         userService.updateStatus(user.getId(), UserStatus.ONLINE);
@@ -90,7 +90,7 @@ public class OAuth2Controller implements OAuth2Api {
     @Override
     public ResponseEntity<LoginResponse> register(RegisterRequest request) {
         if (userService.findByEmail(request.getEmail()) != null) {
-            throw new ApiException(ErrorCode.USER_EMAIL_ALREADY_EXISTS,
+            throw new ApiException(CommonErrorCode.USER_EMAIL_ALREADY_EXISTS,
                     "An account with email '" + request.getEmail() + "' already exists");
         }
 
@@ -125,10 +125,10 @@ public class OAuth2Controller implements OAuth2Api {
         String email = request.getEmail();
 
         if (!otpService.hasPendingOtp(email)) {
-            throw new ApiException(ErrorCode.AUTH_OTP_EXPIRED, "OTP has expired, please request a new one");
+            throw new ApiException(CommonErrorCode.AUTH_OTP_EXPIRED, "OTP has expired, please request a new one");
         }
         if (!otpService.verify(email, request.getOtp())) {
-            throw new ApiException(ErrorCode.AUTH_OTP_INVALID, "Invalid OTP code");
+            throw new ApiException(CommonErrorCode.AUTH_OTP_INVALID, "Invalid OTP code");
         }
 
         User user = userService.enableUser(email);
@@ -155,10 +155,10 @@ public class OAuth2Controller implements OAuth2Api {
         User user = userService.findByEmail(email);
 
         if (user == null) {
-            throw new ApiException(ErrorCode.USER_NOT_FOUND, "No account found for this email");
+            throw new ApiException(CommonErrorCode.USER_NOT_FOUND, "No account found for this email");
         }
         if (user.getEmailVerified()) {
-            throw new ApiException(ErrorCode.AUTH_OTP_EMAIL_NOT_PENDING, "Email is already verified");
+            throw new ApiException(CommonErrorCode.AUTH_OTP_EMAIL_NOT_PENDING, "Email is already verified");
         }
 
         String otp = otpService.generateAndStore(email);
@@ -172,7 +172,7 @@ public class OAuth2Controller implements OAuth2Api {
     public ResponseEntity<LoginResponse> exchangeState(ExchangeStateRequest request) {
         Map<String, String> tokenData = stateTokenService.getTokenData(request.getStateToken());
         if (tokenData == null) {
-            throw new ApiException(ErrorCode.AUTH_TOKEN_INVALID, "State token not found or expired");
+            throw new ApiException(CommonErrorCode.AUTH_TOKEN_INVALID, "State token not found or expired");
         }
         stateTokenService.deleteTokenData(request.getStateToken());
         log.info("State token exchanged for user: {}", tokenData.get("email"));
@@ -191,7 +191,7 @@ public class OAuth2Controller implements OAuth2Api {
     public ResponseEntity<UserInfoResponse> getCurrentUser(CustomOAuth2User principal) {
         User user = userService.findByEmail(principal.getEmail());
         if (user == null) {
-            throw new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND, "User not found");
+            throw new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found");
         }
         return ResponseEntity.ok(userMapper.toUserInfo(user));
     }
@@ -209,17 +209,17 @@ public class OAuth2Controller implements OAuth2Api {
     @Override
     public ResponseEntity<TokenResponse> refreshToken(RefreshTokenRequest request) {
         if (request.getRefreshToken() == null || request.getRefreshToken().isEmpty()) {
-            throw new ApiException(ErrorCode.AUTH_TOKEN_MISSING, "Refresh token is required");
+            throw new ApiException(CommonErrorCode.AUTH_TOKEN_MISSING, "Refresh token is required");
         }
         try {
             String newToken = jwtTokenProvider.refreshToken(request.getRefreshToken());
             return ResponseEntity.ok(new TokenResponse(newToken));
         } catch (IllegalArgumentException e) {
             log.error("Token refresh failed: {}", e.getMessage());
-            throw new ApiException(ErrorCode.AUTH_TOKEN_INVALID, e.getMessage());
+            throw new ApiException(CommonErrorCode.AUTH_TOKEN_INVALID, e.getMessage());
         } catch (Exception e) {
             log.error("Token refresh failed", e);
-            throw new ApiException(ErrorCode.AUTH_TOKEN_INVALID, "Token refresh failed");
+            throw new ApiException(CommonErrorCode.AUTH_TOKEN_INVALID, "Token refresh failed");
         }
     }
 }

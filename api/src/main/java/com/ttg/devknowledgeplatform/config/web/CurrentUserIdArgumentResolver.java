@@ -2,7 +2,7 @@ package com.ttg.devknowledgeplatform.config.web;
 
 import com.ttg.devknowledgeplatform.annotation.CurrentUserId;
 import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
+import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.repository.UserRepository;
@@ -83,7 +83,7 @@ public class CurrentUserIdArgumentResolver implements HandlerMethodArgumentResol
         CustomOAuth2User principal = (CustomOAuth2User) auth.getPrincipal();
         User user = userRepository.findByUserUuid(principal.getUserUuid())
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        ErrorCode.USER_NOT_FOUND, "No user found for UUID: " + principal.getUserUuid()));
+                        CommonErrorCode.USER_NOT_FOUND, "No user found for UUID: " + principal.getUserUuid()));
         return user.getId();
     }
 }

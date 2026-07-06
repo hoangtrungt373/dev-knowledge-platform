@@ -6,7 +6,7 @@ import com.ttg.devknowledgeplatform.ai.entity.ContentEmbedding;
 import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;
 import com.ttg.devknowledgeplatform.ai.service.CorpusStatisticsService;
 import com.ttg.devknowledgeplatform.ai.utils.VectorUtils;
-import com.ttg.devknowledgeplatform.common.enums.ContentType;
+import com.ttg.devknowledgeplatform.content.enums.ContentType;
 import com.ttg.devknowledgeplatform.service.IndexingQualityService;
 import com.ttg.devknowledgeplatform.service.QualityVerdict;
 import lombok.RequiredArgsConstructor;
