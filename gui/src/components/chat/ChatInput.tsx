@@ -74,11 +74,11 @@ export default function ChatInput({ onSend, onStop, disabled, streaming }: Props
           sx: {
             borderRadius: 2,
             fontSize: '0.875rem',
-            alignItems: 'flex-end',
+            alignItems: 'center',
             pr: 0.5,
           },
           endAdornment: (
-            <InputAdornment position="end" sx={{ mb: 0.5 }}>
+            <InputAdornment position="end">
               {streaming ? (
                 <Tooltip title="Stop generation">
                   <IconButton size="small" onClick={onStop} color="error">

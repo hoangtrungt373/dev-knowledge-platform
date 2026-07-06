@@ -7,11 +7,14 @@ dev-knowledge-platform/
 ├── common/          — shared entities, enums, exceptions, DTOs; depends on Spring Data JPA (for @Entity), validation, web, security (all as annotation/type support, not full autoconfiguration)
 ├── infra/           — shared Spring infrastructure: event base classes, composed annotations, MDC utilities
 ├── ai-service/      — RAG pipeline: embedding, vector search, LLM generation (LangChain4j)
+├── social-service/  — friend graph: search visibility, requests, friendships, blocking (later: chat/groups/messaging)
 ├── api/             — REST endpoints, security, Liquibase migrations, Spring Boot entry point
 └── gui/             — React 18 + TypeScript + MUI frontend (Vite)
 ```
 
-Dependency order: `common` ← `infra` ← `ai-service` ← `api`. `gui` is independent.
+Dependency order: `common` ← `infra` ← `ai-service`/`social-service` ← `api`. `gui` is independent.
+`social-service` mirrors `ai-service`'s shape (a business-logic module `api` depends on and wires up via REST) —
+it depends only on `common` + `infra`, never on `api`, so it cannot reuse `api`'s repositories or services.
 
 ---
 
@@ -31,6 +34,11 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │   ├── QuestionAnswer.java           — general dev-knowledge Q&A, not only interview prep;
 │   │                                    difficulty/isCommon are nullable interview-specific metadata
 │   ├── Tag.java
+│   ├── User.java                     — userUuid, email, username, password, firstName, lastName, profilePicture,
+│   │                                    provider (UserProvider), role (UserRole), providerId, emailVerified, status
+│   │                                    (UserStatus, presence), enabled; referenced by FK from social-service's
+│   │                                    FriendRequest/Friendship/UserBlock entities (which live there, not here —
+│   │                                    see social-service section below)
 │   ├── ChatSession.java              — userId, title, lastActivityAt, summary (TEXT); parent of ChatMessage rows
 │   └── ChatMessage.java              — role, content, turnIndex; child of ChatSession
 ├── enums/
@@ -81,6 +89,52 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
                                          MDC TRACE_ID binding (opt-in via resolveTraceId()), timing, and exception safety;
                                          subclasses implement doHandle(); subclasses that need DB writes declare @Transactional themselves
 ```
+
+---
+
+## social-service
+
+```
+social-service/src/main/java/com/ttg/devknowledgeplatform/social/
+├── entity/
+│   ├── FriendRequest.java         — requester/addressee (User, common), status (FriendRequestStatus)
+│   ├── Friendship.java            — user1/user2 (User), canonically ordered (user1.id < user2.id) so each
+│   │                                 pair has exactly one row regardless of who sent the original request
+│   └── UserBlock.java             — blocker/blocked (User); directional, independent of Friendship/FriendRequest
+├── enums/
+│   ├── FriendRequestStatus.java   — PENDING, ACCEPTED, REJECTED, CANCELLED
+│   └── RelationshipStatus.java    — STRANGER, REQUEST_SENT, REQUEST_RECEIVED, FRIENDS, BLOCKED; computed
+│                                     (not persisted) per profile/search-result view from the viewer's perspective
+├── repository/
+│   ├── FriendRequestRepository.java
+│   ├── FriendshipRepository.java  — findFriendUserIds() used by the service for mutual-friend-count set intersection
+│   ├── UserBlockRepository.java
+│   ├── SocialUserRepository.java  — read access to User for this module; deliberately not named
+│   │                                 UserRepository — api already has one over the same entity, and two Spring
+│   │                                 Data repositories with the same simple name in different packages collide
+│   │                                 on the default bean name at startup
+│   └── spec/
+│       └── UserSpecification.java — fuzzy username/name match, exact email match, excludes any user blocked
+│                                     in either direction relative to the viewer
+├── event/
+│   ├── FriendRequestSentEvent.java     — record; published right after a pending FriendRequest is created
+│   └── FriendRequestAcceptedEvent.java — record; published when a Friendship is created (explicit accept
+│                                          or mutual auto-accept)
+└── service/
+    ├── FriendService.java           — sendRequest, accept/reject/cancelRequest, unfriend, block/unblock,
+    │                                   getRelationshipStatus, countMutualFriends, listFriends/Incoming/Outgoing/
+    │                                   BlockedUsers, searchUsers; returns entities, not REST DTOs — api's
+    │                                   FriendMapper does entity→response mapping (same split as ai-service's
+    │                                   RagQueryService → api's ChatResponse)
+    └── impl/
+        └── FriendServiceImpl.java   — mutual-request auto-accept; block cascades (removes friendship + pending
+                                        request between the pair before recording the block); mutual invisibility
+                                        (a lookup of a user who has blocked the viewer throws USER_NOT_FOUND, same
+                                        as a nonexistent UUID, never a distinguishable "blocked" error)
+```
+
+Chat/groups/messaging (deferred) will be added here as new packages when that phase starts, not as a
+separate module — see `docs/CHANGELOG.md` for the reasoning.
 
 ---
 
@@ -230,11 +284,20 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 ├── api/                              — controller interfaces (HTTP annotations live here)
 │   ├── EmbeddingIndexApi.java        — GET /api/v1/admin/embeddings?page&size&q&contentType&contentStatus&indexed (admin-only)
 │   ├── PipelineMetricsApi.java       — GET /api/v1/admin/pipeline-metrics/summary?period=LAST_7_DAYS (admin-only)
+│   ├── UserApi.java                  — PUT /me, POST /me/avatar, GET /public/{userUuid} (enriched with
+│   │                                    relationshipStatus/mutualFriendCount for authenticated viewers —
+│   │                                    404s instead of leaking a "blocked" state if the target blocked the
+│   │                                    viewer), GET /search?q= (fuzzy name/username, exact email)
+│   ├── FriendApi.java                — /api/v1/friends/**: send/accept/reject/cancel requests, list
+│   │                                    incoming/outgoing/friends, unfriend, block/unblock, list blocked users;
+│   │                                    delegates to social-service's FriendService
 │   └── impl/
 │       ├── ChatController.java            — POST /api/v1/chat, POST /api/v1/chat/stream;
 │       │                                    builds RagFilter from ChatRequest and passes to RagQueryService
 │       ├── EmbeddingIndexController.java  — delegates to EmbeddingIndexService; no mapping logic
 │       ├── PipelineMetricsController.java — delegates to PipelineMetricsSummaryService; no mapping logic
+│       ├── UserController.java            — see UserApi above
+│       ├── FriendController.java          — see FriendApi above
 │       └── …                              — other controllers
 ├── config/
 │   ├── SecurityConfig.java           — JWT + OAuth2 filter chain
@@ -258,13 +321,22 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 ├── database/
 │   └── sql/                          — Liquibase changelogs (master: dev-knowledge-platform.xml)
 ├── dto/
-│   └── chat/
-│       ├── ChatRequest.java          — question, sessionId, sourceTypes, categoryId, tags, chatModel
-│       │                                (chatModel: optional model id, e.g. "claude-sonnet-5"; null = server default)
-│       ├── ChatResponse.java
-│       ├── ChatSessionHistoryDto.java
-│       └── ChatSessionSummaryDto.java
+│   ├── chat/
+│   │   ├── ChatRequest.java          — question, sessionId, sourceTypes, categoryId, tags, chatModel
+│   │   │                                (chatModel: optional model id, e.g. "claude-sonnet-5"; null = server default)
+│   │   ├── ChatResponse.java
+│   │   ├── ChatSessionHistoryDto.java
+│   │   └── ChatSessionSummaryDto.java
+│   └── friend/                       — Java records (immutable), not the older Lombok @Data/@Builder style
+│       ├── UserSummaryResponse.java       — userUuid, username, firstName, lastName, profilePicture, status;
+│       │                                    nested inside the three below rather than repeating the fields
+│       ├── UserSearchResultResponse.java  — UserSummaryResponse + relationshipStatus + mutualFriendCount
+│       ├── FriendRequestResponse.java     — id, requester, addressee, status, createdAt
+│       └── FriendSummaryResponse.java     — UserSummaryResponse + friendsSince
 ├── mapper/                           — MapStruct mappers (DTO ↔ entity)
+│   └── FriendMapper.java             — abstract class (not interface) like UserMapper — needs an injected
+│                                        StorageService for presigned avatar URLs, and MapStruct interfaces
+│                                        can't hold instance fields; maps social-service entities to dto/friend/*
 ├── repository/
 │   ├── spec/                         — JPA Specification implementations for dynamic filtering
 │   └── …
@@ -408,5 +480,12 @@ expected over time, and are modelled as data, not schema:
 - Audit columns on every entity via `AbstractEntity`
 - pgvector HNSW index on `content_embedding.embedding` (cosine distance, `vector_cosine_ops`)
 - `SYS_PARAM` — general-purpose key-value table; stores corpus centroid vectors and future AI/config parameters
-- Migrations: `api/src/main/java/com/ttg/devknowledgeplatform/database/sql/`
+- `FRIEND_REQUEST` / `FRIENDSHIP` / `USER_BLOCK` (DKP-0015) — friend graph, backing `social-service`'s
+  entities of the same names. `FRIENDSHIP` stores each pair once with `USER_ID_1 < USER_ID_2` enforced by
+  a check constraint. `FRIEND_REQUEST` has a partial unique index on the unordered pair
+  `WHERE STATUS = 'PENDING'` — only pending rows are constrained, so a rejected/cancelled request doesn't
+  block a later re-request. `USER_BLOCK` is directional (no implied reverse row).
+- Migrations: `api/src/main/java/com/ttg/devknowledgeplatform/database/sql/` (Liquibase config lives in
+  `api` regardless of which module owns the entities the migration backs — `social-service`'s tables are
+  migrated from here too, same as `ai-service`'s)
   - Naming: `YYYY/VERSION/YYYYMMDDHHMI__VERSION__TICKET__description.sql`

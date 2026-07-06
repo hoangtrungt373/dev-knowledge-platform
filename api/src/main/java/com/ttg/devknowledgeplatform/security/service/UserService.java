@@ -5,6 +5,7 @@ import java.util.Optional;
 import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.common.enums.UserProvider;
 import com.ttg.devknowledgeplatform.common.enums.UserStatus;
+import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.dto.OAuth2UserInfo;
 
 /**
@@ -58,6 +59,18 @@ public interface UserService {
      * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException if no user exists with that email
      */
     User findByEmail(String email);
+
+    /**
+     * Resolves the {@link User} entity behind an authenticated OAuth2 principal.
+     *
+     * <p>Centralizes the {@code principal.getEmail()} → {@code findByEmail} lookup that would
+     * otherwise be repeated in every controller needing "the acting user."
+     *
+     * @param principal the authenticated principal from the security context
+     * @return the matching {@link User}
+     * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException if no user exists with that email
+     */
+    User resolveCurrentUser(CustomOAuth2User principal);
 
     /**
      * Returns the user with the given public UUID, throwing if not found.

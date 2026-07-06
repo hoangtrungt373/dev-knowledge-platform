@@ -15,6 +15,7 @@ import com.ttg.devknowledgeplatform.common.enums.UserStatus;
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.dto.OAuth2UserInfo;
 import com.ttg.devknowledgeplatform.repository.UserRepository;
 import com.ttg.devknowledgeplatform.security.service.UserService;
@@ -97,6 +98,12 @@ public class UserServiceImpl implements UserService {
     @Override
     public User findByEmail(String email) {
         return userRepository.findByEmail(email).orElse(null);
+    }
+
+    @Override
+    public User resolveCurrentUser(CustomOAuth2User principal) {
+        return userRepository.findByEmail(principal.getEmail())
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND, "User not found"));
     }
 
     @Override

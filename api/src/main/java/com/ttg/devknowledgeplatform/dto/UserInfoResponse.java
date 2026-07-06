@@ -20,4 +20,10 @@ public class UserInfoResponse {
     private String status;
     private Instant createdAt;
     private Instant lastModified;
+
+    /** Viewer's relationship to this user (e.g. {@code FRIENDS}, {@code STRANGER}); {@code null} when viewing anonymously or viewing your own profile. */
+    private String relationshipStatus;
+
+    /** Friends in common with the viewer; {@code null} under the same conditions as {@link #relationshipStatus}. */
+    private Long mutualFriendCount;
 }
