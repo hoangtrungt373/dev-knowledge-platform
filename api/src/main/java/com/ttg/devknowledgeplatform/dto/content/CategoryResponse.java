@@ -1,22 +1,20 @@
-package com.ttg.devknowledgeplatform.dto.admin;
+package com.ttg.devknowledgeplatform.dto.content;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Builder;
 import lombok.Data;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.time.Instant;
 
 @Data
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class CategoryTreeNodeResponse {
+public class CategoryResponse {
 
     private Integer id;
     private String name;
     private String slug;
     private Integer parentId;
-
-    @Builder.Default
-    private List<CategoryTreeNodeResponse> children = new ArrayList<>();
+    private Instant createdAt;
+    private Instant updatedAt;
 }

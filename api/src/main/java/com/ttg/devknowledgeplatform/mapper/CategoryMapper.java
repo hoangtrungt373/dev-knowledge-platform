@@ -5,8 +5,8 @@ import org.mapstruct.Mapping;
 
 import com.ttg.devknowledgeplatform.content.entity.Category;
 import com.ttg.devknowledgeplatform.content.service.CategoryTreeNode;
-import com.ttg.devknowledgeplatform.dto.admin.CategoryResponse;
-import com.ttg.devknowledgeplatform.dto.admin.CategoryTreeNodeResponse;
+import com.ttg.devknowledgeplatform.dto.content.CategoryResponse;
+import com.ttg.devknowledgeplatform.dto.content.CategoryTreeNodeResponse;
 
 @Mapper(componentModel = "spring")
 public interface CategoryMapper {

@@ -9,7 +9,7 @@ import org.mapstruct.Mapping;
 
 import com.ttg.devknowledgeplatform.content.entity.Article;
 import com.ttg.devknowledgeplatform.content.entity.ContentItemTag;
-import com.ttg.devknowledgeplatform.dto.admin.ArticleResponse;
+import com.ttg.devknowledgeplatform.dto.content.ArticleResponse;
 
 @Mapper(componentModel = "spring")
 public interface ArticleMapper {

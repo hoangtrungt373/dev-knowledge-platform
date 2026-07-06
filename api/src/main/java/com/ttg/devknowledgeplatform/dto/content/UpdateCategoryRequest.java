@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.dto.admin;
+package com.ttg.devknowledgeplatform.dto.content;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;

@@ -2,9 +2,9 @@ package com.ttg.devknowledgeplatform.api;
 
 import com.ttg.devknowledgeplatform.content.enums.TagStatus;
 import com.ttg.devknowledgeplatform.dto.PagedResponse;
-import com.ttg.devknowledgeplatform.dto.admin.CreateTagRequest;
-import com.ttg.devknowledgeplatform.dto.admin.TagResponse;
-import com.ttg.devknowledgeplatform.dto.admin.UpdateTagRequest;
+import com.ttg.devknowledgeplatform.dto.content.CreateTagRequest;
+import com.ttg.devknowledgeplatform.dto.content.TagResponse;
+import com.ttg.devknowledgeplatform.dto.content.UpdateTagRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;

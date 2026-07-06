@@ -1,10 +1,10 @@
 package com.ttg.devknowledgeplatform.api;
 
 import com.ttg.devknowledgeplatform.dto.PagedResponse;
-import com.ttg.devknowledgeplatform.dto.admin.CategoryResponse;
-import com.ttg.devknowledgeplatform.dto.admin.CategoryTreeNodeResponse;
-import com.ttg.devknowledgeplatform.dto.admin.CreateCategoryRequest;
-import com.ttg.devknowledgeplatform.dto.admin.UpdateCategoryRequest;
+import com.ttg.devknowledgeplatform.dto.content.CategoryResponse;
+import com.ttg.devknowledgeplatform.dto.content.CategoryTreeNodeResponse;
+import com.ttg.devknowledgeplatform.dto.content.CreateCategoryRequest;
+import com.ttg.devknowledgeplatform.dto.content.UpdateCategoryRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;

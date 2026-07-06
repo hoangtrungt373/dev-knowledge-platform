@@ -9,7 +9,7 @@ import org.mapstruct.Mapping;
 
 import com.ttg.devknowledgeplatform.content.entity.ContentItemTag;
 import com.ttg.devknowledgeplatform.content.entity.QuestionAnswer;
-import com.ttg.devknowledgeplatform.dto.admin.QuestionAnswerResponse;
+import com.ttg.devknowledgeplatform.dto.content.QuestionAnswerResponse;
 
 @Mapper(componentModel = "spring")
 public interface QuestionAnswerMapper {

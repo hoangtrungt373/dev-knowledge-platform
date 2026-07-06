@@ -148,7 +148,7 @@ content-service/src/main/java/com/ttg/devknowledgeplatform/content/
     └── ContentErrorCode.java      — CATEGORY_*/TAG_*/QA_*/ARTICLE_* codes, implements common's ErrorCode interface
 ```
 
-REST controllers, DTOs (`dto/admin/*`), mappers, and the indexing/RAG orchestration layer
+REST controllers, DTOs (`dto/content/*`), mappers, and the indexing/RAG orchestration layer
 (`ContentIndexingService`, `IndexingQualityService`, `EmbeddingIndexService`, `IngestionController`,
 `PublicContentController`, `ContentPublishedEventListener`) all stay in `api` — see the `api` section below.
 The orchestration layer genuinely needs both `content-service` and `ai-service`, and `content-service` cannot
@@ -398,20 +398,34 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │       └── SseStreamTemplate.java    — SSE writer abstraction
 ├── database/
 │   └── sql/                          — Liquibase changelogs (master: dev-knowledge-platform.xml)
-├── dto/
+├── dto/                               — REST request/response DTOs, colocated per feature (each subpackage
+│   │                                    mirrors the feature module its DTOs front); `dto/admin/` is for
+│   │                                    admin-tooling DTOs that don't belong to one extracted feature module
+│   │                                    (currently just EmbeddingIndexItemResponse)
 │   ├── chat/
 │   │   ├── ChatRequest.java          — question, sessionId, sourceTypes, categoryId, tags, chatModel
 │   │   │                                (chatModel: optional model id, e.g. "claude-sonnet-5"; null = server default)
 │   │   ├── ChatResponse.java
 │   │   ├── ChatSessionHistoryDto.java
 │   │   └── ChatSessionSummaryDto.java
-│   └── friend/                       — Java records (immutable), not the older Lombok @Data/@Builder style
-│       ├── UserSummaryResponse.java       — userUuid, username, firstName, lastName, profilePicture, status;
-│       │                                    nested inside the three below rather than repeating the fields
-│       ├── UserSearchResultResponse.java  — UserSummaryResponse + relationshipStatus + mutualFriendCount
-│       ├── FriendRequestResponse.java     — id, requester, addressee, status, createdAt
-│       └── FriendSummaryResponse.java     — UserSummaryResponse + friendsSince
+│   ├── content/                      — fronts content-service's Category/Tag/QuestionAnswer/Article services
+│   │   ├── CategoryResponse.java / CreateCategoryRequest.java / UpdateCategoryRequest.java
+│   │   ├── CategoryTreeNodeResponse.java  — recursive JSON tree shape; CategoryMapper.toTreeNodeResponse()
+│   │   │                                    flattens content-service's CategoryTreeNode (Category + children) into this
+│   │   ├── TagResponse.java / CreateTagRequest.java / UpdateTagRequest.java
+│   │   ├── QuestionAnswerResponse.java / CreateQuestionAnswerRequest.java / UpdateQuestionAnswerRequest.java
+│   │   └── ArticleResponse.java / CreateArticleRequest.java / UpdateArticleRequest.java
+│   ├── friend/                       — Java records (immutable), not the older Lombok @Data/@Builder style
+│   │   ├── UserSummaryResponse.java       — userUuid, username, firstName, lastName, profilePicture, status;
+│   │   │                                    nested inside the three below rather than repeating the fields
+│   │   ├── UserSearchResultResponse.java  — UserSummaryResponse + relationshipStatus + mutualFriendCount
+│   │   ├── FriendRequestResponse.java     — id, requester, addressee, status, createdAt
+│   │   └── FriendSummaryResponse.java     — UserSummaryResponse + friendsSince
+│   └── admin/
+│       └── EmbeddingIndexItemResponse.java — ContentItem + embedding stats, admin-only
 ├── mapper/                           — MapStruct mappers (DTO ↔ entity)
+│   ├── CategoryMapper.java / TagMapper.java / QuestionAnswerMapper.java / ArticleMapper.java — map
+│   │                                    content-service entities to dto/content/*
 │   └── FriendMapper.java             — abstract class (not interface) like UserMapper — needs an injected
 │                                        StorageService for presigned avatar URLs, and MapStruct interfaces
 │                                        can't hold instance fields; maps social-service entities to dto/friend/*

@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.dto.admin;
+package com.ttg.devknowledgeplatform.dto.content;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.ttg.devknowledgeplatform.content.enums.TagStatus;
