@@ -4,6 +4,7 @@ import com.ttg.devknowledgeplatform.content.entity.Category;
 import com.ttg.devknowledgeplatform.content.exception.ContentErrorCode;
 import com.ttg.devknowledgeplatform.content.repository.CategoryRepository;
 import com.ttg.devknowledgeplatform.infra.service.SlugService;
+import com.ttg.devknowledgeplatform.infra.service.seed.CsvSeeder;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.csv.CSVRecord;
 import org.springframework.stereotype.Component;

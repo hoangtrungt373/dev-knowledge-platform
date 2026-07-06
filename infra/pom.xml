@@ -31,6 +31,13 @@
             <groupId>com.ttg</groupId>
             <artifactId>common</artifactId>
         </dependency>
+
+        <!-- Commons CSV — CsvSeeder Template Method, shared by feature-module seeders that
+             can't depend on each other (content-service, social-service) -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-csv</artifactId>
+        </dependency>
     </dependencies>
 
 </project>

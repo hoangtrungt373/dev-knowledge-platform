@@ -236,3 +236,58 @@ not actually wired to anything in the current codebase — not from seeding, not
 create/update endpoints either. Seeded content is **not** searchable via RAG/chat until someone
 manually triggers the admin `IngestionController.indexAll()` endpoint. This is a pre-existing
 gap unrelated to the seeding mechanism itself.
+
+---
+
+## User / friend graph sample data (for exercising the Friend Management GUI)
+
+Unlike the content types above, `User`/`FriendRequest`/`Friendship`/`UserBlock` seed data exists
+to give the Friend Management GUI (`gui/components/friends/*`) something real to interact with —
+20 login-able sample accounts and a hand-built social graph among them, not corpus content for
+RAG retrieval. Same permanent-seed-data philosophy as everything above (this data coexists with
+real user-created rows, not wiped-and-reseeded), but the identity/idempotency design differs in
+one deliberate way — see below.
+
+**`User`** (`data/csv/users.csv`, columns: `id, email, username, firstName, lastName`) —
+`UserSeeder` (`api/service/seed/`). `id` (→ `User.seedId`, Liquibase `DKP-0016`) is the sole
+idempotency key, for the identical reason `Category`/`Tag`/`ContentItem` have one:
+`email`/`username` are human-editable (`UserServiceImpl.updateProfile`), so they can't be the
+check without risking a duplicate insert if a seeded user's email/username is ever edited. Every
+seeded user is `LOCAL` provider, `emailVerified=true`, `enabled=true`, and shares one known demo
+password (`UserSeeder.DEMO_PASSWORD`, hashed via the real `PasswordEncoder` — LOCAL DEV ONLY,
+same spirit as `init-admin-user.sql`) so any of the 20 can actually be logged into.
+
+**`FriendRequest`/`Friendship`** (`data/csv/friend-requests.csv`, columns: `requesterId,
+addresseeId, status` where `status` is `PENDING`/`ACCEPTED`/`REJECTED`/`CANCELLED`) —
+`FriendGraphSeeder` (`social-service/service/seed/`). References users by their `User.seedId`
+(the `id` column above), resolved via `UserRepository.findBySeedId` — requires `UserSeeder` to
+run first. When `status=ACCEPTED`, the seeder also inserts the corresponding `Friendship` row
+(canonically ordered `user1.id < user2.id`), mirroring what `FriendServiceImpl.acceptRequest`
+does in production, so the seeded graph satisfies the same invariant real usage would produce.
+
+**`UserBlock`** (`data/csv/user-blocks.csv`, columns: `blockerId, blockedId`) —
+`UserBlockSeeder` (`social-service/service/seed/`). Same user-reference-by-`seedId` convention.
+
+**Why `FriendRequest`/`Friendship`/`UserBlock` do NOT get their own `SEED_ID`** (the one
+deliberate departure from the `Category`/`Tag`/`ContentItem`/`User` pattern): `seedId` solves a
+specific problem — an idempotency check breaking because the field it's based on is editable.
+A friendship/request/block's identity *is* the `(user, user)` pair; there's no editable field
+analogous to `NAME`/`EMAIL` that could invalidate a pair-based check. `FriendGraphSeeder`/
+`UserBlockSeeder` instead check "does a row already exist for this pair, in either direction,
+regardless of status" (`FriendRequestRepository.existsBetween`,
+`UserBlockRepository.existsEitherDirection`) — stable on its own, no synthetic id required.
+Each unordered pair should therefore appear **at most once** across `friend-requests.csv` (and
+independently, at most once across `user-blocks.csv`) — the seeders don't model a pair having
+multiple historical requests.
+
+**Mechanism note**: `FriendGraphSeeder` does not extend `infra`'s `CsvSeeder<T>` Template Method
+(unlike `UserSeeder`/`UserBlockSeeder`) — a `status=ACCEPTED` row must persist *two* entities
+(`FriendRequest` and `Friendship`), which doesn't fit `CsvSeeder`'s one-entity-per-row
+`buildEntity()`/`persist()` shape. Same reasoning as `QuestionAnswerSeeder`'s own departure from
+the template for a genuinely different row shape — it implements its own `seed()` directly.
+
+Planning a batch: unlike the corpus-coverage concerns above, the main design goal for this data
+is *shape*, not volume — enough of every `RelationshipStatus`/`FriendRequestStatus` combination
+to exercise every tab of the Friends GUI (established friendships, pending incoming, pending
+outgoing, rejected/cancelled history, blocks) without needing a large user count. 20 users was
+judged enough for this; there's no equivalent of the 100-question corpus-scale target here.

@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.content.service.seed;
+package com.ttg.devknowledgeplatform.infra.service.seed;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.csv.CSVFormat;
@@ -14,10 +14,17 @@ import java.nio.charset.StandardCharsets;
 /**
  * Template Method skeleton for idempotent startup data seeding from a classpath CSV file.
  * The read-parse-insert-or-skip algorithm is identical for every flat, single-file seed source
- * (see {@link CategorySeeder}, {@link TagSeeder}); subclasses supply only the natural-key
- * existence check and the entity construction. Seed sources with a different shape — e.g.
- * {@link QuestionAnswerSeeder}'s one-file-per-record Markdown format — implement their own
+ * (e.g. {@code content-service}'s {@code CategorySeeder}/{@code TagSeeder}, {@code api}'s
+ * {@code UserSeeder}, {@code social-service}'s {@code UserBlockSeeder}); subclasses supply only
+ * the natural-key existence check and the entity construction. Seed sources with a different
+ * shape — e.g. {@code QuestionAnswerSeeder}'s one-file-per-record Markdown format, or
+ * {@code FriendGraphSeeder}'s one-row-produces-two-entities shape — implement their own
  * {@code seed()} rather than forcing that shape through this template.
+ *
+ * <p>Lives here (not any single feature module) because it's genuinely feature-agnostic and
+ * needed by more than one module that can't depend on each other ({@code content-service} and
+ * {@code social-service} are independent siblings) — the same reasoning behind
+ * {@code SlugService} living in {@code infra}.
  *
  * @param <T> the entity (or per-row composite holder) built from each CSV row
  * @author ttg

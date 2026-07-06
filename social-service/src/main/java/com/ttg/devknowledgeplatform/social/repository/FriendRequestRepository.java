@@ -26,4 +26,15 @@ public interface FriendRequestRepository extends JpaRepository<FriendRequest, In
     @Query("SELECT fr FROM FriendRequest fr WHERE fr.status = 'PENDING' "
             + "AND ((fr.requester = :a AND fr.addressee = :b) OR (fr.requester = :b AND fr.addressee = :a))")
     Optional<FriendRequest> findPendingBetween(@Param("a") User a, @Param("b") User b);
+
+    /**
+     * Whether a request of any status already exists between the pair, in either direction. Used
+     * by {@code FriendGraphSeeder} as its sole idempotency guard — unlike
+     * {@link #findPendingBetween}, this isn't status-scoped, since a seed row should never be
+     * re-inserted regardless of whether the original request ended up PENDING/ACCEPTED/REJECTED/
+     * CANCELLED.
+     */
+    @Query("SELECT CASE WHEN COUNT(fr) > 0 THEN true ELSE false END FROM FriendRequest fr "
+            + "WHERE (fr.requester = :a AND fr.addressee = :b) OR (fr.requester = :b AND fr.addressee = :a)")
+    boolean existsBetween(@Param("a") User a, @Param("b") User b);
 }

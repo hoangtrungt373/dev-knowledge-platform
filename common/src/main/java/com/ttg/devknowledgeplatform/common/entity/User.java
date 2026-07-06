@@ -95,4 +95,9 @@ public class User extends AbstractEntity {
     @Column(name = "ENABLED")
     @Builder.Default
     private Boolean enabled = true;
+
+    // Null for every real/admin-created row; set only by UserSeeder, purely to detect
+    // "already seeded" across re-runs without depending on EMAIL/USERNAME staying unchanged.
+    @Column(name = "SEED_ID", length = 100)
+    private String seedId;
 }

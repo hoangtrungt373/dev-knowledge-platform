@@ -33,9 +33,10 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │   ├── AbstractEntity.java           — audit columns (usrCreation, dteCreation, version, …)
 │   ├── User.java                     — userUuid, email, username, password, firstName, lastName, profilePicture,
 │   │                                    provider (UserProvider), role (UserRole), providerId, emailVerified, status
-│   │                                    (UserStatus, presence), enabled; referenced by FK from social-service's
-│   │                                    FriendRequest/Friendship/UserBlock entities (which live there, not here —
-│   │                                    see social-service section below)
+│   │                                    (UserStatus, presence), enabled, seedId (String, nullable, DB SEED_ID,
+│   │                                    DKP-0016 — sole idempotency key for UserSeeder, api); referenced by FK from
+│   │                                    social-service's FriendRequest/Friendship/UserBlock entities (which live
+│   │                                    there, not here — see social-service section below)
 │   ├── ChatSession.java              — userId, title, lastActivityAt, summary (TEXT); parent of ChatMessage rows
 │   ├── ChatMessage.java              — role, content, turnIndex; child of ChatSession
 │   └── SysParam.java                 — @Entity for SYS_PARAM; fields: name (ParamKey), value (TEXT), computedAt
@@ -53,7 +54,8 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │                                        from api/repository so content-service/social-service (neither of which
 │                                        can depend on api) can reach it directly — this also retired
 │                                        social-service's own SocialUserRepository, a near-duplicate that existed
-│                                        only because this repository used to live in api
+│                                        only because this repository used to live in api; findBySeedId(String)
+│                                        added for UserSeeder (api) idempotency
 ├── service/
 │   ├── SysParamService.java          — interface: getValue(ParamKey), upsert(ParamKey, String); string-in/string-out,
 │   │                                   no opinion on value encoding — callers own their own serialization format
@@ -97,8 +99,17 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
     │                                    update-excluding-self); lives here (not content-service) because it's a
     │                                    generic utility content-service's services need but api can't be the home
     │                                    for, since content-service cannot depend on api
-    └── impl/
-        └── SlugServiceImpl.java      — diacritic-stripping + incrementing-counter uniqueness resolution
+    ├── impl/
+    │   └── SlugServiceImpl.java      — diacritic-stripping + incrementing-counter uniqueness resolution
+    └── seed/
+        └── CsvSeeder.java            — Template Method for flat, single-file CSV sources (read/iterate/
+                                         skip-or-insert loop; subclasses supply alreadyExists()/buildEntity()/
+                                         persist()); moved here from content-service once social-service's
+                                         UserBlockSeeder needed it too — content-service and social-service are
+                                         independent siblings that can't depend on each other, so the shared
+                                         template moved to infra, which both already depend on (same reasoning
+                                         as SlugService above). Used by content-service's CategorySeeder/
+                                         TagSeeder, api's UserSeeder, and social-service's UserBlockSeeder.
 ```
 
 ---
@@ -142,9 +153,8 @@ content-service/src/main/java/com/ttg/devknowledgeplatform/content/
 │   │   request DTOs into these before calling the service, avoiding a content-service → api DTO dependency
 │   ├── seed/                      — startup data seeding; format chosen per content shape (moved here from api
 │   │   since seeders write directly via repositories, the same as production service impls)
-│   │   ├── CsvSeeder.java             — Template Method for flat, single-file CSV sources
-│   │   ├── CategorySeeder.java        — data/csv/categories.csv; identity by seedId
-│   │   ├── TagSeeder.java             — data/csv/tags.csv; identity by seedId
+│   │   ├── CategorySeeder.java        — data/csv/categories.csv; identity by seedId; extends infra's CsvSeeder
+│   │   ├── TagSeeder.java             — data/csv/tags.csv; identity by seedId; extends infra's CsvSeeder
 │   │   └── QuestionAnswerSeeder.java  — data/question-answers/*.md (YAML front matter + markdown body);
 │   │                                     does not extend CsvSeeder (one-file-per-record, different iteration shape)
 │   └── impl/
@@ -189,9 +199,10 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │   └── RelationshipStatus.java    — STRANGER, REQUEST_SENT, REQUEST_RECEIVED, FRIENDS, BLOCKED; computed
 │                                     (not persisted) per profile/search-result view from the viewer's perspective
 ├── repository/
-│   ├── FriendRequestRepository.java
+│   ├── FriendRequestRepository.java  — findPendingBetween (status-scoped); existsBetween (any status, either
+│   │                                    direction — FriendGraphSeeder's idempotency guard)
 │   ├── FriendshipRepository.java  — findFriendUserIds() used by the service for mutual-friend-count set intersection
-│   ├── UserBlockRepository.java
+│   ├── UserBlockRepository.java   — existsEitherDirection (UserBlockSeeder's idempotency guard)
 │   └── spec/
 │       └── UserSpecification.java — fuzzy username/name match, exact email match, excludes any user blocked
 │                                     in either direction relative to the viewer
@@ -205,11 +216,19 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
     │                                   BlockedUsers, searchUsers; returns entities, not REST DTOs — api's
     │                                   FriendMapper does entity→response mapping (same split as ai-service's
     │                                   RagQueryService → api's ChatResponse)
-    └── impl/
-        └── FriendServiceImpl.java   — mutual-request auto-accept; block cascades (removes friendship + pending
-                                        request between the pair before recording the block); mutual invisibility
-                                        (a lookup of a user who has blocked the viewer throws USER_NOT_FOUND, same
-                                        as a nonexistent UUID, never a distinguishable "blocked" error)
+    ├── impl/
+    │   └── FriendServiceImpl.java   — mutual-request auto-accept; block cascades (removes friendship + pending
+    │                                   request between the pair before recording the block); mutual invisibility
+    │                                   (a lookup of a user who has blocked the viewer throws USER_NOT_FOUND, same
+    │                                   as a nonexistent UUID, never a distinguishable "blocked" error)
+    └── seed/                        — sample social-graph data for the Friend Management GUI (see
+        │                              docs/SEED_DATA_AUTHORING_GUIDE.md); requires api's UserSeeder to run first
+        ├── FriendGraphSeeder.java   — data/csv/friend-requests.csv (requesterId, addresseeId, status); an
+        │                              ACCEPTED row also inserts the matching Friendship, canonically ordered,
+        │                              mirroring FriendServiceImpl.acceptRequest's production behavior. Does
+        │                              NOT extend infra's CsvSeeder — an ACCEPTED row persists two entities,
+        │                              which doesn't fit CsvSeeder's one-entity-per-row shape
+        └── UserBlockSeeder.java     — data/csv/user-blocks.csv (blockerId, blockedId); extends infra's CsvSeeder
 ```
 
 Read access to `User` (search, relationship resolution) goes through `common`'s own `UserRepository`
@@ -454,11 +473,16 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │   ├── IndexingQualityService.java   — assess(contentItemId, contentType) → QualityVerdict; centroid distance check at indexing time
 │   ├── QualityVerdict.java           — record: boolean lowQuality, float score; factories pass/flag/skipped
 │   ├── seed/
-│   │   └── DataSeedingRunner.java        — ApplicationRunner, @ConditionalOnProperty(app.seed.enabled);
-│   │                                       runs seeders in order: category → tag → questionAnswer.
-│   │                                       CsvSeeder/CategorySeeder/TagSeeder/QuestionAnswerSeeder
-│   │                                       themselves moved to content-service/service/seed/ (see that
-│   │                                       module's section) — this runner just injects and calls them
+│   │   ├── DataSeedingRunner.java        — ApplicationRunner, @ConditionalOnProperty(app.seed.enabled);
+│   │   │                                   runs seeders in order: category → tag → questionAnswer → user →
+│   │   │                                   friend graph → blocks. CategorySeeder/TagSeeder/QuestionAnswerSeeder
+│   │   │                                   live in content-service/service/seed/, FriendGraphSeeder/
+│   │   │                                   UserBlockSeeder in social-service/service/seed/ (see those modules'
+│   │   │                                   sections) — this runner just injects and calls all of them
+│   │   └── UserSeeder.java               — data/csv/users.csv; identity by seedId; extends infra's CsvSeeder;
+│   │                                        lives here (not common) since it needs PasswordEncoder to hash the
+│   │                                        shared demo password every seeded account gets, matching where
+│   │                                        UserService's own auth-flow logic already lives
 │   └── impl/
 │       ├── IndexingQualityServiceImpl.java  — loads embeddings from ContentEmbeddingRepository; mean centroid dotProduct; graceful cold-start
 │       ├── CorpusStatisticsServiceImpl.java — @PostConstruct loads centroids from SYS_PARAM; @Scheduled refresh
@@ -481,7 +505,13 @@ data/
 │   │                                    it via SlugService; identity AND cross-references are by
 │   │                                    id (→ seedId), never name/slug
 │   ├── categories.csv                    — id, name, parentId (parentId references another row's id)
-│   └── tags.csv                           — id, name, status
+│   ├── tags.csv                           — id, name, status
+│   ├── users.csv                          — id, email, username, firstName, lastName (UserSeeder, api);
+│   │                                         20 sample login-able accounts for the Friend Management GUI
+│   ├── friend-requests.csv                — requesterId, addresseeId, status (FriendGraphSeeder,
+│   │                                         social-service); references users.csv rows by id
+│   └── user-blocks.csv                    — blockerId, blockedId (UserBlockSeeder, social-service);
+│                                             references users.csv rows by id
 ├── question-answers/                 — one Markdown file per question; references Category/Tag
 │   │                                    by id (categoryId/tagIds), not name or slug — see
 │   │                                    docs/SEED_DATA_AUTHORING_GUIDE.md; 100 files (qa-*.md),
@@ -560,7 +590,11 @@ expected over time, and are modelled as data, not schema:
   entities of the same names. `FRIENDSHIP` stores each pair once with `USER_ID_1 < USER_ID_2` enforced by
   a check constraint. `FRIEND_REQUEST` has a partial unique index on the unordered pair
   `WHERE STATUS = 'PENDING'` — only pending rows are constrained, so a rejected/cancelled request doesn't
-  block a later re-request. `USER_BLOCK` is directional (no implied reverse row).
+  block a later re-request. `USER_BLOCK` is directional (no implied reverse row). None of the three have
+  their own `SEED_ID` (see `DKP-0016` below) — a pair's identity has no editable-field equivalent to
+  `NAME`/`EMAIL` that could invalidate a pair-based idempotency check.
+- `USER.SEED_ID` (DKP-0016, nullable, unique index) — same pattern as `DKP-0013`'s `CATEGORY`/`TAG`/
+  `CONTENT_ITEM`; sole idempotency key for `UserSeeder`'s (`api`) 20 sample login-able accounts.
 - Migrations: `api/src/main/java/com/ttg/devknowledgeplatform/database/sql/` (Liquibase config lives in
   `api` regardless of which module owns the entities the migration backs — `social-service`'s tables are
   migrated from here too, same as `ai-service`'s)
