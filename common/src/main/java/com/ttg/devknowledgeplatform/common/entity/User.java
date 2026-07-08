@@ -10,6 +10,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -23,7 +24,13 @@ import lombok.ToString;
  * @author ttg
  */
 @Entity
-@Table(name = "USER", schema = "product")
+@Table(
+        name = "USER",
+        schema = "product",
+        // PROVIDER_ID is nullable (LOCAL accounts have none); a unique constraint still works
+        // here since Postgres treats every NULL as distinct from every other NULL.
+        uniqueConstraints = @UniqueConstraint(name = "UK_USER_PROVIDER_PROVIDER_ID", columnNames = {"PROVIDER", "PROVIDER_ID"})
+)
 @Data
 @Builder
 @NoArgsConstructor
@@ -40,12 +47,12 @@ public class User extends AbstractEntity {
 
     @NotNull
     @Size(max = 255)
-    @Column(name = "EMAIL", length = 255)
+    @Column(name = "EMAIL", length = 255, unique = true)
     private String email;
 
     @NotNull
     @Size(max = 255)
-    @Column(name = "USERNAME", length = 255)
+    @Column(name = "USERNAME", length = 255, unique = true)
     private String username;
 
     @NotNull

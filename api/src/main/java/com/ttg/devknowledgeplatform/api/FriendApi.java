@@ -1,12 +1,11 @@
 package com.ttg.devknowledgeplatform.api;
 
-import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
+import com.ttg.devknowledgeplatform.annotation.CurrentUserId;
 import com.ttg.devknowledgeplatform.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.dto.friend.FriendRequestResponse;
 import com.ttg.devknowledgeplatform.dto.friend.FriendSummaryResponse;
 import com.ttg.devknowledgeplatform.dto.friend.UserSummaryResponse;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,13 +27,13 @@ public interface FriendApi {
      * Sends a friend request to another user. Auto-accepts into a friendship if that user
      * already has a pending request to the caller.
      *
-     * @param principal the authenticated caller
-     * @param userUuid  UUID of the user to friend
+     * @param userId   authenticated caller's integer primary key, injected from the JWT
+     * @param userUuid UUID of the user to friend
      * @return {@code 201} with the resulting request (or accepted request on auto-accept)
      */
     @PostMapping("/requests/{userUuid}")
     ResponseEntity<FriendRequestResponse> sendRequest(
-            @AuthenticationPrincipal CustomOAuth2User principal, @PathVariable String userUuid);
+            @CurrentUserId Integer userId, @PathVariable String userUuid);
 
     /**
      * Accepts a pending request addressed to the caller.
@@ -43,7 +42,7 @@ public interface FriendApi {
      */
     @PostMapping("/requests/{requestId}/accept")
     ResponseEntity<FriendRequestResponse> acceptRequest(
-            @AuthenticationPrincipal CustomOAuth2User principal, @PathVariable Integer requestId);
+            @CurrentUserId Integer userId, @PathVariable Integer requestId);
 
     /**
      * Rejects a pending request addressed to the caller.
@@ -52,7 +51,7 @@ public interface FriendApi {
      */
     @PostMapping("/requests/{requestId}/reject")
     ResponseEntity<FriendRequestResponse> rejectRequest(
-            @AuthenticationPrincipal CustomOAuth2User principal, @PathVariable Integer requestId);
+            @CurrentUserId Integer userId, @PathVariable Integer requestId);
 
     /**
      * Cancels a pending request the caller sent.
@@ -61,7 +60,7 @@ public interface FriendApi {
      */
     @DeleteMapping("/requests/{requestId}")
     ResponseEntity<Void> cancelRequest(
-            @AuthenticationPrincipal CustomOAuth2User principal, @PathVariable Integer requestId);
+            @CurrentUserId Integer userId, @PathVariable Integer requestId);
 
     /**
      * Returns pending requests addressed to the caller.
@@ -73,7 +72,7 @@ public interface FriendApi {
      */
     @GetMapping("/requests/incoming")
     ResponseEntity<PagedResponse<FriendRequestResponse>> listIncomingRequests(
-            @AuthenticationPrincipal CustomOAuth2User principal,
+            @CurrentUserId Integer userId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "id") String sortBy,
@@ -89,7 +88,7 @@ public interface FriendApi {
      */
     @GetMapping("/requests/outgoing")
     ResponseEntity<PagedResponse<FriendRequestResponse>> listOutgoingRequests(
-            @AuthenticationPrincipal CustomOAuth2User principal,
+            @CurrentUserId Integer userId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "id") String sortBy,
@@ -105,7 +104,7 @@ public interface FriendApi {
      */
     @GetMapping
     ResponseEntity<PagedResponse<FriendSummaryResponse>> listFriends(
-            @AuthenticationPrincipal CustomOAuth2User principal,
+            @CurrentUserId Integer userId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "id") String sortBy,
@@ -118,7 +117,7 @@ public interface FriendApi {
      */
     @DeleteMapping("/{userUuid}")
     ResponseEntity<Void> unfriend(
-            @AuthenticationPrincipal CustomOAuth2User principal, @PathVariable String userUuid);
+            @CurrentUserId Integer userId, @PathVariable String userUuid);
 
     /**
      * Blocks a user, cascading to remove any existing friendship or pending request between
@@ -128,7 +127,7 @@ public interface FriendApi {
      */
     @PostMapping("/blocks/{userUuid}")
     ResponseEntity<Void> block(
-            @AuthenticationPrincipal CustomOAuth2User principal, @PathVariable String userUuid);
+            @CurrentUserId Integer userId, @PathVariable String userUuid);
 
     /**
      * Removes a block the caller previously created. Idempotent.
@@ -137,7 +136,7 @@ public interface FriendApi {
      */
     @DeleteMapping("/blocks/{userUuid}")
     ResponseEntity<Void> unblock(
-            @AuthenticationPrincipal CustomOAuth2User principal, @PathVariable String userUuid);
+            @CurrentUserId Integer userId, @PathVariable String userUuid);
 
     /**
      * Returns users blocked by the caller.
@@ -149,7 +148,7 @@ public interface FriendApi {
      */
     @GetMapping("/blocks")
     ResponseEntity<PagedResponse<UserSummaryResponse>> listBlockedUsers(
-            @AuthenticationPrincipal CustomOAuth2User principal,
+            @CurrentUserId Integer userId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "id") String sortBy,

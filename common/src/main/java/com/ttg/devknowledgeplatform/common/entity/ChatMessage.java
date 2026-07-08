@@ -10,6 +10,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -24,7 +25,11 @@ import lombok.ToString;
  * at index N and one ASSISTANT message at index N+1.
  */
 @Entity
-@Table(name = "CHAT_MESSAGE", schema = "product")
+@Table(
+        name = "CHAT_MESSAGE",
+        schema = "product",
+        uniqueConstraints = @UniqueConstraint(name = "UK_CHAT_MESSAGE_TURN_ORDER", columnNames = {"CHAT_SESSION_ID", "TURN_INDEX"})
+)
 @AttributeOverride(name = "id", column = @Column(name = "CHAT_MESSAGE_ID"))
 @Data
 @NoArgsConstructor

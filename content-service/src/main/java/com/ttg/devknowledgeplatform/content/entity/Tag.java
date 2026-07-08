@@ -32,12 +32,15 @@ import lombok.ToString;
 @ToString(exclude = "contentItemTags")
 public class Tag extends AbstractEntity {
 
+    // Uniqueness is enforced in the DB as a case-insensitive functional index on LOWER(NAME)
+    // (matches TagServiceImpl's existsByNameIgnoreCase) — not expressible as unique = true here,
+    // which would generate a plain case-sensitive constraint instead.
     @NotNull
     @Column(name = "NAME", length = 100, nullable = false)
     private String name;
 
     @NotNull
-    @Column(name = "SLUG", length = 100, nullable = false)
+    @Column(name = "SLUG", length = 100, nullable = false, unique = true)
     private String slug;
 
     // Null for every user/admin-created row; set only by TagSeeder, purely to detect "already

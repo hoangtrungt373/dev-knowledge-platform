@@ -16,6 +16,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -26,7 +27,14 @@ import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(
-        name = "CONTENT_EMBEDDING"
+        name = "CONTENT_EMBEDDING",
+        // A content item can have chunk sets from more than one embedding model at once
+        // (ContentIngestionServiceImpl deletes by contentItem + model before re-ingesting), so
+        // MODEL_NAME is part of the natural key here, not just CONTENT_ITEM_ID + CHUNK_INDEX.
+        uniqueConstraints = @UniqueConstraint(
+                name = "UK_CONTENT_EMBEDDING_ITEM_MODEL_CHUNK",
+                columnNames = {"CONTENT_ITEM_ID", "MODEL_NAME", "CHUNK_INDEX"}
+        )
 )
 @AttributeOverride(name = "id", column = @Column(name = "CONTENT_EMBEDDING_ID"))
 @Data

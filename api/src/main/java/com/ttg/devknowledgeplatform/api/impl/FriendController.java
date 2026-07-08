@@ -3,14 +3,11 @@ package com.ttg.devknowledgeplatform.api.impl;
 import java.util.Set;
 
 import com.ttg.devknowledgeplatform.api.FriendApi;
-import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.dto.friend.FriendRequestResponse;
 import com.ttg.devknowledgeplatform.dto.friend.FriendSummaryResponse;
 import com.ttg.devknowledgeplatform.dto.friend.UserSummaryResponse;
 import com.ttg.devknowledgeplatform.mapper.FriendMapper;
-import com.ttg.devknowledgeplatform.security.service.UserService;
 import com.ttg.devknowledgeplatform.social.entity.FriendRequest;
 import com.ttg.devknowledgeplatform.social.service.FriendService;
 
@@ -33,91 +30,83 @@ public class FriendController implements FriendApi {
 
     private final FriendService friendService;
     private final FriendMapper friendMapper;
-    private final UserService userService;
 
     @Override
-    public ResponseEntity<FriendRequestResponse> sendRequest(CustomOAuth2User principal, String userUuid) {
-        Integer requesterId = currentUserId(principal);
-        FriendRequest request = friendService.sendRequest(requesterId, userUuid);
+    public ResponseEntity<FriendRequestResponse> sendRequest(Integer userId, String addresseeUuid) {
+        FriendRequest request = friendService.sendRequest(userId, addresseeUuid);
         return ResponseEntity.status(HttpStatus.CREATED).body(friendMapper.toFriendRequestResponse(request));
     }
 
     @Override
-    public ResponseEntity<FriendRequestResponse> acceptRequest(CustomOAuth2User principal, Integer requestId) {
-        FriendRequest request = friendService.acceptRequest(requestId, currentUserId(principal));
+    public ResponseEntity<FriendRequestResponse> acceptRequest(Integer userId, Integer requestId) {
+        FriendRequest request = friendService.acceptRequest(requestId, userId);
         return ResponseEntity.ok(friendMapper.toFriendRequestResponse(request));
     }
 
     @Override
-    public ResponseEntity<FriendRequestResponse> rejectRequest(CustomOAuth2User principal, Integer requestId) {
-        FriendRequest request = friendService.rejectRequest(requestId, currentUserId(principal));
+    public ResponseEntity<FriendRequestResponse> rejectRequest(Integer userId, Integer requestId) {
+        FriendRequest request = friendService.rejectRequest(requestId, userId);
         return ResponseEntity.ok(friendMapper.toFriendRequestResponse(request));
     }
 
     @Override
-    public ResponseEntity<Void> cancelRequest(CustomOAuth2User principal, Integer requestId) {
-        friendService.cancelRequest(requestId, currentUserId(principal));
+    public ResponseEntity<Void> cancelRequest(Integer userId, Integer requestId) {
+        friendService.cancelRequest(requestId, userId);
         return ResponseEntity.noContent().build();
     }
 
     @Override
     public ResponseEntity<PagedResponse<FriendRequestResponse>> listIncomingRequests(
-            CustomOAuth2User principal, int page, int size, String sortBy, String sortDir) {
+            Integer userId, int page, int size, String sortBy, String sortDir) {
         Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
-        var result = friendService.listIncomingRequests(currentUserId(principal), pageable)
+        var result = friendService.listIncomingRequests(userId, pageable)
                 .map(friendMapper::toFriendRequestResponse);
         return ResponseEntity.ok(PagedResponse.from(result));
     }
 
     @Override
     public ResponseEntity<PagedResponse<FriendRequestResponse>> listOutgoingRequests(
-            CustomOAuth2User principal, int page, int size, String sortBy, String sortDir) {
+            Integer userId, int page, int size, String sortBy, String sortDir) {
         Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
-        var result = friendService.listOutgoingRequests(currentUserId(principal), pageable)
+        var result = friendService.listOutgoingRequests(userId, pageable)
                 .map(friendMapper::toFriendRequestResponse);
         return ResponseEntity.ok(PagedResponse.from(result));
     }
 
     @Override
     public ResponseEntity<PagedResponse<FriendSummaryResponse>> listFriends(
-            CustomOAuth2User principal, int page, int size, String sortBy, String sortDir) {
-        Integer viewerId = currentUserId(principal);
+            Integer userId, int page, int size, String sortBy, String sortDir) {
         Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
-        var result = friendService.listFriends(viewerId, pageable)
-                .map(friendship -> friendMapper.toFriendSummary(friendship, viewerId));
+        var result = friendService.listFriends(userId, pageable)
+                .map(friendship -> friendMapper.toFriendSummary(friendship, userId));
         return ResponseEntity.ok(PagedResponse.from(result));
     }
 
     @Override
-    public ResponseEntity<Void> unfriend(CustomOAuth2User principal, String userUuid) {
-        friendService.unfriend(currentUserId(principal), userUuid);
+    public ResponseEntity<Void> unfriend(Integer userId, String userUuid) {
+        friendService.unfriend(userId, userUuid);
         return ResponseEntity.noContent().build();
     }
 
     @Override
-    public ResponseEntity<Void> block(CustomOAuth2User principal, String userUuid) {
-        friendService.block(currentUserId(principal), userUuid);
+    public ResponseEntity<Void> block(Integer userId, String userUuid) {
+        friendService.block(userId, userUuid);
         return ResponseEntity.noContent().build();
     }
 
     @Override
-    public ResponseEntity<Void> unblock(CustomOAuth2User principal, String userUuid) {
-        friendService.unblock(currentUserId(principal), userUuid);
+    public ResponseEntity<Void> unblock(Integer userId, String userUuid) {
+        friendService.unblock(userId, userUuid);
         return ResponseEntity.noContent().build();
     }
 
     @Override
     public ResponseEntity<PagedResponse<UserSummaryResponse>> listBlockedUsers(
-            CustomOAuth2User principal, int page, int size, String sortBy, String sortDir) {
+            Integer userId, int page, int size, String sortBy, String sortDir) {
         Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
-        var result = friendService.listBlockedUsers(currentUserId(principal), pageable)
+        var result = friendService.listBlockedUsers(userId, pageable)
                 .map(friendMapper::toUserSummary);
         return ResponseEntity.ok(PagedResponse.from(result));
-    }
-
-    private Integer currentUserId(CustomOAuth2User principal) {
-        User user = userService.resolveCurrentUser(principal);
-        return user.getId();
     }
 
     private Sort buildSort(String sortBy, String sortDir) {

@@ -29,10 +29,13 @@ import java.util.List;
 @ToString(exclude = {"parent", "children"})
 public class Category extends AbstractEntity {
 
+    // Uniqueness is enforced in the DB as a case-insensitive functional index on LOWER(NAME)
+    // (matches CategoryServiceImpl's existsByNameIgnoreCase) — not expressible as unique = true
+    // here, which would generate a plain case-sensitive constraint instead.
     @Column(name = "NAME", length = 100, nullable = false)
     private String name;
 
-    @Column(name = "SLUG", length = 100, nullable = false)
+    @Column(name = "SLUG", length = 100, nullable = false, unique = true)
     private String slug;
 
     // Null for every user/admin-created row; set only by CategorySeeder, purely to detect

@@ -48,7 +48,7 @@ public class ContentItem extends AbstractEntity {
     @Column(name = "TITLE", length = 500, nullable = false)
     private String title;
 
-    @Column(name = "SLUG", length = 500, nullable = false)
+    @Column(name = "SLUG", length = 500, nullable = false, unique = true)
     private String slug;
 
     // Null for every user/admin-created row; set only by QuestionAnswerSeeder (and future

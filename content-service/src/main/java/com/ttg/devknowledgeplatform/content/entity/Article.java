@@ -26,7 +26,7 @@ import lombok.ToString;
 public class Article extends AbstractEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "CONTENT_ITEM_ID", nullable = false)
+    @JoinColumn(name = "CONTENT_ITEM_ID", nullable = false, unique = true)
     private ContentItem contentItem;
 
     @Column(name = "BODY", columnDefinition = "TEXT")
