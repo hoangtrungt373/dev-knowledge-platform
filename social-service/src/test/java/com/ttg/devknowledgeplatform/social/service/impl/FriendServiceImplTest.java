@@ -21,6 +21,7 @@ import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.social.entity.FriendRequest;
+import com.ttg.devknowledgeplatform.social.exception.FriendErrorCode;
 import com.ttg.devknowledgeplatform.social.entity.Friendship;
 import com.ttg.devknowledgeplatform.social.entity.UserBlock;
 import com.ttg.devknowledgeplatform.social.enums.FriendRequestStatus;
@@ -71,7 +72,7 @@ class FriendServiceImplTest {
         assertThatThrownBy(() -> friendService.sendRequest(1, "alice-uuid"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(CommonErrorCode.CANNOT_FRIEND_SELF);
+                .isEqualTo(FriendErrorCode.CANNOT_FRIEND_SELF);
     }
 
     @Test
@@ -87,7 +88,7 @@ class FriendServiceImplTest {
         assertThatThrownBy(() -> friendService.sendRequest(1, "bob-uuid"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(CommonErrorCode.FRIEND_REQUEST_ALREADY_EXISTS);
+                .isEqualTo(FriendErrorCode.FRIEND_REQUEST_ALREADY_EXISTS);
     }
 
     @Test
@@ -137,14 +138,14 @@ class FriendServiceImplTest {
     }
 
     @Test
-    void block_self_throwsCannotFriendSelf() {
+    void block_self_throwsCannotBlockSelf() {
         when(userRepository.findById(1)).thenReturn(Optional.of(alice));
         when(userRepository.findByUserUuid("alice-uuid")).thenReturn(Optional.of(alice));
 
         assertThatThrownBy(() -> friendService.block(1, "alice-uuid"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(CommonErrorCode.CANNOT_FRIEND_SELF);
+                .isEqualTo(FriendErrorCode.CANNOT_BLOCK_SELF);
     }
 
     @Test
@@ -157,7 +158,7 @@ class FriendServiceImplTest {
         assertThatThrownBy(() -> friendService.unfriend(1, "bob-uuid"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(CommonErrorCode.NOT_FRIENDS);
+                .isEqualTo(FriendErrorCode.NOT_FRIENDS);
     }
 
     @Test

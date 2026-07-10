@@ -52,7 +52,7 @@ public class UserController implements UserApi {
     public ResponseEntity<UserInfoResponse> uploadAvatar(CustomOAuth2User principal, MultipartFile file) {
         User currentUser = userService.findByEmail(principal.getEmail());
         if (currentUser == null) {
-            throw new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found");
+            throw new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND);
         }
 
         String existing = currentUser.getProfilePicture();

@@ -1,5 +1,7 @@
 package com.ttg.devknowledgeplatform.common.exception;
 
+import java.text.MessageFormat;
+
 import org.springframework.http.HttpStatus;
 
 /**
@@ -18,4 +20,22 @@ public interface ErrorCode {
     String getMessage();
 
     HttpStatus getHttpStatus();
+
+    /**
+     * Renders {@link #getMessage()} as a {@link MessageFormat} pattern, substituting
+     * {@code {0}}, {@code {1}}, ... with {@code args}. Call with no arguments to resolve a plain
+     * message (still runs it through {@code MessageFormat} so {@code ''} escaping is handled
+     * consistently whether or not the call site supplies arguments).
+     *
+     * <p>An enum constant whose message embeds a placeholder must double any literal single quote
+     * that surrounds it, e.g. {@code "A category with name ''{0}'' already exists"} —
+     * {@code MessageFormat} otherwise treats a lone {@code '} as the start of a quoted (i.e.
+     * literal, non-substituting) span and silently swallows the placeholder.
+     *
+     * @param args positional values to substitute into the message template
+     * @return the formatted message
+     */
+    default String formatMessage(Object... args) {
+        return MessageFormat.format(getMessage(), args);
+    }
 }

@@ -1,7 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.exception;
 
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
-import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 
 /**
  * Thrown when the RAG query pipeline fails due to an external service error —
@@ -18,6 +17,6 @@ import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 public class RagQueryException extends ApiException {
 
     public RagQueryException(String message, Throwable cause) {
-        super(CommonErrorCode.AI_SERVICE_UNAVAILABLE, message, cause);
+        super(AiErrorCode.AI_SERVICE_UNAVAILABLE, message, cause);
     }
 }

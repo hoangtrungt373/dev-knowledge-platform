@@ -7,10 +7,10 @@ import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
 import com.ttg.devknowledgeplatform.common.entity.ChatMessage;
 import com.ttg.devknowledgeplatform.common.entity.ChatSession;
 import com.ttg.devknowledgeplatform.common.enums.ChatMessageRole;
-import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.common.util.DateUtils;
 import com.ttg.devknowledgeplatform.dto.chat.ChatSessionSummaryDto;
+import com.ttg.devknowledgeplatform.exception.ChatErrorCode;
 import com.ttg.devknowledgeplatform.repository.ChatMessageRepository;
 import com.ttg.devknowledgeplatform.repository.ChatSessionRepository;
 import com.ttg.devknowledgeplatform.service.ChatSessionService;
@@ -63,7 +63,7 @@ public class ChatSessionServiceImpl implements ChatSessionService {
             return createNewSession(userId);
         }
         ChatSession session = chatSessionRepository.findByIdAndUserId(requestedSessionId, userId)
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.CHAT_SESSION_NOT_FOUND));
+                .orElseThrow(() -> new ResourceNotFoundException(ChatErrorCode.CHAT_SESSION_NOT_FOUND));
         if (isExpired(session)) {
             log.info("Session {} expired; clearing history for user {}", requestedSessionId, userId);
             session.getMessages().clear();
@@ -89,7 +89,7 @@ public class ChatSessionServiceImpl implements ChatSessionService {
     @Override
     public ConversationContext getConversationContext(Integer sessionId, int maxTurns) {
         ChatSession session = chatSessionRepository.findById(sessionId)
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.CHAT_SESSION_NOT_FOUND));
+                .orElseThrow(() -> new ResourceNotFoundException(ChatErrorCode.CHAT_SESSION_NOT_FOUND));
         List<ConversationTurn> recentTurns = getRecentTurns(sessionId, maxTurns);
         return new ConversationContext(session.getSummary(), recentTurns);
     }
@@ -97,7 +97,7 @@ public class ChatSessionServiceImpl implements ChatSessionService {
     @Override
     public void addTurn(Integer sessionId, String question, String answer) {
         ChatSession session = chatSessionRepository.findById(sessionId)
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.CHAT_SESSION_NOT_FOUND));
+                .orElseThrow(() -> new ResourceNotFoundException(ChatErrorCode.CHAT_SESSION_NOT_FOUND));
 
         int nextIndex = chatMessageRepository.findMaxTurnIndexBySessionId(sessionId) + 1;
 
@@ -141,7 +141,7 @@ public class ChatSessionServiceImpl implements ChatSessionService {
     @Override
     public List<ChatMessage> getHistory(Integer sessionId, Integer userId) {
         chatSessionRepository.findByIdAndUserId(sessionId, userId)
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.CHAT_SESSION_NOT_FOUND));
+                .orElseThrow(() -> new ResourceNotFoundException(ChatErrorCode.CHAT_SESSION_NOT_FOUND));
         return chatMessageRepository.findByChatSession_IdOrderByTurnIndexAsc(sessionId);
     }
 

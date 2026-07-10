@@ -131,8 +131,7 @@ public class QuestionAnswerServiceImpl implements QuestionAnswerService {
     public QuestionAnswer getBySlug(String slug) {
         return questionAnswerRepository.findByContentItem_Slug(slug)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.QUESTION_ANSWER_NOT_FOUND,
-                        "Question not found with slug: " + slug));
+                        ContentErrorCode.QUESTION_ANSWER_NOT_FOUND, new Object[] {slug}));
     }
 
     @Override
@@ -160,16 +159,14 @@ public class QuestionAnswerServiceImpl implements QuestionAnswerService {
     private QuestionAnswer findById(Integer id) {
         return questionAnswerRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.QUESTION_ANSWER_NOT_FOUND,
-                        "Question not found with id: " + id));
+                        ContentErrorCode.QUESTION_ANSWER_NOT_FOUND, new Object[] {id}));
     }
 
     private Category resolveCategory(Integer categoryId) {
         if (categoryId == null) return null;
         return categoryRepository.findById(categoryId)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.CATEGORY_NOT_FOUND,
-                        "Category not found with id: " + categoryId));
+                        ContentErrorCode.CATEGORY_NOT_FOUND, new Object[] {categoryId}));
     }
 
     private void applyTagIds(ContentItem contentItem, Set<Integer> tagIds) {

@@ -120,7 +120,7 @@ public interface RagQueryService {
      * @param userId    authenticated user ID for cost attribution; {@code null} for anonymous calls
      * @param chatModel id of the chat model profile to generate with; {@code null} uses the
      *                  server's configured default. An id not matching any configured profile
-     *                  throws {@code BusinessException} with {@code CommonErrorCode.AI_MODEL_UNSUPPORTED}.
+     *                  throws {@code BusinessException} with {@code AiErrorCode.AI_MODEL_UNSUPPORTED}.
      * @return the LLM answer together with the source chunks used as context
      */
     RagAnswer query(String question, ConversationContext context, RagFilter filter, Integer userId, String chatModel);
@@ -216,7 +216,7 @@ public interface RagQueryService {
      * @param userId    authenticated user ID for cost attribution; {@code null} for anonymous calls
      * @param chatModel id of the chat model profile to generate with; {@code null} uses the
      *                  server's configured default. An id not matching any configured profile
-     *                  throws {@code BusinessException} with {@code CommonErrorCode.AI_MODEL_UNSUPPORTED}.
+     *                  throws {@code BusinessException} with {@code AiErrorCode.AI_MODEL_UNSUPPORTED}.
      * @param handler   callbacks to receive sources, tokens, completion, and errors
      */
     void queryStream(String question, ConversationContext context, RagFilter filter, Integer userId, String chatModel, RagStreamHandler handler);

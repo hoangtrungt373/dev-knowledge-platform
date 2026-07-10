@@ -18,7 +18,7 @@ public interface ChatModelResolver {
      * @param modelId requested model id, or {@code null} to use the configured default
      * @return the blocking chat model for {@code modelId}
      * @throws com.ttg.devknowledgeplatform.common.exception.BusinessException with
-     *         {@code CommonErrorCode.AI_MODEL_UNSUPPORTED} if {@code modelId} does not match any
+     *         {@code AiErrorCode.AI_MODEL_UNSUPPORTED} if {@code modelId} does not match any
      *         configured profile
      */
     ChatLanguageModel resolveBlocking(String modelId);
@@ -27,7 +27,7 @@ public interface ChatModelResolver {
      * @param modelId requested model id, or {@code null} to use the configured default
      * @return the streaming chat model for {@code modelId}
      * @throws com.ttg.devknowledgeplatform.common.exception.BusinessException with
-     *         {@code CommonErrorCode.AI_MODEL_UNSUPPORTED} if {@code modelId} does not match any
+     *         {@code AiErrorCode.AI_MODEL_UNSUPPORTED} if {@code modelId} does not match any
      *         configured profile
      */
     StreamingChatLanguageModel resolveStreaming(String modelId);

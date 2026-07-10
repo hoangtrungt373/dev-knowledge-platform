@@ -129,7 +129,7 @@ public class ArticleServiceImpl implements ArticleService {
     public Article getBySlug(String slug) {
         return articleRepository.findByContentItem_Slug(slug)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.ARTICLE_NOT_FOUND, "Article not found with slug: " + slug));
+                        ContentErrorCode.ARTICLE_NOT_FOUND, new Object[] {slug}));
     }
 
     @Override
@@ -150,20 +150,19 @@ public class ArticleServiceImpl implements ArticleService {
     private Article findById(Integer id) {
         return articleRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.ARTICLE_NOT_FOUND, "Article not found with id: " + id));
+                        ContentErrorCode.ARTICLE_NOT_FOUND, new Object[] {id}));
     }
 
     private Category resolveCategory(Integer categoryId) {
         if (categoryId == null) return null;
         return categoryRepository.findById(categoryId)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.CATEGORY_NOT_FOUND, "Category not found with id: " + categoryId));
+                        ContentErrorCode.CATEGORY_NOT_FOUND, new Object[] {categoryId}));
     }
 
     private static void validateArticleType(ContentType type) {
         if (type != ContentType.ARTICLE && type != ContentType.BLOG_POST) {
-            throw new ApiException(ContentErrorCode.ARTICLE_TYPE_INVALID,
-                    "Type must be ARTICLE or BLOG_POST, got: " + type);
+            throw new ApiException(ContentErrorCode.ARTICLE_TYPE_INVALID, new Object[] {type});
         }
     }
 

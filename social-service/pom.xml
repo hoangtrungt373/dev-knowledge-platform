@@ -26,15 +26,13 @@
             <artifactId>infra</artifactId>
         </dependency>
 
-        <!-- common declares spring-boot-starter-web as optional (annotation/type support only,
-             not full autoconfiguration), so it isn't inherited transitively. ErrorCode's
-             HttpStatus field needs it on the classpath to class-load at all; the running app
-             always has it via api's non-optional dependency, but unit tests running against
-             this module alone need it explicitly, test-scoped. -->
+        <!-- FriendErrorCode implements the common ErrorCode interface and references HttpStatus
+             directly in main code — common declares spring-boot-starter-web as optional, so it
+             isn't inherited transitively; this module needs it on the compile classpath itself.
+             Same pattern as content-service's ContentErrorCode. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
-            <scope>test</scope>
         </dependency>
 
     </dependencies>

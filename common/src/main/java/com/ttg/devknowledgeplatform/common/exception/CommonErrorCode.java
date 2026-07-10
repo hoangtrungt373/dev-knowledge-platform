@@ -7,9 +7,11 @@ import lombok.Getter;
 
 /**
  * Error codes owned by {@code common} and {@code api} — authentication/authorization, users,
- * validation, generic server/request/resource errors, AI/RAG, rate limiting, chat sessions, and
- * friend management. Domain-specific codes (e.g. content: category/tag/question-answer/article)
- * live in their own module-local {@link ErrorCode} implementation instead.
+ * validation, generic server/request/resource errors, and rate limiting. Domain-specific codes
+ * live in their own module-local {@link ErrorCode} implementation instead: content (category/tag/
+ * question-answer/article) in {@code content-service}'s {@code ContentErrorCode}, friend
+ * management in {@code social-service}'s {@code FriendErrorCode}, AI/RAG in {@code ai-service}'s
+ * {@code AiErrorCode}, and chat sessions in {@code api}'s own {@code ChatErrorCode}.
  *
  * Format: MODULE_ACTION_ERROR
  * Example: AUTH_TOKEN_INVALID, USER_NOT_FOUND
@@ -43,8 +45,8 @@ public enum CommonErrorCode implements ErrorCode {
 
     // User errors
     USER_PASSWORD_INVALID("USER_005", "Password must be at least 8 characters", HttpStatus.BAD_REQUEST),
-    USER_EMAIL_ALREADY_EXISTS("USER_006", "An account with this email already exists", HttpStatus.CONFLICT),
-    USER_USERNAME_ALREADY_EXISTS("USER_007", "This username is already taken", HttpStatus.CONFLICT),
+    USER_EMAIL_ALREADY_EXISTS("USER_006", "An account with email ''{0}'' already exists", HttpStatus.CONFLICT),
+    USER_USERNAME_ALREADY_EXISTS("USER_007", "Username ''{0}'' is already taken", HttpStatus.CONFLICT),
     USER_USERNAME_INVALID("USER_008", "Username must be 3–30 characters and may only contain lowercase letters, numbers, and underscores", HttpStatus.BAD_REQUEST),
 
     // Validation Errors (VALIDATION_*)
@@ -66,24 +68,8 @@ public enum CommonErrorCode implements ErrorCode {
     REQUEST_PARAMETER_MISSING("REQUEST_002", "Required parameter is missing", HttpStatus.BAD_REQUEST),
     REQUEST_METHOD_NOT_ALLOWED("REQUEST_003", "HTTP method not allowed", HttpStatus.METHOD_NOT_ALLOWED),
 
-    // AI / RAG Errors (AI_*)
-    AI_SERVICE_UNAVAILABLE("AI_001", "AI service is temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE),
-    AI_EMBEDDING_FAILED("AI_002", "Failed to generate embedding for the provided text", HttpStatus.SERVICE_UNAVAILABLE),
-    AI_MODEL_UNSUPPORTED("AI_003", "Requested chat model is not supported", HttpStatus.BAD_REQUEST),
-
     // Rate Limiting (RATE_*)
-    RATE_LIMIT_EXCEEDED("RATE_001", "Too many requests — please slow down and try again", HttpStatus.TOO_MANY_REQUESTS),
-
-    // Chat Session (CHAT_*)
-    CHAT_SESSION_NOT_FOUND("CHAT_001", "Chat session not found or does not belong to the current user", HttpStatus.NOT_FOUND),
-
-    // Friend Management Errors (FRIEND_*)
-    CANNOT_FRIEND_SELF("FRIEND_001", "You cannot send a friend request to yourself", HttpStatus.BAD_REQUEST),
-    FRIEND_REQUEST_ALREADY_EXISTS("FRIEND_002", "A pending friend request already exists between these users", HttpStatus.CONFLICT),
-    FRIEND_REQUEST_NOT_FOUND("FRIEND_003", "Friend request not found", HttpStatus.NOT_FOUND),
-    ALREADY_FRIENDS("FRIEND_004", "These users are already friends", HttpStatus.CONFLICT),
-    NOT_FRIENDS("FRIEND_005", "These users are not friends", HttpStatus.BAD_REQUEST),
-    USER_ALREADY_BLOCKED("FRIEND_006", "This user is already blocked", HttpStatus.CONFLICT);
+    RATE_LIMIT_EXCEEDED("RATE_001", "Too many requests — please slow down and try again", HttpStatus.TOO_MANY_REQUESTS);
 
     private final String code;
     private final String message;

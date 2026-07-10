@@ -27,13 +27,13 @@ public interface FriendApi {
      * Sends a friend request to another user. Auto-accepts into a friendship if that user
      * already has a pending request to the caller.
      *
-     * @param userId   authenticated caller's integer primary key, injected from the JWT
-     * @param userUuid UUID of the user to friend
+     * @param userId        authenticated caller's integer primary key, injected from the JWT
+     * @param addresseeUuid UUID of the user to friend
      * @return {@code 201} with the resulting request (or accepted request on auto-accept)
      */
-    @PostMapping("/requests/{userUuid}")
+    @PostMapping("/requests/{addresseeUuid}")
     ResponseEntity<FriendRequestResponse> sendRequest(
-            @CurrentUserId Integer userId, @PathVariable String userUuid);
+            @CurrentUserId Integer userId, @PathVariable String addresseeUuid);
 
     /**
      * Accepts a pending request addressed to the caller.

@@ -23,8 +23,8 @@ function buildQuery(params: Record<string, string | number | undefined>): string
  * instead — it's grouped under `/api/v1/users` on the backend, alongside other profile endpoints.
  */
 export const friendApi = {
-  sendRequest(userUuid: string, showError?: ShowError): Promise<FriendRequest> {
-    return httpClient.post(`/api/v1/friends/requests/${userUuid}`, undefined, showError);
+  sendRequest(addresseeUuid: string, showError?: ShowError): Promise<FriendRequest> {
+    return httpClient.post(`/api/v1/friends/requests/${addresseeUuid}`, undefined, showError);
   },
 
   acceptRequest(requestId: number, showError?: ShowError): Promise<FriendRequest> {

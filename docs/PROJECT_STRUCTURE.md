@@ -67,11 +67,12 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
     ├── BusinessException.java
     ├── ErrorCode.java                — interface (getCode/getMessage/getHttpStatus); one enum per module owning
     │                                    errors implements it (CommonErrorCode here, ContentErrorCode in
-    │                                    content-service) — lets ApiException/BusinessException/GlobalExceptionHandler
-    │                                    stay module-agnostic without a compile-time dependency back onto every
-    │                                    feature module from common
+    │                                    content-service, FriendErrorCode in social-service, AiErrorCode in
+    │                                    ai-service, ChatErrorCode in api) — lets ApiException/BusinessException/
+    │                                    GlobalExceptionHandler stay module-agnostic without a compile-time
+    │                                    dependency back onto every feature module from common
     ├── CommonErrorCode.java          — AUTH_*/OAUTH_*/USER_*/OTP_*/VALIDATION_*/SERVER_*/RESOURCE_*/REQUEST_*/
-    │                                    AI_*/RATE_*/CHAT_*/FRIEND_* codes (everything not owned by a feature module)
+    │                                    RATE_* codes (everything not owned by a single feature module)
     └── ResourceNotFoundException.java
 ```
 
@@ -210,25 +211,28 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │   ├── FriendRequestSentEvent.java     — record; published right after a pending FriendRequest is created
 │   └── FriendRequestAcceptedEvent.java — record; published when a Friendship is created (explicit accept
 │                                          or mutual auto-accept)
-└── service/
-    ├── FriendService.java           — sendRequest, accept/reject/cancelRequest, unfriend, block/unblock,
-    │                                   getRelationshipStatus, countMutualFriends, listFriends/Incoming/Outgoing/
-    │                                   BlockedUsers, searchUsers; returns entities, not REST DTOs — api's
-    │                                   FriendMapper does entity→response mapping (same split as ai-service's
-    │                                   RagQueryService → api's ChatResponse)
-    ├── impl/
-    │   └── FriendServiceImpl.java   — mutual-request auto-accept; block cascades (removes friendship + pending
-    │                                   request between the pair before recording the block); mutual invisibility
-    │                                   (a lookup of a user who has blocked the viewer throws USER_NOT_FOUND, same
-    │                                   as a nonexistent UUID, never a distinguishable "blocked" error)
-    └── seed/                        — sample social-graph data for the Friend Management GUI (see
-        │                              docs/SEED_DATA_AUTHORING_GUIDE.md); requires api's UserSeeder to run first
-        ├── FriendGraphSeeder.java   — data/csv/friend-requests.csv (requesterId, addresseeId, status); an
-        │                              ACCEPTED row also inserts the matching Friendship, canonically ordered,
-        │                              mirroring FriendServiceImpl.acceptRequest's production behavior. Does
-        │                              NOT extend infra's CsvSeeder — an ACCEPTED row persists two entities,
-        │                              which doesn't fit CsvSeeder's one-entity-per-row shape
-        └── UserBlockSeeder.java     — data/csv/user-blocks.csv (blockerId, blockedId); extends infra's CsvSeeder
+├── service/
+│   ├── FriendService.java           — sendRequest, accept/reject/cancelRequest, unfriend, block/unblock,
+│   │                                   getRelationshipStatus, countMutualFriends, listFriends/Incoming/Outgoing/
+│   │                                   BlockedUsers, searchUsers; returns entities, not REST DTOs — api's
+│   │                                   FriendMapper does entity→response mapping (same split as ai-service's
+│   │                                   RagQueryService → api's ChatResponse)
+│   ├── impl/
+│   │   └── FriendServiceImpl.java   — mutual-request auto-accept; block cascades (removes friendship + pending
+│   │                                   request between the pair before recording the block); mutual invisibility
+│   │                                   (a lookup of a user who has blocked the viewer throws USER_NOT_FOUND, same
+│   │                                   as a nonexistent UUID, never a distinguishable "blocked" error)
+│   └── seed/                        — sample social-graph data for the Friend Management GUI (see
+│       │                              docs/SEED_DATA_AUTHORING_GUIDE.md); requires api's UserSeeder to run first
+│       ├── FriendGraphSeeder.java   — data/csv/friend-requests.csv (requesterId, addresseeId, status); an
+│       │                              ACCEPTED row also inserts the matching Friendship, canonically ordered,
+│       │                              mirroring FriendServiceImpl.acceptRequest's production behavior. Does
+│       │                              NOT extend infra's CsvSeeder — an ACCEPTED row persists two entities,
+│       │                              which doesn't fit CsvSeeder's one-entity-per-row shape
+│       └── UserBlockSeeder.java     — data/csv/user-blocks.csv (blockerId, blockedId); extends infra's CsvSeeder
+└── exception/
+    └── FriendErrorCode.java         — FRIEND_* codes, implements common's ErrorCode interface (moved out of
+                                        common's CommonErrorCode)
 ```
 
 Read access to `User` (search, relationship resolution) goes through `common`'s own `UserRepository`
@@ -315,7 +319,9 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │                                        attribution: userId (no FK — analytics rows must survive user deletion),
 │                                        chatModel (id of the resolved chat model profile; NULL pre-DKP-0012 rows)
 ├── exception/
-│   └── RagQueryException.java
+│   ├── RagQueryException.java
+│   └── AiErrorCode.java              — AI_* codes, implements common's ErrorCode interface (moved out of
+│                                        common's CommonErrorCode)
 ├── pipeline/                         — Pipes-and-Filters RAG pipeline (Pipes-and-Filters pattern)
 │   ├── RagPipelineContext.java       — mutable per-request carrier: inputs, stage outputs, abort state;
 │   │                                    trace: traceId (UUID), spans (List<StageSpan>), elapsedMs();
@@ -357,7 +363,7 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
     ├── AnswerQualityService.java                — post-generation drift detection: answer vs context centroid + answer vs query
     ├── ChatModelResolver.java                   — interface: resolveBlocking(modelId), resolveStreaming(modelId),
     │                                               resolveModelId(modelId); null modelId falls back to ChatModelsConfig.defaultModel;
-    │                                               throws BusinessException(AI_MODEL_UNSUPPORTED) for an unconfigured id
+    │                                               throws BusinessException(AiErrorCode.AI_MODEL_UNSUPPORTED) for an unconfigured id
     ├── ConversationTopicGuardService.java       — pre-pipeline topic shift guard: embeds question + history fingerprint; strips recent turns on shift
     ├── PipelineMetricsSummaryService.java       — interface: getSummary(MetricsPeriod); returns PipelineMetricsSummary
     ├── RagQueryService.java                     — interface: query() + queryStream();
@@ -447,6 +453,10 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │   │   └── FriendSummaryResponse.java     — UserSummaryResponse + friendsSince
 │   └── admin/
 │       └── EmbeddingIndexItemResponse.java — ContentItem + embedding stats, admin-only
+├── exception/
+│   └── ChatErrorCode.java            — CHAT_* codes, implements common's ErrorCode interface (moved out of
+│                                        common's CommonErrorCode; owned here since ChatSessionServiceImpl,
+│                                        below, is the sole owner of chat-session business logic)
 ├── mapper/                           — MapStruct mappers (DTO ↔ entity)
 │   ├── CategoryMapper.java / TagMapper.java / QuestionAnswerMapper.java / ArticleMapper.java — map
 │   │                                    content-service entities to dto/content/*

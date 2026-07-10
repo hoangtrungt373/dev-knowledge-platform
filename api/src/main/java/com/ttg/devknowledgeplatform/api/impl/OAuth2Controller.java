@@ -90,8 +90,7 @@ public class OAuth2Controller implements OAuth2Api {
     @Override
     public ResponseEntity<LoginResponse> register(RegisterRequest request) {
         if (userService.findByEmail(request.getEmail()) != null) {
-            throw new ApiException(CommonErrorCode.USER_EMAIL_ALREADY_EXISTS,
-                    "An account with email '" + request.getEmail() + "' already exists");
+            throw new ApiException(CommonErrorCode.USER_EMAIL_ALREADY_EXISTS, new Object[] {request.getEmail()});
         }
 
         User user = userService.registerLocalUser(
@@ -191,7 +190,7 @@ public class OAuth2Controller implements OAuth2Api {
     public ResponseEntity<UserInfoResponse> getCurrentUser(CustomOAuth2User principal) {
         User user = userService.findByEmail(principal.getEmail());
         if (user == null) {
-            throw new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found");
+            throw new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND);
         }
         return ResponseEntity.ok(userMapper.toUserInfo(user));
     }

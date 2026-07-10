@@ -14,7 +14,11 @@ public class ResourceNotFoundException extends BusinessException {
     public ResourceNotFoundException(ErrorCode errorCode, String message) {
         super(errorCode, message);
     }
-    
+
+    public ResourceNotFoundException(ErrorCode errorCode, Object[] templateArgs) {
+        super(errorCode, templateArgs);
+    }
+
     public ResourceNotFoundException(String resource, String identifier) {
         super(CommonErrorCode.RESOURCE_NOT_FOUND, String.format("%s with identifier '%s' not found", resource, identifier));
     }

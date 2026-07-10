@@ -42,7 +42,7 @@ import lombok.RequiredArgsConstructor;
 public class UserSeeder extends CsvSeeder<User> {
 
     /** Plaintext for the shared BCrypt hash every seeded user gets — LOCAL DEV ONLY. */
-    public static final String DEMO_PASSWORD = "Password123!";
+    public static final String DEMO_PASSWORD = "password";
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;

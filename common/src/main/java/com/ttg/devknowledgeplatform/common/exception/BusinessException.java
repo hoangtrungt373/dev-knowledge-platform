@@ -18,4 +18,8 @@ public class BusinessException extends ApiException {
     public BusinessException(ErrorCode errorCode, String message, Object... args) {
         super(errorCode, message, args);
     }
+
+    public BusinessException(ErrorCode errorCode, Object[] templateArgs) {
+        super(errorCode, templateArgs);
+    }
 }
