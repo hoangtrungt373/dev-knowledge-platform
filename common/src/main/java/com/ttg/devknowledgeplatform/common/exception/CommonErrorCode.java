@@ -10,8 +10,9 @@ import lombok.Getter;
  * validation, generic server/request/resource errors, and rate limiting. Domain-specific codes
  * live in their own module-local {@link ErrorCode} implementation instead: content (category/tag/
  * question-answer/article) in {@code content-service}'s {@code ContentErrorCode}, friend
- * management in {@code social-service}'s {@code FriendErrorCode}, AI/RAG in {@code ai-service}'s
- * {@code AiErrorCode}, and chat sessions in {@code api}'s own {@code ChatErrorCode}.
+ * management/chat in {@code social-service}'s {@code SocialErrorCode}, AI/RAG in
+ * {@code ai-service}'s {@code AiErrorCode}, and chat sessions in {@code api}'s own
+ * {@code ChatErrorCode}.
  *
  * Format: MODULE_ACTION_ERROR
  * Example: AUTH_TOKEN_INVALID, USER_NOT_FOUND

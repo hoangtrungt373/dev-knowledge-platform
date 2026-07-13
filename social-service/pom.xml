@@ -26,10 +26,11 @@
             <artifactId>infra</artifactId>
         </dependency>
 
-        <!-- FriendErrorCode implements the common ErrorCode interface and references HttpStatus
-             directly in main code — common declares spring-boot-starter-web as optional, so it
-             isn't inherited transitively; this module needs it on the compile classpath itself.
-             Same pattern as content-service's ContentErrorCode. -->
+        <!-- SocialErrorCode (formerly FriendErrorCode) implements the common ErrorCode interface
+             and references HttpStatus directly in main code — common declares
+             spring-boot-starter-web as optional, so it isn't inherited transitively; this module
+             needs it on the compile classpath itself. Same pattern as content-service's
+             ContentErrorCode. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>

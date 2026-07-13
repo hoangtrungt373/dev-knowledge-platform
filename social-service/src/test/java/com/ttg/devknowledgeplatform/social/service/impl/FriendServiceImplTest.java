@@ -21,7 +21,7 @@ import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.social.entity.FriendRequest;
-import com.ttg.devknowledgeplatform.social.exception.FriendErrorCode;
+import com.ttg.devknowledgeplatform.social.exception.SocialErrorCode;
 import com.ttg.devknowledgeplatform.social.entity.Friendship;
 import com.ttg.devknowledgeplatform.social.entity.UserBlock;
 import com.ttg.devknowledgeplatform.social.enums.FriendRequestStatus;
@@ -72,7 +72,7 @@ class FriendServiceImplTest {
         assertThatThrownBy(() -> friendService.sendRequest(1, "alice-uuid"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(FriendErrorCode.CANNOT_FRIEND_SELF);
+                .isEqualTo(SocialErrorCode.CANNOT_FRIEND_SELF);
     }
 
     @Test
@@ -88,7 +88,7 @@ class FriendServiceImplTest {
         assertThatThrownBy(() -> friendService.sendRequest(1, "bob-uuid"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(FriendErrorCode.FRIEND_REQUEST_ALREADY_EXISTS);
+                .isEqualTo(SocialErrorCode.FRIEND_REQUEST_ALREADY_EXISTS);
     }
 
     @Test
@@ -145,7 +145,7 @@ class FriendServiceImplTest {
         assertThatThrownBy(() -> friendService.block(1, "alice-uuid"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(FriendErrorCode.CANNOT_BLOCK_SELF);
+                .isEqualTo(SocialErrorCode.CANNOT_BLOCK_SELF);
     }
 
     @Test
@@ -158,7 +158,7 @@ class FriendServiceImplTest {
         assertThatThrownBy(() -> friendService.unfriend(1, "bob-uuid"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(FriendErrorCode.NOT_FRIENDS);
+                .isEqualTo(SocialErrorCode.NOT_FRIENDS);
     }
 
     @Test

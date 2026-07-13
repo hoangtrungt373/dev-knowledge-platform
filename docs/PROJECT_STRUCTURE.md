@@ -8,7 +8,8 @@ dev-knowledge-platform/
 ├── infra/           — shared Spring infrastructure: event base classes, composed annotations, MDC utilities, SlugService
 ├── content-service/ — categories, tags, and content items (Q&A, articles) — the knowledge corpus surfaced by the RAG pipeline
 ├── ai-service/      — RAG pipeline: embedding, vector search, LLM generation (LangChain4j)
-├── social-service/  — friend graph: search visibility, requests, friendships, blocking (later: chat/groups/messaging)
+├── social-service/  — friend graph (search visibility, requests, friendships, blocking) plus chat:
+│                       groups/channels (open-add, role-gated) and 1:1 DMs (friend-gated)
 ├── api/             — REST endpoints, security, Liquibase migrations, Spring Boot entry point
 └── gui/             — React 18 + TypeScript + MUI frontend (Vite)
 ```
@@ -67,7 +68,7 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
     ├── BusinessException.java
     ├── ErrorCode.java                — interface (getCode/getMessage/getHttpStatus); one enum per module owning
     │                                    errors implements it (CommonErrorCode here, ContentErrorCode in
-    │                                    content-service, FriendErrorCode in social-service, AiErrorCode in
+    │                                    content-service, SocialErrorCode in social-service, AiErrorCode in
     │                                    ai-service, ChatErrorCode in api) — lets ApiException/BusinessException/
     │                                    GlobalExceptionHandler stay module-agnostic without a compile-time
     │                                    dependency back onto every feature module from common
@@ -194,16 +195,48 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │   ├── FriendRequest.java         — requester/addressee (User, common), status (FriendRequestStatus)
 │   ├── Friendship.java            — user1/user2 (User), canonically ordered (user1.id < user2.id) so each
 │   │                                 pair has exactly one row regardless of who sent the original request
-│   └── UserBlock.java             — blocker/blocked (User); directional, independent of Friendship/FriendRequest
+│   ├── UserBlock.java             — blocker/blocked (User); directional, independent of Friendship/FriendRequest
+│   ├── Group.java                 — name only; maps to table MESSAGE_GROUP (GROUP is a reserved word in
+│   │                                 PostgreSQL). No ownerId column — the owner is whichever GroupMember row
+│   │                                 holds role = OWNER, a single source of truth instead of a duplicated ref
+│   ├── GroupMember.java           — group/user (Group/User), role (GroupMemberRole); one row per (group, user) pair
+│   ├── Channel.java                — group (Group), name; unique per group, not globally. Every group member can
+│   │                                 see every channel in this MVP — no private/restricted channel concept yet
+│   ├── DmThread.java               — user1/user2 (User), canonically ordered exactly like Friendship;
+│   │                                 lastMessageAt (denormalized, same reasoning as ChatSession.lastActivityAt —
+│   │                                 avoids a MAX(dteCreation) aggregate to render "my DMs, most recent first")
+│   ├── DmMessage.java              — dmThread, sender (User), messageType (MessageType), content + 4 nullable
+│   │                                 attachment columns (attachmentObjectKey is a MinIO object key, not a URL —
+│   │                                 same pattern as avatar images). content and the attachment columns are
+│   │                                 independently nullable, so a message can carry text, an attachment, or both.
+│   │                                 Ordered by dteCreation (inherited), not an explicit turn-index like
+│   │                                 ChatMessage.turnIndex — that counter exists there to guarantee strict
+│   │                                 single-writer USER/ASSISTANT alternation, which doesn't apply here
+│   └── ChannelMessage.java         — same field shape as DmMessage, FKs to Channel instead of DmThread. Kept as
+│                                     a separate table rather than unifying with DmMessage under one generic
+│                                     "conversation" concept — mirrors keeping Friendship/UserBlock separate
+│                                     rather than one generic "relationship" table (see CHANGELOG for the fork)
 ├── enums/
 │   ├── FriendRequestStatus.java   — PENDING, ACCEPTED, REJECTED, CANCELLED
-│   └── RelationshipStatus.java    — STRANGER, REQUEST_SENT, REQUEST_RECEIVED, FRIENDS, BLOCKED; computed
-│                                     (not persisted) per profile/search-result view from the viewer's perspective
+│   ├── RelationshipStatus.java    — STRANGER, REQUEST_SENT, REQUEST_RECEIVED, FRIENDS, BLOCKED; computed
+│   │                                 (not persisted) per profile/search-result view from the viewer's perspective
+│   ├── GroupMemberRole.java       — OWNER, ADMIN, MEMBER; exactly one OWNER per group
+│   └── MessageType.java           — TEXT, IMAGE, FILE; tags the primary content for rendering only — text and
+│                                     an attachment may coexist on one row regardless of this value
 ├── repository/
 │   ├── FriendRequestRepository.java  — findPendingBetween (status-scoped); existsBetween (any status, either
 │   │                                    direction — FriendGraphSeeder's idempotency guard)
 │   ├── FriendshipRepository.java  — findFriendUserIds() used by the service for mutual-friend-count set intersection
 │   ├── UserBlockRepository.java   — existsEitherDirection (UserBlockSeeder's idempotency guard)
+│   ├── GroupRepository.java       — findAllForUser (joins through GroupMember; ordered by group id — no "recent
+│   │                                 activity" definition locked for groups yet, unlike DmThread's lastMessageAt)
+│   ├── GroupMemberRepository.java — findByGroupAndUser/existsByGroupAndUser — the membership+role lookup behind
+│   │                                 every group/channel permission check
+│   ├── ChannelRepository.java     — findByGroup; existsByGroupAndName (pre-check before create)
+│   ├── DmThreadRepository.java    — findByUser1AndUser2 (canonicalized pair, same convention as
+│   │                                 FriendshipRepository); findAllForUser ordered by lastMessageAt DESC
+│   ├── DmMessageRepository.java   — findByDmThreadOrderByDteCreationDesc, paginated
+│   ├── ChannelMessageRepository.java — findByChannelOrderByDteCreationDesc, paginated
 │   └── spec/
 │       └── UserSpecification.java — fuzzy username/name match, exact email match, excludes any user blocked
 │                                     in either direction relative to the viewer
@@ -217,11 +250,31 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │   │                                   BlockedUsers, searchUsers; returns entities, not REST DTOs — api's
 │   │                                   FriendMapper does entity→response mapping (same split as ai-service's
 │   │                                   RagQueryService → api's ChatResponse)
+│   ├── DmService.java               — sendMessage (lazy DmThread creation, friend-gated via
+│   │                                   FriendService.getRelationshipStatus — collapses "not friends" and
+│   │                                   "blocked" into the same rejection, never revealing which), listMyThreads,
+│   │                                   listMessages (same not-found error whether the thread doesn't exist or
+│   │                                   the caller isn't a participant)
+│   ├── GroupService.java            — createGroup, addMember (open add, idempotent), removeMember (owner
+│   │                                   protected; only the owner can remove an admin), leaveGroup (owner
+│   │                                   blocked — no ownership-transfer story yet), changeRole (owner-only;
+│   │                                   ownership itself not reassignable), createChannel, postMessage, plus
+│   │                                   listMyGroups/listChannels/listMessages
+│   ├── MessageAttachmentInput.java  — record: objectKey/mimeType/fileName/fileSize; shared optional-attachment
+│   │                                   input for both DmService.sendMessage and GroupService.postMessage
 │   ├── impl/
-│   │   └── FriendServiceImpl.java   — mutual-request auto-accept; block cascades (removes friendship + pending
-│   │                                   request between the pair before recording the block); mutual invisibility
-│   │                                   (a lookup of a user who has blocked the viewer throws USER_NOT_FOUND, same
-│   │                                   as a nonexistent UUID, never a distinguishable "blocked" error)
+│   │   ├── FriendServiceImpl.java   — mutual-request auto-accept; block cascades (removes friendship + pending
+│   │   │                              request between the pair before recording the block); mutual invisibility
+│   │   │                              (a lookup of a user who has blocked the viewer throws USER_NOT_FOUND, same
+│   │   │                              as a nonexistent UUID, never a distinguishable "blocked" error)
+│   │   ├── DmServiceImpl.java       — resolveOrCreateThread canonicalizes the pair then find-or-creates; updates
+│   │   │                              DmThread.lastMessageAt via DateUtils.getCurrentDateTime() on every send
+│   │   └── GroupServiceImpl.java    — requireManagementRole/resolveMembership are the shared permission-check
+│   │                                   helpers behind every group/channel method; requireManagementRole is a
+│   │                                   Java 21 exhaustive switch (no default) over GroupMemberRole, same
+│   │                                   technique FriendServiceImpl.requirePending uses for FriendRequestStatus —
+│   │                                   standing in for a full State-pattern class hierarchy at a scale that
+│   │                                   doesn't justify one
 │   └── seed/                        — sample social-graph data for the Friend Management GUI (see
 │       │                              docs/SEED_DATA_AUTHORING_GUIDE.md); requires api's UserSeeder to run first
 │       ├── FriendGraphSeeder.java   — data/csv/friend-requests.csv (requesterId, addresseeId, status); an
@@ -231,16 +284,26 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │       │                              which doesn't fit CsvSeeder's one-entity-per-row shape
 │       └── UserBlockSeeder.java     — data/csv/user-blocks.csv (blockerId, blockedId); extends infra's CsvSeeder
 └── exception/
-    └── FriendErrorCode.java         — FRIEND_* codes, implements common's ErrorCode interface (moved out of
-                                        common's CommonErrorCode)
+    └── SocialErrorCode.java         — FRIEND_*/DM_*/GROUP_*/CHANNEL_* codes, implements common's ErrorCode
+                                        interface (moved out of common's CommonErrorCode). Renamed from
+                                        FriendErrorCode once this module grew beyond just the friend graph — one
+                                        enum per module (not per sub-domain), same shape as content-service's
+                                        ContentErrorCode holding CATEGORY_*/TAG_*/QA_*/ARTICLE_* together
 ```
 
 Read access to `User` (search, relationship resolution) goes through `common`'s own `UserRepository`
 directly — no module-local wrapper repository needed, since `UserRepository` already lives in
 `common` and extends `JpaSpecificationExecutor<User>` (for `UserSpecification` above).
 
-Chat/groups/messaging (deferred) will be added here as new packages when that phase starts, not as a
-separate module — see `docs/CHANGELOG.md` for the reasoning.
+`GroupService` and `DmService` are deliberately two services, not one — they gate access differently
+(open-add + role checks vs. friend-required) and share no entities, so combining them would mix two
+unrelated authorization models in one class. `DmService` depends on `FriendService` as a collaborator
+(reusing its relationship lookup) rather than querying `FriendshipRepository`/`UserBlockRepository`
+directly, avoiding a second implementation of the canonicalization + mutual-invisibility logic.
+REST layer: `api`'s `GroupApi`/`GroupController` and `DmApi`/`DmController`, DTOs in `dto/messaging/`,
+`MessagingMapper` — see the `api` section below. No upload endpoint yet for message attachments;
+`MessageAttachmentRequest.objectKey` assumes the client already has a MinIO object key from
+somewhere else.
 
 ---
 
@@ -399,6 +462,15 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │   ├── FriendApi.java                — /api/v1/friends/**: send/accept/reject/cancel requests, list
 │   │                                    incoming/outgoing/friends, unfriend, block/unblock, list blocked users;
 │   │                                    delegates to social-service's FriendService
+│   ├── GroupApi.java                 — /api/v1/groups/**: create/list groups, add/remove/leave members,
+│   │                                    change role, create/list channels; plus
+│   │                                    /api/v1/channels/{channelId}/messages (post/list) — kept un-nested
+│   │                                    from groupId since GroupService resolves the group from the channel
+│   │                                    itself, so a groupId path segment there would be unvalidated;
+│   │                                    delegates to social-service's GroupService
+│   ├── DmApi.java                    — /api/v1/dms/**: send message (lazy thread creation), list my
+│   │                                    threads, list a thread's messages; delegates to social-service's
+│   │                                    DmService
 │   └── impl/
 │       ├── ChatController.java            — POST /api/v1/chat, POST /api/v1/chat/stream;
 │       │                                    builds RagFilter from ChatRequest and passes to RagQueryService
@@ -406,6 +478,8 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │       ├── PipelineMetricsController.java — delegates to PipelineMetricsSummaryService; no mapping logic
 │       ├── UserController.java            — see UserApi above
 │       ├── FriendController.java          — see FriendApi above
+│       ├── GroupController.java           — see GroupApi above
+│       ├── DmController.java              — see DmApi above
 │       └── …                              — other controllers
 ├── config/
 │   ├── SecurityConfig.java           — JWT + OAuth2 filter chain
@@ -451,6 +525,23 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │   │   ├── UserSearchResultResponse.java  — UserSummaryResponse + relationshipStatus + mutualFriendCount
 │   │   ├── FriendRequestResponse.java     — id, requester, addressee, status, createdAt
 │   │   └── FriendSummaryResponse.java     — UserSummaryResponse + friendsSince
+│   ├── messaging/                    — fronts social-service's GroupService/DmService; deliberately not
+│   │   │                                dto/chat/, which already means the unrelated AI-RAG chat feature
+│   │   ├── GroupResponse.java / CreateGroupRequest.java
+│   │   ├── GroupMemberResponse.java       — UserSummaryResponse (dto/friend) + role (String) + joinedAt
+│   │   ├── ChannelResponse.java / CreateChannelRequest.java
+│   │   ├── ChangeRoleRequest.java         — role: String, parsed to GroupMemberRole in GroupController
+│   │   ├── ChannelMessageResponse.java / DmMessageResponse.java — same shape: sender (UserSummaryResponse),
+│   │   │                                    messageType (String), content, attachment (nullable), createdAt
+│   │   ├── DmThreadResponse.java          — otherUser (UserSummaryResponse, resolved relative to the
+│   │   │                                    viewer), lastMessageAt
+│   │   ├── SendMessageRequest.java        — content + attachment (MessageAttachmentRequest), both optional;
+│   │   │                                    at least one required, enforced by the service not bean validation
+│   │   ├── MessageAttachmentRequest.java  — objectKey/mimeType/fileName/fileSize; objectKey must already
+│   │   │                                    exist in MinIO — no upload endpoint exists yet, this only
+│   │   │                                    references an object already there
+│   │   └── MessageAttachmentResponse.java — url (presigned, resolved from objectKey at read time),
+│   │                                        mimeType, fileName, fileSize
 │   └── admin/
 │       └── EmbeddingIndexItemResponse.java — ContentItem + embedding stats, admin-only
 ├── exception/
@@ -460,9 +551,17 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 ├── mapper/                           — MapStruct mappers (DTO ↔ entity)
 │   ├── CategoryMapper.java / TagMapper.java / QuestionAnswerMapper.java / ArticleMapper.java — map
 │   │                                    content-service entities to dto/content/*
-│   └── FriendMapper.java             — abstract class (not interface) like UserMapper — needs an injected
-│                                        StorageService for presigned avatar URLs, and MapStruct interfaces
-│                                        can't hold instance fields; maps social-service entities to dto/friend/*
+│   ├── FriendMapper.java             — abstract class (not interface) like UserMapper — needs an injected
+│   │                                    StorageService for presigned avatar URLs, and MapStruct interfaces
+│   │                                    can't hold instance fields; maps social-service entities to dto/friend/*
+│   └── MessagingMapper.java           — abstract class; maps social-service's Group/Channel/DM entities to
+│                                        dto/messaging/*. @Mapper(uses = FriendMapper.class) so User →
+│                                        UserSummaryResponse (incl. avatar presigned URL) isn't duplicated;
+│                                        also injects FriendMapper directly as a field to call
+│                                        toUserSummary() from a hand-written expression (otherUser mapping
+│                                        for DmThreadResponse) — MapStruct's implicit "uses" delegation only
+│                                        covers same-named auto-mapped fields, not calls from your own
+│                                        expression code, which is spliced as raw Java into the generated class
 ├── repository/
 │   └── …                             — ChatSessionRepository, ChatMessageRepository (UserRepository moved
 │                                        to common — see that module's section);
@@ -603,6 +702,14 @@ expected over time, and are modelled as data, not schema:
   block a later re-request. `USER_BLOCK` is directional (no implied reverse row). None of the three have
   their own `SEED_ID` (see `DKP-0016` below) — a pair's identity has no editable-field equivalent to
   `NAME`/`EMAIL` that could invalidate a pair-based idempotency check.
+- `MESSAGE_GROUP` / `GROUP_MEMBER` / `CHANNEL` / `DM_THREAD` / `DM_MESSAGE` / `CHANNEL_MESSAGE` (DKP-0019)
+  — chat MVP, backing `social-service`'s entities of the same names (`Group` maps to `MESSAGE_GROUP`,
+  not `GROUP` — a reserved word in PostgreSQL). `DM_THREAD` reuses `FRIENDSHIP`'s canonical-pair-ordering
+  convention (`USER_ID_1 < USER_ID_2` check constraint). `DM_MESSAGE`/`CHANNEL_MESSAGE` are deliberately
+  separate tables rather than one unified "conversation" concept (same reasoning as keeping `FRIENDSHIP`/
+  `USER_BLOCK` separate); both have independently-nullable `CONTENT`/`ATTACHMENT_*` columns so a message
+  can carry text, an attachment, or both. `ON DELETE CASCADE` from messages up through channel/group and
+  from members up through group.
 - `USER.SEED_ID` (DKP-0016, nullable, unique index) — same pattern as `DKP-0013`'s `CATEGORY`/`TAG`/
   `CONTENT_ITEM`; sole idempotency key for `UserSeeder`'s (`api`) 20 sample login-able accounts.
 - Migrations: `api/src/main/java/com/ttg/devknowledgeplatform/database/sql/` (Liquibase config lives in
