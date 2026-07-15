@@ -303,4 +303,33 @@ class GroupServiceImplTest {
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
                 .isEqualTo(SocialErrorCode.GROUP_NOT_FOUND);
     }
+
+    @Test
+    void isChannelMember_whenMember_returnsTrue() {
+        Channel channel = Channel.builder().group(group).name("general").build();
+        channel.setId(20);
+        when(channelRepository.findById(20)).thenReturn(Optional.of(channel));
+        when(userRepository.findById(1)).thenReturn(Optional.of(alice));
+        when(groupMemberRepository.existsByGroupAndUser(group, alice)).thenReturn(true);
+
+        assertThat(groupService.isChannelMember(1, 20)).isTrue();
+    }
+
+    @Test
+    void isChannelMember_whenNotMember_returnsFalse() {
+        Channel channel = Channel.builder().group(group).name("general").build();
+        channel.setId(20);
+        when(channelRepository.findById(20)).thenReturn(Optional.of(channel));
+        when(userRepository.findById(3)).thenReturn(Optional.of(carla));
+        when(groupMemberRepository.existsByGroupAndUser(group, carla)).thenReturn(false);
+
+        assertThat(groupService.isChannelMember(3, 20)).isFalse();
+    }
+
+    @Test
+    void isChannelMember_whenChannelDoesNotExist_returnsFalseWithoutThrowing() {
+        when(channelRepository.findById(999)).thenReturn(Optional.empty());
+
+        assertThat(groupService.isChannelMember(1, 999)).isFalse();
+    }
 }

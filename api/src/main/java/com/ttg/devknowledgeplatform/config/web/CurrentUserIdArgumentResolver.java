@@ -1,11 +1,10 @@
 package com.ttg.devknowledgeplatform.config.web;
 
 import com.ttg.devknowledgeplatform.annotation.CurrentUserId;
-import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
-import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.common.repository.UserRepository;
+import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
+import com.ttg.devknowledgeplatform.security.CurrentUserResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.MethodParameter;
 import org.springframework.security.core.Authentication;
@@ -24,9 +23,11 @@ import org.springframework.web.method.support.ModelAndViewContainer;
  * that {@code JwtAuthenticationFilter} stores after verifying the JWT. The principal's
  * {@code userUuid} field holds the user's public-facing UUID, not the internal numeric
  * primary key: neither the JWT claims nor the OAuth2 login flow ever expose the
- * sequential PK externally, so it can't be enumerated by a client. This resolver bridges
- * that boundary with a {@link UserRepository#findByUserUuid} lookup to recover the
- * numeric ID that downstream repositories (e.g. {@code ChatSession.userId}) key on.
+ * sequential PK externally, so it can't be enumerated by a client. The actual cast +
+ * {@link UserRepository#findByUserUuid} lookup lives in {@link CurrentUserResolver}, shared
+ * with the STOMP-side {@code ws.CurrentUserIdMessageArgumentResolver} — this class's own job is
+ * just finding the principal in the first place, which for REST means the
+ * {@code SecurityContext}.
  *
  * <p>This is a <strong>HandlerMethodArgumentResolver</strong>: Spring MVC calls
  * {@link #supportsParameter} once per parameter (cached by the framework), and
@@ -80,10 +81,6 @@ public class CurrentUserIdArgumentResolver implements HandlerMethodArgumentResol
                     "@CurrentUserId requires an authenticated principal, but the SecurityContext has none. "
                     + "Verify that the route is covered by SecurityConfig.");
         }
-        CustomOAuth2User principal = (CustomOAuth2User) auth.getPrincipal();
-        User user = userRepository.findByUserUuid(principal.getUserUuid())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        CommonErrorCode.USER_NOT_FOUND, "No user found for UUID: " + principal.getUserUuid()));
-        return user.getId();
+        return CurrentUserResolver.resolveUserId(auth, userRepository);
     }
 }

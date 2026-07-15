@@ -63,4 +63,14 @@ public interface GroupService {
 
     /** Paginated message history for a channel. Requires {@code userId} to be a member of its group. */
     Page<ChannelMessage> listMessages(Integer userId, Integer channelId, Pageable pageable);
+
+    /**
+     * Whether {@code userId} is a member (any role) of the group owning {@code channelId} —
+     * a pure boolean check, unlike {@link #listMessages}/{@link #postMessage} which throw on
+     * failure. Used by {@code api}'s STOMP layer to authorize a channel-topic subscription before
+     * the broker admits it, since the simple broker itself has no per-destination ACL.
+     *
+     * @return {@code false} for a nonexistent channel too — same as "not a member"
+     */
+    boolean isChannelMember(Integer userId, Integer channelId);
 }

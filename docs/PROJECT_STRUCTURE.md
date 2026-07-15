@@ -259,7 +259,9 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │   │                                   protected; only the owner can remove an admin), leaveGroup (owner
 │   │                                   blocked — no ownership-transfer story yet), changeRole (owner-only;
 │   │                                   ownership itself not reassignable), createChannel, postMessage, plus
-│   │                                   listMyGroups/listChannels/listMessages
+│   │                                   listMyGroups/listChannels/listMessages/isChannelMember (pure boolean
+│   │                                   membership check, used by api's ws/StompAuthChannelInterceptor to
+│   │                                   authorize a channel-topic subscription before the broker admits it)
 │   ├── MessageAttachmentInput.java  — record: objectKey/mimeType/fileName/fileSize; shared optional-attachment
 │   │                                   input for both DmService.sendMessage and GroupService.postMessage
 │   ├── impl/
@@ -574,6 +576,46 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │       ├── AccessTokenClaims.java    — record: userUuid, email, username, role
 │       └── RefreshTokenClaims.java   — record: userUuid, username, role (type=refresh claim added
 │                                        by toClaimsMap(); no email claim, unlike access tokens)
+├── ws/                                — STOMP-over-WebSocket live push for group/DM chat (AI chat
+│   │                                    keeps its own SSE stream; unrelated, additive infra here)
+│   ├── WebSocketConfig.java          — @EnableWebSocketMessageBroker; registers /ws with NO SockJS
+│   │                                    fallback (real handshake, not an emulated transport); simple
+│   │                                    broker on /topic + /queue; /app client-send prefix; wires
+│   │                                    StompAuthChannelInterceptor + CurrentUserIdMessageArgumentResolver
+│   ├── StompAuthChannelInterceptor.java — CONNECT: authenticates the JWT passed as a STOMP
+│   │                                       Authorization header (handshake itself is permitAll —
+│   │                                       browsers can't set headers on the handshake request),
+│   │                                       reusing JwtTokenProvider the same way JwtAuthenticationFilter
+│   │                                       does for REST. SUBSCRIBE: authorizes /topic/channels/{id}
+│   │                                       via GroupService.isChannelMember — the simple broker has no
+│   │                                       per-destination ACL of its own. DMs need no equivalent
+│   │                                       check (convertAndSendToUser's private queue has no public
+│   │                                       topic string to subscribe to)
+│   ├── WsCurrentUser.java            — package-private; resolves Integer userId from the STOMP
+│   │                                    session's Principal (set at CONNECT), mirroring
+│   │                                    CurrentUserIdArgumentResolver's REST-side lookup
+│   ├── CurrentUserIdMessageArgumentResolver.java — Spring Messaging's HandlerMethodArgumentResolver
+│   │                                    (different interface than Spring MVC's own of the same
+│   │                                    name); lets @MessageMapping methods accept the same
+│   │                                    @CurrentUserId Integer userId REST controllers use
+│   ├── WsErrorResponse.java          — record: errorCode, message; sent to a client's private
+│   │                                    /queue/errors by each controller's @MessageExceptionHandler
+│   ├── GroupMessagingController.java — /app/channels/{channelId}/messages → GroupService.postMessage
+│   │                                    → broadcast to /topic/channels/{channelId}. Safe to map
+│   │                                    ChannelMessage.sender/.channel right after the service call
+│   │                                    returns — both are the exact objects GroupServiceImpl already
+│   │                                    fetched by ID in that same call, not lazy proxies
+│   └── DmMessagingController.java    — /app/dms/{recipientUuid}/messages → DmService.sendMessage →
+│                                        convertAndSendToUser to both participants' /queue/dms.
+│                                        Deliberately does NOT read
+│                                        message.getDmThread().getUser1()/getUser2() to find the
+│                                        other participant — for an existing thread those are
+│                                        genuine lazy proxies, and STOMP handling isn't covered by
+│                                        Open-Session-In-View the way REST controllers are (OSIV is a
+│                                        servlet-filter mechanism; a WebSocket message never goes
+│                                        through it). Resolves both usernames directly instead
+│                                        (sender's from the already-authenticated Principal,
+│                                        recipient's via a fresh UserRepository lookup)
 ├── service/
 │   ├── ChatSessionService.java       — getOrCreateSessionId, getConversationContext (primary),
 │   │                                   getRecentTurns, addTurn (triggers rolling summary), listSessions, getHistory

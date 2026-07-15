@@ -177,6 +177,14 @@ public class GroupServiceImpl implements GroupService {
         return channelMessageRepository.findByChannelOrderByDteCreationDesc(channel, pageable);
     }
 
+    @Override
+    public boolean isChannelMember(Integer userId, Integer channelId) {
+        return channelRepository.findById(channelId)
+                .flatMap(channel -> userRepository.findById(userId)
+                        .map(user -> groupMemberRepository.existsByGroupAndUser(channel.getGroup(), user)))
+                .orElse(false);
+    }
+
     /**
      * Java 21 exhaustive switch (no {@code default}) over {@link GroupMemberRole} — adding a new
      * role becomes a compile error here until this method is updated, same technique
