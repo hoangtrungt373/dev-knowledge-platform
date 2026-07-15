@@ -1,8 +1,8 @@
 package com.ttg.devknowledgeplatform.security;
 
-import com.ttg.devknowledgeplatform.security.handler.OAuth2LoginSuccessHandler;
-import com.ttg.devknowledgeplatform.security.service.CustomOAuth2UserService;
-import com.ttg.devknowledgeplatform.security.service.CustomOidcUserService;
+import com.ttg.devknowledgeplatform.identity.security.handler.OAuth2LoginSuccessHandler;
+import com.ttg.devknowledgeplatform.identity.security.service.CustomOAuth2UserService;
+import com.ttg.devknowledgeplatform.identity.security.service.CustomOidcUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

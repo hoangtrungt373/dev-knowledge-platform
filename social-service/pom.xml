@@ -36,6 +36,23 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- FriendMapper/MessagingMapper (MapStruct) now live here, moved from api. No <version> —
+             centrally managed in the root pom, same as everywhere else this dependency appears;
+             the annotation-processor wiring is already global. -->
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct</artifactId>
+        </dependency>
+
+        <!-- GroupMessagingController/DmMessagingController (STOMP @MessageMapping controllers,
+             moved from api) need spring-messaging's annotations plus SimpMessagingTemplate —
+             api's own justification for this dependency ("WebSocket/STOMP — live push for
+             group/DM chat") applies here too now that the controllers themselves live here. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
     </dependencies>
 
 </project>

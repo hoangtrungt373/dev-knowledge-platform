@@ -38,6 +38,19 @@
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-csv</artifactId>
         </dependency>
+
+        <!-- StorageService needs MultipartFile (spring-web) — shared by social-service and
+             identity-service, neither of which can depend on the other, so it lives here. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- MinIO — S3-compatible object storage, backing StorageServiceImpl -->
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+        </dependency>
     </dependencies>
 
 </project>

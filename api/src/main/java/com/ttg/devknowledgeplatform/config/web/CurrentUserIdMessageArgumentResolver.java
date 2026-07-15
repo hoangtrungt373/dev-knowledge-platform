@@ -8,7 +8,7 @@ import org.springframework.messaging.handler.invocation.HandlerMethodArgumentRes
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.stereotype.Component;
 
-import com.ttg.devknowledgeplatform.annotation.CurrentUserId;
+import com.ttg.devknowledgeplatform.common.annotation.CurrentUserId;
 import com.ttg.devknowledgeplatform.common.repository.UserRepository;
 import com.ttg.devknowledgeplatform.security.CurrentUserResolver;
 import com.ttg.devknowledgeplatform.security.WebSocketConfig;

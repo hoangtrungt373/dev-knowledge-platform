@@ -37,6 +37,10 @@
             <groupId>com.ttg</groupId>
             <artifactId>social-service</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.ttg</groupId>
+            <artifactId>identity-service</artifactId>
+        </dependency>
 
         <!-- Spring Web -->
         <dependency>

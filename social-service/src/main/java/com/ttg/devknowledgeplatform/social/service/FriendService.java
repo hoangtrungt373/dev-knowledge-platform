@@ -12,7 +12,7 @@ import com.ttg.devknowledgeplatform.social.enums.RelationshipStatus;
 /**
  * Owns the friend graph: search visibility, friend requests, friendships, and blocking.
  *
- * <p>Returns entities rather than REST DTOs — {@code api}'s {@code FriendMapper} does the
+ * <p>Returns entities rather than REST DTOs — this module's own {@code FriendMapper} does the
  * entity-to-response mapping, matching how {@code ai-service}'s {@code RagQueryService} returns
  * internal models that {@code api} maps to {@code ChatResponse}.
  */

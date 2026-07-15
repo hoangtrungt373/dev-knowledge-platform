@@ -12,9 +12,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
-import com.ttg.devknowledgeplatform.security.jwt.AccessTokenClaims;
-import com.ttg.devknowledgeplatform.security.jwt.TokenClaims;
+import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
+import com.ttg.devknowledgeplatform.identity.security.JwtTokenProvider;
+import com.ttg.devknowledgeplatform.identity.security.jwt.AccessTokenClaims;
+import com.ttg.devknowledgeplatform.identity.security.jwt.TokenClaims;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

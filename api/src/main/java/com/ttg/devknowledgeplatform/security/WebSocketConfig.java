@@ -11,8 +11,8 @@ import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBr
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
-import com.ttg.devknowledgeplatform.api.impl.DmMessagingController;
-import com.ttg.devknowledgeplatform.api.impl.GroupMessagingController;
+import com.ttg.devknowledgeplatform.social.api.impl.DmMessagingController;
+import com.ttg.devknowledgeplatform.social.api.impl.GroupMessagingController;
 import com.ttg.devknowledgeplatform.config.web.CurrentUserIdMessageArgumentResolver;
 
 import lombok.RequiredArgsConstructor;

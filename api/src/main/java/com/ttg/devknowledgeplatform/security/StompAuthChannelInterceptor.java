@@ -16,10 +16,11 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.common.repository.UserRepository;
-import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
-import com.ttg.devknowledgeplatform.security.jwt.AccessTokenClaims;
-import com.ttg.devknowledgeplatform.security.jwt.TokenClaims;
+import com.ttg.devknowledgeplatform.identity.security.JwtTokenProvider;
+import com.ttg.devknowledgeplatform.identity.security.jwt.AccessTokenClaims;
+import com.ttg.devknowledgeplatform.identity.security.jwt.TokenClaims;
 import com.ttg.devknowledgeplatform.social.service.GroupService;
 
 import lombok.RequiredArgsConstructor;

@@ -46,6 +46,14 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- CustomOAuth2User implements OAuth2User (type support only, same optional pattern
+             as the security starters above) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Jackson — ApiResponse / ErrorResponse serialization -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

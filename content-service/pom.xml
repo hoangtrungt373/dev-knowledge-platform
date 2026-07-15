@@ -48,6 +48,25 @@
             <artifactId>snakeyaml</artifactId>
         </dependency>
 
+        <!-- MapStruct — DTO <-> entity mapping for the REST layer (CategoryMapper, TagMapper,
+             ArticleMapper, QuestionAnswerMapper); version + annotation-processor wiring managed
+             centrally in the root pom's dependencyManagement / maven-compiler-plugin pluginManagement. -->
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct</artifactId>
+        </dependency>
+
+        <!-- ArticleApi/QuestionAnswerApi's create() endpoints take @AuthenticationPrincipal
+             CustomOAuth2User (which implements OAuth2User) — type-only usage (annotation +
+             parameter type), same "optional, annotation/type support only" reasoning common
+             applies to this exact same starter for the same class. The actual security filter
+             chain/autoconfiguration stays in api's SecurityConfig. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+            <optional>true</optional>
+        </dependency>
+
     </dependencies>
 
 </project>

@@ -1,7 +1,7 @@
 package com.ttg.devknowledgeplatform.config.web;
 
 import com.ttg.devknowledgeplatform.config.chat.ChatRateLimiter;
-import com.ttg.devknowledgeplatform.dto.CustomOAuth2User;
+import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;

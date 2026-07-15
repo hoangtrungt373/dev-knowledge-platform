@@ -4,22 +4,43 @@
 
 ```
 dev-knowledge-platform/
-├── common/          — shared entities, enums, exceptions, DTOs; depends on Spring Data JPA (for @Entity), validation, web, security (all as annotation/type support, not full autoconfiguration)
-├── infra/           — shared Spring infrastructure: event base classes, composed annotations, MDC utilities, SlugService
-├── content-service/ — categories, tags, and content items (Q&A, articles) — the knowledge corpus surfaced by the RAG pipeline
-├── ai-service/      — RAG pipeline: embedding, vector search, LLM generation (LangChain4j)
-├── social-service/  — friend graph (search visibility, requests, friendships, blocking) plus chat:
-│                       groups/channels (open-add, role-gated) and 1:1 DMs (friend-gated)
-├── api/             — REST endpoints, security, Liquibase migrations, Spring Boot entry point
-└── gui/             — React 18 + TypeScript + MUI frontend (Vite)
+├── common/           — shared entities, enums, exceptions, base DTOs (PagedResponse, CustomOAuth2User),
+│                        the @CurrentUserId annotation; depends on Spring Data JPA (for @Entity), validation,
+│                        web, security (all as annotation/type support, not full autoconfiguration)
+├── infra/            — shared Spring infrastructure: event base classes, composed annotations, MDC utilities,
+│                        SlugService, StorageService (MinIO), Redis cache TTL config
+├── content-service/  — categories, tags, and content items (Q&A, articles) — the knowledge corpus surfaced by
+│                        the RAG pipeline; now also owns its own REST layer (api/), mappers, and DTOs
+├── ai-service/       — RAG pipeline (embedding, vector search, LLM generation via LangChain4j), the RAG-chat
+│                        REST feature, and the content+AI indexing orchestration layer (own REST layer too)
+├── social-service/   — friend graph (search visibility, requests, friendships, blocking) plus chat:
+│                        groups/channels (open-add, role-gated) and 1:1 DMs (friend-gated); own REST layer too
+├── identity-service/ — authentication (local + OAuth2/OIDC login), JWT issuance, OTP-gated registration,
+│                        and pure user-profile mutation (update profile, avatar upload)
+├── api/              — REST endpoints that need to see 2+ sibling feature modules with no dependency
+│                        relationship between them, security/JWT-filter/STOMP transport wiring, Liquibase
+│                        migrations, Spring Boot entry point
+└── gui/              — React 18 + TypeScript + MUI frontend (Vite)
 ```
 
-Dependency order: `common` ← `infra` ← `content-service` ← `ai-service`/`social-service` ← `api`. `gui` is independent.
-`content-service` and `social-service` mirror each other's shape (a business-logic module `api` depends on and
-wires up via REST) — both depend only on `common` + `infra`, never on `api`, so neither can reuse `api`'s
-repositories or services. `ai-service` additionally depends on `content-service`: `ContentEmbedding` has a real
-`@ManyToOne` FK to `ContentItem`, and `ContentIngestionService.ingest(...)` takes a `ContentItem` parameter —
-unlike `social-service`, which has zero compile-time coupling from `ai-service`.
+Dependency order: `common` ← `infra` ← `content-service` ← `ai-service`; `infra` ← `social-service`;
+`infra` ← `identity-service`. `content-service`/`social-service`/`identity-service` are parallel siblings —
+none of the three depends on either of the others. `api` depends on all four feature modules (it's the only
+module allowed to depend on more than one, for orchestration that needs two feature modules with no
+dependency relationship between them — see the `api` section below for exactly what still qualifies).
+`gui` is independent of the whole Java reactor.
+
+Each of `content-service`/`social-service`/`ai-service`/`identity-service` owns its own full vertical slice —
+entities/services *and* REST controllers, DTOs, MapStruct mappers — rather than the earlier shape where `api`
+centralized every controller/DTO/mapper regardless of which module owned the underlying entity. That
+centralized shape kept these modules transport-agnostic; the vertical-slice shape trades that away
+deliberately, in favor of each module being closer to an independently-deployable unit ahead of an eventual
+microservices split (see `docs/CHANGELOG.md`'s `[Unreleased]` entry for the full rationale and what moved).
+`ai-service` additionally depends on `content-service`: `ContentEmbedding` has a real `@ManyToOne` FK to
+`ContentItem`, and `ContentIngestionService.ingest(...)` takes a `ContentItem` parameter — this is also why
+the content+AI indexing orchestration layer (`IngestionApi`, `EmbeddingIndexApi`, `PublicContentApi`) lives in
+`ai-service` now rather than needing `api`: `ai-service` is the one module (besides `api`) that can already
+see both.
 
 ---
 
@@ -161,16 +182,33 @@ content-service/src/main/java/com/ttg/devknowledgeplatform/content/
 │   │                                     does not extend CsvSeeder (one-file-per-record, different iteration shape)
 │   └── impl/
 │       └── CategoryServiceImpl.java / TagServiceImpl.java / QuestionAnswerServiceImpl.java / ArticleServiceImpl.java
-└── exception/
-    └── ContentErrorCode.java      — CATEGORY_*/TAG_*/QA_*/ARTICLE_* codes, implements common's ErrorCode interface
+├── exception/
+│   └── ContentErrorCode.java      — CATEGORY_*/TAG_*/QA_*/ARTICLE_* codes, implements common's ErrorCode interface
+├── api/                           — admin CRUD REST layer (moved in from `api`, see CHANGELOG)
+│   ├── CategoryApi.java / TagApi.java / ArticleApi.java / QuestionAnswerApi.java
+│   └── impl/                      — CategoryController / TagController / ArticleController / QuestionAnswerController
+├── mapper/                        — MapStruct: CategoryMapper / TagMapper / ArticleMapper / QuestionAnswerMapper
+│                                     (entity ↔ dto/*); `ArticleMapper`/`QuestionAnswerMapper` are also used
+│                                     directly by `ai-service`'s `PublicContentController` (already-allowed
+│                                     dependency direction — `ai-service` → `content-service`)
+└── dto/                           — flat (not nested under dto/content/): CategoryResponse/CreateCategoryRequest/
+                                      UpdateCategoryRequest, CategoryTreeNodeResponse, TagResponse/CreateTagRequest/
+                                      UpdateTagRequest, ArticleResponse/CreateArticleRequest/UpdateArticleRequest,
+                                      QuestionAnswerResponse/CreateQuestionAnswerRequest/UpdateQuestionAnswerRequest
 ```
 
-REST controllers, DTOs (`dto/content/*`), mappers, and the indexing/RAG orchestration layer
-(`ContentIndexingService`, `IndexingQualityService`, `EmbeddingIndexService`, `IngestionController`,
-`PublicContentController`, `ContentPublishedEventListener`) all stay in `api` — see the `api` section below.
-The orchestration layer genuinely needs both `content-service` and `ai-service`, and `content-service` cannot
-depend on `ai-service` (that would create a cycle, since `ai-service` already depends on `content-service` for
-`ContentItem`), so it lives one layer up in `api`, which depends on both.
+The indexing/RAG orchestration layer (`ContentIndexingService`, `IndexingQualityService`,
+`EmbeddingIndexService`, `IngestionApi`/`Controller`, `PublicContentApi`/`Controller`) and the read-only
+public content-browsing endpoints now live in `ai-service` — see that module's section. It genuinely needs
+both `content-service` and `ai-service`, and since `ai-service` already depends on `content-service` for
+`ContentItem`, it lives there rather than needing `api`. `ContentPublishedEventListener` stays in `api`
+(cross-cutting event-listener wiring), importing `ai-service`'s `ContentIndexingService` across the module
+boundary.
+
+`ArticleController`/`QuestionAnswerController` resolve the authenticated principal's author id via `common`'s
+`UserRepository.findByEmail(...)` directly, not `identity-service`'s `UserService` — `content-service` must
+never depend on `identity-service`, and `UserRepository` living in `common` exists specifically so any module
+can resolve a `User` by identifier without depending on the module that owns auth-flow business logic.
 
 `DataSeedingRunner` (`api`) still runs the seeders above in order (category → tag → questionAnswer); the
 actual seed data files (`data/csv/*.csv`, `data/question-answers/*.md`) stay under `api/src/main/resources/`
@@ -285,25 +323,44 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │       │                              NOT extend infra's CsvSeeder — an ACCEPTED row persists two entities,
 │       │                              which doesn't fit CsvSeeder's one-entity-per-row shape
 │       └── UserBlockSeeder.java     — data/csv/user-blocks.csv (blockerId, blockedId); extends infra's CsvSeeder
-└── exception/
-    └── SocialErrorCode.java         — FRIEND_*/DM_*/GROUP_*/CHANNEL_* codes, implements common's ErrorCode
-                                        interface (moved out of common's CommonErrorCode). Renamed from
-                                        FriendErrorCode once this module grew beyond just the friend graph — one
-                                        enum per module (not per sub-domain), same shape as content-service's
-                                        ContentErrorCode holding CATEGORY_*/TAG_*/QA_*/ARTICLE_* together
+├── exception/
+│   └── SocialErrorCode.java         — FRIEND_*/DM_*/GROUP_*/CHANNEL_* codes, implements common's ErrorCode
+│                                       interface (moved out of common's CommonErrorCode). Renamed from
+│                                       FriendErrorCode once this module grew beyond just the friend graph — one
+│                                       enum per module (not per sub-domain), same shape as content-service's
+│                                       ContentErrorCode holding CATEGORY_*/TAG_*/QA_*/ARTICLE_* together
+├── api/                              — REST + STOMP layer (moved in from `api`, see CHANGELOG)
+│   ├── FriendApi.java / GroupApi.java / DmApi.java — REST
+│   ├── GroupMessagingApi.java / DmMessagingApi.java — STOMP counterparts (send-path only; reads stay REST)
+│   └── impl/                         — FriendController / GroupController / DmController /
+│                                        GroupMessagingController / DmMessagingController
+├── mapper/                           — MapStruct: FriendMapper, MessagingMapper (both abstract classes —
+│                                        need an injected `infra`-owned `StorageService` for presigned avatar
+│                                        URLs, and MapStruct interfaces can't hold instance fields);
+│                                        `MessagingMapper` uses `FriendMapper` for User → UserSummaryResponse
+└── dto/
+    ├── friend/                       — Java records: UserSummaryResponse, UserSearchResultResponse,
+    │                                    FriendRequestResponse, FriendSummaryResponse
+    └── messaging/                    — GroupResponse/CreateGroupRequest, GroupMemberResponse, ChannelResponse/
+                                         CreateChannelRequest, ChangeRoleRequest, ChannelMessageResponse,
+                                         DmMessageResponse, DmThreadResponse, SendMessageRequest,
+                                         MessageAttachmentRequest/Response, WsErrorResponse (STOMP error payload)
 ```
 
 Read access to `User` (search, relationship resolution) goes through `common`'s own `UserRepository`
 directly — no module-local wrapper repository needed, since `UserRepository` already lives in
-`common` and extends `JpaSpecificationExecutor<User>` (for `UserSpecification` above).
+`common` and extends `JpaSpecificationExecutor<User>` (for `UserSpecification` above). STOMP transport
+wiring (`WebSocketConfig`, `StompAuthChannelInterceptor`, `CurrentUserIdMessageArgumentResolver`) stays in
+`api` — edge/transport infra, not a `social-service` concern, same split as `SecurityConfig`/
+`JwtAuthenticationFilter` staying in `api` while `identity-service` owns the actual auth business logic.
 
 `GroupService` and `DmService` are deliberately two services, not one — they gate access differently
 (open-add + role checks vs. friend-required) and share no entities, so combining them would mix two
 unrelated authorization models in one class. `DmService` depends on `FriendService` as a collaborator
 (reusing its relationship lookup) rather than querying `FriendshipRepository`/`UserBlockRepository`
 directly, avoiding a second implementation of the canonicalization + mutual-invisibility logic.
-REST layer: `api`'s `GroupApi`/`GroupController` and `DmApi`/`DmController`, DTOs in `dto/messaging/`,
-`MessagingMapper` — see the `api` section below. No upload endpoint yet for message attachments;
+REST layer: this module's own `GroupApi`/`GroupController` and `DmApi`/`DmController`, DTOs in
+`dto/messaging/`, `MessagingMapper` — see `api/` above. No upload endpoint yet for message attachments;
 `MessageAttachmentRequest.objectKey` assumes the client already has a MinIO object key from
 somewhere else.
 
@@ -313,7 +370,32 @@ somewhere else.
 
 ```
 ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
+├── api/                       — REST layer, moved in from `api` (content+AI orchestration and the
+│   │                             self-contained chat feature are both owned here now — see
+│   │                             ai-service/CLAUDE.md for why the old "stays in api" rule no
+│   │                             longer applies to this specific module pairing)
+│   ├── ChatApi.java           — /api/v1/chat: chat(), chatStream() (SSE), listSessions(), getSessionHistory()
+│   ├── IngestionApi.java      — /api/v1/admin/indexing: index(), indexAll(), deleteIndex(), refreshCorpus(); class-level @PreAuthorize("hasRole('ADMIN')")
+│   ├── EmbeddingIndexApi.java — /api/v1/admin/embeddings: list() — paged, filterable content+embedding-stats view
+│   ├── PipelineMetricsApi.java — /api/v1/admin/pipeline-metrics: getSummary(MetricsPeriod)
+│   ├── PublicContentApi.java  — /api/v1/public: listQuestionAnswers/getQuestionAnswerBySlug/listArticles/getArticleBySlug
+│   │                             (read-only, unauthenticated; fronts content-service's ArticleService/QuestionAnswerService
+│   │                             via content-service's own ArticleMapper/QuestionAnswerMapper + content.dto.* DTOs)
+│   └── impl/
+│       ├── ChatController.java            — orchestrates RagQueryService + ChatSessionService + SseStreamTemplate
+│       ├── IngestionController.java       — delegates to ContentIndexingService + CorpusStatisticsService
+│       ├── EmbeddingIndexController.java  — delegates to EmbeddingIndexService
+│       ├── PipelineMetricsController.java — delegates to PipelineMetricsSummaryService
+│       └── PublicContentController.java   — delegates to ArticleService/QuestionAnswerService; increments view count
 ├── config/
+│   ├── sse/
+│   │   ├── SseStreamTemplate.java  — reusable SSE-endpoint helper; owns SSE_TIMEOUT_MS (60_000L) —
+│   │   │                             api's WebMvcConfig.configureAsyncSupport reads this constant
+│   │   │                             (not the other way round: ai-service must never depend on api)
+│   │   └── SseEmitterWriter.java   — guards every SSE write: disconnect check, IOException handling, double-complete guard
+│   ├── chat/
+│   │   └── ChatSessionProperties.java — @ConfigurationProperties at app.chat.session.*; ttlHours,
+│   │                                     summaryThresholdPairs, summaryTriggerIntervalPairs, summaryRecentWindowPairs
 │   ├── AiServiceConfig.java   — builds Map<String,ChatLanguageModel> + Map<String,StreamingChatLanguageModel>,
 │   │                             one entry per ChatModelsConfig.ChatModelProfile (OpenAI or Anthropic builder
 │   │                             depending on provider), keyed by profile id; injects OkHttpProperties for timeout
@@ -365,7 +447,15 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── RagAnswer.java                     — answer text + List<RagSource>
 │   ├── RagSource.java                     — contentItemId, sourceType, title, chunkText, similarity
 │   ├── ScoredChunk.java                   — record: ContentEmbedding + float score (post-scoring candidates)
-│   └── StageSpan.java                     — record: stage name, durationMs, aborted flag; one per pipeline stage per request
+│   ├── StageSpan.java                     — record: stage name, durationMs, aborted flag; one per pipeline stage per request
+│   ├── admin/
+│   │   └── EmbeddingIndexItemResponse.java — @Builder DTO: contentItemId, title, contentType, contentStatus,
+│   │                                          qualityScore, chunkCount, totalTokens, modelName, lastIndexedAt, indexed
+│   └── chat/
+│       ├── ChatRequest.java              — record: question, sessionId, sourceTypes, categoryId, tags, chatModel
+│       ├── ChatResponse.java             — record: answer, List<RagSource>, sessionId; from(RagAnswer, sessionId)
+│       ├── ChatSessionHistoryDto.java    — record: sessionId, List<MessageDto>; nested MessageDto(role, content, turnIndex)
+│       └── ChatSessionSummaryDto.java    — record: sessionId, title, lastActivityAt, messageCount
 ├── event/
 │   ├── PipelineCompletedEvent.java         — record event published by RagQueryServiceImpl after each pipeline execution;
 │   │                                        carries RagPipelineContext + AnswerQualityVerdict
@@ -385,8 +475,10 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │                                        chatModel (id of the resolved chat model profile; NULL pre-DKP-0012 rows)
 ├── exception/
 │   ├── RagQueryException.java
-│   └── AiErrorCode.java              — AI_* codes, implements common's ErrorCode interface (moved out of
-│                                        common's CommonErrorCode)
+│   ├── AiErrorCode.java              — AI_* codes, implements common's ErrorCode interface (moved out of
+│   │                                    common's CommonErrorCode)
+│   └── ChatErrorCode.java            — CHAT_* codes (CHAT_SESSION_NOT_FOUND), owned by ChatSessionServiceImpl;
+│                                        implements common's ErrorCode interface, same pattern as AiErrorCode
 ├── pipeline/                         — Pipes-and-Filters RAG pipeline (Pipes-and-Filters pattern)
 │   ├── RagPipelineContext.java       — mutable per-request carrier: inputs, stage outputs, abort state;
 │   │                                    trace: traceId (UUID), spans (List<StageSpan>), elapsedMs();
@@ -418,8 +510,11 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   │                                       findStatsByContentItemIds(List<Integer>) → List<EmbeddingStatsProjection>
 │   │                                       (JPQL: COUNT/SUM/MAX grouped by content item ID),
 │   │                                       computeGlobalCentroid(), computeCentroidBySourceType(String)
-│   └── PipelineMetricsRepository.java    — JpaRepository<PipelineMetrics, Integer>; append-only analytics writes;
-│                                            fetchSummary(Instant) — native query using percentile_cont WITHIN GROUP
+│   ├── PipelineMetricsRepository.java    — JpaRepository<PipelineMetrics, Integer>; append-only analytics writes;
+│   │                                        fetchSummary(Instant) — native query using percentile_cont WITHIN GROUP
+│   ├── ChatSessionRepository.java        — findByIdAndUserId (ownership check), findSessionSummariesByUserId
+│   │                                        (JPQL "new" projection into ChatSessionSummaryDto, COUNT(m) join)
+│   └── ChatMessageRepository.java        — findByChatSession_IdOrderByTurnIndexAsc/Desc, findMaxTurnIndexBySessionId
 └── service/
     ├── ContentIngestionService.java             — chunks text + stores embeddings
     ├── ConversationSummarisationService.java    — compresses old turns into a rolling summary (LLM)
@@ -434,6 +529,13 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
     ├── RagQueryService.java                     — interface: query() + queryStream();
     │                                               primary overloads accept ConversationContext + RagFilter + userId + chatModel
     ├── RagStreamHandler.java                    — SSE callback interface
+    ├── ChatSessionService.java                  — interface: getOrCreateSessionId, getRecentTurns, getConversationContext,
+    │                                               addTurn, listSessions, getHistory (session lifecycle + rolling summarisation)
+    ├── ContentIndexingService.java               — interface: index/indexAll/reindex/deleteIndex a ContentItem into the RAG store
+    ├── IndexingQualityService.java               — interface: assess(contentItemId, contentType) → QualityVerdict
+    │                                                (centroid-distance quality check at indexing time)
+    ├── QualityVerdict.java                       — record: lowQuality, score; pass()/flag()/skipped() factories
+    ├── EmbeddingIndexService.java                — interface: list() — paged content items + embedding stats for admin UI
     └── impl/
         ├── AnswerQualityServiceImpl.java             — embeds answer; computes normalised context centroid from selectedChunks;
         │                                               evaluates contextSimilarity + querySimilarity; logs WARN on drift
@@ -442,11 +544,68 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
         ├── ConversationSummarisationServiceImpl.java — ChatLanguageModel-backed summarisation
         ├── ConversationTopicGuardServiceImpl.java    — embedBatch(question + historyFingerprint); strips recentTurns on shift
         ├── PipelineMetricsSummaryServiceImpl.java    — @Transactional(readOnly=true); calls fetchSummary(); maps projection to record
-        └── RagQueryServiceImpl.java                  — thin orchestrator: resolve chat model (before any pipeline work) →
-                                                         topicGuard → pipeline → recordPipelineMetrics() (6 Micrometer instruments)
-                                                         → LLM call + timing + token capture → assessAnswerQuality()
-                                                         → publishEvent(PipelineCompletedEvent)
+        ├── RagQueryServiceImpl.java                  — thin orchestrator: resolve chat model (before any pipeline work) →
+        │                                                topicGuard → pipeline → recordPipelineMetrics() (6 Micrometer instruments)
+        │                                                → LLM call + timing + token capture → assessAnswerQuality()
+        │                                                → publishEvent(PipelineCompletedEvent)
+        ├── ChatSessionServiceImpl.java                — lazy session-expiry enforcement (24h TTL); addTurn() safe from
+        │                                                background threads; rolling summarisation via ChatSessionProperties triggers
+        ├── ContentIndexingServiceImpl.java            — resolves QuestionAnswer/Article text → ContentIngestionService.ingest();
+        │                                                also runs IndexingQualityService and persists ContentItem.qualityScore
+        ├── IndexingQualityServiceImpl.java             — mean cosine similarity of chunk embeddings vs corpus centroid
+        │                                                (CorpusStatisticsService), compared against IndexingConfig threshold
+        └── EmbeddingIndexServiceImpl.java              — two-query pattern: paged Specification query + batch stats query;
+                                                          `indexed` filter uses a Criteria EXISTS subquery on ContentEmbedding
 ```
+
+---
+
+## identity-service
+
+```
+identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
+├── api/
+│   ├── OAuth2Api.java                 — /api/v1/auth/**: OAuth2 redirect, local login/register/OTP flows,
+│   │                                     state-token exchange, refresh, logout, current-user retrieval
+│   ├── UserApi.java                   — PUT /me, POST /me/avatar ONLY — pure profile mutation. GET
+│   │   │                                 /public/{userUuid} and GET /search stayed in `api` (see that
+│   │   │                                 section) since they need `social-service`'s `FriendService` for
+│   │   │                                 relationship enrichment, and `identity-service` must not depend
+│   │   │                                 on `social-service` (parallel siblings)
+│   │   └── impl/                      — OAuth2Controller / UserController
+├── mapper/
+│   └── UserMapper.java                — entity → dto/UserInfoResponse
+├── dto/
+│   ├── RegisterRequest.java / UserInfoResponse.java
+│   ├── {Google,Facebook}OAuth2UserInfo.java / OAuth2UserInfo.java / OAuth2UserInfoFactory.java —
+│   │   per-provider OAuth2 attribute-map parsing
+│   ├── auth/                          — ExchangeStateRequest, LoginRequest/Response, LogoutRequest,
+│   │                                    RefreshTokenRequest, RegisterResponse, ResendOtpRequest,
+│   │                                    TokenResponse, VerifyOtpRequest
+│   └── user/UpdateProfileRequest.java
+└── security/
+    ├── JwtTokenProvider.java          — HMAC sign/verify/refresh; issues access + refresh tokens
+    ├── PasswordEncoderConfig.java     — @Bean PasswordEncoder (BCrypt); the ONE place in the whole
+    │                                    reactor this bean is defined — `api`'s `UserSeeder` injects it
+    │                                    across the module boundary rather than redeclaring it
+    ├── jwt/                           — TokenClaims (sealed interface) + AccessTokenClaims/RefreshTokenClaims
+    ├── handler/OAuth2LoginSuccessHandler.java — issues JWTs + stores them in Redis via StateTokenService
+    │                                    on successful OAuth2 login; wired into `api`'s SecurityConfig
+    │                                    across the module boundary
+    └── service/                       — UserService/Impl (registration, password hashing, OTP-gated
+        │                                activation, provider linking), CustomOAuth2UserService (non-OIDC
+        │                                providers e.g. Facebook), CustomOidcUserService (OIDC e.g. Google),
+        │                                RefreshTokenBlacklistService/Impl (Redis), StateTokenService/Impl
+        │                                (Redis; OAuth2 state-token → JWT handoff)
+        └── (EmailService/OtpService also live at identity/service/ — OTP delivery)
+```
+
+`api`'s `SecurityConfig`/`JwtAuthenticationFilter`/`WebSocketConfig`/`StompAuthChannelInterceptor` inject
+`JwtTokenProvider` and the `security.jwt.*` claim types from here across the module boundary — those stay in
+`api` because they're transport-edge wiring (the security filter chain, STOMP CONNECT authentication), not
+auth business logic. `CacheNames`/`CacheTtlProperties` (Redis TTL config, needed by `StateTokenServiceImpl`
+here and `api`'s `RedisCacheConfig`) live in `infra`, not either module — same "two siblings, shared utility"
+reasoning as `StorageService`.
 
 ---
 
@@ -454,37 +613,24 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 
 ```
 api/src/main/java/com/ttg/devknowledgeplatform/
-├── api/                              — controller interfaces (HTTP annotations live here)
-│   ├── EmbeddingIndexApi.java        — GET /api/v1/admin/embeddings?page&size&q&contentType&contentStatus&indexed (admin-only)
-│   ├── PipelineMetricsApi.java       — GET /api/v1/admin/pipeline-metrics/summary?period=LAST_7_DAYS (admin-only)
-│   ├── UserApi.java                  — PUT /me, POST /me/avatar, GET /public/{userUuid} (enriched with
-│   │                                    relationshipStatus/mutualFriendCount for authenticated viewers —
-│   │                                    404s instead of leaking a "blocked" state if the target blocked the
-│   │                                    viewer), GET /search?q= (fuzzy name/username, exact email)
-│   ├── FriendApi.java                — /api/v1/friends/**: send/accept/reject/cancel requests, list
-│   │                                    incoming/outgoing/friends, unfriend, block/unblock, list blocked users;
-│   │                                    delegates to social-service's FriendService
-│   ├── GroupApi.java                 — /api/v1/groups/**: create/list groups, add/remove/leave members,
-│   │                                    change role, create/list channels; plus
-│   │                                    /api/v1/channels/{channelId}/messages (post/list) — kept un-nested
-│   │                                    from groupId since GroupService resolves the group from the channel
-│   │                                    itself, so a groupId path segment there would be unvalidated;
-│   │                                    delegates to social-service's GroupService
-│   ├── DmApi.java                    — /api/v1/dms/**: send message (lazy thread creation), list my
-│   │                                    threads, list a thread's messages; delegates to social-service's
-│   │                                    DmService
-│   └── impl/
-│       ├── ChatController.java            — POST /api/v1/chat, POST /api/v1/chat/stream;
-│       │                                    builds RagFilter from ChatRequest and passes to RagQueryService
-│       ├── EmbeddingIndexController.java  — delegates to EmbeddingIndexService; no mapping logic
-│       ├── PipelineMetricsController.java — delegates to PipelineMetricsSummaryService; no mapping logic
-│       ├── UserController.java            — see UserApi above
-│       ├── FriendController.java          — see FriendApi above
-│       ├── GroupController.java           — see GroupApi above
-│       ├── DmController.java              — see DmApi above
-│       └── …                              — other controllers
+├── api/
+│   └── auth/                          — the one remaining cross-module orchestration case: needs both
+│       ├── UserApi.java                 identity-service's UserService (base profile lookup) and
+│       └── impl/UserController.java     social-service's FriendService (relationship enrichment) — those
+│                                         two modules are parallel siblings with no dependency relationship
+│                                         to each other, so this stays here rather than in either one.
+│                                         GET /public/{userUuid} (relationshipStatus/mutualFriendCount for
+│                                         authenticated viewers; 404s rather than leaking a "blocked" state)
+│                                         and GET /search?q= (fuzzy name/username, exact email) only — the
+│                                         pure-profile-mutation endpoints (PUT /me, POST /me/avatar) live in
+│                                         identity-service's own UserApi instead.
 ├── config/
-│   ├── SecurityConfig.java           — JWT + OAuth2 filter chain
+│   ├── JacksonConfig.java             — shared ObjectMapper customization
+│   ├── cache/RedisCacheConfig.java    — @EnableCaching; base RedisCacheConfiguration + per-cache TTL
+│   │                                    RedisCacheManager (reads infra's CacheTtlProperties); dedicated
+│   │                                    Bucket4j Redis connection
+│   ├── chat/{ChatRateLimiter,RateLimitProperties}.java — Bucket4j token-bucket rate limiting for the
+│   │                                    chat endpoint (10/min, 100/hour per user)
 │   ├── thread/
 │   │   ├── ThreadPoolProperties.java — @ConfigurationProperties at app.threads.*;
 │   │   │                               nested SseExecutor: corePoolSize (10), maxPoolSize (50),
@@ -495,157 +641,73 @@ api/src/main/java/com/ttg/devknowledgeplatform/
 │   │                                   asyncEventExecutor (@EventHandler dispatch) beans as separate bulkheads;
 │   │                                   registers both with ExecutorServiceMetrics (Micrometer Decorator); all
 │   │                                   pool sizing from ThreadPoolProperties
-│   ├── web/
-│   │   └── WebMvcConfig.java         — @EnableAsync; wires sseStreamExecutor into configureAsyncSupport
-│   │                                   (timeout 60 s) only — @Async dispatch uses asyncEventExecutor via an
-│   │                                   explicit qualifier on @EventHandler; rate-limit interceptor;
-│   │                                   CurrentUserIdArgumentResolver
-│   └── sse/
-│       └── SseStreamTemplate.java    — SSE writer abstraction
+│   └── web/
+│       ├── WebMvcConfig.java         — @EnableAsync; wires sseStreamExecutor into configureAsyncSupport
+│       │                               (timeout read from ai-service's SseStreamTemplate.SSE_TIMEOUT_MS —
+│       │                               not duplicated here, see that class) only — @Async dispatch uses
+│       │                               asyncEventExecutor via an explicit qualifier on @EventHandler;
+│       │                               rate-limit interceptor; CurrentUserIdArgumentResolver
+│       ├── ChatRateLimitInterceptor.java — applies ChatRateLimiter per-user to POST /api/v1/chat/**
+│       ├── CurrentUserIdArgumentResolver.java — Spring MVC HandlerMethodArgumentResolver for
+│       │                               @CurrentUserId (common.annotation), reads common.dto.CustomOAuth2User
+│       │                               from the SecurityContext
+│       └── CurrentUserIdMessageArgumentResolver.java — same, Spring Messaging's resolver interface, for
+│                                       STOMP @MessageMapping methods
 ├── database/
 │   └── sql/                          — Liquibase changelogs (master: dev-knowledge-platform.xml)
-├── dto/                               — REST request/response DTOs, colocated per feature (each subpackage
-│   │                                    mirrors the feature module its DTOs front); `dto/admin/` is for
-│   │                                    admin-tooling DTOs that don't belong to one extracted feature module
-│   │                                    (currently just EmbeddingIndexItemResponse)
-│   ├── chat/
-│   │   ├── ChatRequest.java          — question, sessionId, sourceTypes, categoryId, tags, chatModel
-│   │   │                                (chatModel: optional model id, e.g. "claude-sonnet-5"; null = server default)
-│   │   ├── ChatResponse.java
-│   │   ├── ChatSessionHistoryDto.java
-│   │   └── ChatSessionSummaryDto.java
-│   ├── content/                      — fronts content-service's Category/Tag/QuestionAnswer/Article services
-│   │   ├── CategoryResponse.java / CreateCategoryRequest.java / UpdateCategoryRequest.java
-│   │   ├── CategoryTreeNodeResponse.java  — recursive JSON tree shape; CategoryMapper.toTreeNodeResponse()
-│   │   │                                    flattens content-service's CategoryTreeNode (Category + children) into this
-│   │   ├── TagResponse.java / CreateTagRequest.java / UpdateTagRequest.java
-│   │   ├── QuestionAnswerResponse.java / CreateQuestionAnswerRequest.java / UpdateQuestionAnswerRequest.java
-│   │   └── ArticleResponse.java / CreateArticleRequest.java / UpdateArticleRequest.java
-│   ├── friend/                       — Java records (immutable), not the older Lombok @Data/@Builder style
-│   │   ├── UserSummaryResponse.java       — userUuid, username, firstName, lastName, profilePicture, status;
-│   │   │                                    nested inside the three below rather than repeating the fields
-│   │   ├── UserSearchResultResponse.java  — UserSummaryResponse + relationshipStatus + mutualFriendCount
-│   │   ├── FriendRequestResponse.java     — id, requester, addressee, status, createdAt
-│   │   └── FriendSummaryResponse.java     — UserSummaryResponse + friendsSince
-│   ├── messaging/                    — fronts social-service's GroupService/DmService; deliberately not
-│   │   │                                dto/chat/, which already means the unrelated AI-RAG chat feature
-│   │   ├── GroupResponse.java / CreateGroupRequest.java
-│   │   ├── GroupMemberResponse.java       — UserSummaryResponse (dto/friend) + role (String) + joinedAt
-│   │   ├── ChannelResponse.java / CreateChannelRequest.java
-│   │   ├── ChangeRoleRequest.java         — role: String, parsed to GroupMemberRole in GroupController
-│   │   ├── ChannelMessageResponse.java / DmMessageResponse.java — same shape: sender (UserSummaryResponse),
-│   │   │                                    messageType (String), content, attachment (nullable), createdAt
-│   │   ├── DmThreadResponse.java          — otherUser (UserSummaryResponse, resolved relative to the
-│   │   │                                    viewer), lastMessageAt
-│   │   ├── SendMessageRequest.java        — content + attachment (MessageAttachmentRequest), both optional;
-│   │   │                                    at least one required, enforced by the service not bean validation
-│   │   ├── MessageAttachmentRequest.java  — objectKey/mimeType/fileName/fileSize; objectKey must already
-│   │   │                                    exist in MinIO — no upload endpoint exists yet, this only
-│   │   │                                    references an object already there
-│   │   └── MessageAttachmentResponse.java — url (presigned, resolved from objectKey at read time),
-│   │                                        mimeType, fileName, fileSize
-│   └── admin/
-│       └── EmbeddingIndexItemResponse.java — ContentItem + embedding stats, admin-only
-├── exception/
-│   └── ChatErrorCode.java            — CHAT_* codes, implements common's ErrorCode interface (moved out of
-│                                        common's CommonErrorCode; owned here since ChatSessionServiceImpl,
-│                                        below, is the sole owner of chat-session business logic)
-├── mapper/                           — MapStruct mappers (DTO ↔ entity)
-│   ├── CategoryMapper.java / TagMapper.java / QuestionAnswerMapper.java / ArticleMapper.java — map
-│   │                                    content-service entities to dto/content/*
-│   ├── FriendMapper.java             — abstract class (not interface) like UserMapper — needs an injected
-│   │                                    StorageService for presigned avatar URLs, and MapStruct interfaces
-│   │                                    can't hold instance fields; maps social-service entities to dto/friend/*
-│   └── MessagingMapper.java           — abstract class; maps social-service's Group/Channel/DM entities to
-│                                        dto/messaging/*. @Mapper(uses = FriendMapper.class) so User →
-│                                        UserSummaryResponse (incl. avatar presigned URL) isn't duplicated;
-│                                        also injects FriendMapper directly as a field to call
-│                                        toUserSummary() from a hand-written expression (otherUser mapping
-│                                        for DmThreadResponse) — MapStruct's implicit "uses" delegation only
-│                                        covers same-named auto-mapped fields, not calls from your own
-│                                        expression code, which is spliced as raw Java into the generated class
-├── repository/
-│   └── …                             — ChatSessionRepository, ChatMessageRepository (UserRepository moved
-│                                        to common — see that module's section);
-│                                        Category/Tag/ContentItem*/QuestionAnswer/Article repositories +
-│                                        specifications moved to content-service (see that module's section)
-├── security/                         — JwtProvider, OAuth2 handlers, UserUtils
-│   └── jwt/
-│       ├── TokenClaims.java          — sealed interface; typed JWT claim shape, permits
-│       │                                AccessTokenClaims/RefreshTokenClaims; TokenClaims.parse(Claims)
-│       ├── AccessTokenClaims.java    — record: userUuid, email, username, role
-│       └── RefreshTokenClaims.java   — record: userUuid, username, role (type=refresh claim added
-│                                        by toClaimsMap(); no email claim, unlike access tokens)
-├── ws/                                — STOMP-over-WebSocket live push for group/DM chat (AI chat
-│   │                                    keeps its own SSE stream; unrelated, additive infra here)
-│   ├── WebSocketConfig.java          — @EnableWebSocketMessageBroker; registers /ws with NO SockJS
+├── event/                            — listeners only; the event *definitions* live in the module that
+│   │                                    publishes them
+│   ├── ContentPublishedEventListener.java — imports ai-service's ContentIndexingService across the
+│   │                                    module boundary (content+AI indexing orchestration lives there now)
+│   ├── FriendRequestSentEventListener.java / FriendRequestAcceptedEventListener.java — social-service events
+├── security/                         — JWT verification + OAuth2/STOMP transport wiring (edge concerns);
+│   │                                    the actual JWT issuance/OAuth2 business logic lives in
+│   │                                    identity-service — see that section
+│   ├── SecurityConfig.java           — JWT + OAuth2 filter chain; injects identity-service's
+│   │                                    CustomOAuth2UserService/CustomOidcUserService/OAuth2LoginSuccessHandler
+│   ├── CorsConfig.java / JsonAuthenticationEntryPoint.java / CurrentUserResolver.java
+│   ├── JwtAuthenticationFilter.java   — verifies bearer tokens via identity-service's JwtTokenProvider,
+│   │                                    populates common.dto.CustomOAuth2User on the SecurityContext
+│   ├── WebSocketConfig.java           — @EnableWebSocketMessageBroker; registers /ws with NO SockJS
 │   │                                    fallback (real handshake, not an emulated transport); simple
 │   │                                    broker on /topic + /queue; /app client-send prefix; wires
-│   │                                    StompAuthChannelInterceptor + CurrentUserIdMessageArgumentResolver
-│   ├── StompAuthChannelInterceptor.java — CONNECT: authenticates the JWT passed as a STOMP
-│   │                                       Authorization header (handshake itself is permitAll —
-│   │                                       browsers can't set headers on the handshake request),
-│   │                                       reusing JwtTokenProvider the same way JwtAuthenticationFilter
-│   │                                       does for REST. SUBSCRIBE: authorizes /topic/channels/{id}
-│   │                                       via GroupService.isChannelMember — the simple broker has no
-│   │                                       per-destination ACL of its own. DMs need no equivalent
-│   │                                       check (convertAndSendToUser's private queue has no public
-│   │                                       topic string to subscribe to)
-│   ├── WsCurrentUser.java            — package-private; resolves Integer userId from the STOMP
-│   │                                    session's Principal (set at CONNECT), mirroring
-│   │                                    CurrentUserIdArgumentResolver's REST-side lookup
-│   ├── CurrentUserIdMessageArgumentResolver.java — Spring Messaging's HandlerMethodArgumentResolver
-│   │                                    (different interface than Spring MVC's own of the same
-│   │                                    name); lets @MessageMapping methods accept the same
-│   │                                    @CurrentUserId Integer userId REST controllers use
-│   ├── WsErrorResponse.java          — record: errorCode, message; sent to a client's private
-│   │                                    /queue/errors by each controller's @MessageExceptionHandler
-│   ├── GroupMessagingController.java — /app/channels/{channelId}/messages → GroupService.postMessage
-│   │                                    → broadcast to /topic/channels/{channelId}. Safe to map
-│   │                                    ChannelMessage.sender/.channel right after the service call
-│   │                                    returns — both are the exact objects GroupServiceImpl already
-│   │                                    fetched by ID in that same call, not lazy proxies
-│   └── DmMessagingController.java    — /app/dms/{recipientUuid}/messages → DmService.sendMessage →
-│                                        convertAndSendToUser to both participants' /queue/dms.
-│                                        Deliberately does NOT read
-│                                        message.getDmThread().getUser1()/getUser2() to find the
-│                                        other participant — for an existing thread those are
-│                                        genuine lazy proxies, and STOMP handling isn't covered by
-│                                        Open-Session-In-View the way REST controllers are (OSIV is a
-│                                        servlet-filter mechanism; a WebSocket message never goes
-│                                        through it). Resolves both usernames directly instead
-│                                        (sender's from the already-authenticated Principal,
-│                                        recipient's via a fresh UserRepository lookup)
-├── service/
-│   ├── ChatSessionService.java       — getOrCreateSessionId, getConversationContext (primary),
-│   │                                   getRecentTurns, addTurn (triggers rolling summary), listSessions, getHistory
-│   ├── ContentIndexingService.java   — index / reindex / deleteIndex per contentItemId
-│   ├── EmbeddingIndexService.java    — list(page,size,q,contentType,contentStatus,indexed) → PagedResponse<EmbeddingIndexItemResponse>
-│   ├── IndexingQualityService.java   — assess(contentItemId, contentType) → QualityVerdict; centroid distance check at indexing time
-│   ├── QualityVerdict.java           — record: boolean lowQuality, float score; factories pass/flag/skipped
-│   ├── seed/
-│   │   ├── DataSeedingRunner.java        — ApplicationRunner, @ConditionalOnProperty(app.seed.enabled);
-│   │   │                                   runs seeders in order: category → tag → questionAnswer → user →
-│   │   │                                   friend graph → blocks. CategorySeeder/TagSeeder/QuestionAnswerSeeder
-│   │   │                                   live in content-service/service/seed/, FriendGraphSeeder/
-│   │   │                                   UserBlockSeeder in social-service/service/seed/ (see those modules'
-│   │   │                                   sections) — this runner just injects and calls all of them
-│   │   └── UserSeeder.java               — data/csv/users.csv; identity by seedId; extends infra's CsvSeeder;
-│   │                                        lives here (not common) since it needs PasswordEncoder to hash the
-│   │                                        shared demo password every seeded account gets, matching where
-│   │                                        UserService's own auth-flow logic already lives
-│   └── impl/
-│       ├── IndexingQualityServiceImpl.java  — loads embeddings from ContentEmbeddingRepository; mean centroid dotProduct; graceful cold-start
-│       ├── CorpusStatisticsServiceImpl.java — @PostConstruct loads centroids from SYS_PARAM; @Scheduled refresh
-│       │                                       recomputes via SQL avg(embedding); volatile float[] cache; persistence
-│       │                                       delegated to common's SysParamService (find-or-create-and-save owned there)
-│       ├── ContentIndexingServiceImpl.java  — type-specific ingestion; buildCommonMetadata()
-│       │                                       writes categoryId, categoryName, tagIds, tagNames
-│       │                                       to every chunk's JSONB metadata
-│       └── EmbeddingIndexServiceImpl.java   — two-query pattern: Specification page query (ContentItemRepository)
-│                                              + batch JPQL aggregate (ContentEmbeddingRepository.findStatsByContentItemIds);
-│                                              EXISTS subquery Specification for indexed filter
+│   │                                    StompAuthChannelInterceptor + CurrentUserIdMessageArgumentResolver;
+│   │                                    imports GroupMessagingController/DmMessagingController from
+│   │                                    social-service's social.api.impl package
+│   └── StompAuthChannelInterceptor.java — CONNECT: authenticates the JWT passed as a STOMP
+│                                          Authorization header (handshake itself is permitAll —
+│                                          browsers can't set headers on the handshake request),
+│                                          reusing identity-service's JwtTokenProvider the same way
+│                                          JwtAuthenticationFilter does for REST. SUBSCRIBE: authorizes
+│                                          /topic/channels/{id} via social-service's GroupService.isChannelMember
+│                                          — the simple broker has no per-destination ACL of its own. DMs
+│                                          need no equivalent check (convertAndSendToUser's private queue
+│                                          has no public topic string to subscribe to)
+└── service/
+    ├── seed/
+    │   ├── DataSeedingRunner.java        — ApplicationRunner, @ConditionalOnProperty(app.seed.enabled);
+    │   │                                   runs seeders in order: category → tag → questionAnswer → user →
+    │   │                                   friend graph → blocks. CategorySeeder/TagSeeder/QuestionAnswerSeeder
+    │   │                                   live in content-service/service/seed/, FriendGraphSeeder/
+    │   │                                   UserBlockSeeder in social-service/service/seed/ (see those modules'
+    │   │                                   sections) — this runner just injects and calls all of them
+    │   └── UserSeeder.java               — data/csv/users.csv; identity by seedId; extends infra's CsvSeeder;
+    │                                        lives here (not common) since it needs PasswordEncoder (injected
+    │                                        across the module boundary from identity-service) to hash the
+    │                                        shared demo password every seeded account gets
+    └── impl/
+        └── CorpusStatisticsServiceImpl.java — @PostConstruct loads centroids from SYS_PARAM; @Scheduled refresh
+                                                recomputes via SQL avg(embedding); volatile float[] cache; persistence
+                                                delegated to common's SysParamService (find-or-create-and-save owned there)
 ```
+
+Everything else that used to live flat in `api` — every feature's REST controllers, DTOs, and MapStruct
+mappers — moved into the owning feature module (`content-service`, `social-service`, `ai-service`,
+`identity-service`); see those modules' sections and `docs/CHANGELOG.md`'s `[Unreleased]` entry for the
+full move and its rationale. What's left here is genuinely cross-module orchestration
+(`api/auth/UserApi`), transport/security edge infra (`SecurityConfig`, JWT filter, STOMP wiring, rate
+limiting, thread pools), Liquibase migrations for every module's tables, and the cross-domain seeding
+orchestrator (`DataSeedingRunner`).
 
 `api/src/main/resources/data/` (separate resources tree, not nested under the Java sources above):
 

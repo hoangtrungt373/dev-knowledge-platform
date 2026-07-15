@@ -25,6 +25,7 @@
         <module>content-service</module>
         <module>ai-service</module>
         <module>social-service</module>
+        <module>identity-service</module>
         <module>api</module>
     </modules>
 
@@ -68,6 +69,11 @@
             <dependency>
                 <groupId>com.ttg</groupId>
                 <artifactId>social-service</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ttg</groupId>
+                <artifactId>identity-service</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

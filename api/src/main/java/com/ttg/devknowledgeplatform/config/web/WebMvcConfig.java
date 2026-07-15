@@ -1,5 +1,6 @@
 package com.ttg.devknowledgeplatform.config.web;
 
+import com.ttg.devknowledgeplatform.ai.config.sse.SseStreamTemplate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;
@@ -40,18 +41,16 @@ public class WebMvcConfig implements WebMvcConfigurer {
     private final ThreadPoolTaskExecutor sseStreamExecutor;
 
     /**
-     * Timeout in milliseconds applied to both Spring MVC async requests and
-     * {@code SseEmitter} instances — must be kept in sync.
-     */
-    public static final long SSE_TIMEOUT_MS = 60_000L;
-
-    /**
      * Registers the SSE stream executor as the default async task executor and sets the
      * request timeout. The executor bean is created and instrumented by {@code ThreadPoolConfig}.
+     *
+     * <p>The timeout value itself is owned by {@link SseStreamTemplate#SSE_TIMEOUT_MS}
+     * (ai-service) — not duplicated here — since that class also constructs {@code SseEmitter}
+     * instances directly and the two timeouts must stay in sync.
      */
     @Override
     public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
-        configurer.setDefaultTimeout(SSE_TIMEOUT_MS);
+        configurer.setDefaultTimeout(SseStreamTemplate.SSE_TIMEOUT_MS);
         configurer.setTaskExecutor(sseStreamExecutor);
     }
 
@@ -67,7 +66,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     /**
      * Registers {@link CurrentUserIdArgumentResolver} so any controller parameter annotated
-     * with {@link com.ttg.devknowledgeplatform.annotation.CurrentUserId} is automatically
+     * with {@link com.ttg.devknowledgeplatform.common.annotation.CurrentUserId} is automatically
      * resolved to the authenticated user's integer primary key — no manual
      * {@code userRepository.findByUserUuid(principal.getUserUuid())} lookups required in
      * every controller method.
