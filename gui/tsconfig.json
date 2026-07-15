@@ -18,7 +18,19 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* Feature-folder path aliases — keeps cross-feature imports depth-independent */
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["src/shared/*"],
+      "@app/*": ["src/app/*"],
+      "@auth/*": ["src/features/auth/*"],
+      "@chat/*": ["src/features/chat/*"],
+      "@friends/*": ["src/features/friends/*"],
+      "@content/*": ["src/features/content/*"],
+      "@ai/*": ["src/features/ai/*"]
+    }
   },
   "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]
