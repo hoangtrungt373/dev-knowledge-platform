@@ -31,9 +31,18 @@ the "why now."
   behavior, same shape as when they lived in `api`.
 - `security/JwtTokenProvider` — signs/parses/validates JWTs (HMAC-SHA-512), backed by
   `security/jwt/TokenClaims` (sealed interface: `AccessTokenClaims`/`RefreshTokenClaims`).
-  `security/PasswordEncoderConfig` — the *only* `PasswordEncoder` bean in the whole reactor; `api`'s
-  `UserSeeder` (which stays in `api`) injects it across the module boundary — expected, do not add a
-  second `PasswordEncoder` bean anywhere else.
+  `security/PasswordEncoderConfig` — the *only* `PasswordEncoder` bean in the whole reactor; do not
+  add a second one anywhere else.
+- `service/seed/UserSeeder` — moved in from `gateway`, alongside `PasswordEncoder` (see above),
+  which it uses to hash the shared demo password every seeded account gets. Writes directly via
+  `common`'s `UserRepository`, not `UserService.registerLocalUser(...)` — same reasoning as every
+  other seeder in the reactor (`content-service`'s `CategorySeeder`/`TagSeeder`, `social-service`'s
+  `FriendGraphSeeder`/`UserBlockSeeder`): production registration always derives fields and
+  enforces conflicts in ways incompatible with idempotent, externally-keyed seed rows. Extends
+  `infra`'s `CsvSeeder<T>`; the actual `data/csv/users.csv` file stays under `gateway`'s
+  `src/main/resources/` — moving the seeder class doesn't move the data file. `gateway`'s
+  `DataSeedingRunner` imports it across the module boundary to run it in the right order (after
+  content seeding, before `social-service`'s seeders, which reference users by `User.seedId`).
 - `security/service/UserService` (+ `impl/`) — registration (OAuth2 + local), password hashing,
   profile/avatar updates, OTP-gated activation; returns `common` entities, never this module's own
   DTOs, so `api`'s trimmed `UserController` (the `getPublicProfile`/`search` half) can keep calling

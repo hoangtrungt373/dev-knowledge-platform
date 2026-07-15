@@ -26,7 +26,9 @@ import static java.math.BigDecimal.ZERO;
  *
  * <p>Co-located with {@link PipelineCompletedEvent} in the {@code ai.event} package so that
  * the event and its primary consumer are navigable together — the same grouping used by
- * {@code ContentPublishedEvent} and {@code ContentPublishedEventListener} in {@code api}.
+ * {@link ContentPublishedEventListener} in this same package (its event, {@code ContentPublishedEvent},
+ * is defined in {@code content-service} instead, since it's published from there — only this
+ * module's own {@code PipelineCompletedEvent} has both halves local).
  *
  * <p>Async dispatch, MDC trace propagation, timing, and exception safety are all
  * provided by {@link AsyncEventHandler}; this class only contains the one-line {@code @EventHandler}

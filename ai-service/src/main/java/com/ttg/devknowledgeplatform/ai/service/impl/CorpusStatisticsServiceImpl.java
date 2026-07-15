@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.service.impl;
+package com.ttg.devknowledgeplatform.ai.service.impl;
 
 import com.ttg.devknowledgeplatform.ai.dto.RagFilter;
 import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;

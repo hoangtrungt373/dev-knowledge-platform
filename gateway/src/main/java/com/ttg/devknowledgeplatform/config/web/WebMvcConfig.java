@@ -8,7 +8,6 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.List;
@@ -20,9 +19,13 @@ import java.util.List;
  * <ul>
  *   <li>Wires the SSE streaming executor (created by {@code ThreadPoolConfig}) as the
  *       default async task executor and aligns the async request timeout.</li>
- *   <li>Registers the chat rate-limit interceptor.</li>
  *   <li>Registers the {@link CurrentUserIdArgumentResolver} for {@code @CurrentUserId} parameters.</li>
  * </ul>
+ *
+ * <p>Interceptor registration is deliberately NOT centralized here — {@code ai-service}'s own
+ * {@code ChatMvcConfig} registers the chat rate-limit interceptor directly; Spring composes every
+ * {@link WebMvcConfigurer} bean in the context automatically, so each module can own its own
+ * endpoint-specific MVC customization without needing this class to do it on their behalf.
  *
  * <p>{@code @EnableAsync} is declared here to activate Spring's {@code @Async} support.
  * {@code sseStreamExecutor} is wired only into Spring MVC's async request dispatch below;
@@ -36,7 +39,6 @@ import java.util.List;
 @Slf4j
 public class WebMvcConfig implements WebMvcConfigurer {
 
-    private final ChatRateLimitInterceptor chatRateLimitInterceptor;
     private final CurrentUserIdArgumentResolver currentUserIdArgumentResolver;
     private final ThreadPoolTaskExecutor sseStreamExecutor;
 
@@ -52,16 +54,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
     public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
         configurer.setDefaultTimeout(SseStreamTemplate.SSE_TIMEOUT_MS);
         configurer.setTaskExecutor(sseStreamExecutor);
-    }
-
-    /**
-     * Registers the chat rate-limit interceptor for all {@code /api/v1/chat/**} paths.
-     * The interceptor itself skips non-POST requests so GET session endpoints are unaffected.
-     */
-    @Override
-    public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(chatRateLimitInterceptor)
-                .addPathPatterns("/api/v1/chat/**");
     }
 
     /**

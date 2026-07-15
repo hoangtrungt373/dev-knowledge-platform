@@ -1,9 +1,9 @@
-package com.ttg.devknowledgeplatform.event;
+package com.ttg.devknowledgeplatform.ai.event;
 
+import com.ttg.devknowledgeplatform.ai.service.ContentIndexingService;
 import com.ttg.devknowledgeplatform.content.event.ContentPublishedEvent;
 import com.ttg.devknowledgeplatform.infra.event.AsyncEventHandler;
 import com.ttg.devknowledgeplatform.infra.event.EventHandler;
-import com.ttg.devknowledgeplatform.ai.service.ContentIndexingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

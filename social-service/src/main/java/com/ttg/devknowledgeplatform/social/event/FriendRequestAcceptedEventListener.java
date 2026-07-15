@@ -1,8 +1,7 @@
-package com.ttg.devknowledgeplatform.event;
+package com.ttg.devknowledgeplatform.social.event;
 
 import com.ttg.devknowledgeplatform.infra.event.AsyncEventHandler;
 import com.ttg.devknowledgeplatform.infra.event.EventHandler;
-import com.ttg.devknowledgeplatform.social.event.FriendRequestAcceptedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 

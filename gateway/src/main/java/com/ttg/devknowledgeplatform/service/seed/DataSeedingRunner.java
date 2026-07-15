@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.service.seed;
 import com.ttg.devknowledgeplatform.content.service.seed.CategorySeeder;
 import com.ttg.devknowledgeplatform.content.service.seed.QuestionAnswerSeeder;
 import com.ttg.devknowledgeplatform.content.service.seed.TagSeeder;
+import com.ttg.devknowledgeplatform.identity.service.seed.UserSeeder;
 import com.ttg.devknowledgeplatform.social.service.seed.FriendGraphSeeder;
 import com.ttg.devknowledgeplatform.social.service.seed.UserBlockSeeder;
 import lombok.RequiredArgsConstructor;

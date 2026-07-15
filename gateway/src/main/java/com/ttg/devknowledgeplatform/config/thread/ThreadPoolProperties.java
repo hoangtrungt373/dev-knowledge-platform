@@ -9,13 +9,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 /**
- * Externalised sizing for all application-managed thread pools.
+ * Externalised sizing for the {@code sseStreamExecutor} bean.
  *
  * <p>Bound from the {@code app.threads} prefix. Override via environment variables, e.g.
  * {@code APP_THREADS_SSE_EXECUTOR_CORE_POOL_SIZE=20}.
  *
- * <p>Having all pool sizes in one place means a capacity review only requires reading this
- * config — no grep through {@code @Bean} methods is needed.
+ * <p>The {@code asyncEventExecutor} bulkhead's sizing lives in {@code infra}'s own
+ * {@code AsyncEventThreadPoolProperties} instead (prefix {@code app.threads.async-event}) — that
+ * module's own {@code EventHandler} framework is the thing that owns its purpose, not this module.
  */
 @ConfigurationProperties(prefix = "app.threads")
 @Validated
@@ -26,10 +27,6 @@ public class ThreadPoolProperties {
     @Valid
     @NotNull
     private SseExecutor sseExecutor = new SseExecutor();
-
-    @Valid
-    @NotNull
-    private AsyncEventExecutor asyncEventExecutor = new AsyncEventExecutor();
 
     /** Sizing parameters for the {@code sseStreamExecutor} bean. */
     @Getter
@@ -49,37 +46,6 @@ public class ThreadPoolProperties {
         private int queueCapacity = 100;
 
         /** Seconds the pool waits for active streams to finish on graceful shutdown. */
-        @Positive
-        private int awaitTerminationSeconds = 30;
-    }
-
-    /**
-     * Sizing parameters for the {@code asyncEventExecutor} bean, which backs every
-     * {@code @EventHandler} (application event) dispatch — kept separate from
-     * {@code sseExecutor} so a burst of background event handling (e.g. bulk content
-     * indexing) cannot starve or reject user-facing SSE streams, and vice versa.
-     */
-    @Getter
-    @Setter
-    public static class AsyncEventExecutor {
-
-        /** Threads always kept alive to handle event dispatch. */
-        @Positive
-        private int corePoolSize = 5;
-
-        /** Hard upper bound on threads under burst load (e.g. bulk reindex). */
-        @Positive
-        private int maxPoolSize = 20;
-
-        /**
-         * Requests wait here before a new thread is spawned above {@code corePoolSize}.
-         * Sized larger than the SSE queue since a queued event handler only delays a
-         * background task, not a user-facing response.
-         */
-        @Positive
-        private int queueCapacity = 200;
-
-        /** Seconds the pool waits for in-flight handlers to finish on graceful shutdown. */
         @Positive
         private int awaitTerminationSeconds = 30;
     }

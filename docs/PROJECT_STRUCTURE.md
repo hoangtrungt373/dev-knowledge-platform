@@ -69,7 +69,7 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │   ├── User.java                     — userUuid, email, username, password, firstName, lastName, profilePicture,
 │   │                                    provider (UserProvider), role (UserRole), providerId, emailVerified, status
 │   │                                    (UserStatus, presence), enabled, seedId (String, nullable, DB SEED_ID,
-│   │                                    DKP-0016 — sole idempotency key for UserSeeder, gateway); referenced by FK from
+│   │                                    DKP-0016 — sole idempotency key for UserSeeder, identity-service); referenced by FK from
 │   │                                    social-service's FriendRequest/Friendship/UserBlock entities (which live
 │   │                                    there, not here — see social-service section below)
 │   ├── ChatSession.java              — userId, title, lastActivityAt, summary (TEXT); parent of ChatMessage rows
@@ -91,12 +91,12 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │                                        gateway) can reach it directly — this also retired social-service's
 │                                        own SocialUserRepository, a near-duplicate that existed only because
 │                                        this repository used to live in gateway; findBySeedId(String) added
-│                                        for UserSeeder (gateway) idempotency
+│                                        for UserSeeder (identity-service) idempotency
 ├── service/
 │   ├── SysParamService.java          — interface: getValue(ParamKey), upsert(ParamKey, String); string-in/string-out,
 │   │                                   no opinion on value encoding — callers own their own serialization format
 │   └── impl/
-│       └── SysParamServiceImpl.java  — find-or-create-and-save upsert pattern, shared by CorpusStatisticsServiceImpl (gateway)
+│       └── SysParamServiceImpl.java  — find-or-create-and-save upsert pattern, shared by CorpusStatisticsServiceImpl (ai-service)
 │                                        and PromptGuardStage (ai-service)
 └── exception/
     ├── ApiException.java
@@ -135,10 +135,15 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
 │   ├── storage/{StorageConfig,StorageProperties}.java — MinioClient bean + app.storage.* properties;
 │   │                                    moved here from gateway (named api at the time) alongside
 │   │                                    StorageService below
-│   └── cache/{CacheNames,CacheTtlProperties}.java — Redis cache-name constants + app.cache.* TTL
-│                                        binding; shared by `identity-service`'s `StateTokenServiceImpl`
-│                                        and `gateway`'s `RedisCacheConfig`, two modules that can't
-│                                        depend on each other
+│   ├── cache/{CacheNames,CacheTtlProperties}.java — Redis cache-name constants + app.cache.* TTL
+│   │                                    binding; shared by `identity-service`'s `StateTokenServiceImpl`
+│   │                                    and `gateway`'s `RedisCacheConfig`, two modules that can't
+│   │                                    depend on each other
+│   └── thread/{AsyncEventThreadPoolConfig,AsyncEventThreadPoolProperties}.java — the
+│                                        asyncEventExecutor bean (app.threads.async-event.*); moved
+│                                        here from gateway since this module's own event/ framework
+│                                        (below) is what actually owns this pool's purpose. gateway's
+│                                        sseStreamExecutor (a separate bulkhead) stays there.
 └── service/
     ├── SlugService.java              — toSlug(String), generateUniqueSlug(...) (two overloads: create vs
     │                                    update-excluding-self); lives here (not content-service) because it's a
@@ -158,7 +163,7 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
                                          independent siblings that can't depend on each other, so the shared
                                          template moved to infra, which both already depend on (same reasoning
                                          as SlugService above). Used by content-service's CategorySeeder/
-                                         TagSeeder, gateway's UserSeeder, and social-service's UserBlockSeeder.
+                                         TagSeeder, identity-service's UserSeeder, and social-service's UserBlockSeeder.
 ```
 
 ---
@@ -184,7 +189,7 @@ content-service/src/main/java/com/ttg/devknowledgeplatform/content/
 ├── event/
 │   └── ContentPublishedEvent.java — carries a ContentItem; currently has no publisher wired up (scaffold for a
 │                                     future auto-index-on-publish flow — today indexing is admin-triggered via
-│                                     ai-service's IngestionController); listened for by gateway's ContentPublishedEventListener
+│                                     ai-service's IngestionController); listened for by ai-service's ContentPublishedEventListener
 ├── repository/
 │   ├── CategoryRepository.java / TagRepository.java / ContentItemRepository.java / ContentItemTagRepository.java
 │   │   / QuestionAnswerRepository.java / ArticleRepository.java
@@ -230,9 +235,9 @@ The indexing/RAG orchestration layer (`ContentIndexingService`, `IndexingQuality
 `EmbeddingIndexService`, `IngestionApi`/`Controller`, `PublicContentApi`/`Controller`) and the read-only
 public content-browsing endpoints now live in `ai-service` — see that module's section. It genuinely needs
 both `content-service` and `ai-service`, and since `ai-service` already depends on `content-service` for
-`ContentItem`, it lives there rather than needing `gateway`. `ContentPublishedEventListener` stays in
-`gateway` (cross-cutting event-listener wiring), importing `ai-service`'s `ContentIndexingService` across
-the module boundary.
+`ContentItem`, it lives there rather than needing `gateway`. `ContentPublishedEventListener` moved to
+`ai-service` too (co-located with its own `PipelineCompletedEvent`/`Listener`), since it just calls that
+module's own `ContentIndexingService` — no `gateway`-specific dependency ever justified keeping it there.
 
 `ArticleController`/`QuestionAnswerController` resolve the authenticated principal's author id via `common`'s
 `UserRepository.findByEmail(...)` directly, not `identity-service`'s `UserService` — `content-service` must
@@ -310,8 +315,11 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │                                     in either direction relative to the viewer
 ├── event/
 │   ├── FriendRequestSentEvent.java     — record; published right after a pending FriendRequest is created
-│   └── FriendRequestAcceptedEvent.java — record; published when a Friendship is created (explicit accept
-│                                          or mutual auto-accept)
+│   ├── FriendRequestAcceptedEvent.java — record; published when a Friendship is created (explicit accept
+│   │                                      or mutual auto-accept)
+│   ├── FriendRequestSentEventListener.java     — moved in from gateway; currently just logs (seam for a
+│   │                                      future in-app/email notification)
+│   └── FriendRequestAcceptedEventListener.java — moved in from gateway; currently just logs
 ├── service/
 │   ├── FriendService.java           — sendRequest, accept/reject/cancelRequest, unfriend, block/unblock,
 │   │                                   getRelationshipStatus, countMutualFriends, listFriends/Incoming/Outgoing/
@@ -345,7 +353,7 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │   │                                   standing in for a full State-pattern class hierarchy at a scale that
 │   │                                   doesn't justify one
 │   └── seed/                        — sample social-graph data for the Friend Management GUI (see
-│       │                              docs/SEED_DATA_AUTHORING_GUIDE.md); requires gateway's UserSeeder to run first
+│       │                              docs/SEED_DATA_AUTHORING_GUIDE.md); requires identity-service's UserSeeder to run first
 │       ├── FriendGraphSeeder.java   — data/csv/friend-requests.csv (requesterId, addresseeId, status); an
 │       │                              ACCEPTED row also inserts the matching Friendship, canonically ordered,
 │       │                              mirroring FriendServiceImpl.acceptRequest's production behavior. Does
@@ -433,8 +441,22 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   │   │                             (not the other way round: ai-service must never depend on gateway)
 │   │   └── SseEmitterWriter.java   — guards every SSE write: disconnect check, IOException handling, double-complete guard
 │   ├── chat/
-│   │   └── ChatSessionProperties.java — @ConfigurationProperties at app.chat.session.*; ttlHours,
-│   │                                     summaryThresholdPairs, summaryTriggerIntervalPairs, summaryRecentWindowPairs
+│   │   ├── ChatSessionProperties.java — @ConfigurationProperties at app.chat.session.*; ttlHours,
+│   │   │                                 summaryThresholdPairs, summaryTriggerIntervalPairs, summaryRecentWindowPairs
+│   │   ├── ChatRateLimiter.java        — per-user Bucket4j token bucket (Redis-backed via
+│   │   │                                 LettuceBasedProxyManager), moved in from gateway alongside
+│   │   │                                 ChatController — co-locates rate limiting with the endpoint
+│   │   │                                 it protects
+│   │   └── RateLimitProperties.java    — @ConfigurationProperties at app.ai.rate-limit; requestsPerMinute
+│   │                                     (10), requestsPerHour (100), bucketExpiration (PT2H)
+│   ├── web/
+│   │   ├── ChatRateLimitInterceptor.java — HandlerInterceptor; consumes one ChatRateLimiter token
+│   │   │                                    per POST /api/v1/chat/** request
+│   │   └── ChatMvcConfig.java             — this module's own WebMvcConfigurer bean, registers
+│   │                                        ChatRateLimitInterceptor — Spring composes every
+│   │                                        WebMvcConfigurer in the context automatically, so this
+│   │                                        module doesn't need gateway's WebMvcConfig to register
+│   │                                        interceptors on its behalf
 │   ├── AiServiceConfig.java   — builds Map<String,ChatLanguageModel> + Map<String,StreamingChatLanguageModel>,
 │   │                             one entry per ChatModelsConfig.ChatModelProfile (OpenAI or Anthropic builder
 │   │                             depending on provider), keyed by profile id; injects OkHttpProperties for timeout
@@ -498,8 +520,11 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ├── event/
 │   ├── PipelineCompletedEvent.java         — record event published by RagQueryServiceImpl after each pipeline execution;
 │   │                                        carries RagPipelineContext + AnswerQualityVerdict
-│   └── PipelineCompletedEventListener.java — extends AsyncEventHandler<PipelineCompletedEvent>; @Transactional;
-│                                            maps event → PipelineMetrics entity; resolveTraceId() binds MDC for logging
+│   ├── PipelineCompletedEventListener.java — extends AsyncEventHandler<PipelineCompletedEvent>; @Transactional;
+│   │                                        maps event → PipelineMetrics entity; resolveTraceId() binds MDC for logging
+│   └── ContentPublishedEventListener.java — moved in from gateway; listens for content-service's
+│                                            ContentPublishedEvent, calls this module's own ContentIndexingService.index(...)
+│                                            (this event's definition stays in content-service, since it's published from there)
 ├── entity/
 │   ├── ContentEmbedding.java         — embedding vector (1536-dim), chunkText, sourceType,
 │   │                                    chunkIndex, modelName, tokenCount,
@@ -593,8 +618,14 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
         │                                                also runs IndexingQualityService and persists ContentItem.qualityScore
         ├── IndexingQualityServiceImpl.java             — mean cosine similarity of chunk embeddings vs corpus centroid
         │                                                (CorpusStatisticsService), compared against IndexingConfig threshold
-        └── EmbeddingIndexServiceImpl.java              — two-query pattern: paged Specification query + batch stats query;
-                                                          `indexed` filter uses a Criteria EXISTS subquery on ContentEmbedding
+        ├── EmbeddingIndexServiceImpl.java              — two-query pattern: paged Specification query + batch stats query;
+        │                                                 `indexed` filter uses a Criteria EXISTS subquery on ContentEmbedding
+        └── CorpusStatisticsServiceImpl.java            — moved in from `gateway` (was left behind when the rest of the
+                                                           indexing/RAG orchestration layer moved here — pure oversight, it
+                                                           had zero gateway-specific dependencies even before this move);
+                                                           @PostConstruct loads centroids from SYS_PARAM; @Scheduled refresh
+                                                           recomputes via SQL avg(embedding); volatile float[] cache;
+                                                           persistence delegated to common's SysParamService
 ```
 
 ---
@@ -622,11 +653,19 @@ identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
 │   │                                    RefreshTokenRequest, RegisterResponse, ResendOtpRequest,
 │   │                                    TokenResponse, VerifyOtpRequest
 │   └── user/UpdateProfileRequest.java
+├── service/seed/UserSeeder.java       — data/csv/users.csv (file itself stays under `gateway`'s
+│                                        resources); identity by seedId; extends infra's CsvSeeder;
+│                                        moved in from `gateway` alongside `PasswordEncoder` below,
+│                                        which it uses to hash the shared demo password every
+│                                        seeded account gets. Writes directly via common's
+│                                        UserRepository, not UserService, same reasoning as every
+│                                        other seeder in the reactor. `gateway`'s DataSeedingRunner
+│                                        imports it across the module boundary to run it in order
 └── security/
     ├── JwtTokenProvider.java          — HMAC sign/verify/refresh; issues access + refresh tokens
     ├── PasswordEncoderConfig.java     — @Bean PasswordEncoder (BCrypt); the ONE place in the whole
-    │                                    reactor this bean is defined — `gateway`'s `UserSeeder` injects it
-    │                                    across the module boundary rather than redeclaring it
+    │                                    reactor this bean is defined — UserSeeder above uses it
+    │                                    directly now (same module); don't add a second one anywhere else
     ├── jwt/                           — TokenClaims (sealed interface) + AccessTokenClaims/RefreshTokenClaims
     ├── handler/OAuth2LoginSuccessHandler.java — issues JWTs + stores them in Redis via StateTokenService
     │                                    on successful OAuth2 login; wired into `gateway`'s SecurityConfig
@@ -658,30 +697,34 @@ possible between them in either direction (currently nothing qualifies).
 
 ```
 gateway/src/main/java/com/ttg/devknowledgeplatform/
-├── config/
+├── config/                           — chat-specific rate limiting (ChatRateLimiter/RateLimitProperties/
+│   │                                    ChatRateLimitInterceptor) and the asyncEventExecutor bean have
+│   │                                    both since moved out — to ai-service and infra respectively,
+│   │                                    each the module that actually owns that concern's purpose
 │   ├── JacksonConfig.java             — shared ObjectMapper customization
 │   ├── cache/RedisCacheConfig.java    — @EnableCaching; base RedisCacheConfiguration + per-cache TTL
 │   │                                    RedisCacheManager (reads infra's CacheTtlProperties); dedicated
-│   │                                    Bucket4j Redis connection
-│   ├── chat/{ChatRateLimiter,RateLimitProperties}.java — Bucket4j token-bucket rate limiting for the
-│   │                                    chat endpoint (10/min, 100/hour per user)
+│   │                                    Bucket4j Redis connection (also used by ai-service's
+│   │                                    ChatRateLimiter, injected there by type — no import needed)
 │   ├── thread/
-│   │   ├── ThreadPoolProperties.java — @ConfigurationProperties at app.threads.*;
-│   │   │                               nested SseExecutor: corePoolSize (10), maxPoolSize (50),
-│   │   │                               queueCapacity (100), awaitTerminationSeconds (30);
-│   │   │                               nested AsyncEventExecutor: corePoolSize (5), maxPoolSize (20),
-│   │   │                               queueCapacity (200), awaitTerminationSeconds (30); env-var overrides
-│   │   └── ThreadPoolConfig.java     — Factory Method: creates sseStreamExecutor (SSE/MVC async dispatch) and
-│   │                                   asyncEventExecutor (@EventHandler dispatch) beans as separate bulkheads;
-│   │                                   registers both with ExecutorServiceMetrics (Micrometer Decorator); all
-│   │                                   pool sizing from ThreadPoolProperties
+│   │   ├── ThreadPoolProperties.java — @ConfigurationProperties at app.threads.*; nested SseExecutor
+│   │   │                               only now: corePoolSize (10), maxPoolSize (50), queueCapacity (100),
+│   │   │                               awaitTerminationSeconds (30); env-var overrides. The
+│   │   │                               AsyncEventExecutor nested class moved to infra's own
+│   │   │                               AsyncEventThreadPoolProperties (app.threads.async-event.*)
+│   │   └── ThreadPoolConfig.java     — Factory Method: creates only sseStreamExecutor (SSE/MVC async
+│   │                                   dispatch) now; registered with ExecutorServiceMetrics (Micrometer
+│   │                                   Decorator); sizing from ThreadPoolProperties. asyncEventExecutor
+│   │                                   moved to infra's own AsyncEventThreadPoolConfig
 │   └── web/
 │       ├── WebMvcConfig.java         — @EnableAsync; wires sseStreamExecutor into configureAsyncSupport
 │       │                               (timeout read from ai-service's SseStreamTemplate.SSE_TIMEOUT_MS —
 │       │                               not duplicated here, see that class) only — @Async dispatch uses
-│       │                               asyncEventExecutor via an explicit qualifier on @EventHandler;
-│       │                               rate-limit interceptor; CurrentUserIdArgumentResolver
-│       ├── ChatRateLimitInterceptor.java — applies ChatRateLimiter per-user to POST /api/v1/chat/**
+│       │                               asyncEventExecutor via an explicit qualifier on @EventHandler.
+│       │                               Registers no interceptors of its own anymore — ai-service's own
+│       │                               ChatMvcConfig registers the chat rate-limit interceptor via its
+│       │                               own composed WebMvcConfigurer bean instead (Spring merges every
+│       │                               WebMvcConfigurer bean in the context automatically)
 │       ├── CurrentUserIdArgumentResolver.java — Spring MVC HandlerMethodArgumentResolver for
 │       │                               @CurrentUserId (common.annotation), reads common.dto.CustomOAuth2User
 │       │                               from the SecurityContext
@@ -689,11 +732,9 @@ gateway/src/main/java/com/ttg/devknowledgeplatform/
 │                                       STOMP @MessageMapping methods
 ├── database/
 │   └── sql/                          — Liquibase changelogs (master: dev-knowledge-platform.xml)
-├── event/                            — listeners only; the event *definitions* live in the module that
-│   │                                    publishes them
-│   ├── ContentPublishedEventListener.java — imports ai-service's ContentIndexingService across the
-│   │                                    module boundary (content+AI indexing orchestration lives there now)
-│   ├── FriendRequestSentEventListener.java / FriendRequestAcceptedEventListener.java — social-service events
+├── (no event/ package — every listener moved into the module that owns the event it reacts to:
+│    ContentPublishedEventListener → ai-service, FriendRequestSentEventListener/
+│    FriendRequestAcceptedEventListener → social-service; none ever had a gateway-specific dependency)
 ├── security/                         — JWT verification + OAuth2/STOMP transport wiring (edge concerns);
 │   │                                    the actual JWT issuance/OAuth2 business logic lives in
 │   │                                    identity-service — see that section
@@ -718,21 +759,14 @@ gateway/src/main/java/com/ttg/devknowledgeplatform/
 │                                          need no equivalent check (convertAndSendToUser's private queue
 │                                          has no public topic string to subscribe to)
 └── service/
-    ├── seed/
-    │   ├── DataSeedingRunner.java        — ApplicationRunner, @ConditionalOnProperty(app.seed.enabled);
-    │   │                                   runs seeders in order: category → tag → questionAnswer → user →
-    │   │                                   friend graph → blocks. CategorySeeder/TagSeeder/QuestionAnswerSeeder
-    │   │                                   live in content-service/service/seed/, FriendGraphSeeder/
-    │   │                                   UserBlockSeeder in social-service/service/seed/ (see those modules'
-    │   │                                   sections) — this runner just injects and calls all of them
-    │   └── UserSeeder.java               — data/csv/users.csv; identity by seedId; extends infra's CsvSeeder;
-    │                                        lives here (not common) since it needs PasswordEncoder (injected
-    │                                        across the module boundary from identity-service) to hash the
-    │                                        shared demo password every seeded account gets
-    └── impl/
-        └── CorpusStatisticsServiceImpl.java — @PostConstruct loads centroids from SYS_PARAM; @Scheduled refresh
-                                                recomputes via SQL avg(embedding); volatile float[] cache; persistence
-                                                delegated to common's SysParamService (find-or-create-and-save owned there)
+    └── seed/
+        └── DataSeedingRunner.java        — ApplicationRunner, @ConditionalOnProperty(app.seed.enabled);
+                                             runs seeders in order: category → tag → questionAnswer → user →
+                                             friend graph → blocks. CategorySeeder/TagSeeder/QuestionAnswerSeeder
+                                             live in content-service/service/seed/, UserSeeder in
+                                             identity-service/service/seed/, FriendGraphSeeder/
+                                             UserBlockSeeder in social-service/service/seed/ (see those modules'
+                                             sections) — this runner just injects and calls all of them
 ```
 
 Everything that used to live flat here — every feature's REST controllers, DTOs, and MapStruct
@@ -740,9 +774,12 @@ mappers, including the one composed `UserApi.search`/`getPublicProfile` endpoint
 `social-service`, which reaches into `identity-service` for the base lookup) — moved into the owning
 feature module (`content-service`, `social-service`, `ai-service`, `identity-service`); see those
 modules' sections and `docs/CHANGELOG.md`'s `[Unreleased]` entries for the full move and its
-rationale. What's left here is transport/security edge infra (`SecurityConfig`, JWT filter, STOMP
-wiring, rate limiting, thread pools), Liquibase migrations for every module's tables, and the
-cross-domain seeding orchestrator (`DataSeedingRunner`).
+rationale. Chat-specific rate limiting (`ChatRateLimiter`/`RateLimitProperties`/
+`ChatRateLimitInterceptor`) and the `asyncEventExecutor` thread pool moved out too, to `ai-service`
+and `infra` respectively — see those modules' sections. What's left here is transport/security edge
+infra (`SecurityConfig`, JWT filter, STOMP wiring, the `sseStreamExecutor` pool), Liquibase
+migrations for every module's tables, and the cross-domain seeding orchestrator
+(`DataSeedingRunner`).
 
 `gateway/src/main/resources/data/` (separate resources tree, not nested under the Java sources above):
 
@@ -754,7 +791,8 @@ data/
 │   │                                    id (→ seedId), never name/slug
 │   ├── categories.csv                    — id, name, parentId (parentId references another row's id)
 │   ├── tags.csv                           — id, name, status
-│   ├── users.csv                          — id, email, username, firstName, lastName (UserSeeder, gateway);
+│   ├── users.csv                          — id, email, username, firstName, lastName (UserSeeder, identity-service;
+│   │                                         file itself stays under gateway's resources);
 │   │                                         20 sample login-able accounts for the Friend Management GUI
 │   ├── friend-requests.csv                — requesterId, addresseeId, status (FriendGraphSeeder,
 │   │                                         social-service); references users.csv rows by id
@@ -850,7 +888,7 @@ expected over time, and are modelled as data, not schema:
   can carry text, an attachment, or both. `ON DELETE CASCADE` from messages up through channel/group and
   from members up through group.
 - `USER.SEED_ID` (DKP-0016, nullable, unique index) — same pattern as `DKP-0013`'s `CATEGORY`/`TAG`/
-  `CONTENT_ITEM`; sole idempotency key for `UserSeeder`'s (`gateway`) 20 sample login-able accounts.
+  `CONTENT_ITEM`; sole idempotency key for `UserSeeder`'s (`identity-service`) 20 sample login-able accounts.
 - Migrations: `gateway/src/main/java/com/ttg/devknowledgeplatform/database/sql/` (Liquibase config
   lives in `gateway` regardless of which module owns the entities the migration backs —
   `social-service`'s tables are migrated from here too, same as `ai-service`'s)

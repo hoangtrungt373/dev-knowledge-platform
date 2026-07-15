@@ -51,6 +51,13 @@
             <groupId>io.minio</groupId>
             <artifactId>minio</artifactId>
         </dependency>
+
+        <!-- Micrometer — instruments asyncEventExecutor (AsyncEventThreadPoolConfig) via
+             ExecutorServiceMetrics, the same Decorator pattern gateway's own sseStreamExecutor uses -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
     </dependencies>
 
 </project>

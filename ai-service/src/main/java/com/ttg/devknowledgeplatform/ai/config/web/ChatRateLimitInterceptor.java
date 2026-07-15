@@ -1,6 +1,6 @@
-package com.ttg.devknowledgeplatform.config.web;
+package com.ttg.devknowledgeplatform.ai.config.web;
 
-import com.ttg.devknowledgeplatform.config.chat.ChatRateLimiter;
+import com.ttg.devknowledgeplatform.ai.config.chat.ChatRateLimiter;
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -23,8 +23,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
  * {@link com.ttg.devknowledgeplatform.common.exception.RateLimitExceededException},
  * which {@code GlobalExceptionHandler} maps to {@code 429 Too Many Requests}.
  *
- * <p>Registered via {@link com.ttg.devknowledgeplatform.config.web.WebMvcConfig} for
- * {@code /api/v1/chat/**}.
+ * <p>Registered via {@link ChatMvcConfig} for {@code /api/v1/chat/**}.
  */
 @Component
 @RequiredArgsConstructor

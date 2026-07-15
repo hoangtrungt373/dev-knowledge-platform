@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.service.seed;
+package com.ttg.devknowledgeplatform.identity.service.seed;
 
 import java.util.UUID;
 
@@ -33,7 +33,9 @@ import lombok.RequiredArgsConstructor;
  *
  * <p>Extends {@code infra}'s generic {@link CsvSeeder} Template Method — the same one
  * {@code content-service}'s {@code CategorySeeder}/{@code TagSeeder} and {@code social-service}'s
- * {@code UserBlockSeeder} use.
+ * {@code UserBlockSeeder} use. The seed data file itself stays under {@code gateway}'s
+ * {@code src/main/resources/data/csv/users.csv} — moving a seeder's Java class doesn't move the
+ * data file, same precedent as every other seeder extraction.
  *
  * @author ttg
  */

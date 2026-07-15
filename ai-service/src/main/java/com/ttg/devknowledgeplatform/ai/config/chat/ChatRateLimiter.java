@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.config.chat;
+package com.ttg.devknowledgeplatform.ai.config.chat;
 
 import com.ttg.devknowledgeplatform.common.exception.RateLimitExceededException;
 
