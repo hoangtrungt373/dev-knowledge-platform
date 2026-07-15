@@ -1,6 +1,7 @@
-package com.ttg.devknowledgeplatform.common.entity;
+package com.ttg.devknowledgeplatform.ai.entity;
 
-import com.ttg.devknowledgeplatform.common.enums.ChatMessageRole;
+import com.ttg.devknowledgeplatform.ai.enums.ChatMessageRole;
+import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

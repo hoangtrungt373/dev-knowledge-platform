@@ -4,7 +4,7 @@ import com.ttg.devknowledgeplatform.ai.config.LabelsConfig;
 import com.ttg.devknowledgeplatform.ai.config.LoadedPrompts;
 import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.service.ChatModelResolver;
-import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
+import com.ttg.devknowledgeplatform.ai.dto.ConversationContext;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.output.Response;

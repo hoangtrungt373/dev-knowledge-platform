@@ -4,7 +4,7 @@ import com.ttg.devknowledgeplatform.ai.config.LabelsConfig;
 import com.ttg.devknowledgeplatform.ai.config.LoadedPrompts;
 import com.ttg.devknowledgeplatform.ai.service.ChatModelResolver;
 import com.ttg.devknowledgeplatform.ai.service.ConversationSummarisationService;
-import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
+import com.ttg.devknowledgeplatform.ai.dto.ConversationTurn;
 import dev.langchain4j.data.message.UserMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

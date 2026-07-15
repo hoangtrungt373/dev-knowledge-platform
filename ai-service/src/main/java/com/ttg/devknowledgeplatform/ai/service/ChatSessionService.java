@@ -1,8 +1,8 @@
 package com.ttg.devknowledgeplatform.ai.service;
 
-import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
-import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
-import com.ttg.devknowledgeplatform.common.entity.ChatMessage;
+import com.ttg.devknowledgeplatform.ai.dto.ConversationContext;
+import com.ttg.devknowledgeplatform.ai.dto.ConversationTurn;
+import com.ttg.devknowledgeplatform.ai.entity.ChatMessage;
 import com.ttg.devknowledgeplatform.ai.dto.chat.ChatSessionSummaryDto;
 
 import java.util.List;

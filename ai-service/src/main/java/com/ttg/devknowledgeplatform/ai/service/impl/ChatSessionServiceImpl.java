@@ -2,11 +2,11 @@ package com.ttg.devknowledgeplatform.ai.service.impl;
 
 import com.ttg.devknowledgeplatform.ai.service.ConversationSummarisationService;
 import com.ttg.devknowledgeplatform.ai.config.chat.ChatSessionProperties;
-import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
-import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
-import com.ttg.devknowledgeplatform.common.entity.ChatMessage;
-import com.ttg.devknowledgeplatform.common.entity.ChatSession;
-import com.ttg.devknowledgeplatform.common.enums.ChatMessageRole;
+import com.ttg.devknowledgeplatform.ai.dto.ConversationContext;
+import com.ttg.devknowledgeplatform.ai.dto.ConversationTurn;
+import com.ttg.devknowledgeplatform.ai.entity.ChatMessage;
+import com.ttg.devknowledgeplatform.ai.entity.ChatSession;
+import com.ttg.devknowledgeplatform.ai.enums.ChatMessageRole;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.common.util.DateUtils;
 import com.ttg.devknowledgeplatform.ai.dto.chat.ChatSessionSummaryDto;

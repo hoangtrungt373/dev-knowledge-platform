@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.config;
 
-import com.ttg.devknowledgeplatform.common.enums.ChatProvider;
+import com.ttg.devknowledgeplatform.ai.enums.ChatProvider;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;

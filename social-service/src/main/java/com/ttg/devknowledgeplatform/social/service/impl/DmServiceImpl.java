@@ -20,7 +20,7 @@ import com.ttg.devknowledgeplatform.social.repository.DmMessageRepository;
 import com.ttg.devknowledgeplatform.social.repository.DmThreadRepository;
 import com.ttg.devknowledgeplatform.social.service.DmService;
 import com.ttg.devknowledgeplatform.social.service.FriendService;
-import com.ttg.devknowledgeplatform.social.service.MessageAttachmentInput;
+import com.ttg.devknowledgeplatform.social.dto.messaging.MessageAttachmentInput;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.repository;
 
-import com.ttg.devknowledgeplatform.common.entity.ChatSession;
+import com.ttg.devknowledgeplatform.ai.entity.ChatSession;
 import com.ttg.devknowledgeplatform.ai.dto.chat.ChatSessionSummaryDto;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;

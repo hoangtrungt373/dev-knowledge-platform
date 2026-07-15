@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.common.enums;
+package com.ttg.devknowledgeplatform.ai.enums;
 
 /** Role of a participant in a chat conversation. */
 public enum ChatMessageRole {

@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.common.enums;
+package com.ttg.devknowledgeplatform.ai.enums;
 
 /**
  * Named keys for system-managed parameters persisted in the {@code SYS_PARAM} table.

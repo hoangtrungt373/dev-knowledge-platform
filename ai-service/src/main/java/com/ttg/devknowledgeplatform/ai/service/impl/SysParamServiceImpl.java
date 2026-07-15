@@ -1,9 +1,9 @@
-package com.ttg.devknowledgeplatform.common.service.impl;
+package com.ttg.devknowledgeplatform.ai.service.impl;
 
-import com.ttg.devknowledgeplatform.common.entity.SysParam;
-import com.ttg.devknowledgeplatform.common.enums.ParamKey;
-import com.ttg.devknowledgeplatform.common.repository.SysParamRepository;
-import com.ttg.devknowledgeplatform.common.service.SysParamService;
+import com.ttg.devknowledgeplatform.ai.entity.SysParam;
+import com.ttg.devknowledgeplatform.ai.enums.ParamKey;
+import com.ttg.devknowledgeplatform.ai.repository.SysParamRepository;
+import com.ttg.devknowledgeplatform.ai.service.SysParamService;
 import com.ttg.devknowledgeplatform.common.util.DateUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

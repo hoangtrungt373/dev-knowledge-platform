@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import com.ttg.devknowledgeplatform.social.dto.messaging.MessageAttachmentInput;
 import com.ttg.devknowledgeplatform.social.entity.Channel;
 import com.ttg.devknowledgeplatform.social.entity.ChannelMessage;
 import com.ttg.devknowledgeplatform.social.entity.Group;

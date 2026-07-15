@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.social.service;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import com.ttg.devknowledgeplatform.social.dto.messaging.MessageAttachmentInput;
 import com.ttg.devknowledgeplatform.social.entity.DmMessage;
 import com.ttg.devknowledgeplatform.social.entity.DmThread;
 

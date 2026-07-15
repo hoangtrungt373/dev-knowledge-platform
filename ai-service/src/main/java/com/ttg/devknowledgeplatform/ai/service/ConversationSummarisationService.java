@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.service;
 
-import com.ttg.devknowledgeplatform.common.dto.ConversationTurn;
+import com.ttg.devknowledgeplatform.ai.dto.ConversationTurn;
 
 import java.util.List;
 

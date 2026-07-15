@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.config;
 
-import com.ttg.devknowledgeplatform.common.enums.ChatProvider;
+import com.ttg.devknowledgeplatform.ai.enums.ChatProvider;
 import dev.langchain4j.model.anthropic.AnthropicChatModel;
 import dev.langchain4j.model.anthropic.AnthropicStreamingChatModel;
 import dev.langchain4j.model.chat.ChatLanguageModel;

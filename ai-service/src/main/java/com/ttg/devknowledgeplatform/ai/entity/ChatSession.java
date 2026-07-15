@@ -1,5 +1,6 @@
-package com.ttg.devknowledgeplatform.common.entity;
+package com.ttg.devknowledgeplatform.ai.entity;
 
+import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;

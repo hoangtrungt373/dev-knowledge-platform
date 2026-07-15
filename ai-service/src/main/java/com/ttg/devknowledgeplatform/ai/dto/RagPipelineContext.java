@@ -3,7 +3,7 @@ package com.ttg.devknowledgeplatform.ai.dto;
 import com.ttg.devknowledgeplatform.ai.entity.ContentEmbedding;
 import com.ttg.devknowledgeplatform.ai.pipeline.RagPipelineRunner;
 import com.ttg.devknowledgeplatform.ai.pipeline.RagPipelineStage;
-import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
+import com.ttg.devknowledgeplatform.ai.dto.ConversationContext;
 import dev.langchain4j.data.message.ChatMessage;
 import lombok.Getter;
 import lombok.Setter;

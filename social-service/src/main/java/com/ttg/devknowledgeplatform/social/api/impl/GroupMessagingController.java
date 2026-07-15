@@ -13,7 +13,7 @@ import com.ttg.devknowledgeplatform.social.dto.messaging.WsErrorResponse;
 import com.ttg.devknowledgeplatform.social.mapper.MessagingMapper;
 import com.ttg.devknowledgeplatform.social.entity.ChannelMessage;
 import com.ttg.devknowledgeplatform.social.service.GroupService;
-import com.ttg.devknowledgeplatform.social.service.MessageAttachmentInput;
+import com.ttg.devknowledgeplatform.social.dto.messaging.MessageAttachmentInput;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

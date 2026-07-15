@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.repository;
 
-import com.ttg.devknowledgeplatform.common.entity.ChatMessage;
+import com.ttg.devknowledgeplatform.ai.entity.ChatMessage;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;

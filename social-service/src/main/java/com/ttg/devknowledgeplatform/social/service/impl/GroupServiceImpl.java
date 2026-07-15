@@ -24,7 +24,7 @@ import com.ttg.devknowledgeplatform.social.repository.ChannelRepository;
 import com.ttg.devknowledgeplatform.social.repository.GroupMemberRepository;
 import com.ttg.devknowledgeplatform.social.repository.GroupRepository;
 import com.ttg.devknowledgeplatform.social.service.GroupService;
-import com.ttg.devknowledgeplatform.social.service.MessageAttachmentInput;
+import com.ttg.devknowledgeplatform.social.dto.messaging.MessageAttachmentInput;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

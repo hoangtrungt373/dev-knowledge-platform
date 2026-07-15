@@ -1,7 +1,7 @@
-package com.ttg.devknowledgeplatform.common.repository;
+package com.ttg.devknowledgeplatform.ai.repository;
 
-import com.ttg.devknowledgeplatform.common.entity.SysParam;
-import com.ttg.devknowledgeplatform.common.enums.ParamKey;
+import com.ttg.devknowledgeplatform.ai.entity.SysParam;
+import com.ttg.devknowledgeplatform.ai.enums.ParamKey;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -11,8 +11,9 @@ import java.util.Optional;
  * Persistence operations for {@link SysParam}.
  *
  * <p>The primary access pattern is lookup by {@link ParamKey} name — used by
- * {@link com.ttg.devknowledgeplatform.common.service.SysParamService} to load and upsert
- * cached vectors and thresholds computed by both the {@code ai-service} and {@code api} modules.
+ * {@link com.ttg.devknowledgeplatform.ai.service.SysParamService} to load and upsert the
+ * corpus centroid caches ({@code CorpusStatisticsServiceImpl}) and the prompt-injection
+ * prototype embedding cache ({@code PromptGuardStage}).
  */
 @Repository
 public interface SysParamRepository extends JpaRepository<SysParam, Integer> {

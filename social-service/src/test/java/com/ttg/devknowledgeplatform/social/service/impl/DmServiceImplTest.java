@@ -3,7 +3,6 @@ package com.ttg.devknowledgeplatform.social.service.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -29,7 +28,7 @@ import com.ttg.devknowledgeplatform.social.exception.SocialErrorCode;
 import com.ttg.devknowledgeplatform.social.repository.DmMessageRepository;
 import com.ttg.devknowledgeplatform.social.repository.DmThreadRepository;
 import com.ttg.devknowledgeplatform.social.service.FriendService;
-import com.ttg.devknowledgeplatform.social.service.MessageAttachmentInput;
+import com.ttg.devknowledgeplatform.social.dto.messaging.MessageAttachmentInput;
 
 @ExtendWith(MockitoExtension.class)
 class DmServiceImplTest {

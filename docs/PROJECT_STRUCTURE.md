@@ -61,30 +61,19 @@ reaching into an upstream one for a genuine data/logic need, never the reverse:
 
 ```
 common/src/main/java/com/ttg/devknowledgeplatform/common/
-├── dto/
-│   ├── ConversationContext.java       — rolling summary + recent verbatim turns; primary RAG context type
-│   └── ConversationTurn.java         — role + content record for a single message
 ├── entity/
 │   ├── AbstractEntity.java           — audit columns (usrCreation, dteCreation, version, …)
-│   ├── User.java                     — userUuid, email, username, password, firstName, lastName, profilePicture,
-│   │                                    provider (UserProvider), role (UserRole), providerId, emailVerified, status
-│   │                                    (UserStatus, presence), enabled, seedId (String, nullable, DB SEED_ID,
-│   │                                    DKP-0016 — sole idempotency key for UserSeeder, identity-service); referenced by FK from
-│   │                                    social-service's FriendRequest/Friendship/UserBlock entities (which live
-│   │                                    there, not here — see social-service section below)
-│   ├── ChatSession.java              — userId, title, lastActivityAt, summary (TEXT); parent of ChatMessage rows
-│   ├── ChatMessage.java              — role, content, turnIndex; child of ChatSession
-│   └── SysParam.java                 — @Entity for SYS_PARAM; fields: name (ParamKey), value (TEXT), computedAt
+│   └── User.java                     — userUuid, email, username, password, firstName, lastName, profilePicture,
+│                                        provider (UserProvider), role (UserRole), providerId, emailVerified, status
+│                                        (UserStatus, presence), enabled, seedId (String, nullable, DB SEED_ID,
+│                                        DKP-0016 — sole idempotency key for UserSeeder, identity-service); referenced by FK from
+│                                        social-service's FriendRequest/Friendship/UserBlock entities (which live
+│                                        there, not here — see social-service section below)
 ├── enums/
-│   ├── ChatProvider.java             — OPENAI, ANTHROPIC; selects LangChain4j builder family per chat model profile
-│   ├── ParamKey.java                 — typed keys for SYS_PARAM.NAME; renaming a constant requires a DB migration;
-│   │                                   includes PROMPT_INJECTION_PROTOTYPE_EMBEDDINGS (fingerprinted vector-list cache
-│   │                                   for PromptGuardStage — see repository/service below)
-│   └── UserRole.java
+│   ├── UserProvider.java
+│   ├── UserRole.java
+│   └── UserStatus.java
 ├── repository/
-│   ├── SysParamRepository.java       — JpaRepository<SysParam, Integer>; findByName(ParamKey); moved here from
-│   │                                    gateway/repository (named api/repository at the time) so ai-service
-│   │                                    (which cannot depend on gateway) can reach it via SysParamService below
 │   └── UserRepository.java           — JpaRepository<User, Integer> + JpaSpecificationExecutor<User>; moved here
 │                                        from gateway/repository (named api/repository at the time) so
 │                                        content-service/social-service (neither of which can depend on
@@ -92,12 +81,6 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │                                        own SocialUserRepository, a near-duplicate that existed only because
 │                                        this repository used to live in gateway; findBySeedId(String) added
 │                                        for UserSeeder (identity-service) idempotency
-├── service/
-│   ├── SysParamService.java          — interface: getValue(ParamKey), upsert(ParamKey, String); string-in/string-out,
-│   │                                   no opinion on value encoding — callers own their own serialization format
-│   └── impl/
-│       └── SysParamServiceImpl.java  — find-or-create-and-save upsert pattern, shared by CorpusStatisticsServiceImpl (ai-service)
-│                                        and PromptGuardStage (ai-service)
 └── exception/
     ├── ApiException.java
     ├── BusinessException.java
@@ -109,12 +92,20 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
     │                                    dependency back onto every feature module from common
     ├── CommonErrorCode.java          — AUTH_*/OAUTH_*/USER_*/OTP_*/VALIDATION_*/SERVER_*/RESOURCE_*/REQUEST_*/
     │                                    RATE_* codes (everything not owned by a single feature module)
+    ├── RateLimitExceededException.java — stays here (not ai-service, its only thrower today) because
+    │                                    GlobalExceptionHandler#handleRateLimit needs a compile-time
+    │                                    @ExceptionHandler(RateLimitExceededException.class) reference, and
+    │                                    GlobalExceptionHandler itself must stay in common
     └── ResourceNotFoundException.java
 ```
 
 Category/Tag/ContentItem/ContentItemTag/QuestionAnswer/Article entities and their enums
 (ContentStatus/ContentType/TagStatus/QuestionDifficulty) used to live here; they moved to
-`content-service` — see that module's section below and `CHANGELOG.md`.
+`content-service` — see that module's section below and `CHANGELOG.md`. `ChatSession`/`ChatMessage`
+(+ `ChatMessageRole`), `ChatProvider`, `SysParam`/`ParamKey`/`SysParamRepository`/`SysParamService`(`Impl`),
+and `ConversationContext`/`ConversationTurn` used to live here too — an audit found zero real
+consumers outside `ai-service` for any of them (some Javadoc cross-references had implied otherwise),
+so they moved there — see that module's section below and `CHANGELOG.md`.
 
 ---
 
@@ -509,6 +500,10 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── RagSource.java                     — contentItemId, sourceType, title, chunkText, similarity
 │   ├── ScoredChunk.java                   — record: ContentEmbedding + float score (post-scoring candidates)
 │   ├── StageSpan.java                     — record: stage name, durationMs, aborted flag; one per pipeline stage per request
+│   ├── ConversationContext.java           — rolling summary + recent verbatim turns; primary RAG context type;
+│   │                                        moved in from common — audit found zero real consumers outside this module
+│   ├── ConversationTurn.java              — role (ChatMessageRole) + content record for a single message; moved in
+│   │                                        from common alongside ConversationContext, same reason
 │   ├── admin/
 │   │   └── EmbeddingIndexItemResponse.java — @Builder DTO: contentItemId, title, contentType, contentStatus,
 │   │                                          qualityScore, chunkCount, totalTokens, modelName, lastIndexedAt, indexed
@@ -517,6 +512,13 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │       ├── ChatResponse.java             — record: answer, List<RagSource>, sessionId; from(RagAnswer, sessionId)
 │       ├── ChatSessionHistoryDto.java    — record: sessionId, List<MessageDto>; nested MessageDto(role, content, turnIndex)
 │       └── ChatSessionSummaryDto.java    — record: sessionId, title, lastActivityAt, messageCount
+├── enums/
+│   ├── ChatMessageRole.java   — USER, ASSISTANT; moved in from common alongside ChatMessage/ConversationTurn
+│   ├── ChatProvider.java      — OPENAI, ANTHROPIC; selects LangChain4j builder family per chat model profile;
+│   │                            moved in from common — only AiServiceConfig/ChatModelsConfig ever used it
+│   └── ParamKey.java          — typed keys for SYS_PARAM.NAME; renaming a constant requires a DB migration;
+│                                includes PROMPT_INJECTION_PROTOTYPE_EMBEDDINGS (fingerprinted vector-list cache
+│                                for PromptGuardStage below); moved in from common alongside SysParam/SysParamService
 ├── event/
 │   ├── PipelineCompletedEvent.java         — record event published by RagQueryServiceImpl after each pipeline execution;
 │   │                                        carries RagPipelineContext + AnswerQualityVerdict
@@ -529,14 +531,20 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── ContentEmbedding.java         — embedding vector (1536-dim), chunkText, sourceType,
 │   │                                    chunkIndex, modelName, tokenCount,
 │   │                                    metadata (JSONB: categoryId, categoryName, tagIds, tagNames)
-│   └── PipelineMetrics.java          — append-only analytics entity (no AbstractEntity); columns: traceId, createdAt,
-│                                        abortedAt, candidateCount, afterScoringCount, selectedCount,
-│                                        evidenceMeanScore, effectiveSimThreshold, answerContextSim, answerQuerySim, answerDrifted;
-│                                        latency: contextualizationMs, embeddingMs, retrievalMs, llmGenerationMs, totalPipelineMs;
-│                                        tokens: contextualizationInputTokens, contextualizationOutputTokens, embeddingTokens,
-│                                        qualityEmbeddingTokens, generationInputTokens, generationOutputTokens, estimatedCostUsd;
-│                                        attribution: userId (no FK — analytics rows must survive user deletion),
-│                                        chatModel (id of the resolved chat model profile; NULL pre-DKP-0012 rows)
+│   ├── PipelineMetrics.java          — append-only analytics entity (no AbstractEntity); columns: traceId, createdAt,
+│   │                                    abortedAt, candidateCount, afterScoringCount, selectedCount,
+│   │                                    evidenceMeanScore, effectiveSimThreshold, answerContextSim, answerQuerySim, answerDrifted;
+│   │                                    latency: contextualizationMs, embeddingMs, retrievalMs, llmGenerationMs, totalPipelineMs;
+│   │                                    tokens: contextualizationInputTokens, contextualizationOutputTokens, embeddingTokens,
+│   │                                    qualityEmbeddingTokens, generationInputTokens, generationOutputTokens, estimatedCostUsd;
+│   │                                    attribution: userId (no FK — analytics rows must survive user deletion),
+│   │                                    chatModel (id of the resolved chat model profile; NULL pre-DKP-0012 rows)
+│   ├── ChatSession.java              — userId, title, lastActivityAt, summary (TEXT); parent of ChatMessage rows;
+│   │                                    moved in from common — its repository (below) already lived here
+│   ├── ChatMessage.java              — role (ChatMessageRole), content, turnIndex; child of ChatSession; moved in
+│   │                                    from common alongside ChatSession
+│   └── SysParam.java                 — @Entity for SYS_PARAM; fields: name (ParamKey), value (TEXT), computedAt;
+│                                        moved in from common — audit found zero real consumers outside this module
 ├── exception/
 │   ├── RagQueryException.java
 │   ├── AiErrorCode.java              — AI_* codes, implements common's ErrorCode interface (moved out of
@@ -578,9 +586,15 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   │                                        fetchSummary(Instant) — native query using percentile_cont WITHIN GROUP
 │   ├── ChatSessionRepository.java        — findByIdAndUserId (ownership check), findSessionSummariesByUserId
 │   │                                        (JPQL "new" projection into ChatSessionSummaryDto, COUNT(m) join)
-│   └── ChatMessageRepository.java        — findByChatSession_IdOrderByTurnIndexAsc/Desc, findMaxTurnIndexBySessionId
+│   ├── ChatMessageRepository.java        — findByChatSession_IdOrderByTurnIndexAsc/Desc, findMaxTurnIndexBySessionId
+│   └── SysParamRepository.java           — JpaRepository<SysParam, Integer>; findByName(ParamKey); moved in
+│                                            from common — audit found zero real consumers outside this module
 └── service/
     ├── ContentIngestionService.java             — chunks text + stores embeddings
+    ├── SysParamService.java                     — interface: getValue(ParamKey), upsert(ParamKey, String);
+    │                                               string-in/string-out, no opinion on value encoding; moved in
+    │                                               from common — its only two callers (CorpusStatisticsServiceImpl,
+    │                                               PromptGuardStage below) were always in this module
     ├── ConversationSummarisationService.java    — compresses old turns into a rolling summary (LLM)
     ├── CorpusStatisticsService.java             — interface: getCentroidFor(RagFilter), refresh(); in ai-service so stages can inject it
     ├── EmbeddingService.java                    — wraps OpenAI embedding API; embed() returns EmbedResult
@@ -620,12 +634,14 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
         │                                                (CorpusStatisticsService), compared against IndexingConfig threshold
         ├── EmbeddingIndexServiceImpl.java              — two-query pattern: paged Specification query + batch stats query;
         │                                                 `indexed` filter uses a Criteria EXISTS subquery on ContentEmbedding
-        └── CorpusStatisticsServiceImpl.java            — moved in from `gateway` (was left behind when the rest of the
-                                                           indexing/RAG orchestration layer moved here — pure oversight, it
-                                                           had zero gateway-specific dependencies even before this move);
-                                                           @PostConstruct loads centroids from SYS_PARAM; @Scheduled refresh
-                                                           recomputes via SQL avg(embedding); volatile float[] cache;
-                                                           persistence delegated to common's SysParamService
+        ├── CorpusStatisticsServiceImpl.java            — moved in from `gateway` (was left behind when the rest of the
+        │                                                  indexing/RAG orchestration layer moved here — pure oversight, it
+        │                                                  had zero gateway-specific dependencies even before this move);
+        │                                                  @PostConstruct loads centroids from SYS_PARAM; @Scheduled refresh
+        │                                                  recomputes via SQL avg(embedding); volatile float[] cache;
+        │                                                  persistence delegated to this module's own SysParamService
+        └── SysParamServiceImpl.java                    — find-or-create-and-save upsert pattern; moved in from common
+                                                           alongside SysParamService/SysParamRepository/SysParam
 ```
 
 ---

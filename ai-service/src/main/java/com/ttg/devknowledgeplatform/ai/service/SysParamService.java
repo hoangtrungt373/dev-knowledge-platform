@@ -1,7 +1,7 @@
-package com.ttg.devknowledgeplatform.common.service;
+package com.ttg.devknowledgeplatform.ai.service;
 
-import com.ttg.devknowledgeplatform.common.entity.SysParam;
-import com.ttg.devknowledgeplatform.common.enums.ParamKey;
+import com.ttg.devknowledgeplatform.ai.entity.SysParam;
+import com.ttg.devknowledgeplatform.ai.enums.ParamKey;
 
 import java.util.Optional;
 
@@ -9,11 +9,11 @@ import java.util.Optional;
  * Generic get/upsert access to {@link SysParam} rows, keyed by {@link ParamKey}.
  *
  * <p>Deliberately string-in/string-out — this service knows nothing about vector notation,
- * JSON, or any other value encoding. Callers (e.g. corpus centroid caching in {@code api},
- * prompt-injection prototype embedding caching in {@code ai-service}) own their own
- * serialization format and interpret the raw {@link SysParam#getValue()} string themselves.
- * This keeps the shared service reusable across modules without coupling it to any one
- * consumer's value format.
+ * JSON, or any other value encoding. Its two callers, corpus centroid caching
+ * ({@code CorpusStatisticsServiceImpl}) and prompt-injection prototype embedding caching
+ * ({@code PromptGuardStage}), each own their own serialization format and interpret the raw
+ * {@link SysParam#getValue()} string themselves. This keeps the service reusable across both
+ * without coupling it to either one's value format.
  */
 public interface SysParamService {
 

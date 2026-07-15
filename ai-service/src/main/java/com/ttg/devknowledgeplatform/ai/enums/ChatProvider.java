@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.common.enums;
+package com.ttg.devknowledgeplatform.ai.enums;
 
 /**
  * Vendor backing a selectable chat model — determines which LangChain4j builder family

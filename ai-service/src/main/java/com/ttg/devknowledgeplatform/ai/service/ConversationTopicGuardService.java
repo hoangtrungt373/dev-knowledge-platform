@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.service;
 
-import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
+import com.ttg.devknowledgeplatform.ai.dto.ConversationContext;
 
 /**
  * Guards against sudden topic shifts in a multi-turn conversation (Case 7).

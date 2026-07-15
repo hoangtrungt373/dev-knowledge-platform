@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.common.dto;
+package com.ttg.devknowledgeplatform.ai.dto;
 
 import java.util.List;
 

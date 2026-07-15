@@ -13,7 +13,7 @@ import com.ttg.devknowledgeplatform.ai.service.ChatModelResolver;
 import com.ttg.devknowledgeplatform.ai.service.ConversationTopicGuardService;
 import com.ttg.devknowledgeplatform.ai.service.RagQueryService;
 import com.ttg.devknowledgeplatform.ai.service.RagStreamHandler;
-import com.ttg.devknowledgeplatform.common.dto.ConversationContext;
+import com.ttg.devknowledgeplatform.ai.dto.ConversationContext;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.chat.ChatLanguageModel;

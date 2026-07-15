@@ -21,7 +21,7 @@ import com.ttg.devknowledgeplatform.social.entity.DmMessage;
 import com.ttg.devknowledgeplatform.social.entity.DmThread;
 import com.ttg.devknowledgeplatform.social.entity.Group;
 import com.ttg.devknowledgeplatform.social.entity.GroupMember;
-import com.ttg.devknowledgeplatform.social.service.MessageAttachmentInput;
+import com.ttg.devknowledgeplatform.social.dto.messaging.MessageAttachmentInput;
 
 /**
  * Maps chat entities from {@code social-service} (groups/channels and DMs) to REST response

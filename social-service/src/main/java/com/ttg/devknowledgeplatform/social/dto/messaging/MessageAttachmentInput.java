@@ -1,4 +1,7 @@
-package com.ttg.devknowledgeplatform.social.service;
+package com.ttg.devknowledgeplatform.social.dto.messaging;
+
+import com.ttg.devknowledgeplatform.social.service.DmService;
+import com.ttg.devknowledgeplatform.social.service.GroupService;
 
 /**
  * Optional attachment metadata for a DM or channel message, shared by {@link DmService} and
