@@ -1,8 +1,7 @@
-package com.ttg.devknowledgeplatform.api.auth.impl;
+package com.ttg.devknowledgeplatform.social.api.impl;
 
 import java.util.Set;
 
-import com.ttg.devknowledgeplatform.api.auth.UserApi;
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.common.entity.User;
@@ -11,6 +10,7 @@ import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.identity.dto.UserInfoResponse;
 import com.ttg.devknowledgeplatform.identity.mapper.UserMapper;
 import com.ttg.devknowledgeplatform.identity.security.service.UserService;
+import com.ttg.devknowledgeplatform.social.api.UserApi;
 import com.ttg.devknowledgeplatform.social.dto.friend.UserSearchResultResponse;
 import com.ttg.devknowledgeplatform.social.enums.RelationshipStatus;
 import com.ttg.devknowledgeplatform.social.mapper.FriendMapper;

@@ -25,6 +25,14 @@
             <groupId>com.ttg</groupId>
             <artifactId>infra</artifactId>
         </dependency>
+        <!-- UserApi.search/getPublicProfile (moved from api) need identity-service's UserService/
+             UserMapper for the base profile lookup, before applying this module's own FriendService
+             enrichment. identity-service depends only on common+infra (same as this module), so this
+             is a one-directional sibling dependency, not a cycle — mirrors ai-service -> content-service. -->
+        <dependency>
+            <groupId>com.ttg</groupId>
+            <artifactId>identity-service</artifactId>
+        </dependency>
 
         <!-- SocialErrorCode (formerly FriendErrorCode) implements the common ErrorCode interface
              and references HttpStatus directly in main code — common declares

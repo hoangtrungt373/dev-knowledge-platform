@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.api.auth;
+package com.ttg.devknowledgeplatform.social.api;
 
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
@@ -15,14 +15,16 @@ import org.springframework.web.bind.annotation.RequestParam;
  * HTTP contract for the user-directory API: public profile lookup (with friend-graph
  * enrichment) and user search.
  *
- * <p>Deliberately stays in {@code api} rather than moving into {@code identity-service} or
- * {@code social-service} — both methods need {@code identity-service}'s {@code UserService} for
- * the base lookup <em>and</em> {@code social-service}'s {@code FriendService} for relationship
- * enrichment, and those two modules are parallel siblings that must not depend on each other. The
- * pure profile-mutation endpoints ({@code updateProfile}, {@code uploadAvatar}) moved to
- * {@code identity-service}'s own {@code UserApi} instead, since those only need
- * {@code UserService}. The implementation
- * ({@link com.ttg.devknowledgeplatform.api.auth.impl.UserController}) carries no HTTP annotations.
+ * <p>Lives here (not `identity-service`) because both methods need `identity-service`'s
+ * {@code UserService} for the base lookup <em>and</em> this module's own {@code FriendService} for
+ * relationship enrichment — the reverse direction (identity-service depending on social-service)
+ * would invert the usual auth-is-foundational hierarchy and mix a social-graph view into an auth
+ * module. `identity-service` depends only on {@code common}+{@code infra}, so this module reaching
+ * into it (the same direction {@code ai-service} already reaches into {@code content-service}) is
+ * safe. The pure profile-mutation endpoints ({@code updateProfile}, {@code uploadAvatar}) live in
+ * `identity-service`'s own {@code UserApi} instead, since those only need {@code UserService}. The
+ * implementation ({@link com.ttg.devknowledgeplatform.social.api.impl.UserController}) carries no
+ * HTTP annotations.
  */
 @RequestMapping("/api/v1/users")
 public interface UserApi {

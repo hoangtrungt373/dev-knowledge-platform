@@ -26,7 +26,7 @@
         <module>ai-service</module>
         <module>social-service</module>
         <module>identity-service</module>
-        <module>api</module>
+        <module>gateway</module>
     </modules>
 
     <properties>

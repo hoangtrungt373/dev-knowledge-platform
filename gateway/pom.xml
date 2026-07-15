@@ -10,9 +10,9 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>api</artifactId>
-    <name>API</name>
-    <description>REST controllers, security, and application entry point</description>
+    <artifactId>gateway</artifactId>
+    <name>Gateway</name>
+    <description>Spring Boot entry point, security/JWT/STOMP transport wiring, Liquibase migrations, and the one remaining cross-module REST orchestration endpoint</description>
 
     <dependencies>
 
