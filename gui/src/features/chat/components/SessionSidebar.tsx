@@ -13,6 +13,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
+import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useNavigate } from 'react-router-dom';
@@ -97,6 +98,16 @@ export default function SessionSidebar({
     >
       {/* Header */}
       <Box sx={{ p: 1.5, pb: 1 }}>
+        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1 }}>
+          <Tooltip title="Back to Dashboard">
+            <IconButton size="small" onClick={() => navigate('/dashboard')}>
+              <HomeOutlinedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Typography variant="body2" fontWeight={700} noWrap>
+            Dev Knowledge Platform
+          </Typography>
+        </Stack>
         <Button
           fullWidth
           variant="outlined"

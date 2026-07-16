@@ -1,8 +1,9 @@
-import { Button, Chip } from '@mui/material';
+import { Button, Chip, IconButton, Stack, Tooltip } from '@mui/material';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import MarkEmailUnreadIcon from '@mui/icons-material/MarkEmailUnread';
 import BlockIcon from '@mui/icons-material/Block';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import { RelationshipStatus } from '../types';
 import FriendsMenuButton from './FriendsMenuButton';
 
@@ -13,6 +14,8 @@ interface Props {
   onUnfriend: () => void;
   onBlock: () => void;
   onUnblock: () => void;
+  /** Opens a DM with this user — only reachable from the FRIENDS case. */
+  onMessage: () => void;
 }
 
 /**
@@ -35,6 +38,7 @@ export default function RelationshipActionButton({
   onUnfriend,
   onBlock,
   onUnblock,
+  onMessage,
 }: Props): JSX.Element {
   switch (status) {
     case 'STRANGER':
@@ -62,7 +66,16 @@ export default function RelationshipActionButton({
         />
       );
     case 'FRIENDS':
-      return <FriendsMenuButton onUnfriend={onUnfriend} onBlock={onBlock} disabled={loading} />;
+      return (
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <Tooltip title="Message">
+            <IconButton size="small" onClick={onMessage} disabled={loading}>
+              <ChatBubbleOutlineIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <FriendsMenuButton onUnfriend={onUnfriend} onBlock={onBlock} disabled={loading} />
+        </Stack>
+      );
     case 'BLOCKED':
       return (
         <Button

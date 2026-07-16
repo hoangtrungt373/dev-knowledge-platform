@@ -12,6 +12,7 @@ export default defineConfig({
       '@auth': fileURLToPath(new URL('./src/features/auth', import.meta.url)),
       '@chat': fileURLToPath(new URL('./src/features/chat', import.meta.url)),
       '@friends': fileURLToPath(new URL('./src/features/friends', import.meta.url)),
+      '@messaging': fileURLToPath(new URL('./src/features/messaging', import.meta.url)),
       '@content': fileURLToPath(new URL('./src/features/content', import.meta.url)),
       '@ai': fileURLToPath(new URL('./src/features/ai', import.meta.url)),
     },

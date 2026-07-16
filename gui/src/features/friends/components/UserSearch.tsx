@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Box, CircularProgress, InputAdornment, Pagination, Stack, TextField, Typography } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import { friendApi } from '../api/friendApi';
@@ -12,6 +13,7 @@ const PAGE_SIZE = 20;
 
 /** "Find People" tab — search, one row per result, action button driven by RelationshipStatus. */
 export default function UserSearch(): JSX.Element {
+  const navigate = useNavigate();
   const { showError, showSuccess } = useNotification();
   const [searchInput, setSearchInput] = useState('');
   const [query, setQuery] = useState('');
@@ -128,6 +130,7 @@ export default function UserSearch(): JSX.Element {
                     `Unblocked ${result.user.username}`,
                     'STRANGER',
                   )}
+                  onMessage={() => navigate(`/messages/new/${result.user.userUuid}`)}
                 />
               }
             />

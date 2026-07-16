@@ -24,8 +24,15 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Implementation of {@link UserApi}.
+ *
+ * <p>Bean explicitly named {@code socialUserController} — {@code identity-service} has its own,
+ * unrelated {@code UserController} (different {@code UserApi}, different package) fronting pure
+ * profile-mutation endpoints. Spring's default bean name is the decapitalized simple class name
+ * only, ignoring package, so both would otherwise collide as {@code userController} once a single
+ * component scan (from {@code gateway}'s {@code @SpringBootApplication}) covers every feature
+ * module.
  */
-@RestController
+@RestController("socialUserController")
 @RequiredArgsConstructor
 public class UserController implements UserApi {
 

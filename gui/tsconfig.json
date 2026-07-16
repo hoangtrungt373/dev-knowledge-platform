@@ -28,6 +28,7 @@
       "@auth/*": ["src/features/auth/*"],
       "@chat/*": ["src/features/chat/*"],
       "@friends/*": ["src/features/friends/*"],
+      "@messaging/*": ["src/features/messaging/*"],
       "@content/*": ["src/features/content/*"],
       "@ai/*": ["src/features/ai/*"]
     }

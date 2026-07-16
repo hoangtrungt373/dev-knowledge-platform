@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, CircularProgress, InputAdornment, Pagination, Stack, TextField, Typography } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { Box, CircularProgress, IconButton, InputAdornment, Pagination, Stack, TextField, Tooltip, Typography } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import { friendApi } from '../api/friendApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { FriendSummary } from '../types';
@@ -10,6 +12,7 @@ import FriendsMenuButton from './FriendsMenuButton';
 const PAGE_SIZE = 24;
 
 export default function FriendsList(): JSX.Element {
+  const navigate = useNavigate();
   const { showError, showSuccess } = useNotification();
   const [friends, setFriends] = useState<FriendSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -103,11 +106,21 @@ export default function FriendsList(): JSX.Element {
               user={friend.user}
               subtitle={`Friends since ${new Date(friend.friendsSince).toLocaleDateString()}`}
               actions={
-                <FriendsMenuButton
-                  disabled={busyUuid === friend.user.userUuid}
-                  onUnfriend={() => unfriend(friend)}
-                  onBlock={() => block(friend)}
-                />
+                <Stack direction="row" spacing={0.5} alignItems="center">
+                  <Tooltip title="Message">
+                    <IconButton
+                      size="small"
+                      onClick={() => navigate(`/messages/new/${friend.user.userUuid}`)}
+                    >
+                      <ChatBubbleOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <FriendsMenuButton
+                    disabled={busyUuid === friend.user.userUuid}
+                    onUnfriend={() => unfriend(friend)}
+                    onBlock={() => block(friend)}
+                  />
+                </Stack>
               }
             />
           ))}

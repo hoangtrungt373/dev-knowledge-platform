@@ -17,8 +17,15 @@ import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Implementation of {@link UserApi}.
+ *
+ * <p>Bean explicitly named {@code identityUserController} — {@code social-service} has its own,
+ * unrelated {@code UserController} (different {@code UserApi}, different package) fronting the
+ * relationship-enriched {@code /api/v1/users} endpoints. Spring's default bean name is the
+ * decapitalized simple class name only, ignoring package, so both would otherwise collide as
+ * {@code userController} once a single component scan (from {@code gateway}'s
+ * {@code @SpringBootApplication}) covers every feature module.
  */
-@RestController
+@RestController("identityUserController")
 @RequiredArgsConstructor
 public class UserController implements UserApi {
 

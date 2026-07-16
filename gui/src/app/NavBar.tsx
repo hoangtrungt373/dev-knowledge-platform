@@ -2,6 +2,7 @@ import { AppBar, Toolbar, Typography, Button, Box, Badge, IconButton, Tooltip } 
 import PeopleIcon from '@mui/icons-material/People';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -24,6 +25,7 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
 
   if (location.pathname.startsWith('/admin')) return null;
   if (location.pathname.startsWith('/chat')) return null;
+  if (location.pathname.startsWith('/messages')) return null;
 
   const handleLogout = (): void => {
     authService.logout();
@@ -71,6 +73,20 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
               }}
             >
               Chat
+            </Button>
+
+            <Button
+              color="inherit"
+              size="small"
+              startIcon={<ChatBubbleOutlineIcon fontSize="small" />}
+              onClick={() => navigate('/messages')}
+              sx={{
+                backgroundColor: location.pathname.startsWith('/messages')
+                  ? 'action.selected'
+                  : 'transparent',
+              }}
+            >
+              Messages
             </Button>
 
             <Button
