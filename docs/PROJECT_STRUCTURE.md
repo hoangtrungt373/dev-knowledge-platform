@@ -797,6 +797,17 @@ infra (`SecurityConfig`, JWT filter, STOMP wiring, the `sseStreamExecutor` pool)
 migrations for every module's tables, and the cross-domain seeding orchestrator
 (`DataSeedingRunner`).
 
+`gateway/src/test/` — the reactor's first test source (every other module's `src/test` is still
+empty): `ws/AbstractStompIntegrationTest.java` (Testcontainers Postgres/Redis/MinIO +
+`@DynamicPropertySource`, boots the full context — the only place `WebSocketConfig`/
+`StompAuthChannelInterceptor` and `social-service`'s `DmMessagingController` actually get wired
+together) and `ws/DmMessagingStompIntegrationTest.java` (the real STOMP flow: dual delivery,
+thread reuse, CONNECT rejection cases, `WsErrorResponse` business-rule cases — see
+`docs/CHANGELOG.md`'s `[Unreleased]` entry for the full scenario list). `application-test.yml`
+under `src/test/resources` activates profile `test` (placeholder OAuth2 client-id/secret so
+context startup doesn't fail; `spring.liquibase.enabled: true`; real datasource/redis/minio
+coordinates come from the Testcontainers instances at runtime, not this file).
+
 `gateway/src/main/resources/data/` (separate resources tree, not nested under the Java sources above):
 
 ```

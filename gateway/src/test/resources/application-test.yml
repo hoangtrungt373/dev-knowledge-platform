@@ -1,0 +1,31 @@
+spring:
+  # OAuth2ClientAutoConfiguration requires a non-blank client-id/secret for every declared
+  # registration, even though the STOMP integration tests never drive an OAuth2 login flow.
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: test-google-client-id
+            client-secret: test-google-client-secret
+          facebook:
+            client-id: test-facebook-client-id
+            client-secret: test-facebook-client-secret
+
+  # Real datasource/redis/minio coordinates are injected per-test-run by
+  # AbstractStompIntegrationTest's @DynamicPropertySource (Testcontainers-assigned ports).
+  liquibase:
+    enabled: true
+
+  jpa:
+    show-sql: false
+
+# CSV/sample-data seeding is irrelevant to the DM STOMP flow and would only slow context startup.
+app:
+  seed:
+    enabled: false
+
+logging:
+  level:
+    com.ttg.devknowledgeplatform: INFO
+    org.springframework.security: WARN

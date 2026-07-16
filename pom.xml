@@ -85,6 +85,9 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <!-- No explicit testcontainers-bom import: spring-boot-dependencies (this reactor's
+                 grandparent POM) already manages every org.testcontainers:* artifact at a version
+                 tested against this Spring Boot release — redundant to pin our own. -->
 
             <!-- ==================== Third-Party ==================== -->
             <dependency>

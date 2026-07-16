@@ -11,6 +11,7 @@ import org.springframework.messaging.MessagingException;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
+import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
@@ -56,7 +57,17 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
 
     @Override
     public Message<?> preSend(@NonNull Message<?> message, @NonNull MessageChannel channel) {
-        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);
+        // MessageHeaderAccessor.getAccessor(...) — NOT StompHeaderAccessor.wrap(message) — is
+        // required here: wrap() builds a brand-new accessor copy from the message's headers, so
+        // accessor.setUser(...) on it never propagates back to the actual message. getAccessor()
+        // retrieves the live, mutable accessor Spring's STOMP handling already attached to this
+        // message (created with setLeaveMutable(true)), so mutating it actually sticks — otherwise
+        // CONNECT appears to authenticate (no exception thrown) but the principal is silently lost,
+        // and every later frame on the session (SEND/SUBSCRIBE) sees no user.
+        StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+        if (accessor == null) {
+            return message;
+        }
         StompCommand command = accessor.getCommand();
 
         if (command == StompCommand.CONNECT) {
