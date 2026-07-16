@@ -30,7 +30,7 @@ import java.nio.charset.StandardCharsets;
  * @author ttg
  */
 @Slf4j
-public abstract class CsvSeeder<T> {
+public abstract class CsvSeeder<T> implements Seeder {
 
     /** Classpath-relative location of the CSV file, e.g. {@code data/csv/categories.csv}. */
     protected abstract String csvClasspathLocation();
@@ -52,6 +52,7 @@ public abstract class CsvSeeder<T> {
      *
      * @return the number of rows inserted
      */
+    @Override
     public final int seed() {
         int inserted = 0;
         int skipped = 0;

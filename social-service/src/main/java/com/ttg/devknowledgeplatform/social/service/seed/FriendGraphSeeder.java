@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 
 import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.common.repository.UserRepository;
+import com.ttg.devknowledgeplatform.infra.service.seed.Seeder;
 import com.ttg.devknowledgeplatform.social.entity.FriendRequest;
 import com.ttg.devknowledgeplatform.social.entity.Friendship;
 import com.ttg.devknowledgeplatform.social.enums.FriendRequestStatus;
@@ -53,7 +54,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class FriendGraphSeeder {
+public class FriendGraphSeeder implements Seeder {
 
     private static final String CSV_LOCATION = "data/csv/friend-requests.csv";
 
@@ -67,6 +68,7 @@ public class FriendGraphSeeder {
      *
      * @return the number of rows inserted
      */
+    @Override
     public int seed() {
         CSVFormat format = CSVFormat.DEFAULT.builder()
                 .setHeader()

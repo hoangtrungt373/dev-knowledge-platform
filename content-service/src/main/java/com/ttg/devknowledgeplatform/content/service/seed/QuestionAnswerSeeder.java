@@ -13,6 +13,7 @@ import com.ttg.devknowledgeplatform.content.repository.ContentItemRepository;
 import com.ttg.devknowledgeplatform.content.repository.QuestionAnswerRepository;
 import com.ttg.devknowledgeplatform.content.repository.TagRepository;
 import com.ttg.devknowledgeplatform.infra.service.SlugService;
+import com.ttg.devknowledgeplatform.infra.service.seed.Seeder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
@@ -74,7 +75,7 @@ import java.util.regex.Pattern;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class QuestionAnswerSeeder {
+public class QuestionAnswerSeeder implements Seeder {
 
     private static final String QUESTIONS_CLASSPATH_LOCATION = "classpath*:data/question-answers/*.md";
     private static final Pattern FRONT_MATTER_DELIMITER = Pattern.compile("(?m)^---\\s*$");
@@ -100,6 +101,7 @@ public class QuestionAnswerSeeder {
      *
      * @return the number of rows inserted
      */
+    @Override
     public int seed() {
         Resource[] files;
         try {
