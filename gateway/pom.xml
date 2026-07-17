@@ -35,6 +35,10 @@
         </dependency>
         <dependency>
             <groupId>com.ttg</groupId>
+            <artifactId>task-service</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ttg</groupId>
             <artifactId>social-service</artifactId>
         </dependency>
         <dependency>

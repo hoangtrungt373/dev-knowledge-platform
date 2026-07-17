@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.ttg</groupId>
+        <artifactId>dev-knowledge-platform</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>task-service</artifactId>
+    <name>Task Service</name>
+    <description>Personal task/project management, with optional linkage to content-service items</description>
+
+    <dependencies>
+
+        <!-- Internal -->
+        <dependency>
+            <groupId>com.ttg</groupId>
+            <artifactId>common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ttg</groupId>
+            <artifactId>infra</artifactId>
+        </dependency>
+        <!-- Task has an optional @ManyToOne FK to ContentItem, so a Task can track work against
+             a piece of content (e.g. "write article X") — mirrors ai-service's dependency on
+             content-service for its own ContentEmbedding -> ContentItem FK. content-service
+             depends only on common+infra, so this is a one-directional sibling dependency, not
+             a cycle. -->
+        <dependency>
+            <groupId>com.ttg</groupId>
+            <artifactId>content-service</artifactId>
+        </dependency>
+
+        <!-- TaskErrorCode implements the common ErrorCode interface and references HttpStatus
+             directly in main code — common declares spring-boot-starter-web as optional, so it
+             isn't inherited transitively; this module needs it on the compile classpath itself.
+             Same pattern as content-service's ContentErrorCode / social-service's SocialErrorCode. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- MapStruct mappers (entity <-> dto/) — added now alongside the rest of the module
+             scaffold to avoid a second pom edit once the REST layer lands. No <version> — centrally
+             managed in the root pom, same as everywhere else this dependency appears. -->
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct</artifactId>
+        </dependency>
+
+    </dependencies>
+
+</project>

@@ -24,6 +24,7 @@
         <module>infra</module>
         <module>content-service</module>
         <module>ai-service</module>
+        <module>task-service</module>
         <module>social-service</module>
         <module>identity-service</module>
         <module>gateway</module>
@@ -64,6 +65,11 @@
             <dependency>
                 <groupId>com.ttg</groupId>
                 <artifactId>ai-service</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ttg</groupId>
+                <artifactId>task-service</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

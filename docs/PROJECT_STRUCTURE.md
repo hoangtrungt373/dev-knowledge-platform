@@ -13,6 +13,8 @@ dev-knowledge-platform/
 │                        the RAG pipeline; owns its own REST layer, mappers, and DTOs
 ├── ai-service/       — RAG pipeline (embedding, vector search, LLM generation via LangChain4j), the RAG-chat
 │                        REST feature, and the content+AI indexing orchestration layer (own REST layer too)
+├── task-service/     — personal task/project management, with an optional link to content-service's
+│                        ContentItem; MVP is single-user (owner-only), entity/enum layer only so far
 ├── identity-service/ — authentication (local + OAuth2/OIDC login), JWT issuance, OTP-gated registration,
 │                        and pure user-profile mutation (update profile, avatar upload)
 ├── social-service/   — friend graph (search visibility, requests, friendships, blocking) plus chat:
@@ -24,14 +26,15 @@ dev-knowledge-platform/
 └── gui/              — React 18 + TypeScript + MUI frontend (Vite)
 ```
 
-Dependency order: `common` ← `infra` ← `content-service` ← `ai-service`; `infra` ← `identity-service` ←
-`social-service`. `content-service`/`identity-service` are parallel siblings depending only on
-`common`+`infra`; `ai-service` and `social-service` are each allowed a single, real, one-directional
-dependency on a sibling module (`ai-service` → `content-service`, `social-service` → `identity-service`) —
-never the reverse. `gateway` depends on all four feature modules; it's the only module allowed to depend
-on more than one, reserved for orchestration that needs two feature modules with **no** dependency
-relationship possible between them in either direction — currently nothing qualifies, which is why
-`gateway` has no REST layer of its own today. `gui` is independent of the whole Java reactor.
+Dependency order: `common` ← `infra` ← `content-service` ← `ai-service`; `content-service` ← `task-service`;
+`infra` ← `identity-service` ← `social-service`. `content-service`/`identity-service` are parallel siblings
+depending only on `common`+`infra`; `ai-service`, `task-service`, and `social-service` are each allowed a
+single, real, one-directional dependency on a sibling module (`ai-service` → `content-service`,
+`task-service` → `content-service`, `social-service` → `identity-service`) — never the reverse. `gateway`
+depends on every feature module; it's the only module allowed to depend on more than one, reserved for
+orchestration that needs two feature modules with **no** dependency relationship possible between them in
+either direction — currently nothing qualifies, which is why `gateway` has no REST layer of its own today.
+`gui` is independent of the whole Java reactor.
 
 Each of `content-service`/`social-service`/`ai-service`/`identity-service` owns its own full vertical slice —
 entities/services *and* REST controllers, DTOs, MapStruct mappers — rather than the earlier shape where
@@ -41,13 +44,16 @@ trades that away deliberately, in favor of each module being closer to an indepe
 ahead of an eventual microservices split (see `docs/CHANGELOG.md`'s `[Unreleased]` entries for the full
 rationale and what moved).
 
-Two real one-directional sibling dependencies exist, both following the same shape — a downstream module
+Three real one-directional sibling dependencies exist, all following the same shape — a downstream module
 reaching into an upstream one for a genuine data/logic need, never the reverse:
 - `ai-service` → `content-service`: `ContentEmbedding` has a real `@ManyToOne` FK to `ContentItem`, and
   `ContentIngestionService.ingest(...)` takes a `ContentItem` parameter. This is also why the content+AI
   indexing orchestration layer (`IngestionApi`, `EmbeddingIndexApi`, `PublicContentApi`) lives in
   `ai-service` rather than `gateway`: `ai-service` is the one module (besides `gateway`) that can already
   see both `content-service` and itself.
+- `task-service` → `content-service`: `Task` has an optional `@ManyToOne` FK to `ContentItem` (a task can
+  track work against a piece of content, e.g. "write article X") — same shape as `ai-service`'s dependency,
+  just optional (nullable) rather than required.
 - `social-service` → `identity-service`: `UserApi`'s `search`/`getPublicProfile` endpoints (in
   `social-service`) need `identity-service`'s `UserService`/`UserMapper` for the base profile lookup before
   applying `social-service`'s own `FriendService` relationship enrichment. `identity-service` stays a pure
@@ -643,6 +649,77 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
         └── SysParamServiceImpl.java                    — find-or-create-and-save upsert pattern; moved in from common
                                                            alongside SysParamService/SysParamRepository/SysParam
 ```
+
+---
+
+## task-service
+
+Personal task/project management (MVP, built in phases — see `docs/CHANGELOG.md`). Single-user for
+now: every `Project`/`Task` has an `owner`, no shared membership yet. Entity/enum layer (phase 1),
+repository/service layer (phase 2), and REST/DTO/mapper layer (phase 3) all exist now; only
+`gateway` wiring and tests remain.
+
+```
+task-service/src/main/java/com/ttg/devknowledgeplatform/task/
+├── entity/
+│   ├── Project.java                  — name, description, owner (User, @ManyToOne), status (ProjectStatus)
+│   └── Task.java                     — project (Project, @ManyToOne, nullable — standalone tasks allowed),
+│                                        owner (User, @ManyToOne), title, description, status (TaskStatus,
+│                                        default TODO), priority (TaskPriority, default MEDIUM), dueDate
+│                                        (Instant, nullable), contentItem (content-service's ContentItem,
+│                                        @ManyToOne, nullable — optional link to the RAG corpus)
+├── enums/
+│   ├── ProjectStatus.java             — ACTIVE, ARCHIVED
+│   ├── TaskPriority.java              — LOW, MEDIUM, HIGH, URGENT
+│   └── TaskStatus.java                — TODO, IN_PROGRESS, DONE; canTransitionTo(target) guards only the
+│                                         no-op case (target == this) — deliberately permissive otherwise
+├── repository/
+│   ├── ProjectRepository.java         — JpaRepository<Project, Integer> + findByOwner(User, Pageable)
+│   ├── TaskRepository.java            — JpaRepository<Task, Integer> + JpaSpecificationExecutor<Task>
+│   └── spec/
+│       └── TaskSpecification.java     — withFilters(ownerId, projectId, status, priority, dueBefore, dueAfter);
+│                                         ownerId is always applied, the rest are optional equality/range predicates
+├── service/
+│   ├── ProjectService.java (+ impl/)  — CRUD; every method ownership-checked via a private
+│   │                                     resolveOwnedProject(ownerId, projectId) helper
+│   ├── TaskService.java (+ impl/)     — CRUD + changeStatus(ownerId, taskId, newStatus) (uses
+│   │                                     TaskStatus.canTransitionTo, throws TASK_INVALID_STATUS_TRANSITION
+│   │                                     on a no-op); reaches content-service's ContentItemRepository
+│   │                                     directly to resolve an optional Task.contentItem link
+│   ├── ProjectCommands.java           — Create/Update records (name, description)
+│   ├── TaskCommands.java              — Create/Update records (title, description, projectId, priority,
+│   │                                     dueDate, contentItemId); Update fully replaces these fields
+│   └── TaskFilter.java                — optional query-filter record for TaskService.listTasks
+├── exception/
+│   └── TaskErrorCode.java             — PROJECT_NOT_FOUND, TASK_NOT_FOUND, TASK_CONTENT_ITEM_NOT_FOUND,
+│                                         TASK_INVALID_STATUS_TRANSITION; a project/task owned by a
+│                                         different user reuses the same *_NOT_FOUND as a missing id
+│                                         (mutual-invisibility-style, no separate 403)
+├── dto/
+│   ├── ProjectResponse.java           — record: id, name, description, status, createdAt
+│   ├── CreateProjectRequest.java / UpdateProjectRequest.java — @Data, name (@NotBlank), description
+│   ├── TaskResponse.java              — record: id, projectId (flat Integer, not nested), title,
+│   │                                     description, status, priority, dueDate, contentItemId
+│   │                                     (flat Integer), createdAt
+│   ├── CreateTaskRequest.java / UpdateTaskRequest.java — @Data, title (@NotBlank), description,
+│   │                                     projectId, priority (default MEDIUM), dueDate, contentItemId
+│   └── ChangeTaskStatusRequest.java   — @Data, status (@NotNull)
+├── mapper/
+│   ├── ProjectMapper.java             — plain MapStruct interface (no injected fields needed)
+│   └── TaskMapper.java                — projectId/contentItemId mapped via null-safe expression
+│                                         (task.getProject() != null ? ... : null)
+└── api/ (+ api/impl/)
+    ├── ProjectApi.java (+ ProjectController.java) — /api/v1/projects: create, getById, list,
+    │                                     update, POST /{id}/archive
+    └── TaskApi.java (+ TaskController.java)       — /api/v1/tasks: create, getById, list (+
+                                          projectId/status/priority/dueBefore/dueAfter filters),
+                                          update, POST /{id}/status, delete
+```
+
+Depends on `common` + `infra` + `content-service` (one-directional, for `Task.contentItem`'s FK —
+mirrors `ai-service` → `content-service`; `TaskServiceImpl` reaching `ContentItemRepository`
+directly is this dependency's first real use). Liquibase: `DKP-0020` (`gateway`'s changelog tree,
+same as every other module's tables — `PROJECT`/`TASK`, both `product` schema).
 
 ---
 
