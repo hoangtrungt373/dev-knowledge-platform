@@ -9,8 +9,9 @@ import java.time.Instant;
  * belong to the REST layer, which translates a request DTO into one of these before calling the
  * service. Mirrors {@code content-service}'s {@code ArticleCommands}.
  *
- * <p>{@code Update} fully replaces {@code projectId}/{@code contentItemId}: a {@code null} value
- * means "no project"/"no content link", not "leave unchanged".
+ * <p>{@code Update} fully replaces {@code projectId}/{@code parentTaskId}: a {@code null} value
+ * means "no project"/"no parent", not "leave unchanged". {@code parentTaskId} is capped at one
+ * level deep — see {@code TaskServiceImpl.validateParentAssignment}.
  */
 public final class TaskCommands {
 
@@ -22,7 +23,7 @@ public final class TaskCommands {
             Integer projectId,
             TaskPriority priority,
             Instant dueDate,
-            Integer contentItemId) {
+            Integer parentTaskId) {
     }
 
     public record Update(
@@ -31,6 +32,6 @@ public final class TaskCommands {
             Integer projectId,
             TaskPriority priority,
             Instant dueDate,
-            Integer contentItemId) {
+            Integer parentTaskId) {
     }
 }

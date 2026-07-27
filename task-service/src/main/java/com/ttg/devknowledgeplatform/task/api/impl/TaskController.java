@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.task.api.impl;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Set;
 
 import org.springframework.data.domain.PageRequest;
@@ -42,7 +43,7 @@ public class TaskController implements TaskApi {
     public ResponseEntity<TaskResponse> create(Integer userId, CreateTaskRequest request) {
         TaskCommands.Create command = new TaskCommands.Create(
                 request.getTitle(), request.getDescription(), request.getProjectId(),
-                request.getPriority(), request.getDueDate(), request.getContentItemId());
+                request.getPriority(), request.getDueDate(), request.getParentTaskId());
         Task created = taskService.createTask(userId, command);
         return ResponseEntity.status(HttpStatus.CREATED).body(taskMapper.toResponse(created));
     }
@@ -63,10 +64,18 @@ public class TaskController implements TaskApi {
     }
 
     @Override
+    public ResponseEntity<List<TaskResponse>> listSubtasks(Integer userId, Integer id) {
+        List<TaskResponse> subtasks = taskService.listSubtasks(userId, id).stream()
+                .map(taskMapper::toResponse)
+                .toList();
+        return ResponseEntity.ok(subtasks);
+    }
+
+    @Override
     public ResponseEntity<TaskResponse> update(Integer userId, Integer id, UpdateTaskRequest request) {
         TaskCommands.Update command = new TaskCommands.Update(
                 request.getTitle(), request.getDescription(), request.getProjectId(),
-                request.getPriority(), request.getDueDate(), request.getContentItemId());
+                request.getPriority(), request.getDueDate(), request.getParentTaskId());
         Task updated = taskService.updateTask(userId, id, command);
         return ResponseEntity.ok(taskMapper.toResponse(updated));
     }

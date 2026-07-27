@@ -10,7 +10,7 @@ import com.ttg.devknowledgeplatform.task.entity.Task;
 public interface TaskMapper {
 
     @Mapping(target = "projectId", expression = "java(task.getProject() != null ? task.getProject().getId() : null)")
-    @Mapping(target = "contentItemId", expression = "java(task.getContentItem() != null ? task.getContentItem().getId() : null)")
+    @Mapping(target = "parentTaskId", expression = "java(task.getParentTask() != null ? task.getParentTask().getId() : null)")
     @Mapping(target = "createdAt", source = "dteCreation")
     TaskResponse toResponse(Task task);
 }

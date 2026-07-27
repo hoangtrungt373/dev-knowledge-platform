@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.task.api;
 
 import java.time.Instant;
+import java.util.List;
 
 import com.ttg.devknowledgeplatform.common.annotation.CurrentUserId;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
@@ -73,6 +74,14 @@ public interface TaskApi {
             @RequestParam(required = false) TaskPriority priority,
             @RequestParam(required = false) Instant dueBefore,
             @RequestParam(required = false) Instant dueAfter);
+
+    /**
+     * Lists a task's subtasks (unpaginated — nesting is capped at one level).
+     *
+     * @return {@code 200} with the subtasks
+     */
+    @GetMapping("/{id}/subtasks")
+    ResponseEntity<List<TaskResponse>> listSubtasks(@CurrentUserId Integer userId, @PathVariable Integer id);
 
     /**
      * Replaces a task's fields — see {@link UpdateTaskRequest}'s Javadoc for replace semantics.

@@ -13,8 +13,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Dynamic filtering for {@link Task} lists — every list query is scoped to a single owner, with
- * optional narrowing by project, status, priority, and due-date range.
+ * Dynamic filtering for {@link Task} lists — every list query is scoped to a single owner, always
+ * excludes subtasks (top-level only; fetch a task's subtasks via {@code TaskService#listSubtasks}
+ * instead), with optional narrowing by project, status, priority, and due-date range.
  */
 public class TaskSpecification {
 
@@ -32,6 +33,7 @@ public class TaskSpecification {
             List<Predicate> predicates = new ArrayList<>();
 
             predicates.add(cb.equal(root.get("owner").get("id"), ownerId));
+            predicates.add(cb.isNull(root.get("parentTask")));
 
             if (projectId != null) {
                 predicates.add(cb.equal(root.get("project").get("id"), projectId));

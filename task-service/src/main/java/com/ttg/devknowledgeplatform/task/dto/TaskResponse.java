@@ -7,8 +7,8 @@ import java.time.Instant;
 
 /**
  * REST response for a {@link com.ttg.devknowledgeplatform.task.entity.Task}. {@code projectId}/
- * {@code contentItemId} are flat references, not nested objects — a client that needs full
- * project/content details already has the dedicated endpoint for that resource.
+ * {@code parentTaskId} are flat references, not nested objects — a client that needs full
+ * project/parent-task details already has the dedicated endpoint for that resource.
  */
 public record TaskResponse(
         Integer id,
@@ -18,6 +18,6 @@ public record TaskResponse(
         TaskStatus status,
         TaskPriority priority,
         Instant dueDate,
-        Integer contentItemId,
+        Integer parentTaskId,
         Instant createdAt) {
 }

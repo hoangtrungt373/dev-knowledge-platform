@@ -7,12 +7,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.ttg.devknowledgeplatform.common.entity.User;
+import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.common.repository.UserRepository;
-import com.ttg.devknowledgeplatform.content.entity.ContentItem;
-import com.ttg.devknowledgeplatform.content.repository.ContentItemRepository;
 import com.ttg.devknowledgeplatform.task.entity.Project;
 import com.ttg.devknowledgeplatform.task.entity.Task;
 import com.ttg.devknowledgeplatform.task.enums.TaskStatus;
@@ -27,6 +26,9 @@ import com.ttg.devknowledgeplatform.task.service.TaskService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -36,7 +38,6 @@ public class TaskServiceImpl implements TaskService {
     private final TaskRepository taskRepository;
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
-    private final ContentItemRepository contentItemRepository;
 
     @Override
     public Task createTask(Integer ownerId, TaskCommands.Create command) {
@@ -49,8 +50,10 @@ public class TaskServiceImpl implements TaskService {
                 .status(TaskStatus.TODO)
                 .priority(command.priority())
                 .dueDate(command.dueDate())
-                .contentItem(resolveContentItemOrNull(command.contentItemId()))
                 .build();
+        Task parent = resolveOwnedParentTaskOrNull(ownerId, command.parentTaskId());
+        validateParentAssignment(task, parent);
+        task.setParentTask(parent);
         Task saved = taskRepository.save(task);
         log.info("User {} created task {}", ownerId, saved.getId());
         return saved;
@@ -70,6 +73,12 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
+    public List<Task> listSubtasks(Integer ownerId, Integer parentTaskId) {
+        Task parent = resolveOwnedTask(ownerId, parentTaskId);
+        return new ArrayList<>(parent.getSubtasks());
+    }
+
+    @Override
     public Task updateTask(Integer ownerId, Integer taskId, TaskCommands.Update command) {
         Task task = resolveOwnedTask(ownerId, taskId);
         task.setProject(resolveOwnedProjectOrNull(ownerId, command.projectId()));
@@ -77,7 +86,9 @@ public class TaskServiceImpl implements TaskService {
         task.setDescription(command.description());
         task.setPriority(command.priority());
         task.setDueDate(command.dueDate());
-        task.setContentItem(resolveContentItemOrNull(command.contentItemId()));
+        Task parent = resolveOwnedParentTaskOrNull(ownerId, command.parentTaskId());
+        validateParentAssignment(task, parent);
+        task.setParentTask(parent);
         log.info("User {} updated task {}", ownerId, taskId);
         return taskRepository.save(task);
     }
@@ -126,12 +137,36 @@ public class TaskServiceImpl implements TaskService {
         return project;
     }
 
-    private ContentItem resolveContentItemOrNull(Integer contentItemId) {
-        if (contentItemId == null) {
+    private Task resolveOwnedParentTaskOrNull(Integer ownerId, Integer parentTaskId) {
+        if (parentTaskId == null) {
             return null;
         }
-        return contentItemRepository.findById(contentItemId)
-                .orElseThrow(() -> new ResourceNotFoundException(TaskErrorCode.TASK_CONTENT_ITEM_NOT_FOUND));
+        Task parent = taskRepository.findById(parentTaskId)
+                .orElseThrow(() -> new ResourceNotFoundException(TaskErrorCode.TASK_NOT_FOUND));
+        if (!parent.getOwner().getId().equals(ownerId)) {
+            throw new ResourceNotFoundException(TaskErrorCode.TASK_NOT_FOUND);
+        }
+        return parent;
+    }
+
+    /**
+     * Rejects self-parent, a parent that is itself a subtask, and assigning a parent to a task
+     * that already has subtasks of its own — subtask nesting is capped at one level, unlike
+     * {@code content-service}'s {@code Category} tree (see {@code Task}'s Javadoc).
+     */
+    private static void validateParentAssignment(Task task, Task newParent) {
+        if (newParent == null) {
+            return;
+        }
+        if (newParent.getId() != null && newParent.getId().equals(task.getId())) {
+            throw new ApiException(TaskErrorCode.TASK_INVALID_PARENT, "A task cannot be its own parent");
+        }
+        if (newParent.getParentTask() != null) {
+            throw new ApiException(TaskErrorCode.TASK_INVALID_PARENT, "Chosen parent is itself a subtask");
+        }
+        if (!task.getSubtasks().isEmpty()) {
+            throw new ApiException(TaskErrorCode.TASK_INVALID_PARENT, "This task already has its own subtasks");
+        }
     }
 
     private User resolveUser(Integer userId) {

@@ -12,7 +12,7 @@
 
     <artifactId>task-service</artifactId>
     <name>Task Service</name>
-    <description>Personal task/project management, with optional linkage to content-service items</description>
+    <description>Personal task/project management</description>
 
     <dependencies>
 
@@ -24,15 +24,6 @@
         <dependency>
             <groupId>com.ttg</groupId>
             <artifactId>infra</artifactId>
-        </dependency>
-        <!-- Task has an optional @ManyToOne FK to ContentItem, so a Task can track work against
-             a piece of content (e.g. "write article X") — mirrors ai-service's dependency on
-             content-service for its own ContentEmbedding -> ContentItem FK. content-service
-             depends only on common+infra, so this is a one-directional sibling dependency, not
-             a cycle. -->
-        <dependency>
-            <groupId>com.ttg</groupId>
-            <artifactId>content-service</artifactId>
         </dependency>
 
         <!-- TaskErrorCode implements the common ErrorCode interface and references HttpStatus

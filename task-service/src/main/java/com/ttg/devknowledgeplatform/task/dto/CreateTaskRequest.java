@@ -24,5 +24,5 @@ public class CreateTaskRequest {
 
     private Instant dueDate;
 
-    private Integer contentItemId;
+    private Integer parentTaskId;
 }

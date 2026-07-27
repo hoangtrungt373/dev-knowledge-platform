@@ -23,8 +23,8 @@ public enum TaskErrorCode implements ErrorCode {
 
     // Task Errors (TASK_*)
     TASK_NOT_FOUND("TASK_001", "Task not found", HttpStatus.NOT_FOUND),
-    TASK_CONTENT_ITEM_NOT_FOUND("TASK_002", "Referenced content item not found", HttpStatus.NOT_FOUND),
-    TASK_INVALID_STATUS_TRANSITION("TASK_003", "Task is already in this status", HttpStatus.BAD_REQUEST);
+    TASK_INVALID_STATUS_TRANSITION("TASK_003", "Task is already in this status", HttpStatus.BAD_REQUEST),
+    TASK_INVALID_PARENT("TASK_004", "Invalid parent: subtask nesting is limited to one level", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

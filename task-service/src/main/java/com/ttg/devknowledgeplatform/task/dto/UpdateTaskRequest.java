@@ -10,8 +10,8 @@ import lombok.Data;
 import java.time.Instant;
 
 /**
- * Fully replaces a task's mutable fields — a {@code null} {@code projectId}/{@code contentItemId}
- * means "no project"/"no content link", not "leave unchanged" (same semantics as
+ * Fully replaces a task's mutable fields — a {@code null} {@code projectId}/{@code parentTaskId}
+ * means "no project"/"no parent", not "leave unchanged" (same semantics as
  * {@code TaskCommands.Update}).
  */
 @Data
@@ -29,5 +29,5 @@ public class UpdateTaskRequest {
 
     private Instant dueDate;
 
-    private Integer contentItemId;
+    private Integer parentTaskId;
 }
