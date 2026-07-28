@@ -78,8 +78,11 @@ export default function CategoryListPage(): JSX.Element {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const fetchCategories = useCallback(async () => {
-    setLoading(true);
+  // showSpinner is true only for the page/search/pageSize-driven load below — a create/edit/delete
+  // refetches quietly, swapping the table's rows in place instead of blanking it to a spinner.
+  const fetchCategories = useCallback(async (opts?: { showSpinner?: boolean }) => {
+    const showSpinner = opts?.showSpinner ?? true;
+    if (showSpinner) setLoading(true);
     try {
       const data = await contentApi.listCategories(
         { page, size: pageSize, sortBy: 'name', sortDir: 'asc', q: search || undefined },
@@ -88,13 +91,13 @@ export default function CategoryListPage(): JSX.Element {
       setCategories(data.content);
       setTotal(data.totalElements);
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   }, [page, pageSize, search, showError]);
 
   useEffect(() => { fetchCategories(); }, [fetchCategories]);
 
-  const refreshAll = () => { fetchCategories(); loadTree(); };
+  const refreshAll = () => { fetchCategories({ showSpinner: false }); loadTree(); };
 
   const openCreate = () => { setEditCategory(null); setFormOpen(true); };
   const openEdit = (cat: Category) => { setEditCategory(cat); setFormOpen(true); };

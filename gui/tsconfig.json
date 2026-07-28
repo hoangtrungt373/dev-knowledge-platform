@@ -30,7 +30,8 @@
       "@friends/*": ["src/features/friends/*"],
       "@messaging/*": ["src/features/messaging/*"],
       "@content/*": ["src/features/content/*"],
-      "@ai/*": ["src/features/ai/*"]
+      "@ai/*": ["src/features/ai/*"],
+      "@tasks/*": ["src/features/tasks/*"]
     }
   },
   "include": ["src"],

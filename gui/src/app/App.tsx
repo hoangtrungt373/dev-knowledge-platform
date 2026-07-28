@@ -19,6 +19,7 @@ import SignUp from '@auth/pages/SignUp';
 import VerifyOtp from '@auth/pages/VerifyOtp';
 import Dashboard from '@auth/pages/Dashboard';
 import FriendsPage from '@friends/pages/FriendsPage';
+import TasksPage from '@tasks/pages/TasksPage';
 import ChatPage from '@chat/pages/ChatPage';
 import MessagesPage from '@messaging/pages/MessagesPage';
 import AuthCallback from '@auth/pages/AuthCallback';
@@ -65,6 +66,12 @@ function App() {
             <Route path="/friends" element={
               <PrivateRoute>
                 <FriendsPage />
+              </PrivateRoute>
+            } />
+
+            <Route path="/tasks" element={
+              <PrivateRoute>
+                <TasksPage />
               </PrivateRoute>
             } />
 

@@ -15,6 +15,7 @@ export default defineConfig({
       '@messaging': fileURLToPath(new URL('./src/features/messaging', import.meta.url)),
       '@content': fileURLToPath(new URL('./src/features/content', import.meta.url)),
       '@ai': fileURLToPath(new URL('./src/features/ai', import.meta.url)),
+      '@tasks': fileURLToPath(new URL('./src/features/tasks', import.meta.url)),
     },
   },
   server: {

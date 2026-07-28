@@ -69,8 +69,11 @@ export default function TagListPage(): JSX.Element {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const fetchTags = useCallback(async () => {
-    setLoading(true);
+  // showSpinner is true only for the page/search/filter-driven load below — a create/edit/delete
+  // refetches quietly, swapping the table's rows in place instead of blanking it to a spinner.
+  const fetchTags = useCallback(async (opts?: { showSpinner?: boolean }) => {
+    const showSpinner = opts?.showSpinner ?? true;
+    if (showSpinner) setLoading(true);
     try {
       const data = await contentApi.listTags({
         page,
@@ -83,11 +86,13 @@ export default function TagListPage(): JSX.Element {
       setTags(data.content);
       setTotal(data.totalElements);
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   }, [page, pageSize, search, statusFilter, showError]);
 
   useEffect(() => { fetchTags(); }, [fetchTags]);
+
+  const refreshTags = useCallback(() => fetchTags({ showSpinner: false }), [fetchTags]);
 
   const openCreate = () => { setEditTag(null); setFormOpen(true); };
   const openEdit = (tag: Tag) => { setEditTag(tag); setFormOpen(true); };
@@ -99,7 +104,7 @@ export default function TagListPage(): JSX.Element {
       await contentApi.deleteTag(deleteTarget.id, showError);
       showSuccess(`Tag "${deleteTarget.name}" deleted`);
       setDeleteTarget(null);
-      fetchTags();
+      refreshTags();
     } catch {
       // showError already called
     } finally {
@@ -237,7 +242,7 @@ export default function TagListPage(): JSX.Element {
         open={formOpen}
         tag={editTag}
         onClose={() => setFormOpen(false)}
-        onSaved={fetchTags}
+        onSaved={refreshTags}
       />
 
       {/* Delete confirmation */}

@@ -227,8 +227,13 @@ export default function EmbeddingsPage(): JSX.Element {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // showSpinner is true only for the page/filter-driven load below — a reindex/delete-index/
+  // index-all/refresh-corpus action refetches quietly, swapping the table's rows in place instead
+  // of blanking it to a spinner (the action itself already has its own `actionLoading` spinner on
+  // the confirm dialog's button).
+  const load = useCallback(async (opts?: { showSpinner?: boolean }) => {
+    const showSpinner = opts?.showSpinner ?? true;
+    if (showSpinner) setLoading(true);
     try {
       const result = await monitoringApi.listEmbeddings({
         page,
@@ -243,7 +248,7 @@ export default function EmbeddingsPage(): JSX.Element {
     } catch {
       // showError already called
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   }, [page, rowsPerPage, q, contentType, contentStatus, indexedFilter, showError]);
 
@@ -275,7 +280,7 @@ export default function EmbeddingsPage(): JSX.Element {
           break;
       }
       setPendingAction(null);
-      load();
+      load({ showSpinner: false });
     } catch {
       // showError already called
     } finally {
@@ -374,7 +379,7 @@ export default function EmbeddingsPage(): JSX.Element {
         </Select>
 
         <Tooltip title="Refresh list">
-          <IconButton size="small" onClick={load} disabled={loading}>
+          <IconButton size="small" onClick={() => load()} disabled={loading}>
             {loading ? <CircularProgress size={15} /> : <RefreshIcon fontSize="small" />}
           </IconButton>
         </Tooltip>

@@ -93,8 +93,11 @@ export default function QuestionAnswerListPage(): JSX.Element {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const fetchQuestions = useCallback(async () => {
-    setLoading(true);
+  // showSpinner is true only for the page/search/filter-driven load below — a delete refetches
+  // quietly, swapping the table's rows in place instead of blanking it to a spinner.
+  const fetchQuestions = useCallback(async (opts?: { showSpinner?: boolean }) => {
+    const showSpinner = opts?.showSpinner ?? true;
+    if (showSpinner) setLoading(true);
     try {
       const data = await contentApi.listQuestionAnswers({
         page,
@@ -108,7 +111,7 @@ export default function QuestionAnswerListPage(): JSX.Element {
       setQuestions(data.content);
       setTotal(data.totalElements);
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   }, [page, pageSize, search, difficultyFilter, statusFilter, showError]);
 
@@ -121,7 +124,7 @@ export default function QuestionAnswerListPage(): JSX.Element {
       await contentApi.deleteQuestionAnswer(deleteTarget.id, showError);
       showSuccess(`"${deleteTarget.title}" deleted`);
       setDeleteTarget(null);
-      fetchQuestions();
+      fetchQuestions({ showSpinner: false });
     } catch {
       // showError already called
     } finally {

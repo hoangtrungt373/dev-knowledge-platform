@@ -721,7 +721,12 @@ task-service/src/main/java/com/ttg/devknowledgeplatform/task/
 Depends on `common` + `infra` only — no dependency on `content-service`; `Task` used to carry an
 optional `@ManyToOne` FK to `content-service`'s `ContentItem`, removed as unused (see
 `docs/CHANGELOG.md`'s `[Unreleased]` entry). Liquibase: `DKP-0020` (`gateway`'s changelog tree,
-same as every other module's tables — `PROJECT`/`TASK`, both `product` schema).
+same as every other module's tables — `PROJECT`/`TASK`, both `product` schema, in its *original*
+shape including `CONTENT_ITEM_ID` — it had already executed against a real DB by the time both
+follow-on changes below came up, so it's frozen as-is) plus `DKP-0021` (adds
+`TASK.PARENT_TASK_ID`/`FK_TASK_PARENT`/`IDX_TASK_PARENT`) and `DKP-0022` (drops
+`TASK.CONTENT_ITEM_ID`/`FK_TASK_CONTENT_ITEM`/`IDX_TASK_CONTENT_ITEM`) — each its own changeset
+rather than an edit to `DKP-0020`; see `task-service/CLAUDE.md`'s Liquibase rule for why.
 
 `Task.parentTask`/`subtasks` mirror `content-service`'s `Category` self-referential parent/child
 tree, capped at one level deep instead of Category's arbitrary depth (see `task-service/CLAUDE.md`

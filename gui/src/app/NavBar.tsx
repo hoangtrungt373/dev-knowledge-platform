@@ -1,5 +1,6 @@
 import { AppBar, Toolbar, Typography, Button, Box, Badge, IconButton, Tooltip } from '@mui/material';
 import PeopleIcon from '@mui/icons-material/People';
+import ChecklistIcon from '@mui/icons-material/Checklist';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
@@ -105,6 +106,20 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
               }}
             >
               Friends
+            </Button>
+
+            <Button
+              color="inherit"
+              size="small"
+              startIcon={<ChecklistIcon fontSize="small" />}
+              onClick={() => navigate('/tasks')}
+              sx={{
+                backgroundColor: isActive('/tasks')
+                  ? 'action.selected'
+                  : 'transparent',
+              }}
+            >
+              Tasks
             </Button>
 
             <Button color="inherit" size="small" onClick={handleLogout}>
