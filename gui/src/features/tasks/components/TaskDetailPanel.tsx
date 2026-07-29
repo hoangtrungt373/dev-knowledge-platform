@@ -73,7 +73,10 @@ export default function TaskDetailPanel({ task, projects, onClose, onChanged }: 
 
   if (!task) {
     return (
-      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}>
+      // flex: 1 used to size this against its flex-row siblings directly; now this is a
+      // react-resizable-panels Panel's sole child, which already fixes this Box's width — height:
+      // '100%' is what actually matters now, so it fills the Panel vertically too.
+      <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}>
         <Typography variant="body2" color="text.secondary">
           Select a task to see its details.
         </Typography>
@@ -100,7 +103,7 @@ export default function TaskDetailPanel({ task, projects, onClose, onChanged }: 
   const projectName = projects.find(p => p.id === task.projectId)?.name;
 
   return (
-    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto', p: 2.5 }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflowY: 'auto', p: 2.5 }}>
       <Stack direction="row" alignItems="flex-start" justifyContent="space-between">
         <Typography variant="h6" fontWeight={700} sx={{ pr: 1 }}>
           {task.title}

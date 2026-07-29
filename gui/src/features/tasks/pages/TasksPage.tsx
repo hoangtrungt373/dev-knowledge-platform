@@ -10,11 +10,13 @@ import {
   DndContext, DragEndEvent, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors,
 } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { Group, Panel, useDefaultLayout } from 'react-resizable-panels';
 import TasksSidebar from '../components/TasksSidebar';
 import TaskQuickAdd from '../components/TaskQuickAdd';
 import { TASK_ROW_ACTIONS_GUTTER_PX } from '../components/TaskRow';
 import SortableTaskRow from '../components/SortableTaskRow';
 import TaskDetailPanel from '../components/TaskDetailPanel';
+import ResizeHandle from '../components/ResizeHandle';
 import { taskApi } from '../api/taskApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useTaskOrder } from '../hooks/useTaskOrder';
@@ -175,131 +177,160 @@ export default function TasksPage(): JSX.Element {
     reorder(Number(active.id), Number(over.id));
   };
 
+  // Persists panel widths to localStorage across reloads (frontend-only, same "stored client-side,
+  // not sent to the backend" approach as useTaskOrder) — react-resizable-panels' own built-in
+  // mechanism for this, not a hand-rolled localStorage read/write. panelIds must match each Panel's
+  // own id below exactly, or the persisted layout won't reapply correctly on mount.
+  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
+    id: 'tasks-page-layout',
+    storage: window.localStorage,
+    panelIds: ['tasks-sidebar', 'task-content', 'task-detail'],
+  });
+
   return (
-    <Box sx={{ display: 'flex', height: 'calc(100vh - 48px)', overflow: 'hidden' }}>
-      <TasksSidebar
-        projects={projects}
-        filter={filter}
-        onFilterChange={handleFilterChange}
-        onProjectsChanged={fetchProjects}
-      />
-
-      <Box
-        sx={{
-          flex: 2,
-          display: 'flex',
-          flexDirection: 'column',
-          overflowY: 'auto',
-          pt: 2.5,
-          pb: 2.5,
-          // pl/pr reserve room on each side for a TaskRow's drag handle (left) and "⋯" button
-          // (right), both of which live outside the row's own flex layout (see
-          // TaskRow.tsx/SortableTaskRow.tsx) so the row's actual content (title, due date) doesn't
-          // have to leave a gap for either sometimes-invisible icon itself. Every row in this
-          // column is drag-handled now (see isBucketedView above), so both gutters apply
-          // column-wide rather than per-row.
-          //
-          // The `8 +` base here is a flat outer margin from the column's true edge — unrelated to
-          // the icon, safe to tune freely. TASK_ROW_ACTIONS_GUTTER_PX itself is NOT a free variable
-          // the same way: it has to stay >= the icon button's own footprint (~26px: 18px icon +
-          // 4px padding each side) or the icon starts overlapping the row's real content instead of
-          // just clearing it — shrink the icon further (TaskRow.tsx/SortableTaskRow.tsx) before
-          // shrinking this constant, not the other way around.
-          pl: `${8 + TASK_ROW_ACTIONS_GUTTER_PX}px`,
-          pr: `${8 + TASK_ROW_ACTIONS_GUTTER_PX}px`,
-          borderRight: 1,
-          borderColor: 'divider',
-        }}
+    <Box sx={{ height: 'calc(100vh - 48px)', overflow: 'hidden' }}>
+      <Group
+        orientation="horizontal"
+        defaultLayout={defaultLayout}
+        onLayoutChanged={onLayoutChanged}
+        style={{ height: '100%' }}
       >
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-          <SectionIcon color="action" />
-          <Typography variant="h6" fontWeight={700}>{sectionLabel}</Typography>
-        </Stack>
+        <Panel id="tasks-sidebar" defaultSize="20" minSize="12" maxSize="35">
+          <TasksSidebar
+            projects={projects}
+            filter={filter}
+            onFilterChange={handleFilterChange}
+            onProjectsChanged={fetchProjects}
+          />
+        </Panel>
 
-        <TaskQuickAdd projectId={quickAddProjectId} onAdded={refreshTasks} />
+        <ResizeHandle />
 
-        {loading ? (
-          <Box sx={{ py: 6, display: 'flex', justifyContent: 'center' }}>
-            <CircularProgress size={28} />
-          </Box>
-        ) : isBucketedView && tasks.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
-            {filter === 'all' ? 'No tasks yet. Add your first one above.' : 'No tasks here.'}
-          </Typography>
-        ) : isBucketedView ? (
-          BUCKET_ORDER.map(key => {
-            const { orderedTasks: bucketTasksForKey, reorder: bucketReorder } = bucketOrders[key];
-            if (bucketTasksForKey.length === 0) return null;
-            const collapsed = collapsedBuckets.has(key);
-            const handleBucketDragEnd = (event: DragEndEvent) => {
-              const { active, over } = event;
-              if (!over || active.id === over.id) return;
-              bucketReorder(Number(active.id), Number(over.id));
-            };
-            return (
-              <Box key={key} sx={{ mb: 3, opacity: key === 'COMPLETED' ? 0.6 : 1 }}>
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  spacing={0.5}
-                  onClick={() => toggleBucket(key)}
-                  sx={{ mb: 0.5, cursor: 'pointer', userSelect: 'none' }}
-                >
-                  <IconButton size="small" sx={{ p: 0.25 }}>
-                    {collapsed ? <ChevronRightIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-                  </IconButton>
-                  <Typography variant="subtitle2" fontWeight={700} color="text.secondary">
-                    {BUCKET_LABEL[key]} ({bucketTasksForKey.length})
-                  </Typography>
-                </Stack>
-                {!collapsed && (
-                  // Each bucket is its own DndContext/SortableContext, not one shared across all
-                  // four — dragging only reorders within a bucket; there's no cross-bucket drop
-                  // target (see the bucketOrders comment above for why that's deliberate).
-                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleBucketDragEnd}>
-                    <SortableContext items={bucketTasksForKey.map(t => t.id)} strategy={verticalListSortingStrategy}>
-                      {bucketTasksForKey.map(task => (
-                        <SortableTaskRow
-                          key={task.id}
-                          task={task}
-                          onSelect={setSelectedTask}
-                          onChanged={refreshTasks}
-                          selected={selectedTask?.id === task.id}
-                        />
-                      ))}
-                    </SortableContext>
-                  </DndContext>
-                )}
+        {/* defaultSize matches task-detail's exactly — the two split the space remaining after
+            the sidebar evenly, per the "TaskContent should be the same size as TaskDetailPanel"
+            requirement this layout was built for. */}
+        <Panel id="task-content" defaultSize="40" minSize="20">
+          <Box
+            sx={{
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              overflowY: 'auto',
+              pt: 2.5,
+              pb: 2.5,
+              // pl/pr reserve room on each side for a TaskRow's drag handle (left) and "⋯" button
+              // (right), both of which live outside the row's own flex layout (see
+              // TaskRow.tsx/SortableTaskRow.tsx) so the row's actual content (title, due date)
+              // doesn't have to leave a gap for either sometimes-invisible icon itself. Every row
+              // in this column is drag-handled now (see isBucketedView above), so both gutters
+              // apply column-wide rather than per-row.
+              //
+              // The `8 +` base here is a flat outer margin from the column's true edge — unrelated
+              // to the icon, safe to tune freely. TASK_ROW_ACTIONS_GUTTER_PX itself is NOT a free
+              // variable the same way: it has to stay >= the icon button's own footprint (~26px:
+              // 18px icon + 4px padding each side) or the icon starts overlapping the row's real
+              // content instead of just clearing it — shrink the icon further
+              // (TaskRow.tsx/SortableTaskRow.tsx) before shrinking this constant, not the other
+              // way around.
+              pl: `${8 + TASK_ROW_ACTIONS_GUTTER_PX}px`,
+              pr: `${8 + TASK_ROW_ACTIONS_GUTTER_PX}px`,
+            }}
+          >
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+              <SectionIcon color="action" />
+              <Typography variant="h6" fontWeight={700}>{sectionLabel}</Typography>
+            </Stack>
+
+            <TaskQuickAdd projectId={quickAddProjectId} onAdded={refreshTasks} />
+
+            {loading ? (
+              <Box sx={{ py: 6, display: 'flex', justifyContent: 'center' }}>
+                <CircularProgress size={28} />
               </Box>
-            );
-          })
-        ) : tasks.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
-            No tasks here.
-          </Typography>
-        ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={orderedTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-              {orderedTasks.map(task => (
-                <SortableTaskRow
-                  key={task.id}
-                  task={task}
-                  onSelect={setSelectedTask}
-                  onChanged={refreshTasks}
-                  selected={selectedTask?.id === task.id}
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
-        )}
-      </Box>
+            ) : isBucketedView && tasks.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+                {filter === 'all' ? 'No tasks yet. Add your first one above.' : 'No tasks here.'}
+              </Typography>
+            ) : isBucketedView ? (
+              BUCKET_ORDER.map(key => {
+                const { orderedTasks: bucketTasksForKey, reorder: bucketReorder } = bucketOrders[key];
+                if (bucketTasksForKey.length === 0) return null;
+                const collapsed = collapsedBuckets.has(key);
+                const handleBucketDragEnd = (event: DragEndEvent) => {
+                  const { active, over } = event;
+                  if (!over || active.id === over.id) return;
+                  bucketReorder(Number(active.id), Number(over.id));
+                };
+                return (
+                  <Box key={key} sx={{ mb: 3, opacity: key === 'COMPLETED' ? 0.6 : 1 }}>
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      spacing={0.5}
+                      onClick={() => toggleBucket(key)}
+                      sx={{ mb: 0.5, cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <IconButton size="small" sx={{ p: 0.25 }}>
+                        {collapsed ? <ChevronRightIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                      </IconButton>
+                      <Typography variant="subtitle2" fontWeight={700} color="text.secondary">
+                        {BUCKET_LABEL[key]} ({bucketTasksForKey.length})
+                      </Typography>
+                    </Stack>
+                    {!collapsed && (
+                      // Each bucket is its own DndContext/SortableContext, not one shared across all
+                      // four — dragging only reorders within a bucket; there's no cross-bucket drop
+                      // target (see the bucketOrders comment above for why that's deliberate).
+                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleBucketDragEnd}>
+                        <SortableContext items={bucketTasksForKey.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                          {bucketTasksForKey.map(task => (
+                            <SortableTaskRow
+                              key={task.id}
+                              task={task}
+                              onSelect={setSelectedTask}
+                              onChanged={refreshTasks}
+                              selected={selectedTask?.id === task.id}
+                            />
+                          ))}
+                        </SortableContext>
+                      </DndContext>
+                    )}
+                  </Box>
+                );
+              })
+            ) : tasks.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+                No tasks here.
+              </Typography>
+            ) : (
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={orderedTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                  {orderedTasks.map(task => (
+                    <SortableTaskRow
+                      key={task.id}
+                      task={task}
+                      onSelect={setSelectedTask}
+                      onChanged={refreshTasks}
+                      selected={selectedTask?.id === task.id}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            )}
+          </Box>
+        </Panel>
 
-      <TaskDetailPanel
-        task={selectedTask}
-        projects={projects}
-        onClose={() => setSelectedTask(null)}
-        onChanged={refreshTasks}
-      />
+        <ResizeHandle />
+
+        <Panel id="task-detail" defaultSize="40" minSize="20">
+          <TaskDetailPanel
+            task={selectedTask}
+            projects={projects}
+            onClose={() => setSelectedTask(null)}
+            onChanged={refreshTasks}
+          />
+        </Panel>
+      </Group>
     </Box>
   );
 }

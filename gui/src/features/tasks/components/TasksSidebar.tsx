@@ -67,7 +67,12 @@ export default function TasksSidebar({ projects, filter, onFilterChange, onProje
   };
 
   return (
-    <Box sx={{ width: 260, flexShrink: 0, borderRight: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column' }}>
+    // width/flexShrink used to size this against its flex-row siblings directly; now this is a
+    // react-resizable-panels Panel's sole child, which already fixes this Box's width — height:
+    // '100%' is what actually matters now, so it fills the Panel vertically too, and borderRight
+    // is dropped in favor of the Panel's own ResizeHandle (TasksPage.tsx), which now serves as the
+    // visual divider between this and the middle column.
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Typography variant="h6" fontWeight={700} sx={{ px: 2, pt: 2, pb: 1 }}>
         Tasks
       </Typography>
