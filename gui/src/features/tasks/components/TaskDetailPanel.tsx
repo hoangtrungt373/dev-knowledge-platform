@@ -19,7 +19,7 @@ import { taskApi } from '../api/taskApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
 import TaskFormDialog from './TaskFormDialog';
-import TaskRow from './TaskRow';
+import TaskRow, { TASK_ROW_ACTIONS_GUTTER_PX } from './TaskRow';
 
 interface Props {
   task: Task | null;
@@ -156,7 +156,10 @@ export default function TaskDetailPanel({ task, projects, onClose, onChanged }: 
               No subtasks yet.
             </Typography>
           ) : (
-            <Box sx={{ mt: 0.5 }}>
+            // pr reserves the same gutter TasksPage's list column does — this panel is the
+            // rightmost column (no sibling to widen into), so the room for each row's "⋯" button
+            // has to be carved out of this container's own padding instead.
+            <Box sx={{ mt: 0.5, pr: `${TASK_ROW_ACTIONS_GUTTER_PX}px` }}>
               {subtasks.map(st => (
                 <TaskRow key={st.id} task={st} onChanged={refreshSubtasks} />
               ))}

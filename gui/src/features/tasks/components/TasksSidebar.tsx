@@ -13,6 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import InboxIcon from '@mui/icons-material/Inbox';
 import TodayIcon from '@mui/icons-material/Today';
 import DateRangeIcon from '@mui/icons-material/DateRange';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
@@ -72,6 +73,18 @@ export default function TasksSidebar({ projects, filter, onFilterChange, onProje
       </Typography>
 
       <List dense sx={{ px: 1 }}>
+        {/* 'all' is already the bucketed Overdue/Today/Upcoming/Completed dashboard and the
+            filter's own initial/default state — this just gives it an explicit, always-visible
+            entry point (Todoist calls the same "everything, sectioned" view "Inbox"), rather than
+            it only being reachable by resetting some other filter. */}
+        <ListItemButton
+          selected={filter === 'all'}
+          onClick={() => onFilterChange('all')}
+          sx={{ borderRadius: 1 }}
+        >
+          <ListItemIcon sx={{ minWidth: 36 }}><InboxIcon fontSize="small" /></ListItemIcon>
+          <ListItemText primary="Inbox" />
+        </ListItemButton>
         <ListItemButton
           selected={filter === 'today'}
           onClick={() => onFilterChange('today')}

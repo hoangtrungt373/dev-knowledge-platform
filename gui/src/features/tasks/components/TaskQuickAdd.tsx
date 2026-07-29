@@ -1,9 +1,7 @@
 import { useRef, useState } from 'react';
 import {
-  Box,
   IconButton,
   InputAdornment,
-  Menu,
   Stack,
   TextField,
   Tooltip,
@@ -11,14 +9,12 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import WbSunnyIcon from '@mui/icons-material/WbSunny';
-import WbTwilightIcon from '@mui/icons-material/WbTwilight';
-import CalendarViewWeekIcon from '@mui/icons-material/CalendarViewWeek';
 import { CreateTaskPayload, TaskPriority } from '../types';
 import { taskApi } from '../api/taskApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
-import { DATE_PRESETS, DATE_PRESET_LABEL, DatePreset, datePresetValue, formatDueDateLabel, isOverdue } from '../utils/taskBuckets';
+import { formatDueDateLabel, isOverdue } from '../utils/taskBuckets';
 import TaskOptionsMenu from './TaskOptionsMenu';
+import DatePickerMenu from './DatePickerMenu';
 
 interface Props {
   /** When the sidebar filter is a specific project, quick-added tasks are filed into it. */
@@ -33,12 +29,6 @@ const PRIORITY_ICON_COLOR: Record<TaskPriority, string> = {
   URGENT: 'error.main',
 };
 
-const DATE_PRESET_ICON: Record<DatePreset, JSX.Element> = {
-  TODAY: <WbSunnyIcon fontSize="small" />,
-  TOMORROW: <WbTwilightIcon fontSize="small" />,
-  THIS_WEEK: <CalendarViewWeekIcon fontSize="small" />,
-};
-
 export default function TaskQuickAdd({ projectId, onAdded }: Props): JSX.Element {
   const { showError, showSuccess } = useNotification();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -48,10 +38,8 @@ export default function TaskQuickAdd({ projectId, onAdded }: Props): JSX.Element
   const [priority, setPriority] = useState<TaskPriority>('MEDIUM');
   const [saving, setSaving] = useState(false);
   const [dateMenuAnchor, setDateMenuAnchor] = useState<HTMLElement | null>(null);
-  const [customDateOpen, setCustomDateOpen] = useState(false);
   const [moreMenuAnchor, setMoreMenuAnchor] = useState<HTMLElement | null>(null);
 
-  const closeDateMenu = () => { setDateMenuAnchor(null); setCustomDateOpen(false); };
   const menuOpen = Boolean(dateMenuAnchor) || Boolean(moreMenuAnchor);
 
   const handleSubmit = async () => {
@@ -134,41 +122,12 @@ export default function TaskQuickAdd({ projectId, onAdded }: Props): JSX.Element
         }}
       />
 
-      <Menu anchorEl={dateMenuAnchor} open={Boolean(dateMenuAnchor)} onClose={closeDateMenu}>
-        <Box sx={{ px: 1.5, py: 1 }}>
-          <Stack direction="row" spacing={0.5}>
-            {DATE_PRESETS.map(preset => (
-              <Tooltip key={preset} title={DATE_PRESET_LABEL[preset]}>
-                <IconButton
-                  size="small"
-                  onClick={() => { setDueDate(datePresetValue(preset).toISOString()); closeDateMenu(); }}
-                  sx={{ borderRadius: 1 }}
-                >
-                  {DATE_PRESET_ICON[preset]}
-                </IconButton>
-              </Tooltip>
-            ))}
-            <Tooltip title="Custom">
-              <IconButton size="small" onClick={() => setCustomDateOpen(v => !v)} sx={{ borderRadius: 1 }}>
-                <CalendarMonthIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </Stack>
-          {customDateOpen && (
-            <TextField
-              type="date"
-              size="small"
-              autoFocus
-              fullWidth
-              onChange={e => {
-                setDueDate(e.target.value ? new Date(`${e.target.value}T00:00:00`).toISOString() : null);
-                closeDateMenu();
-              }}
-              sx={{ mt: 1 }}
-            />
-          )}
-        </Box>
-      </Menu>
+      <DatePickerMenu
+        anchorEl={dateMenuAnchor}
+        onClose={() => setDateMenuAnchor(null)}
+        dueDate={dueDate}
+        onDueDateChange={setDueDate}
+      />
 
       <TaskOptionsMenu
         anchorEl={moreMenuAnchor}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Box, Checkbox, IconButton, Stack, TextField, Typography } from '@mui/material';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
@@ -8,9 +8,13 @@ import { taskApi } from '../api/taskApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
 import TaskOptionsMenu from './TaskOptionsMenu';
+import DatePickerMenu from './DatePickerMenu';
 import { formatDueDateLabel, isOverdue } from '../utils/taskBuckets';
 
-interface Props {
+// Exported so SortableTaskRow can type its own props as Omit<TaskRowProps, 'dragHandle'> instead
+// of re-declaring this list — it constructs dragHandle itself, so accepting it as a prop from its
+// own caller would be a foot-gun.
+export interface TaskRowProps {
   task: Task;
   /** Present for top-level rows in the main task list — clicking the title opens the detail
    * panel. Absent when this row renders a subtask inside TaskDetailPanel, where the title is
@@ -21,7 +25,17 @@ interface Props {
   /** True when this row is the task currently open in TaskDetailPanel — gives it a persistent
    * darker background so it stays visually distinct even when the mouse isn't over it. */
   selected?: boolean;
+  /** Rendered before the checkbox, e.g. SortableTaskRow's drag-handle IconButton — TaskRow itself
+   * has no @dnd-kit dependency; the handle is fully owned/positioned by the caller so rows that
+   * don't support reordering (subtasks inside TaskDetailPanel) just omit this prop. */
+  dragHandle?: ReactNode;
 }
+
+// Width reserved for the "⋯" button once it's pulled out of the row's flex flow (see the
+// IconButton below) — exported so every container that lays out TaskRow reserves matching space
+// to its right (TasksPage's list column, TaskDetailPanel's subtask list) instead of the icon
+// overlapping row content or a sibling column.
+export const TASK_ROW_ACTIONS_GUTTER_PX = 36;
 
 // Drives the checkbox's unchecked-state color — 'default' isn't a real palette key, so LOW gets
 // a real (subtle) path rather than reusing a Chip color name.
@@ -32,12 +46,13 @@ const PRIORITY_COLOR: Record<TaskPriority, string> = {
   URGENT: 'error.main',
 };
 
-export default function TaskRow({ task, onSelect, onChanged, selected = false }: Props): JSX.Element {
+export default function TaskRow({ task, onSelect, onChanged, selected = false, dragHandle }: TaskRowProps): JSX.Element {
   const { showError, showSuccess } = useNotification();
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [dateMenuAnchor, setDateMenuAnchor] = useState<HTMLElement | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
   // Bridges the gap between committing a title edit and onChanged()'s refetch landing — without
@@ -51,7 +66,13 @@ export default function TaskRow({ task, onSelect, onChanged, selected = false }:
 
   const displayedTitle = optimisticTitle ?? task.title;
 
+  const startEditingTitle = () => {
+    setTitleDraft(displayedTitle);
+    setEditingTitle(true);
+  };
+
   const closeMenu = () => setMenuAnchor(null);
+  const closeDateMenu = () => setDateMenuAnchor(null);
 
   const commitTitleEdit = async () => {
     const trimmed = titleDraft.trim();
@@ -159,8 +180,13 @@ export default function TaskRow({ task, onSelect, onChanged, selected = false }:
         direction="row"
         alignItems="center"
         spacing={1}
-        onClick={onSelect ? () => onSelect(task) : undefined}
+        // Selecting a row both opens it in TaskDetailPanel (via onSelect) and drops straight into
+        // title-rename mode — the title TextField's autoFocus then lands keyboard focus there,
+        // so a single click both selects and lines up an edit without a second click on the
+        // title text specifically.
+        onClick={onSelect ? () => { onSelect(task); startEditingTitle(); } : undefined}
         sx={{
+          position: 'relative',
           minHeight: 37,
           py: 0,
           px: 1,
@@ -170,9 +196,11 @@ export default function TaskRow({ task, onSelect, onChanged, selected = false }:
           borderColor: 'divider',
           bgcolor: selected ? 'action.selected' : 'transparent',
           '&:hover': { bgcolor: selected ? 'action.selected' : 'action.hover' },
-          '&:hover .task-row-more, &:focus-within .task-row-more': { opacity: 1 },
+          '&:hover .task-row-more, &:hover .task-row-drag-handle, &:focus-within .task-row-more, &:focus-within .task-row-drag-handle': { opacity: 1 },
         }}
       >
+        {dragHandle}
+
         <Checkbox
           size="small"
           checked={task.status === 'DONE'}
@@ -183,7 +211,17 @@ export default function TaskRow({ task, onSelect, onChanged, selected = false }:
           sx={{ p: '8px' }}
         />
 
-        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+        {/* display:flex + alignItems:center is load-bearing, not decorative: Typography is
+            plain inline content, subject to half-leading (baseline alignment against this box's
+            ambient line-height "strut" pushes it down a couple px); TextField's root is
+            display:inline-flex, an atomic box that gets no half-leading and sits flush at the
+            top instead. Matching font-size/line-height between the two can't fix that — it's a
+            different positioning algorithm, not a metrics mismatch. Making this box a flex
+            container puts both under flexbox alignment instead, which treats them identically
+            regardless of which one is mounted. Verified pixel-for-pixel via a headless-Chrome
+            CDP measurement (getBoundingClientRect on both states) — before this, the two leaf
+            elements differed by exactly 2px top/bottom despite identical height. */}
+        <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', alignItems: 'center' }}>
           {editingTitle ? (
             <TextField
               size="small"
@@ -203,6 +241,16 @@ export default function TaskRow({ task, onSelect, onChanged, selected = false }:
                 // parent Box (which has no onClick of its own) means a click there still bubbles
                 // to the row's onClick and selects it, even while this row's title is mid-edit.
                 maxWidth: 240,
+                // .MuiInputBase-root/-input default to theme.typography.body1 (16px) — without
+                // this, the title's font would visibly grow when entering edit mode. Matches the
+                // Typography sibling's variant="body2" below. (The vertical-position jump this
+                // was originally written to fix turned out to be a different bug — see the
+                // comment on the parent Box — but the font-size mismatch these override is real
+                // regardless, so they stay.)
+                '& .MuiInputBase-root': {
+                  fontSize: theme.typography.body2.fontSize,
+                  lineHeight: theme.typography.body2.lineHeight,
+                },
                 '& .MuiInputBase-input': {
                   fontSize: theme.typography.body2.fontSize,
                   lineHeight: theme.typography.body2.lineHeight,
@@ -213,7 +261,7 @@ export default function TaskRow({ task, onSelect, onChanged, selected = false }:
           ) : (
             <Typography
               variant="body2"
-              onClick={e => { e.stopPropagation(); setTitleDraft(displayedTitle); setEditingTitle(true); }}
+              onClick={e => { e.stopPropagation(); startEditingTitle(); }}
               sx={{
                 textDecoration: task.status === 'DONE' ? 'line-through' : 'none',
                 color: task.status === 'DONE' ? 'text.disabled' : 'text.primary',
@@ -227,16 +275,33 @@ export default function TaskRow({ task, onSelect, onChanged, selected = false }:
         </Box>
 
         {dueLabel && (
-          <Typography variant="body2" sx={{ color: dueOverdue ? 'error.main' : 'primary.main' }}>
+          <Typography
+            variant="body2"
+            onClick={e => { e.stopPropagation(); setDateMenuAnchor(e.currentTarget); }}
+            sx={{ color: dueOverdue ? 'error.main' : 'primary.main', cursor: 'pointer' }}
+          >
             {dueLabel}
           </Typography>
         )}
 
+        {/* Taken out of the row's flex flow entirely (position: absolute against the Stack's own
+            position: relative above) rather than just hidden via opacity — an in-flow hidden
+            button still reserves its width, which was pushing the due date left of the row's true
+            right edge even while invisible. Positioned into the dedicated gutter that
+            TASK_ROW_ACTIONS_GUTTER_PX reserves in this row's container (TasksPage's list column /
+            TaskDetailPanel's subtask list), so it never overlaps the due date label next to it. */}
         <IconButton
           size="small"
           className="task-row-more"
           onClick={e => { e.stopPropagation(); setMenuAnchor(e.currentTarget); }}
-          sx={{ opacity: menuAnchor ? 1 : 0, transition: 'opacity 0.1s' }}
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            right: -(TASK_ROW_ACTIONS_GUTTER_PX - 4),
+            transform: 'translateY(-50%)',
+            opacity: menuAnchor ? 1 : 0,
+            transition: 'opacity 0.1s',
+          }}
         >
           <MoreHorizIcon fontSize="small" />
         </IconButton>
@@ -251,6 +316,19 @@ export default function TaskRow({ task, onSelect, onChanged, selected = false }:
           onStatusChange={handleStatusChange}
           onDelete={() => setDeleteOpen(true)}
         />
+        {/* Reachable two ways now: this direct click on the due-date label, or Date inside the
+            "⋯" menu above (TaskOptionsMenu) — both call the same handleDueDateChange, so neither
+            path can drift out of sync with the other. Only rendered when dueLabel is set (mirrors
+            the Typography above) since there's nothing to click when no due date exists yet —
+            setting one for the first time still goes through the "⋯" menu's Date section. */}
+        {dueLabel && (
+          <DatePickerMenu
+            anchorEl={dateMenuAnchor}
+            onClose={closeDateMenu}
+            dueDate={task.dueDate}
+            onDueDateChange={handleDueDateChange}
+          />
+        )}
       </Stack>
 
       <ConfirmDialog
