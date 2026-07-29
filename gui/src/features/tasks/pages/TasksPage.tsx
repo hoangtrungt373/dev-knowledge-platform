@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, CircularProgress, IconButton, Stack, Typography } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import InboxIcon from '@mui/icons-material/Inbox';
+import TodayIcon from '@mui/icons-material/Today';
+import DateRangeIcon from '@mui/icons-material/DateRange';
+import FolderIcon from '@mui/icons-material/Folder';
 import {
   DndContext, DragEndEvent, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -104,6 +108,19 @@ export default function TasksPage(): JSX.Element {
   };
 
   const quickAddProjectId = typeof filter === 'object' ? filter.projectId : undefined;
+  // Headline above TaskQuickAdd — mirrors TasksSidebar's own icon choices for 'all'/'today'/'week'
+  // (InboxIcon/TodayIcon/DateRangeIcon) so the icon here always matches whichever sidebar entry is
+  // currently selected. A project filter has no icon of its own in the sidebar (ListItemButton
+  // there is text-only), so FolderIcon is a new, reasonable default introduced just for this
+  // headline rather than reused from anywhere else in this feature.
+  const sectionLabel = filter === 'all' ? 'Inbox'
+    : filter === 'today' ? 'Today'
+      : filter === 'week' ? 'This week'
+        : projects.find(p => p.id === filter.projectId)?.name ?? 'Project';
+  const SectionIcon = filter === 'all' ? InboxIcon
+    : filter === 'today' ? TodayIcon
+      : filter === 'week' ? DateRangeIcon
+        : FolderIcon;
   // 'all'/'today'/'week' all render as the bucketed Overdue/Today/Upcoming/Completed sections
   // below — only a project filter gets the flat, unsectioned list. For 'today'/'week' this mostly
   // narrows which of the four buckets ever have anything in them (fetchTasks already constrains
@@ -175,16 +192,30 @@ export default function TasksPage(): JSX.Element {
           overflowY: 'auto',
           pt: 2.5,
           pb: 2.5,
-          pl: 2.5,
-          // Wider than pt/pb/pl by TASK_ROW_ACTIONS_GUTTER_PX — reserves room for each TaskRow's
-          // "⋯" button, which lives outside the row's own flex layout (see TaskRow.tsx) so its
-          // due date can sit flush at the row's right edge instead of leaving a gap for a
-          // sometimes-invisible icon.
-          pr: `${20 + TASK_ROW_ACTIONS_GUTTER_PX}px`,
+          // pl/pr reserve room on each side for a TaskRow's drag handle (left) and "⋯" button
+          // (right), both of which live outside the row's own flex layout (see
+          // TaskRow.tsx/SortableTaskRow.tsx) so the row's actual content (title, due date) doesn't
+          // have to leave a gap for either sometimes-invisible icon itself. Every row in this
+          // column is drag-handled now (see isBucketedView above), so both gutters apply
+          // column-wide rather than per-row.
+          //
+          // The `8 +` base here is a flat outer margin from the column's true edge — unrelated to
+          // the icon, safe to tune freely. TASK_ROW_ACTIONS_GUTTER_PX itself is NOT a free variable
+          // the same way: it has to stay >= the icon button's own footprint (~26px: 18px icon +
+          // 4px padding each side) or the icon starts overlapping the row's real content instead of
+          // just clearing it — shrink the icon further (TaskRow.tsx/SortableTaskRow.tsx) before
+          // shrinking this constant, not the other way around.
+          pl: `${8 + TASK_ROW_ACTIONS_GUTTER_PX}px`,
+          pr: `${8 + TASK_ROW_ACTIONS_GUTTER_PX}px`,
           borderRight: 1,
           borderColor: 'divider',
         }}
       >
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+          <SectionIcon color="action" />
+          <Typography variant="h6" fontWeight={700}>{sectionLabel}</Typography>
+        </Stack>
+
         <TaskQuickAdd projectId={quickAddProjectId} onAdded={refreshTasks} />
 
         {loading ? (

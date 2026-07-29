@@ -69,7 +69,15 @@ export default function TaskQuickAdd({ projectId, onAdded }: Props): JSX.Element
   };
 
   return (
-    <Stack sx={{ mb: 2 }}>
+    // mx: -1 alone (not px: 1 too) — verified against TaskRow.tsx via a real getBoundingClientRect
+    // measurement (headless-Chrome CDP), not just source-reading. TaskRow's border-bottom is drawn
+    // directly on its own bled Stack (mx: -1, px: 1 — the px pushes its *content*, checkbox/title,
+    // back in so it stays aligned while only the background/border bleeds). This TextField has no
+    // such split: its own outline *is* the thing that should bleed, so adding px: 1 here just insets
+    // the visible border 8px inside where TaskRow's border-bottom actually ends — pairing mx: -1
+    // with fullWidth (no px) lets the TextField itself fill the widened box, reaching the exact
+    // same edges TaskRow's border does.
+    <Stack sx={{ mb: 2, mx: -1 }}>
       <TextField
         inputRef={inputRef}
         placeholder="+ Add a task…"

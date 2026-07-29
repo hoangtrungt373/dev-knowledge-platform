@@ -26,16 +26,23 @@ export interface TaskRowProps {
    * darker background so it stays visually distinct even when the mouse isn't over it. */
   selected?: boolean;
   /** Rendered before the checkbox, e.g. SortableTaskRow's drag-handle IconButton — TaskRow itself
-   * has no @dnd-kit dependency; the handle is fully owned/positioned by the caller so rows that
-   * don't support reordering (subtasks inside TaskDetailPanel) just omit this prop. */
+   * has no @dnd-kit dependency; the handle is fully owned/positioned (as an absolutely-positioned
+   * left-gutter element, mirroring the "⋯" button's own right-gutter treatment) by the caller, so
+   * rows that don't support reordering (subtasks inside TaskDetailPanel) just omit this prop and
+   * carry no such reserved space at all. */
   dragHandle?: ReactNode;
 }
 
-// Width reserved for the "⋯" button once it's pulled out of the row's flex flow (see the
-// IconButton below) — exported so every container that lays out TaskRow reserves matching space
-// to its right (TasksPage's list column, TaskDetailPanel's subtask list) instead of the icon
-// overlapping row content or a sibling column.
-export const TASK_ROW_ACTIONS_GUTTER_PX = 36;
+// Width reserved for the "⋯" button and (via SortableTaskRow) the drag handle, once each is
+// pulled out of the row's flex flow (see the IconButton below, and SortableTaskRow's own) —
+// exported so every container that lays out TaskRow reserves matching space on the relevant side
+// (TasksPage's list column gets both a wider `pr` for "⋯" and a wider `pl` for the drag handle;
+// TaskDetailPanel's subtask list only needs the `pr` side, since subtask rows never render a drag
+// handle) instead of either icon overlapping row content or a sibling column. Both icons are also
+// shrunk below MUI's own smallest fontSize="small" preset (down to a plain 18px glyph, `p: '4px'`
+// instead of size="small"'s default ~5px) — a narrower gutter alone wouldn't fit a still
+// default-sized button without clipping it.
+export const TASK_ROW_ACTIONS_GUTTER_PX = 28;
 
 // Drives the checkbox's unchecked-state color — 'default' isn't a real palette key, so LOW gets
 // a real (subtle) path rather than reusing a Chip color name.
@@ -291,7 +298,6 @@ export default function TaskRow({ task, onSelect, onChanged, selected = false, d
             TASK_ROW_ACTIONS_GUTTER_PX reserves in this row's container (TasksPage's list column /
             TaskDetailPanel's subtask list), so it never overlaps the due date label next to it. */}
         <IconButton
-          size="small"
           className="task-row-more"
           onClick={e => { e.stopPropagation(); setMenuAnchor(e.currentTarget); }}
           sx={{
@@ -299,11 +305,12 @@ export default function TaskRow({ task, onSelect, onChanged, selected = false, d
             top: '50%',
             right: -(TASK_ROW_ACTIONS_GUTTER_PX - 4),
             transform: 'translateY(-50%)',
+            p: '4px',
             opacity: menuAnchor ? 1 : 0,
             transition: 'opacity 0.1s',
           }}
         >
-          <MoreHorizIcon fontSize="small" />
+          <MoreHorizIcon sx={{ fontSize: 18 }} />
         </IconButton>
         <TaskOptionsMenu
           anchorEl={menuAnchor}
