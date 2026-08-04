@@ -802,11 +802,12 @@ same "two siblings, shared utility" reasoning as `StorageService`.
 
 Study-project e-commerce vertical slice. Full scope/rationale for all five epics lives in
 `docs/user-stories/` (`README.md` + `01-catalog-search.md` through
-`05-reviews-recommendations.md`) — only **Epic 1 (Catalog & Search)** has code so far, and only a
-minimal admin vertical slice within it (create/update/list for `ProductCategory`/`Product`; no
-browse/search endpoint yet — that needs the outbox relay + `ProductSearchView` query layer).
-**Plan:** finish this slice, then extract this module into its own standalone Spring Boot app
-(own DB, own JWT validation, `gateway`-proxied) as a dedicated microservices-study exercise.
+`05-reviews-recommendations.md`) — only **Epic 1 (Catalog & Search)** has code so far, but that
+epic now has a fairly complete slice: admin CRUD for `ProductCategory`/`Product`, the outbox
+relay, and a public browse/search endpoint. **Plan:** keep rounding out Epic 1, then extract this
+module into its own standalone Spring Boot app (own DB, own JWT validation, `gateway`-proxied) as
+a dedicated microservices-study exercise. **None of this has been compiled/verified yet** — the
+build has not successfully been run against it.
 
 ```
 ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
@@ -823,8 +824,8 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                              enforces 0 <= reservedQuantity <= stockQuantity
 │   ├── ProductSearchView.java  — CQRS read model for browse/search/filter; one denormalized row per
 │   │                              Product; SEARCH_VECTOR (tsvector) is DB-generated from SEARCH_TEXT
-│   │                              and deliberately not mapped as a Java field; no writer exists yet
-│   │                              (the projection relay is a future build step)
+│   │                              and deliberately not mapped as a Java field; written only by
+│   │                              ProductChangedOutboxEventHandler (service/impl/, below)
 │   └── OutboxEvent.java        — shared transactional-outbox table every future epic will reuse;
 │                                  status (OutboxEventStatus: PENDING/PROCESSING/PROCESSED/FAILED)
 │                                  is the relay's claim/dispatch signal, attemptCount/lastError
@@ -832,7 +833,7 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │                                  (OutboxAggregateType, DB CHECK-backed — small, slow-growing set);
 │                                  eventType stays a plain string — one Java field can only be one
 │                                  enum type, and every future epic keeps adding its own event
-│                                  types to this same shared table; no relay/poller exists yet
+│                                  types to this same shared table
 ├── enums/
 │   ├── OutboxEventStatus.java     — PENDING, PROCESSING, PROCESSED, FAILED
 │   └── OutboxAggregateType.java   — PRODUCT (widen only when a later epic adds an aggregate root)
@@ -841,31 +842,56 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │                                    codes, implements common's ErrorCode interface
 ├── repository/
 │   ├── ProductCategoryRepository.java / ProductRepository.java / ProductVariantRepository.java
-│   │   / ProductImageRepository.java
+│   │   / ProductImageRepository.java / OutboxEventRepository.java (findIdsByStatus + an atomic
+│   │   claim(id, from, to) conditional UPDATE) / ProductSearchViewRepository.java
+│   │   (findByProductId/deleteByProductId + a native search() query — tsvector+trgm keyword
+│   │   match, category/price-range/inStock filters, all via the "(:param IS NULL OR ...)" idiom
+│   │   for one static query covering every optional-filter combination)
 │   └── spec/
 │       └── ProductCategorySpecification.java / ProductSpecification.java
+├── outbox/                      — generic outbox mechanism, reusable by every future epic
+│   ├── OutboxEventHandler.java     — Strategy interface: eventType() + handle(OutboxEvent)
+│   ├── OutboxEventDispatcher.java  — Map<String, OutboxEventHandler> built from every handler bean
+│   ├── OutboxEventProcessor.java   — claims + dispatches one event, @Transactional; kept as its
+│   │                                  own bean (not a 2nd method on OutboxRelay) to avoid Spring's
+│   │                                  @Transactional self-invocation proxy pitfall
+│   └── OutboxRelay.java            — @Scheduled poller (app.ecommerce.outbox.relay.poll-interval,
+│                                        default PT5S); no @EnableScheduling needed, already active
+│                                        app-wide via ai-service's AiServiceConfig
 ├── service/
-│   ├── ProductCategoryService.java / ProductService.java — return entities, not REST DTOs; this
-│   │   module's own mapper/ does entity→response mapping (same split as content-service)
+│   ├── ProductCategoryService.java / ProductService.java / ProductSearchService.java — return
+│   │   entities, not REST DTOs; this module's own mapper/ does entity→response mapping (same
+│   │   split as content-service)
 │   ├── ProductCommands.java     — Create/Update input records (incl. nested VariantInput/
 │   │   ImageInput) mirroring content-service's QuestionAnswerCommands
 │   └── impl/
-│       └── ProductCategoryServiceImpl.java / ProductServiceImpl.java — the latter enforces
-│           at-least-one-variant, no duplicate SKU/sortOrder within a request, no SKU conflict
-│           against existing variants, and consistent attribute keys across a product's variants
+│       ├── ProductCategoryServiceImpl.java / ProductServiceImpl.java — the latter enforces
+│       │   at-least-one-variant, no duplicate SKU/sortOrder within a request, no SKU conflict
+│       │   against existing variants, and consistent attribute keys across a product's variants;
+│       │   publishes a PRODUCT_CHANGED OutboxEvent after every create/update/deactivate
+│       ├── ProductSearchServiceImpl.java — thin: trigram-threshold constant, blank-q handling,
+│       │   calls the repository with an unsorted PageRequest (the native query bakes in its own
+│       │   ORDER BY)
+│       └── ProductChangedOutboxEventHandler.java — the PRODUCT_CHANGED handler; re-derives
+│           ProductSearchView from current Product/ProductVariant state; deletes the row (rather
+│           than updating it) when the product is deactivated or missing, since ProductSearchView
+│           has no active column of its own
 ├── mapper/                      — MapStruct: ProductCategoryMapper / ProductMapper (also maps
 │                                    ProductVariant→ProductVariantResponse and
 │                                    ProductImage→ProductImageResponse for ProductResponse's
-│                                    nested lists)
-├── api/                         — admin CRUD REST layer
-│   ├── ProductCategoryApi.java / ProductApi.java
-│   └── impl/                    — ProductCategoryController / ProductController; both admin-gated
-│                                    automatically via gateway's existing /api/v1/admin/** rule
+│                                    nested lists) / ProductSearchViewMapper
+├── api/                         — REST layer
+│   ├── ProductCategoryApi.java / ProductApi.java — admin CRUD (/api/v1/admin/**)
+│   ├── ProductSearchApi.java    — public browse/search (/api/v1/public/products)
+│   └── impl/                    — ProductCategoryController / ProductController (admin-gated
+│                                    automatically via gateway's /api/v1/admin/** rule) /
+│                                    ProductSearchController (public via /api/v1/public/** rule)
 └── dto/                         — ProductCategoryResponse/CreateProductCategoryRequest/
                                      UpdateProductCategoryRequest, ProductResponse/
                                      CreateProductRequest/UpdateProductRequest,
                                      ProductVariantRequest/ProductVariantResponse,
-                                     ProductImageRequest/ProductImageResponse
+                                     ProductImageRequest/ProductImageResponse,
+                                     ProductSearchResponse
 ```
 
 Liquibase migration: `gateway/.../database/sql/2026/0.0.1/202608040001__0.0.1__DKP-0023__add_ecommerce_catalog_tables.sql`

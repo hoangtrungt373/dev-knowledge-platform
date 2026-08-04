@@ -2,11 +2,14 @@ package com.ttg.devknowledgeplatform.ecommerce.service.impl;
 
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.ecommerce.entity.OutboxEvent;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategory;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductImage;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductVariant;
+import com.ttg.devknowledgeplatform.ecommerce.enums.OutboxAggregateType;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
+import com.ttg.devknowledgeplatform.ecommerce.repository.OutboxEventRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductCategoryRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductImageRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductRepository;
@@ -40,6 +43,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductVariantRepository productVariantRepository;
     private final ProductImageRepository productImageRepository;
     private final ProductCategoryRepository productCategoryRepository;
+    private final OutboxEventRepository outboxEventRepository;
     private final SlugService slugService;
 
     @Override
@@ -95,6 +99,7 @@ public class ProductServiceImpl implements ProductService {
             saved.getImages().add(productImageRepository.save(image));
         }
 
+        publishProductChanged(saved.getId());
         log.info("Created product id={} slug={} variantCount={} imageCount={}",
                 saved.getId(), slug, variants.size(), images.size());
         return saved;
@@ -113,6 +118,7 @@ public class ProductServiceImpl implements ProductService {
         product.setProductCategory(findCategoryById(command.productCategoryId()));
 
         Product updated = productRepository.save(product);
+        publishProductChanged(updated.getId());
         log.info("Updated product id={}", id);
         return updated;
     }
@@ -122,6 +128,7 @@ public class ProductServiceImpl implements ProductService {
         Product product = findById(id);
         product.setActive(false);
         Product deactivated = productRepository.save(product);
+        publishProductChanged(deactivated.getId());
         log.info("Deactivated product id={}", id);
         return deactivated;
     }
@@ -146,6 +153,23 @@ public class ProductServiceImpl implements ProductService {
         return productCategoryRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         EcommerceErrorCode.PRODUCT_CATEGORY_NOT_FOUND, new Object[] {id}));
+    }
+
+    /**
+     * Writes a {@code PRODUCT_CHANGED} outbox row in the same transaction as the triggering
+     * change — the transactional-outbox guarantee (see {@code OutboxEvent}'s Javadoc). The
+     * {@code OutboxRelay} picks it up and re-derives {@code ProductSearchView} from current
+     * state; the payload only needs the id, never a diff.
+     */
+    private void publishProductChanged(Integer productId) {
+        OutboxEvent event = new OutboxEvent();
+        // References the handler's own constant/payload type rather than retyping the literal
+        // eventType or the "productId" map key — see ProductChangedOutboxEventHandler's Javadoc.
+        event.setEventType(ProductChangedOutboxEventHandler.EVENT_TYPE);
+        event.setAggregateType(OutboxAggregateType.PRODUCT);
+        event.setAggregateId(productId);
+        event.setPayload(new ProductChangedOutboxEventHandler.Payload(productId).toMap());
+        outboxEventRepository.save(event);
     }
 
     private static void validateNoDuplicateSkusInRequest(List<ProductCommands.VariantInput> variants) {
