@@ -325,7 +325,6 @@ export default function TasksPage(): JSX.Element {
         <Panel id="task-detail" defaultSize="40" minSize="20">
           <TaskDetailPanel
             task={selectedTask}
-            projects={projects}
             onClose={() => setSelectedTask(null)}
             onChanged={refreshTasks}
           />

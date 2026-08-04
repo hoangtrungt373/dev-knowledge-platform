@@ -128,7 +128,7 @@ export default function TaskRow({ task, onSelect, onChanged, selected = false, d
     if (priority === task.priority) return;
     try {
       // No dedicated "change priority" endpoint — updateTask fully replaces mutable fields, so
-      // every other field is resent unchanged (same approach TaskFormDialog uses on edit).
+      // every other field is resent unchanged (same approach TaskDetailPanel uses on edit).
       const payload: UpdateTaskPayload = {
         title: task.title,
         description: task.description,

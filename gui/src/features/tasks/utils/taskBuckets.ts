@@ -45,9 +45,9 @@ export const DATE_PRESET_LABEL: Record<DatePreset, string> = {
 };
 
 /** Local midnight for the given preset — matches how every due-date write in this feature
- * (TaskFormDialog, TaskQuickAdd, TaskRow) normalizes a date-only value before sending it to the
- * backend. Shared here (rather than duplicated per component) so "which day is the coming Sunday"
- * has exactly one implementation. */
+ * (DatePickerMenu, TaskQuickAdd, TaskRow, TaskDetailPanel) normalizes a date-only value before
+ * sending it to the backend. Shared here (rather than duplicated per component) so "which day is
+ * the coming Sunday" has exactly one implementation. */
 export function datePresetValue(preset: DatePreset): Date {
   if (preset === 'TODAY') return startOfToday();
   if (preset === 'TOMORROW') {
