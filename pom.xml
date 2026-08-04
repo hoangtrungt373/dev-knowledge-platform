@@ -27,6 +27,7 @@
         <module>task-service</module>
         <module>social-service</module>
         <module>identity-service</module>
+        <module>ecommerce-service</module>
         <module>gateway</module>
     </modules>
 
@@ -80,6 +81,11 @@
             <dependency>
                 <groupId>com.ttg</groupId>
                 <artifactId>identity-service</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ttg</groupId>
+                <artifactId>ecommerce-service</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

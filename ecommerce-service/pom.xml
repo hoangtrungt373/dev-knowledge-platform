@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.ttg</groupId>
+        <artifactId>dev-knowledge-platform</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>ecommerce-service</artifactId>
+    <name>E-Commerce Service</name>
+    <description>Catalog, cart/checkout, orders/inventory, payments, and reviews/recommendations — study-project e-commerce vertical slice</description>
+
+    <dependencies>
+
+        <!-- Internal -->
+        <dependency>
+            <groupId>com.ttg</groupId>
+            <artifactId>common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ttg</groupId>
+            <artifactId>infra</artifactId>
+        </dependency>
+
+        <!-- EcommerceErrorCode implements the common ErrorCode interface and references HttpStatus
+             directly in main code, and api/impl controllers use @RestController/ResponseEntity —
+             common declares spring-boot-starter-web as optional, so it isn't inherited
+             transitively; this module needs it on the compile classpath itself, same reasoning
+             as content-service's pom.xml. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- MapStruct — DTO <-> entity mapping for the REST layer (ProductCategoryMapper,
+             ProductMapper); version + annotation-processor wiring managed centrally in the root
+             pom's dependencyManagement / maven-compiler-plugin pluginManagement. -->
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct</artifactId>
+        </dependency>
+
+    </dependencies>
+
+</project>

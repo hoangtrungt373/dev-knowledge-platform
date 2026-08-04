@@ -20,6 +20,9 @@ dev-knowledge-platform/
 ├── social-service/   — friend graph (search visibility, requests, friendships, blocking) plus chat:
 │                        groups/channels (open-add, role-gated) and 1:1 DMs (friend-gated); own REST layer,
 │                        including the relationship-enriched user-directory endpoints (search, public profile)
+├── ecommerce-service/ — study-project e-commerce vertical slice: catalog, cart/checkout,
+│                        orders/inventory, payments, reviews/recommendations; only Epic 1's
+│                        entities exist so far (no REST layer yet)
 ├── gateway/          — security/JWT-filter/STOMP transport wiring, Liquibase migrations, Spring Boot entry
 │                        point. Holds **zero REST controllers of its own** (renamed from `api` once the last
 │                        one moved out — see `docs/CHANGELOG.md`)
@@ -27,11 +30,14 @@ dev-knowledge-platform/
 ```
 
 Dependency order: `common` ← `infra` ← `content-service` ← `ai-service`;
-`infra` ← `identity-service` ← `social-service`; `common` ← `infra` ← `task-service`.
-`content-service`/`identity-service`/`task-service` are parallel siblings depending only on
-`common`+`infra`; `ai-service` and `social-service` are each allowed a single, real, one-directional
-dependency on a sibling module (`ai-service` → `content-service`, `social-service` → `identity-service`)
-— never the reverse. `gateway`
+`infra` ← `identity-service` ← `social-service`; `common` ← `infra` ← `task-service`;
+`common` ← `infra` ← `ecommerce-service`.
+`content-service`/`identity-service`/`task-service`/`ecommerce-service` are parallel siblings
+depending only on `common`+`infra`; `ai-service` and `social-service` are each allowed a single,
+real, one-directional dependency on a sibling module (`ai-service` → `content-service`,
+`social-service` → `identity-service`) — never the reverse. `ecommerce-service` will gain the same
+kind of one-directional dependency on `ai-service` once its Reviews & Recommendations epic is
+built — not added yet. `gateway`
 depends on every feature module; it's the only module allowed to depend on more than one, reserved for
 orchestration that needs two feature modules with **no** dependency relationship possible between them in
 either direction — currently nothing qualifies, which is why `gateway` has no REST layer of its own today.
@@ -789,6 +795,91 @@ those stay in `gateway` because they're transport-edge wiring (the security filt
 authentication), not auth business logic. `CacheNames`/`CacheTtlProperties` (Redis TTL config, needed by
 `StateTokenServiceImpl` here and `gateway`'s `RedisCacheConfig`) live in `infra`, not either module —
 same "two siblings, shared utility" reasoning as `StorageService`.
+
+---
+
+## ecommerce-service
+
+Study-project e-commerce vertical slice. Full scope/rationale for all five epics lives in
+`docs/user-stories/` (`README.md` + `01-catalog-search.md` through
+`05-reviews-recommendations.md`) — only **Epic 1 (Catalog & Search)** has code so far, and only a
+minimal admin vertical slice within it (create/update/list for `ProductCategory`/`Product`; no
+browse/search endpoint yet — that needs the outbox relay + `ProductSearchView` query layer).
+**Plan:** finish this slice, then extract this module into its own standalone Spring Boot app
+(own DB, own JWT validation, `gateway`-proxied) as a dedicated microservices-study exercise.
+
+```
+ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
+├── entity/
+│   ├── ProductCategory.java    — flat taxonomy (table PRODUCT_CATEGORY, not CATEGORY — avoids
+│   │                              colliding with content-service's Category in the shared schema)
+│   ├── Product.java            — name/description/slug/active; ManyToOne ProductCategory; always
+│   │                              has ≥1 ProductVariant
+│   ├── ProductImage.java       — ordered gallery; storageKey references a MinIO object (infra's
+│   │                              StorageService); sortOrder unique per product
+│   ├── ProductVariant.java     — sku/price/stockQuantity/reservedQuantity; attributes is a
+│   │                              Map<String,String> stored as JSONB (@JdbcTypeCode(SqlTypes.JSON),
+│   │                              same approach as ai-service's ContentEmbedding.metadata); DB CHECK
+│   │                              enforces 0 <= reservedQuantity <= stockQuantity
+│   ├── ProductSearchView.java  — CQRS read model for browse/search/filter; one denormalized row per
+│   │                              Product; SEARCH_VECTOR (tsvector) is DB-generated from SEARCH_TEXT
+│   │                              and deliberately not mapped as a Java field; no writer exists yet
+│   │                              (the projection relay is a future build step)
+│   └── OutboxEvent.java        — shared transactional-outbox table every future epic will reuse;
+│                                  status (OutboxEventStatus: PENDING/PROCESSING/PROCESSED/FAILED)
+│                                  is the relay's claim/dispatch signal, attemptCount/lastError
+│                                  make a poison message diagnosable; aggregateType is an enum
+│                                  (OutboxAggregateType, DB CHECK-backed — small, slow-growing set);
+│                                  eventType stays a plain string — one Java field can only be one
+│                                  enum type, and every future epic keeps adding its own event
+│                                  types to this same shared table; no relay/poller exists yet
+├── enums/
+│   ├── OutboxEventStatus.java     — PENDING, PROCESSING, PROCESSED, FAILED
+│   └── OutboxAggregateType.java   — PRODUCT (widen only when a later epic adds an aggregate root)
+├── exception/
+│   └── EcommerceErrorCode.java  — PRODUCT_CATEGORY_*/PRODUCT_*/PRODUCT_VARIANT_*/PRODUCT_IMAGE_*
+│                                    codes, implements common's ErrorCode interface
+├── repository/
+│   ├── ProductCategoryRepository.java / ProductRepository.java / ProductVariantRepository.java
+│   │   / ProductImageRepository.java
+│   └── spec/
+│       └── ProductCategorySpecification.java / ProductSpecification.java
+├── service/
+│   ├── ProductCategoryService.java / ProductService.java — return entities, not REST DTOs; this
+│   │   module's own mapper/ does entity→response mapping (same split as content-service)
+│   ├── ProductCommands.java     — Create/Update input records (incl. nested VariantInput/
+│   │   ImageInput) mirroring content-service's QuestionAnswerCommands
+│   └── impl/
+│       └── ProductCategoryServiceImpl.java / ProductServiceImpl.java — the latter enforces
+│           at-least-one-variant, no duplicate SKU/sortOrder within a request, no SKU conflict
+│           against existing variants, and consistent attribute keys across a product's variants
+├── mapper/                      — MapStruct: ProductCategoryMapper / ProductMapper (also maps
+│                                    ProductVariant→ProductVariantResponse and
+│                                    ProductImage→ProductImageResponse for ProductResponse's
+│                                    nested lists)
+├── api/                         — admin CRUD REST layer
+│   ├── ProductCategoryApi.java / ProductApi.java
+│   └── impl/                    — ProductCategoryController / ProductController; both admin-gated
+│                                    automatically via gateway's existing /api/v1/admin/** rule
+└── dto/                         — ProductCategoryResponse/CreateProductCategoryRequest/
+                                     UpdateProductCategoryRequest, ProductResponse/
+                                     CreateProductRequest/UpdateProductRequest,
+                                     ProductVariantRequest/ProductVariantResponse,
+                                     ProductImageRequest/ProductImageResponse
+```
+
+Liquibase migration: `gateway/.../database/sql/2026/0.0.1/202608040001__0.0.1__DKP-0023__add_ecommerce_catalog_tables.sql`
+— `PRODUCT_CATEGORY`, `PRODUCT`, `PRODUCT_IMAGE`, `PRODUCT_VARIANT`, `PRODUCT_SEARCH_VIEW`,
+`OUTBOX_EVENT` (with its `STATUS`/`ATTEMPT_COUNT`/`LAST_ERROR` columns), plus the `pg_trgm`
+extension and GIN indexes for `tsvector`/trigram/JSONB containment search on
+`PRODUCT_SEARCH_VIEW`.
+
+Not yet built: the browse/search endpoint (needs the outbox relay + `ProductSearchView` query
+layer), variant/image add-remove-reorder endpoints, `ProductCategory` delete, and Epics 2–5.
+
+Depends only on `common` + `infra` today. Epic 5 (Reviews & Recommendations) will add a
+one-directional dependency on `ai-service` (own `ProductEmbedding`, FK to this module's `Product`)
+— not added yet. See `ecommerce-service/CLAUDE.md` for the rules this module follows.
 
 ---
 
