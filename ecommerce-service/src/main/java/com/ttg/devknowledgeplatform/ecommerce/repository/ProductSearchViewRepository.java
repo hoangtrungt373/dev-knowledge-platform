@@ -32,6 +32,15 @@ public interface ProductSearchViewRepository extends JpaRepository<ProductSearch
      * match — a product with variants spanning the requested range matches even if not every
      * variant falls inside it (US-1.4).
      *
+     * <p>{@code attributesFilter} (US-1.4) is a single pre-combined JSON object built by
+     * {@code ProductSearchServiceImpl} from every attribute query param (e.g.
+     * {@code {"size":["M"],"color":["Blue"]}}), compared via JSONB containment ({@code @>}) in
+     * one shot — Postgres's {@code @>} on a JSON object recursively ANDs across every key in the
+     * right-hand side, and for each key's array value checks "every element on the right appears
+     * somewhere on the left," so one containment check against one bind parameter correctly
+     * implements "AND across attribute keys, matching any listed value per key" without building
+     * the SQL text dynamically per filter.
+     *
      * <p>{@code SEARCH_VECTOR} (a DB-generated column, not mapped on the entity — see
      * {@code ProductSearchView}'s Javadoc) is referenced here only inside the query text, never
      * selected — the {@code SELECT} list is spelled out explicitly (not {@code SELECT *}) so this
@@ -39,24 +48,27 @@ public interface ProductSearchViewRepository extends JpaRepository<ProductSearch
      */
     @Query(
             value = "SELECT v.PRODUCT_SEARCH_VIEW_ID, v.PRODUCT_ID, v.NAME, v.SLUG, v.PRODUCT_CATEGORY_ID, "
-                    + "v.CATEGORY_NAME, v.MIN_PRICE, v.MAX_PRICE, v.IN_STOCK, v.SEARCH_TEXT, v.AVAILABLE_ATTRIBUTES, "
+                    + "v.CATEGORY_NAME, v.MIN_PRICE, v.MAX_PRICE, v.IN_STOCK, v.PRIMARY_IMAGE_STORAGE_KEY, "
+                    + "v.SEARCH_TEXT, v.AVAILABLE_ATTRIBUTES, "
                     + "v.USR_CREATION, v.DTE_CREATION, v.USR_LAST_MODIFICATION, v.DTE_LAST_MODIFICATION, v.VERSION "
-                    + "FROM product.PRODUCT_SEARCH_VIEW v "
+                    + "FROM ecommerce.PRODUCT_SEARCH_VIEW v "
                     + "WHERE (:categoryId IS NULL OR v.PRODUCT_CATEGORY_ID = :categoryId) "
                     + "AND (:inStockOnly = FALSE OR v.IN_STOCK = TRUE) "
                     + "AND (:minPrice IS NULL OR v.MAX_PRICE >= :minPrice) "
                     + "AND (:maxPrice IS NULL OR v.MIN_PRICE <= :maxPrice) "
+                    + "AND (:attributesFilter IS NULL OR v.AVAILABLE_ATTRIBUTES @> CAST(:attributesFilter AS JSONB)) "
                     + "AND (:q IS NULL "
                     + "     OR v.SEARCH_VECTOR @@ plainto_tsquery('english', :q) "
                     + "     OR similarity(v.SEARCH_TEXT, :q) > :trigramThreshold) "
                     + "ORDER BY "
                     + "  CASE WHEN :q IS NULL THEN 0 ELSE ts_rank(v.SEARCH_VECTOR, plainto_tsquery('english', :q)) END DESC, "
                     + "  v.PRODUCT_SEARCH_VIEW_ID DESC",
-            countQuery = "SELECT count(*) FROM product.PRODUCT_SEARCH_VIEW v "
+            countQuery = "SELECT count(*) FROM ecommerce.PRODUCT_SEARCH_VIEW v "
                     + "WHERE (:categoryId IS NULL OR v.PRODUCT_CATEGORY_ID = :categoryId) "
                     + "AND (:inStockOnly = FALSE OR v.IN_STOCK = TRUE) "
                     + "AND (:minPrice IS NULL OR v.MAX_PRICE >= :minPrice) "
                     + "AND (:maxPrice IS NULL OR v.MIN_PRICE <= :maxPrice) "
+                    + "AND (:attributesFilter IS NULL OR v.AVAILABLE_ATTRIBUTES @> CAST(:attributesFilter AS JSONB)) "
                     + "AND (:q IS NULL "
                     + "     OR v.SEARCH_VECTOR @@ plainto_tsquery('english', :q) "
                     + "     OR similarity(v.SEARCH_TEXT, :q) > :trigramThreshold)",
@@ -67,6 +79,7 @@ public interface ProductSearchViewRepository extends JpaRepository<ProductSearch
             @Param("minPrice") BigDecimal minPrice,
             @Param("maxPrice") BigDecimal maxPrice,
             @Param("inStockOnly") boolean inStockOnly,
+            @Param("attributesFilter") String attributesFilter,
             @Param("trigramThreshold") double trigramThreshold,
             Pageable pageable);
 }

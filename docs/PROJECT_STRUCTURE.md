@@ -20,25 +20,26 @@ dev-knowledge-platform/
 ├── social-service/   — friend graph (search visibility, requests, friendships, blocking) plus chat:
 │                        groups/channels (open-add, role-gated) and 1:1 DMs (friend-gated); own REST layer,
 │                        including the relationship-enriched user-directory endpoints (search, public profile)
-├── ecommerce-service/ — study-project e-commerce vertical slice: catalog, cart/checkout,
-│                        orders/inventory, payments, reviews/recommendations; only Epic 1's
-│                        entities exist so far (no REST layer yet)
 ├── gateway/          — security/JWT-filter/STOMP transport wiring, Liquibase migrations, Spring Boot entry
 │                        point. Holds **zero REST controllers of its own** (renamed from `api` once the last
 │                        one moved out — see `docs/CHANGELOG.md`)
 └── gui/              — React 18 + TypeScript + MUI frontend (Vite)
 ```
 
+`ecommerce-service/` — study-project e-commerce vertical slice — is deliberately **not** in the
+tree above: it's a standalone Spring Boot application, not part of this dependency graph at all
+(own DB, own JWT verification, own port; `gateway` has no Maven dependency on it, extracted
+specifically as a microservices-study exercise — see its own `## ecommerce-service` section
+further down and root `CLAUDE.md`). It still compiles against `common`+`infra` as ordinary
+library dependencies.
+
 Dependency order: `common` ← `infra` ← `content-service` ← `ai-service`;
-`infra` ← `identity-service` ← `social-service`; `common` ← `infra` ← `task-service`;
-`common` ← `infra` ← `ecommerce-service`.
-`content-service`/`identity-service`/`task-service`/`ecommerce-service` are parallel siblings
-depending only on `common`+`infra`; `ai-service` and `social-service` are each allowed a single,
-real, one-directional dependency on a sibling module (`ai-service` → `content-service`,
-`social-service` → `identity-service`) — never the reverse. `ecommerce-service` will gain the same
-kind of one-directional dependency on `ai-service` once its Reviews & Recommendations epic is
-built — not added yet. `gateway`
-depends on every feature module; it's the only module allowed to depend on more than one, reserved for
+`infra` ← `identity-service` ← `social-service`; `common` ← `infra` ← `task-service`.
+`content-service`/`identity-service`/`task-service` are parallel siblings depending only on
+`common`+`infra`; `ai-service` and `social-service` are each allowed a single, real,
+one-directional dependency on a sibling module (`ai-service` → `content-service`,
+`social-service` → `identity-service`) — never the reverse. `gateway`
+depends on these five feature modules; it's the only module allowed to depend on more than one, reserved for
 orchestration that needs two feature modules with **no** dependency relationship possible between them in
 either direction — currently nothing qualifies, which is why `gateway` has no REST layer of its own today.
 `gui` is independent of the whole Java reactor.
@@ -800,17 +801,33 @@ same "two siblings, shared utility" reasoning as `StorageService`.
 
 ## ecommerce-service
 
-Study-project e-commerce vertical slice. Full scope/rationale for all five epics lives in
-`docs/user-stories/` (`README.md` + `01-catalog-search.md` through
-`05-reviews-recommendations.md`) — only **Epic 1 (Catalog & Search)** has code so far, but that
-epic now has a fairly complete slice: admin CRUD for `ProductCategory`/`Product`, the outbox
-relay, and a public browse/search endpoint. **Plan:** keep rounding out Epic 1, then extract this
-module into its own standalone Spring Boot app (own DB, own JWT validation, `gateway`-proxied) as
-a dedicated microservices-study exercise. **None of this has been compiled/verified yet** — the
-build has not successfully been run against it.
+Study-project e-commerce vertical slice, **and now a standalone Spring Boot application, not part
+of the monolith**. Full scope/rationale for all five epics lives in `docs/user-stories/`
+(`README.md` + `01-catalog-search.md` through `05-reviews-recommendations.md`) — only
+**Epic 1 (Catalog & Search)** has code so far, but all 7 of its user stories are now built: admin
+CRUD for `ProductCategory`/`Product` including independent variant/image add-remove-reorder, the
+outbox relay, and a public browse/search/detail surface with attribute-value filtering.
+
+**Extraction (done):** own `EcommerceServiceApplication` entry point, own `ecommerce` Postgres
+schema/database (separate from the monolith's `product` schema), own JWT verification
+(`security/` — verifies tokens issued elsewhere, never issues its own), own port (`8081`), own
+Liquibase changelog + `ecommerce-service-liquibase.yml` docker-compose file. `gateway` no longer
+has a Maven dependency on this module. **Not yet built:** the `gateway`-side HTTP proxy to this
+service — until that exists, it's only reachable directly on its own port.
+
+**Compiles cleanly** (full reactor including the extraction changes; needs `JAVA_HOME` pointed at
+a JDK 21 install) but hasn't been run against a real Postgres yet — the Liquibase migration
+against the new `ecommerce` schema, the native SQL in `ProductSearchViewRepository.search`, and
+the new JWT verification path are all still unverified at runtime.
 
 ```
 ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
+├── EcommerceServiceApplication.java — @SpringBootApplication + @EnableScheduling entry point;
+│                                       sitting at this package (not the shared root gateway's
+│                                       main class uses) means default component/entity/
+│                                       repository scanning never picks up common.entity.User or
+│                                       common.repository.UserRepository — this service's own DB
+│                                       has no USER table — with zero extra @EntityScan config
 ├── entity/
 │   ├── ProductCategory.java    — flat taxonomy (table PRODUCT_CATEGORY, not CATEGORY — avoids
 │   │                              colliding with content-service's Category in the shared schema)
@@ -856,8 +873,16 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                  own bean (not a 2nd method on OutboxRelay) to avoid Spring's
 │   │                                  @Transactional self-invocation proxy pitfall
 │   └── OutboxRelay.java            — @Scheduled poller (app.ecommerce.outbox.relay.poll-interval,
-│                                        default PT5S); no @EnableScheduling needed, already active
-│                                        app-wide via ai-service's AiServiceConfig
+│                                        default PT5S); @EnableScheduling lives on this module's
+│                                        own EcommerceServiceApplication now
+├── security/                    — this app's own filter chain, independent of gateway's
+│   ├── JwtVerifier.java             — verifies (never issues) HS512 tokens via the shared
+│   │                                    jwt.secret; same signing mechanism identity-service uses
+│   │                                    to issue them, so a token from there verifies here
+│   ├── JwtAuthenticationFilter.java — OncePerRequestFilter; builds a CustomOAuth2User principal
+│   │                                    from verified claims, mirrors gateway's filter shape
+│   └── SecurityConfig.java          — /api/v1/public/** permitAll, /api/v1/admin/** hasRole(ADMIN),
+│                                        stateless, no OAuth2 login (this service never issues tokens)
 ├── service/
 │   ├── ProductCategoryService.java / ProductService.java / ProductSearchService.java — return
 │   │   entities, not REST DTOs; this module's own mapper/ does entity→response mapping (same
@@ -881,31 +906,40 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │                                    ProductImage→ProductImageResponse for ProductResponse's
 │                                    nested lists) / ProductSearchViewMapper
 ├── api/                         — REST layer
-│   ├── ProductCategoryApi.java / ProductApi.java — admin CRUD (/api/v1/admin/**)
-│   ├── ProductSearchApi.java    — public browse/search (/api/v1/public/products)
+│   ├── ProductCategoryApi.java / ProductApi.java — admin CRUD (/api/v1/admin/**), incl.
+│   │                                 POST/DELETE .../variants/{id} and
+│   │                                 POST/DELETE/PATCH .../images/{id} for independent
+│   │                                 variant/image mutation (US-1.6)
+│   ├── ProductSearchApi.java    — public browse/search + GET /{slug} detail
+│   │                                 (/api/v1/public/products, US-1.1/1.2/1.3/1.4)
 │   └── impl/                    — ProductCategoryController / ProductController (admin-gated
-│                                    automatically via gateway's /api/v1/admin/** rule) /
-│                                    ProductSearchController (public via /api/v1/public/** rule)
+│                                    automatically via this module's own security/SecurityConfig
+│                                    /api/v1/admin/** rule) / ProductSearchController (public via
+│                                    that same config's /api/v1/public/** rule)
 └── dto/                         — ProductCategoryResponse/CreateProductCategoryRequest/
                                      UpdateProductCategoryRequest, ProductResponse/
                                      CreateProductRequest/UpdateProductRequest,
                                      ProductVariantRequest/ProductVariantResponse,
                                      ProductImageRequest/ProductImageResponse,
+                                     UpdateProductImageSortOrderRequest,
                                      ProductSearchResponse
 ```
 
-Liquibase migration: `gateway/.../database/sql/2026/0.0.1/202608040001__0.0.1__DKP-0023__add_ecommerce_catalog_tables.sql`
-— `PRODUCT_CATEGORY`, `PRODUCT`, `PRODUCT_IMAGE`, `PRODUCT_VARIANT`, `PRODUCT_SEARCH_VIEW`,
-`OUTBOX_EVENT` (with its `STATUS`/`ATTEMPT_COUNT`/`LAST_ERROR` columns), plus the `pg_trgm`
-extension and GIN indexes for `tsvector`/trigram/JSONB containment search on
-`PRODUCT_SEARCH_VIEW`.
+Liquibase migration: `ecommerce-service/.../database/sql/2026/0.0.1/202608040001__0.0.1__DKP-0023__add_ecommerce_catalog_tables.sql`
+under this module's **own** changelog tree now (not `gateway`'s) — `PRODUCT_CATEGORY`, `PRODUCT`,
+`PRODUCT_IMAGE`, `PRODUCT_VARIANT`, `PRODUCT_SEARCH_VIEW`, `OUTBOX_EVENT` (with its
+`STATUS`/`ATTEMPT_COUNT`/`LAST_ERROR` columns), plus `CREATE SCHEMA ecommerce`, the `pg_trgm`
+extension, and GIN indexes for `tsvector`/trigram/JSONB containment search on
+`PRODUCT_SEARCH_VIEW`. Applied via `ecommerce-service-liquibase.yml` at the repo root.
 
-Not yet built: the browse/search endpoint (needs the outbox relay + `ProductSearchView` query
-layer), variant/image add-remove-reorder endpoints, `ProductCategory` delete, and Epics 2–5.
+Not yet built: the `gateway`-side HTTP proxy, variant/image add-remove-reorder endpoints,
+`ProductCategory` delete, and Epics 2–5.
 
-Depends only on `common` + `infra` today. Epic 5 (Reviews & Recommendations) will add a
-one-directional dependency on `ai-service` (own `ProductEmbedding`, FK to this module's `Product`)
-— not added yet. See `ecommerce-service/CLAUDE.md` for the rules this module follows.
+Compiles against `common` + `infra` as ordinary library dependencies; has **no** Maven dependency
+on any other feature module, and none of them (including `gateway`) depend on it either — see
+root `CLAUDE.md`'s dependency-order section for why Epic 5's originally-planned dependency on
+`ai-service` needs rethinking now that this module is standalone. See `ecommerce-service/CLAUDE.md`
+for the rules this module follows.
 
 ---
 

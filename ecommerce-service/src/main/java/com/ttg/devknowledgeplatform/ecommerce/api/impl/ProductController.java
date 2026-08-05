@@ -4,8 +4,11 @@ import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.ecommerce.api.ProductApi;
 import com.ttg.devknowledgeplatform.ecommerce.dto.CreateProductRequest;
 import com.ttg.devknowledgeplatform.ecommerce.dto.ProductImageRequest;
+import com.ttg.devknowledgeplatform.ecommerce.dto.ProductImageResponse;
 import com.ttg.devknowledgeplatform.ecommerce.dto.ProductResponse;
 import com.ttg.devknowledgeplatform.ecommerce.dto.ProductVariantRequest;
+import com.ttg.devknowledgeplatform.ecommerce.dto.ProductVariantResponse;
+import com.ttg.devknowledgeplatform.ecommerce.dto.UpdateProductImageSortOrderRequest;
 import com.ttg.devknowledgeplatform.ecommerce.dto.UpdateProductRequest;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
 import com.ttg.devknowledgeplatform.ecommerce.mapper.ProductMapper;
@@ -59,6 +62,40 @@ public class ProductController implements ProductApi {
     @Override
     public ResponseEntity<ProductResponse> deactivate(Integer id) {
         return ResponseEntity.ok(productMapper.toResponse(productService.deactivate(id)));
+    }
+
+    @Override
+    public ResponseEntity<ProductVariantResponse> addVariant(Integer id, ProductVariantRequest request) {
+        ProductCommands.VariantInput input = new ProductCommands.VariantInput(
+                request.getSku(), request.getPrice(), request.getStockQuantity(), request.getAttributes());
+        var added = productService.addVariant(id, input);
+        return ResponseEntity.status(HttpStatus.CREATED).body(productMapper.toVariantResponse(added));
+    }
+
+    @Override
+    public ResponseEntity<Void> removeVariant(Integer id, Integer variantId) {
+        productService.removeVariant(id, variantId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Override
+    public ResponseEntity<ProductImageResponse> addImage(Integer id, ProductImageRequest request) {
+        ProductCommands.ImageInput input = new ProductCommands.ImageInput(request.getStorageKey(), request.getSortOrder());
+        var added = productService.addImage(id, input);
+        return ResponseEntity.status(HttpStatus.CREATED).body(productMapper.toImageResponse(added));
+    }
+
+    @Override
+    public ResponseEntity<Void> removeImage(Integer id, Integer imageId) {
+        productService.removeImage(id, imageId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Override
+    public ResponseEntity<ProductImageResponse> updateImageSortOrder(
+            Integer id, Integer imageId, UpdateProductImageSortOrderRequest request) {
+        var updated = productService.updateImageSortOrder(id, imageId, request.getSortOrder());
+        return ResponseEntity.ok(productMapper.toImageResponse(updated));
     }
 
     @Override

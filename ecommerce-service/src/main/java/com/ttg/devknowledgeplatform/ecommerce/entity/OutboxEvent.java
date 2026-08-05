@@ -52,7 +52,7 @@ import java.util.Map;
  * {@link #eventType} up as a plain routing key regardless.
  */
 @Entity
-@Table(name = "OUTBOX_EVENT", schema = "product")
+@Table(name = "OUTBOX_EVENT", schema = "ecommerce")
 @AttributeOverride(name = "id", column = @Column(name = "OUTBOX_EVENT_ID"))
 @Data
 @NoArgsConstructor

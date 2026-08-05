@@ -16,9 +16,11 @@ import java.util.List;
  * Polls {@code OutboxEvent} for {@code PENDING} rows and dispatches each one via
  * {@link OutboxEventProcessor}.
  *
- * <p>{@code @EnableScheduling} is already active for the whole app (declared once in
- * {@code ai-service}'s {@code AiServiceConfig}, which {@code gateway} already depends on) — this
- * class doesn't need its own.
+ * <p>{@code @EnableScheduling} is declared on {@code EcommerceServiceApplication}, this module's
+ * own standalone entry point — this class doesn't need its own. (Historical note: while this
+ * module still ran inside the monolith, scheduling was already enabled app-wide via
+ * {@code ai-service}'s {@code AiServiceConfig}; that stopped being true once this module was
+ * extracted into its own app that doesn't include {@code ai-service} at all.)
  */
 @Component
 @RequiredArgsConstructor

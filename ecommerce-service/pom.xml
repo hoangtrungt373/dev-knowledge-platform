@@ -44,6 +44,88 @@
             <artifactId>mapstruct</artifactId>
         </dependency>
 
+        <!-- Spring Security — this module's own filter chain/JWT verification now that it's a
+             standalone app (see security/SecurityConfig). common declares this optional
+             (type-support only); this module needs the real thing. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- JJWT — JwtVerifier verifies (never issues) tokens signed by identity-service using
+             the same shared secret; version managed centrally in the root pom. -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- PostgreSQL — this module's own datasource connection now that it's a standalone app
+             with its own database (the `ecommerce` schema), not sharing gateway's connection. -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Actuator — health/info/metrics endpoints, same as gateway, now that this module is
+             independently deployable and needs its own health check. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- JwtAuthenticationFilter builds a common.dto.CustomOAuth2User (implements OAuth2User)
+             as this app's own Authentication principal — common declares this starter optional
+             (type-support only), so it isn't inherited transitively; needed here on the classpath
+             for real, same reasoning content-service's pom documents for the same class. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+        </dependency>
+
     </dependencies>
+
+    <build>
+        <!-- Include the Liquibase changelog XML/SQL bundled under src/main/java so they end up
+             on the runtime classpath — same reasoning/shape as gateway's pom.xml. This module's
+             own Liquibase changelog is run via the standalone ecommerce-service-liquibase.yml
+             docker-compose file (spring.liquibase.enabled stays false here too), not on app boot. -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>src/main/java</directory>
+                <includes>
+                    <include>**/*.xml</include>
+                    <include>**/*.sql</include>
+                </includes>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

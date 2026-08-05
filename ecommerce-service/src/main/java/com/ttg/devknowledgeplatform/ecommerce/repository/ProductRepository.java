@@ -6,10 +6,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Integer>, JpaSpecificationExecutor<Product> {
 
     boolean existsBySlug(String slug);
 
     boolean existsBySlugAndIdNot(String slug, Integer id);
+
+    Optional<Product> findBySlug(String slug);
 }

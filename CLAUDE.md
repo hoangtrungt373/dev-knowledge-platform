@@ -25,29 +25,40 @@ directory you're actually working in, layered on top of this one. **Read the rel
 | `task-service` | Personal task/project management | [`task-service/CLAUDE.md`](task-service/CLAUDE.md) |
 | `social-service` | Friend graph + chat (groups/channels, DMs); own REST/DTO/mapper layer | [`social-service/CLAUDE.md`](social-service/CLAUDE.md) |
 | `identity-service` | Auth: local + OAuth2/OIDC login, JWT issuance, OTP registration, profile mutation | [`identity-service/CLAUDE.md`](identity-service/CLAUDE.md) |
-| `ecommerce-service` | Study-project e-commerce vertical slice: catalog, cart/checkout, orders/inventory, payments, reviews/recommendations | [`ecommerce-service/CLAUDE.md`](ecommerce-service/CLAUDE.md) |
+| `ecommerce-service` | Study-project e-commerce vertical slice: catalog, cart/checkout, orders/inventory, payments, reviews/recommendations. **Standalone Spring Boot app, own database** — not a Maven dependency of `gateway` (see below) | [`ecommerce-service/CLAUDE.md`](ecommerce-service/CLAUDE.md) |
 | `gateway` | Cross-module REST orchestration, security/JWT-filter/STOMP transport wiring, Liquibase, Spring Boot entry point | [`gateway/CLAUDE.md`](gateway/CLAUDE.md) |
 | `gui` | React 18 + TypeScript + MUI frontend (Vite) | [`gui/CLAUDE.md`](gui/CLAUDE.md) |
 
 Dependency order: `common` ← `infra` ← `content-service` ← `ai-service`;
-`infra` ← `identity-service` ← `social-service`; `common` ← `infra` ← `task-service`;
-`common` ← `infra` ← `ecommerce-service`.
-`content-service`/`identity-service`/`task-service`/`ecommerce-service` are parallel siblings
-depending only on `common`+`infra`; `ai-service` and `social-service` are each allowed a single,
-real, one-directional dependency on a sibling (`ai-service` → `content-service` for the
+`infra` ← `identity-service` ← `social-service`; `common` ← `infra` ← `task-service`.
+`content-service`/`identity-service`/`task-service` are parallel siblings depending only on
+`common`+`infra`; `ai-service` and `social-service` are each allowed a single, real,
+one-directional dependency on a sibling (`ai-service` → `content-service` for the
 `ContentEmbedding`→`ContentItem` FK; `social-service` → `identity-service` for `UserApi`'s
 relationship-enriched profile/search endpoints). `task-service` used to have the same kind of
 one-directional dependency on `content-service` (`Task`'s optional `ContentItem` link), but that
-link was removed — see `docs/CHANGELOG.md`'s `[Unreleased]` entry. `ecommerce-service` will gain
-the same kind of one-directional dependency on `ai-service` once its Reviews & Recommendations
-epic is built (owns its own `ProductEmbedding`, keeping `ai-service`'s own dependency count at
-one) — see `ecommerce-service/CLAUDE.md`; not added yet, only Catalog & Search entities exist so
-far. `gateway` depends on all six feature modules; it's the only module allowed to depend on more
-than one, reserved for orchestration that needs two feature modules with **no** dependency
-relationship possible between them in either direction — currently nothing qualifies. `gui` is
-independent (talks to `gateway` over HTTP only). Full detail, including the full rationale for each
-module owning its own REST/DTO/mapper layer instead of centralizing them in one module, lives in
+link was removed — see `docs/CHANGELOG.md`'s `[Unreleased]` entry. `gateway` depends on these five
+feature modules; it's the only module allowed to depend on more than one, reserved for
+orchestration that needs two feature modules with **no** dependency relationship possible between
+them in either direction — currently nothing qualifies. `gui` is independent (talks to `gateway`
+over HTTP only). Full detail, including the full rationale for each module owning its own
+REST/DTO/mapper layer instead of centralizing them in one module, lives in
 `docs/PROJECT_STRUCTURE.md`.
+
+**`ecommerce-service` is not part of this dependency graph** — it's a deliberately standalone
+Spring Boot application (own `EcommerceServiceApplication` entry point, own `ecommerce` Postgres
+schema/database, own JWT verification), extracted specifically as a microservices-study exercise
+(see the `project-ecommerce-service-module` memory for the full history). It still compiles
+against `common`+`infra` as ordinary Maven library dependencies (shared-kernel style — no runtime
+call to anything), but `gateway` no longer depends on it in Maven at all; the two run as separate
+processes on separate ports. `gateway`-side HTTP proxying to it is not built yet (see
+`ecommerce-service/CLAUDE.md`). This also means Epic 5's originally-planned
+`ecommerce-service` → `ai-service` Maven dependency (for embedding generation) needs rethinking
+once that epic is actually built: `ai-service` itself still only runs inside the monolith today,
+so a standalone `ecommerce-service` can't reach it as a normal library dependency the way
+`ai-service` → `content-service` works — it would need a real network call (likely through
+`gateway`, once proxying exists), not a `pom.xml` entry. Don't add that Maven dependency back
+without confirming this is still the intended shape.
 
 When proposing a new **big feature area** (broad scope, likely to grow), default to a dedicated
 Maven module mirroring this shape — owns its own entities/services *and* its own REST controllers/

@@ -40,7 +40,7 @@ import java.util.Map;
  * value negative or reserve more than is on hand.
  */
 @Entity
-@Table(name = "PRODUCT_VARIANT", schema = "product")
+@Table(name = "PRODUCT_VARIANT", schema = "ecommerce")
 @AttributeOverride(name = "id", column = @Column(name = "PRODUCT_VARIANT_ID"))
 @Data
 @NoArgsConstructor

@@ -35,7 +35,7 @@ import java.util.List;
  * product.
  */
 @Entity
-@Table(name = "PRODUCT", schema = "product")
+@Table(name = "PRODUCT", schema = "ecommerce")
 @AttributeOverride(name = "id", column = @Column(name = "PRODUCT_ID"))
 @Data
 @NoArgsConstructor

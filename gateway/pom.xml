@@ -45,10 +45,13 @@
             <groupId>com.ttg</groupId>
             <artifactId>identity-service</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.ttg</groupId>
-            <artifactId>ecommerce-service</artifactId>
-        </dependency>
+
+        <!-- No ecommerce-service dependency: it's a standalone Spring Boot app now (its own
+             database, own JWT verification, own port), not wired into this Spring context.
+             gateway will reach it over HTTP once the proxy layer is built — not done yet, see
+             docs/CHANGELOG.md. Do not re-add this as a Maven dependency; that would put its
+             beans (OutboxRelay, controllers, etc.) back on this app's classpath and cause both
+             apps to run them at once. -->
 
         <!-- Spring Web -->
         <dependency>

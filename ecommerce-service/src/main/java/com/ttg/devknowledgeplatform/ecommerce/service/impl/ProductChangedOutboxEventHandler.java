@@ -2,6 +2,7 @@ package com.ttg.devknowledgeplatform.ecommerce.service.impl;
 
 import com.ttg.devknowledgeplatform.ecommerce.entity.OutboxEvent;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductImage;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductSearchView;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductVariant;
 import com.ttg.devknowledgeplatform.ecommerce.outbox.OutboxEventHandler;
@@ -96,6 +97,10 @@ public class ProductChangedOutboxEventHandler implements OutboxEventHandler {
         String searchText = product.getDescription() == null
                 ? product.getName()
                 : product.getName() + " " + product.getDescription();
+        String primaryImageStorageKey = product.getImages().stream()
+                .min(Comparator.comparing(ProductImage::getSortOrder))
+                .map(ProductImage::getStorageKey)
+                .orElse(null);
 
         ProductSearchView view = productSearchViewRepository.findByProductId(productId)
                 .orElseGet(ProductSearchView::new);
@@ -107,6 +112,7 @@ public class ProductChangedOutboxEventHandler implements OutboxEventHandler {
         view.setMinPrice(minPrice);
         view.setMaxPrice(maxPrice);
         view.setInStock(inStock);
+        view.setPrimaryImageStorageKey(primaryImageStorageKey);
         view.setSearchText(searchText);
         view.setAvailableAttributes(availableAttributes);
 

@@ -26,9 +26,11 @@ import java.util.Map;
  * written only by the outbox-driven projection relay (never directly by request-handling code),
  * and the only table the browse/search/filter endpoints query.
  *
- * <p>{@link #categoryName} is denormalized (copied from {@code ProductCategory.name} at
- * projection time) specifically to avoid a join on every catalog read — the whole point of this
- * table. {@link #searchText} backs {@code pg_trgm} typo-tolerant matching; the DB additionally
+ * <p>{@link #categoryName}/{@link #primaryImageStorageKey} are denormalized (copied from
+ * {@code ProductCategory.name} / the {@link Product}'s first {@code ProductImage} by
+ * {@code sortOrder} at projection time) specifically to avoid a join on every catalog read — the
+ * whole point of this table (US-1.1's "first gallery image" requirement). {@link #searchText}
+ * backs {@code pg_trgm} typo-tolerant matching; the DB additionally
  * maintains a generated, GIN-indexed {@code tsvector} column derived from the same text (see the
  * Liquibase migration) — that column isn't mapped here at all, since Postgres computes it itself
  * ({@code GENERATED ALWAYS AS ... STORED}) and this entity never needs to read or write it
@@ -45,7 +47,7 @@ import java.util.Map;
  * window (US-1.5), not a bug.
  */
 @Entity
-@Table(name = "PRODUCT_SEARCH_VIEW", schema = "product")
+@Table(name = "PRODUCT_SEARCH_VIEW", schema = "ecommerce")
 @AttributeOverride(name = "id", column = @Column(name = "PRODUCT_SEARCH_VIEW_ID"))
 @Data
 @NoArgsConstructor
@@ -81,6 +83,10 @@ public class ProductSearchView extends AbstractEntity {
 
     @Column(name = "IN_STOCK", nullable = false)
     private boolean inStock;
+
+    // Nullable — a product can momentarily have zero images (US-1.1's "first gallery image").
+    @Column(name = "PRIMARY_IMAGE_STORAGE_KEY", length = 255)
+    private String primaryImageStorageKey;
 
     @Column(name = "SEARCH_TEXT", columnDefinition = "TEXT", nullable = false)
     private String searchText;

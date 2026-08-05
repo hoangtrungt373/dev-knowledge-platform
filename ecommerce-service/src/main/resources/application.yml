@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: ecommerce-service
+
+  # Liquibase — disabled by default, same convention as gateway: migrations are applied via the
+  # standalone ecommerce-service-liquibase.yml docker-compose file, not on app boot.
+  liquibase:
+    enabled: false
+    change-log: classpath:com/ttg/devknowledgeplatform/ecommerce/database/sql/ecommerce-service.xml
+
+  # JPA — this module's own database (the `ecommerce` schema), separate from the monolith's
+  # `product` schema. Entities already specify schema="ecommerce" per @Table, but
+  # default_schema is set too for consistency with gateway's convention.
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_schema: ecommerce
+
+# Server — 8081, not gateway's 8080 (this app runs alongside it, not instead of it, until
+# gateway's HTTP proxy to this service is built).
+server:
+  port: ${SERVER_PORT:8081}
+
+# JWT — verification only (see security/JwtVerifier); jwt.secret must be the exact same value
+# configured for identity-service/gateway, so a token issued there verifies here too.
+jwt:
+  secret: ${JWT_SECRET:change-me-in-production-use-at-least-64-bytes-long-secret-key-here}
+
+# Logging
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Management
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized

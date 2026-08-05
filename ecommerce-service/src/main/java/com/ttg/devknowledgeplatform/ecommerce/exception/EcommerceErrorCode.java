@@ -31,10 +31,18 @@ public enum EcommerceErrorCode implements ErrorCode {
     PRODUCT_VARIANT_SKU_CONFLICT("PRODUCT_VARIANT_001", "A variant with SKU ''{0}'' already exists", HttpStatus.CONFLICT),
     PRODUCT_VARIANT_DUPLICATE_SKU_IN_REQUEST("PRODUCT_VARIANT_002",
             "SKU ''{0}'' appears more than once in the same request", HttpStatus.BAD_REQUEST),
+    PRODUCT_VARIANT_NOT_FOUND("PRODUCT_VARIANT_003", "Variant not found: {0}", HttpStatus.NOT_FOUND),
+    PRODUCT_VARIANT_BELONGS_TO_ANOTHER_PRODUCT("PRODUCT_VARIANT_004",
+            "Variant {0} does not belong to product {1}", HttpStatus.BAD_REQUEST),
 
     // Product Image Errors (PRODUCT_IMAGE_*)
     PRODUCT_IMAGE_DUPLICATE_SORT_ORDER("PRODUCT_IMAGE_001",
-            "Sort order {0} appears more than once in the same request", HttpStatus.BAD_REQUEST);
+            "Sort order {0} appears more than once in the same request", HttpStatus.BAD_REQUEST),
+    PRODUCT_IMAGE_SORT_ORDER_CONFLICT("PRODUCT_IMAGE_002",
+            "Sort order {0} is already used by another image on this product", HttpStatus.CONFLICT),
+    PRODUCT_IMAGE_NOT_FOUND("PRODUCT_IMAGE_003", "Image not found: {0}", HttpStatus.NOT_FOUND),
+    PRODUCT_IMAGE_BELONGS_TO_ANOTHER_PRODUCT("PRODUCT_IMAGE_004",
+            "Image {0} does not belong to product {1}", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

@@ -139,9 +139,101 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    public Product getActiveBySlug(String slug) {
+        return productRepository.findBySlug(slug)
+                .filter(Product::isActive)
+                .orElseThrow(() -> new ResourceNotFoundException(EcommerceErrorCode.PRODUCT_NOT_FOUND, new Object[] {slug}));
+    }
+
+    @Override
     public Page<Product> list(Pageable pageable, Integer productCategoryId, Boolean active, String q) {
         Specification<Product> spec = ProductSpecification.withFilters(productCategoryId, active, q);
         return productRepository.findAll(spec, pageable);
+    }
+
+    @Override
+    public ProductVariant addVariant(Integer productId, ProductCommands.VariantInput input) {
+        Product product = findById(productId);
+        if (productVariantRepository.existsBySku(input.sku())) {
+            throw new ApiException(EcommerceErrorCode.PRODUCT_VARIANT_SKU_CONFLICT, new Object[] {input.sku()});
+        }
+        validateAttributeKeysMatchExisting(product, input.attributes());
+
+        ProductVariant variant = new ProductVariant();
+        variant.setProduct(product);
+        variant.setSku(input.sku());
+        variant.setPrice(input.price());
+        variant.setStockQuantity(input.stockQuantity());
+        variant.setReservedQuantity(0);
+        variant.setAttributes(input.attributes() == null ? Map.of() : input.attributes());
+        ProductVariant saved = productVariantRepository.save(variant);
+        product.getVariants().add(saved);
+
+        publishProductChanged(productId);
+        log.info("Added variant sku={} to product id={}", input.sku(), productId);
+        return saved;
+    }
+
+    @Override
+    public void removeVariant(Integer productId, Integer variantId) {
+        Product product = findById(productId);
+        ProductVariant variant = findVariantById(variantId);
+        validateVariantBelongsToProduct(variant, product);
+
+        if (product.getVariants().size() <= 1) {
+            throw new ApiException(EcommerceErrorCode.PRODUCT_REQUIRES_AT_LEAST_ONE_VARIANT);
+        }
+
+        product.getVariants().remove(variant);
+        productVariantRepository.delete(variant);
+
+        publishProductChanged(productId);
+        log.info("Removed variant id={} from product id={}", variantId, productId);
+    }
+
+    @Override
+    public ProductImage addImage(Integer productId, ProductCommands.ImageInput input) {
+        Product product = findById(productId);
+        validateSortOrderAvailable(product, input.sortOrder(), null);
+
+        ProductImage image = new ProductImage();
+        image.setProduct(product);
+        image.setStorageKey(input.storageKey());
+        image.setSortOrder(input.sortOrder());
+        ProductImage saved = productImageRepository.save(image);
+        product.getImages().add(saved);
+
+        publishProductChanged(productId);
+        log.info("Added image sortOrder={} to product id={}", input.sortOrder(), productId);
+        return saved;
+    }
+
+    @Override
+    public void removeImage(Integer productId, Integer imageId) {
+        Product product = findById(productId);
+        ProductImage image = findImageById(imageId);
+        validateImageBelongsToProduct(image, product);
+
+        product.getImages().remove(image);
+        productImageRepository.delete(image);
+
+        publishProductChanged(productId);
+        log.info("Removed image id={} from product id={}", imageId, productId);
+    }
+
+    @Override
+    public ProductImage updateImageSortOrder(Integer productId, Integer imageId, Integer newSortOrder) {
+        Product product = findById(productId);
+        ProductImage image = findImageById(imageId);
+        validateImageBelongsToProduct(image, product);
+        validateSortOrderAvailable(product, newSortOrder, imageId);
+
+        image.setSortOrder(newSortOrder);
+        ProductImage updated = productImageRepository.save(image);
+
+        publishProductChanged(productId);
+        log.info("Updated sort order of image id={} on product id={} to {}", imageId, productId, newSortOrder);
+        return updated;
     }
 
     private Product findById(Integer id) {
@@ -153,6 +245,60 @@ public class ProductServiceImpl implements ProductService {
         return productCategoryRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         EcommerceErrorCode.PRODUCT_CATEGORY_NOT_FOUND, new Object[] {id}));
+    }
+
+    private ProductVariant findVariantById(Integer id) {
+        return productVariantRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(EcommerceErrorCode.PRODUCT_VARIANT_NOT_FOUND, new Object[] {id}));
+    }
+
+    private ProductImage findImageById(Integer id) {
+        return productImageRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(EcommerceErrorCode.PRODUCT_IMAGE_NOT_FOUND, new Object[] {id}));
+    }
+
+    private static void validateVariantBelongsToProduct(ProductVariant variant, Product product) {
+        if (!variant.getProduct().getId().equals(product.getId())) {
+            throw new ApiException(EcommerceErrorCode.PRODUCT_VARIANT_BELONGS_TO_ANOTHER_PRODUCT,
+                    new Object[] {variant.getId(), product.getId()});
+        }
+    }
+
+    private static void validateImageBelongsToProduct(ProductImage image, Product product) {
+        if (!image.getProduct().getId().equals(product.getId())) {
+            throw new ApiException(EcommerceErrorCode.PRODUCT_IMAGE_BELONGS_TO_ANOTHER_PRODUCT,
+                    new Object[] {image.getId(), product.getId()});
+        }
+    }
+
+    /**
+     * A new/moved-to sort order must not collide with any of the product's *other* images.
+     * {@code excludingImageId} is the image being reordered (excluded from the conflict check
+     * against itself); {@code null} when adding a brand-new image.
+     */
+    private static void validateSortOrderAvailable(Product product, Integer sortOrder, Integer excludingImageId) {
+        boolean taken = product.getImages().stream()
+                .filter(image -> excludingImageId == null || !image.getId().equals(excludingImageId))
+                .anyMatch(image -> image.getSortOrder().equals(sortOrder));
+        if (taken) {
+            throw new ApiException(EcommerceErrorCode.PRODUCT_IMAGE_SORT_ORDER_CONFLICT, new Object[] {sortOrder});
+        }
+    }
+
+    /**
+     * A newly-added variant must share the existing variants' attribute keys (US-1.6) — the
+     * create-time check ({@code validateConsistentAttributeKeys}) only compares variants within
+     * one request; this compares against what the product already has.
+     */
+    private static void validateAttributeKeysMatchExisting(Product product, Map<String, String> newAttributes) {
+        if (product.getVariants().isEmpty()) {
+            return;
+        }
+        Set<String> existingKeys = product.getVariants().get(0).getAttributes().keySet();
+        Set<String> newKeys = newAttributes == null ? Set.of() : newAttributes.keySet();
+        if (!existingKeys.equals(newKeys)) {
+            throw new ApiException(EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_KEYS_INCONSISTENT);
+        }
     }
 
     /**

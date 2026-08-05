@@ -1,6 +1,14 @@
 -- liquibase formatted sql
--- changeset ttg:202608040001__0.0.1__DKP-0023__add_ecommerce_catalog_tables logicalFilePath:DevKnowledgePlatform
+-- changeset ttg:202608040001__0.0.1__DKP-0023__add_ecommerce_catalog_tables logicalFilePath:EcommerceService
 -- comment: Add ecommerce-service catalog tables (Epic 1: Catalog & Search) — categories, products, variants, images, the CQRS search read model, and the shared transactional outbox
+
+-- =============================================================================
+-- ecommerce schema — this service's own, following extraction from the monolith's
+-- shared `product` schema. Every table below lives here now, not in `product`; no
+-- other service may read or write this schema directly.
+-- =============================================================================
+
+CREATE SCHEMA IF NOT EXISTS ecommerce;
 
 -- =============================================================================
 -- pg_trgm extension — trigram similarity for typo-tolerant search on
@@ -12,16 +20,17 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- =============================================================================
 -- PRODUCT_CATEGORY
 -- Flat product taxonomy. Distinct from CATEGORY (content-service's knowledge-base
--- taxonomy) — same schema, unrelated domain, deliberately different table name.
+-- taxonomy, in the monolith's `product` schema) — different schema entirely now
+-- that this service owns its own database, unrelated domain regardless.
 -- =============================================================================
 
-CREATE SEQUENCE IF NOT EXISTS product.PRODUCT_CATEGORY_SEQ
+CREATE SEQUENCE IF NOT EXISTS ecommerce.PRODUCT_CATEGORY_SEQ
     START WITH 1
     INCREMENT BY 50
     NO MAXVALUE
     NO CYCLE;
 
-CREATE TABLE IF NOT EXISTS product.PRODUCT_CATEGORY (
+CREATE TABLE IF NOT EXISTS ecommerce.PRODUCT_CATEGORY (
     PRODUCT_CATEGORY_ID     INTEGER                         NOT NULL,
     NAME                    VARCHAR(100)                    NOT NULL,
     SLUG                    VARCHAR(100)                    NOT NULL,
@@ -35,19 +44,19 @@ CREATE TABLE IF NOT EXISTS product.PRODUCT_CATEGORY (
     CONSTRAINT UK_PRODUCT_CATEGORY_SLUG UNIQUE (SLUG)
 );
 
-ALTER SEQUENCE product.PRODUCT_CATEGORY_SEQ OWNED BY product.PRODUCT_CATEGORY.PRODUCT_CATEGORY_ID;
+ALTER SEQUENCE ecommerce.PRODUCT_CATEGORY_SEQ OWNED BY ecommerce.PRODUCT_CATEGORY.PRODUCT_CATEGORY_ID;
 
 -- =============================================================================
 -- PRODUCT
 -- =============================================================================
 
-CREATE SEQUENCE IF NOT EXISTS product.PRODUCT_SEQ
+CREATE SEQUENCE IF NOT EXISTS ecommerce.PRODUCT_SEQ
     START WITH 1
     INCREMENT BY 50
     NO MAXVALUE
     NO CYCLE;
 
-CREATE TABLE IF NOT EXISTS product.PRODUCT (
+CREATE TABLE IF NOT EXISTS ecommerce.PRODUCT (
     PRODUCT_ID              INTEGER                         NOT NULL,
     NAME                    VARCHAR(150)                    NOT NULL,
     DESCRIPTION             TEXT,
@@ -63,25 +72,25 @@ CREATE TABLE IF NOT EXISTS product.PRODUCT (
     CONSTRAINT PK_PRODUCT PRIMARY KEY (PRODUCT_ID),
     CONSTRAINT UK_PRODUCT_SLUG UNIQUE (SLUG),
     CONSTRAINT FK_PRODUCT_PRODUCT_CATEGORY FOREIGN KEY (PRODUCT_CATEGORY_ID)
-        REFERENCES product.PRODUCT_CATEGORY (PRODUCT_CATEGORY_ID)
+        REFERENCES ecommerce.PRODUCT_CATEGORY (PRODUCT_CATEGORY_ID)
 );
 
-ALTER SEQUENCE product.PRODUCT_SEQ OWNED BY product.PRODUCT.PRODUCT_ID;
+ALTER SEQUENCE ecommerce.PRODUCT_SEQ OWNED BY ecommerce.PRODUCT.PRODUCT_ID;
 
-CREATE INDEX IF NOT EXISTS IDX_PRODUCT_PRODUCT_CATEGORY ON product.PRODUCT (PRODUCT_CATEGORY_ID);
-CREATE INDEX IF NOT EXISTS IDX_PRODUCT_ACTIVE            ON product.PRODUCT (ACTIVE);
+CREATE INDEX IF NOT EXISTS IDX_PRODUCT_PRODUCT_CATEGORY ON ecommerce.PRODUCT (PRODUCT_CATEGORY_ID);
+CREATE INDEX IF NOT EXISTS IDX_PRODUCT_ACTIVE            ON ecommerce.PRODUCT (ACTIVE);
 
 -- =============================================================================
 -- PRODUCT_IMAGE
 -- =============================================================================
 
-CREATE SEQUENCE IF NOT EXISTS product.PRODUCT_IMAGE_SEQ
+CREATE SEQUENCE IF NOT EXISTS ecommerce.PRODUCT_IMAGE_SEQ
     START WITH 1
     INCREMENT BY 50
     NO MAXVALUE
     NO CYCLE;
 
-CREATE TABLE IF NOT EXISTS product.PRODUCT_IMAGE (
+CREATE TABLE IF NOT EXISTS ecommerce.PRODUCT_IMAGE (
     PRODUCT_IMAGE_ID         INTEGER                        NOT NULL,
     PRODUCT_ID               INTEGER                        NOT NULL,
     STORAGE_KEY              VARCHAR(255)                   NOT NULL,
@@ -95,12 +104,12 @@ CREATE TABLE IF NOT EXISTS product.PRODUCT_IMAGE (
     CONSTRAINT PK_PRODUCT_IMAGE PRIMARY KEY (PRODUCT_IMAGE_ID),
     CONSTRAINT UK_PRODUCT_IMAGE_PRODUCT_SORT_ORDER UNIQUE (PRODUCT_ID, SORT_ORDER),
     CONSTRAINT FK_PRODUCT_IMAGE_PRODUCT FOREIGN KEY (PRODUCT_ID)
-        REFERENCES product.PRODUCT (PRODUCT_ID)
+        REFERENCES ecommerce.PRODUCT (PRODUCT_ID)
 );
 
-ALTER SEQUENCE product.PRODUCT_IMAGE_SEQ OWNED BY product.PRODUCT_IMAGE.PRODUCT_IMAGE_ID;
+ALTER SEQUENCE ecommerce.PRODUCT_IMAGE_SEQ OWNED BY ecommerce.PRODUCT_IMAGE.PRODUCT_IMAGE_ID;
 
-CREATE INDEX IF NOT EXISTS IDX_PRODUCT_IMAGE_PRODUCT ON product.PRODUCT_IMAGE (PRODUCT_ID);
+CREATE INDEX IF NOT EXISTS IDX_PRODUCT_IMAGE_PRODUCT ON ecommerce.PRODUCT_IMAGE (PRODUCT_ID);
 
 -- =============================================================================
 -- PRODUCT_VARIANT
@@ -109,13 +118,13 @@ CREATE INDEX IF NOT EXISTS IDX_PRODUCT_IMAGE_PRODUCT ON product.PRODUCT_IMAGE (P
 -- constraint means a bug there can't silently oversell.
 -- =============================================================================
 
-CREATE SEQUENCE IF NOT EXISTS product.PRODUCT_VARIANT_SEQ
+CREATE SEQUENCE IF NOT EXISTS ecommerce.PRODUCT_VARIANT_SEQ
     START WITH 1
     INCREMENT BY 50
     NO MAXVALUE
     NO CYCLE;
 
-CREATE TABLE IF NOT EXISTS product.PRODUCT_VARIANT (
+CREATE TABLE IF NOT EXISTS ecommerce.PRODUCT_VARIANT (
     PRODUCT_VARIANT_ID        INTEGER                       NOT NULL,
     PRODUCT_ID                 INTEGER                      NOT NULL,
     SKU                         VARCHAR(64)                 NOT NULL,
@@ -132,19 +141,19 @@ CREATE TABLE IF NOT EXISTS product.PRODUCT_VARIANT (
     CONSTRAINT PK_PRODUCT_VARIANT PRIMARY KEY (PRODUCT_VARIANT_ID),
     CONSTRAINT UK_PRODUCT_VARIANT_SKU UNIQUE (SKU),
     CONSTRAINT FK_PRODUCT_VARIANT_PRODUCT FOREIGN KEY (PRODUCT_ID)
-        REFERENCES product.PRODUCT (PRODUCT_ID),
+        REFERENCES ecommerce.PRODUCT (PRODUCT_ID),
     CONSTRAINT CKC_PRODUCT_VARIANT_STOCK_NON_NEGATIVE CHECK (STOCK_QUANTITY >= 0),
     CONSTRAINT CKC_PRODUCT_VARIANT_RESERVED_WITHIN_STOCK
         CHECK (RESERVED_QUANTITY >= 0 AND RESERVED_QUANTITY <= STOCK_QUANTITY)
 );
 
-ALTER SEQUENCE product.PRODUCT_VARIANT_SEQ OWNED BY product.PRODUCT_VARIANT.PRODUCT_VARIANT_ID;
+ALTER SEQUENCE ecommerce.PRODUCT_VARIANT_SEQ OWNED BY ecommerce.PRODUCT_VARIANT.PRODUCT_VARIANT_ID;
 
-CREATE INDEX IF NOT EXISTS IDX_PRODUCT_VARIANT_PRODUCT ON product.PRODUCT_VARIANT (PRODUCT_ID);
+CREATE INDEX IF NOT EXISTS IDX_PRODUCT_VARIANT_PRODUCT ON ecommerce.PRODUCT_VARIANT (PRODUCT_ID);
 
 -- GIN index for JSONB containment queries (e.g. ATTRIBUTES @> '{"size":"M"}'), used for
 -- admin/service-layer attribute lookups directly against the write side.
-CREATE INDEX IF NOT EXISTS IDX_PRODUCT_VARIANT_ATTRIBUTES ON product.PRODUCT_VARIANT USING gin (ATTRIBUTES);
+CREATE INDEX IF NOT EXISTS IDX_PRODUCT_VARIANT_ATTRIBUTES ON ecommerce.PRODUCT_VARIANT USING gin (ATTRIBUTES);
 
 -- =============================================================================
 -- PRODUCT_SEARCH_VIEW
@@ -160,13 +169,13 @@ CREATE INDEX IF NOT EXISTS IDX_PRODUCT_VARIANT_ATTRIBUTES ON product.PRODUCT_VAR
 -- default_text_search_config GUC), which is what makes it legal in a generated column.
 -- =============================================================================
 
-CREATE SEQUENCE IF NOT EXISTS product.PRODUCT_SEARCH_VIEW_SEQ
+CREATE SEQUENCE IF NOT EXISTS ecommerce.PRODUCT_SEARCH_VIEW_SEQ
     START WITH 1
     INCREMENT BY 50
     NO MAXVALUE
     NO CYCLE;
 
-CREATE TABLE IF NOT EXISTS product.PRODUCT_SEARCH_VIEW (
+CREATE TABLE IF NOT EXISTS ecommerce.PRODUCT_SEARCH_VIEW (
     PRODUCT_SEARCH_VIEW_ID     INTEGER                       NOT NULL,
     PRODUCT_ID                  INTEGER                      NOT NULL,
     NAME                        VARCHAR(150)                 NOT NULL,
@@ -176,6 +185,9 @@ CREATE TABLE IF NOT EXISTS product.PRODUCT_SEARCH_VIEW (
     MIN_PRICE                   NUMERIC(12,2)                 NOT NULL,
     MAX_PRICE                   NUMERIC(12,2)                 NOT NULL,
     IN_STOCK                    BOOLEAN                       NOT NULL DEFAULT FALSE,
+    -- Nullable: a product can momentarily have zero images (right after creation, before any
+    -- are uploaded) — US-1.1 only requires showing *a* primary image when one exists.
+    PRIMARY_IMAGE_STORAGE_KEY   VARCHAR(255),
     SEARCH_TEXT                 TEXT                          NOT NULL,
     SEARCH_VECTOR                TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', SEARCH_TEXT)) STORED,
     AVAILABLE_ATTRIBUTES         JSONB                         NOT NULL DEFAULT '{}',
@@ -188,22 +200,22 @@ CREATE TABLE IF NOT EXISTS product.PRODUCT_SEARCH_VIEW (
     CONSTRAINT PK_PRODUCT_SEARCH_VIEW PRIMARY KEY (PRODUCT_SEARCH_VIEW_ID),
     CONSTRAINT UK_PRODUCT_SEARCH_VIEW_PRODUCT UNIQUE (PRODUCT_ID),
     CONSTRAINT FK_PRODUCT_SEARCH_VIEW_PRODUCT FOREIGN KEY (PRODUCT_ID)
-        REFERENCES product.PRODUCT (PRODUCT_ID)
+        REFERENCES ecommerce.PRODUCT (PRODUCT_ID)
 );
 
-ALTER SEQUENCE product.PRODUCT_SEARCH_VIEW_SEQ OWNED BY product.PRODUCT_SEARCH_VIEW.PRODUCT_SEARCH_VIEW_ID;
+ALTER SEQUENCE ecommerce.PRODUCT_SEARCH_VIEW_SEQ OWNED BY ecommerce.PRODUCT_SEARCH_VIEW.PRODUCT_SEARCH_VIEW_ID;
 
-CREATE INDEX IF NOT EXISTS IDX_PRODUCT_SEARCH_VIEW_CATEGORY ON product.PRODUCT_SEARCH_VIEW (PRODUCT_CATEGORY_ID);
+CREATE INDEX IF NOT EXISTS IDX_PRODUCT_SEARCH_VIEW_CATEGORY ON ecommerce.PRODUCT_SEARCH_VIEW (PRODUCT_CATEGORY_ID);
 
 -- Full-text relevance ranking (ts_rank against this).
-CREATE INDEX IF NOT EXISTS IDX_PRODUCT_SEARCH_VIEW_VECTOR ON product.PRODUCT_SEARCH_VIEW USING gin (SEARCH_VECTOR);
+CREATE INDEX IF NOT EXISTS IDX_PRODUCT_SEARCH_VIEW_VECTOR ON ecommerce.PRODUCT_SEARCH_VIEW USING gin (SEARCH_VECTOR);
 
 -- Trigram similarity for typo-tolerant matching — catches near-misses tsvector's exact
 -- token matching would miss (e.g. "sneaekr" still finding "sneaker").
-CREATE INDEX IF NOT EXISTS IDX_PRODUCT_SEARCH_VIEW_TRGM ON product.PRODUCT_SEARCH_VIEW USING gin (SEARCH_TEXT gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS IDX_PRODUCT_SEARCH_VIEW_TRGM ON ecommerce.PRODUCT_SEARCH_VIEW USING gin (SEARCH_TEXT gin_trgm_ops);
 
 -- JSONB containment for attribute filters (e.g. AVAILABLE_ATTRIBUTES @> '{"size":["M"]}').
-CREATE INDEX IF NOT EXISTS IDX_PRODUCT_SEARCH_VIEW_ATTRIBUTES ON product.PRODUCT_SEARCH_VIEW USING gin (AVAILABLE_ATTRIBUTES);
+CREATE INDEX IF NOT EXISTS IDX_PRODUCT_SEARCH_VIEW_ATTRIBUTES ON ecommerce.PRODUCT_SEARCH_VIEW USING gin (AVAILABLE_ATTRIBUTES);
 
 -- =============================================================================
 -- OUTBOX_EVENT
@@ -211,13 +223,13 @@ CREATE INDEX IF NOT EXISTS IDX_PRODUCT_SEARCH_VIEW_ATTRIBUTES ON product.PRODUCT
 -- read-model sync now; payment/webhook events and embedding re-index later).
 -- =============================================================================
 
-CREATE SEQUENCE IF NOT EXISTS product.OUTBOX_EVENT_SEQ
+CREATE SEQUENCE IF NOT EXISTS ecommerce.OUTBOX_EVENT_SEQ
     START WITH 1
     INCREMENT BY 50
     NO MAXVALUE
     NO CYCLE;
 
-CREATE TABLE IF NOT EXISTS product.OUTBOX_EVENT (
+CREATE TABLE IF NOT EXISTS ecommerce.OUTBOX_EVENT (
     OUTBOX_EVENT_ID          INTEGER                        NOT NULL,
     EVENT_TYPE               VARCHAR(100)                   NOT NULL,
     AGGREGATE_TYPE           VARCHAR(100)                   NOT NULL,
@@ -245,10 +257,10 @@ CREATE TABLE IF NOT EXISTS product.OUTBOX_EVENT (
     CONSTRAINT CKC_OUTBOX_EVENT_ATTEMPT_COUNT_NON_NEGATIVE CHECK (ATTEMPT_COUNT >= 0)
 );
 
-ALTER SEQUENCE product.OUTBOX_EVENT_SEQ OWNED BY product.OUTBOX_EVENT.OUTBOX_EVENT_ID;
+ALTER SEQUENCE ecommerce.OUTBOX_EVENT_SEQ OWNED BY ecommerce.OUTBOX_EVENT.OUTBOX_EVENT_ID;
 
 -- Partial index: the relay only ever queries WHERE STATUS = 'PENDING' (to claim the next
 -- batch to dispatch), so only that small tail needs to be indexed, not the whole
 -- ever-growing table. STATUS itself doesn't need to be in the index columns — every row
 -- in this partial index already satisfies the predicate — just the PK for ordered fetch.
-CREATE INDEX IF NOT EXISTS IDX_OUTBOX_EVENT_PENDING ON product.OUTBOX_EVENT (OUTBOX_EVENT_ID) WHERE STATUS = 'PENDING';
+CREATE INDEX IF NOT EXISTS IDX_OUTBOX_EVENT_PENDING ON ecommerce.OUTBOX_EVENT (OUTBOX_EVENT_ID) WHERE STATUS = 'PENDING';

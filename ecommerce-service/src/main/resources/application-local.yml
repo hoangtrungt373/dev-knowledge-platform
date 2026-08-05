@@ -1,0 +1,36 @@
+spring:
+  # Database — same Postgres instance/database as the monolith (dev-premier), different schema
+  # (ecommerce, not product). This is the "separate schema/DB, same Postgres container" option
+  # chosen for the extraction, not a fully separate Postgres instance (yet).
+  datasource:
+    url: jdbc:postgresql://localhost:5432/dev-premier
+    username: postgres
+    password: password
+    driver-class-name: org.postgresql.Driver
+
+  # JPA — looser than base for local dev, same convention as gateway's application-local.yml
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: false
+        highlight_sql: true
+
+# Logging
+logging:
+  level:
+    com.ttg.devknowledgeplatform.ecommerce: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+
+# Management — expose more endpoints locally
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env,configprops
+  endpoint:
+    health:
+      show-details: always

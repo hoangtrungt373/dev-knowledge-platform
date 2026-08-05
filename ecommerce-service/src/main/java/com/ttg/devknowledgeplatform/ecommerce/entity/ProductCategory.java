@@ -16,12 +16,14 @@ import lombok.NoArgsConstructor;
  *
  * <p>Deliberately named {@code ProductCategory} (table {@code PRODUCT_CATEGORY}), not
  * {@code Category}, to avoid colliding with {@code content-service}'s {@code Category} entity
- * (table {@code CATEGORY}) — both live in the shared {@code product} schema, and the two concepts
- * (product taxonomy vs. knowledge-base taxonomy) are unrelated. Flat by design: no parent/child
+ * (table {@code CATEGORY}) — the naming choice predates this module's extraction into its own
+ * database ({@code ecommerce} schema, separate from the monolith's shared {@code product} schema
+ * {@code content-service} still uses), and is kept regardless, since the two concepts (product
+ * taxonomy vs. knowledge-base taxonomy) are unrelated either way. Flat by design: no parent/child
  * hierarchy, unlike {@code content-service}'s {@code Category}.
  */
 @Entity
-@Table(name = "PRODUCT_CATEGORY", schema = "product")
+@Table(name = "PRODUCT_CATEGORY", schema = "ecommerce")
 @AttributeOverride(name = "id", column = @Column(name = "PRODUCT_CATEGORY_ID"))
 @Data
 @NoArgsConstructor

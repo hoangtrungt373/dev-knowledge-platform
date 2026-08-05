@@ -5,6 +5,7 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.ProductSearchView;
 import org.springframework.data.domain.Page;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
 /**
  * Public browse/search over the CQRS read model ({@code ProductSearchView}) — see that entity's
@@ -22,9 +23,12 @@ public interface ProductSearchService {
      * @param minPrice          optional lower price bound (overlap check against a product's variant range, US-1.4)
      * @param maxPrice          optional upper price bound (overlap check against a product's variant range, US-1.4)
      * @param inStockOnly       when {@code true}, excludes products with no variant in stock
+     * @param attributeFilters  optional attribute key/value filters (e.g. {@code {"size":"M","color":"Blue"}});
+     *                          combines with AND across keys against a product's {@code availableAttributes} (US-1.4)
      * @return a page of matching products, ranked by relevance when {@code q} is present
      */
     Page<ProductSearchView> search(
             int page, int size, Integer categoryId, String q,
-            BigDecimal minPrice, BigDecimal maxPrice, boolean inStockOnly);
+            BigDecimal minPrice, BigDecimal maxPrice, boolean inStockOnly,
+            Map<String, String> attributeFilters);
 }

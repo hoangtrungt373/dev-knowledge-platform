@@ -27,7 +27,7 @@ import lombok.ToString;
 @Entity
 @Table(
         name = "PRODUCT_IMAGE",
-        schema = "product",
+        schema = "ecommerce",
         uniqueConstraints = @UniqueConstraint(name = "UK_PRODUCT_IMAGE_PRODUCT_SORT_ORDER", columnNames = {"PRODUCT_ID", "SORT_ORDER"})
 )
 @AttributeOverride(name = "id", column = @Column(name = "PRODUCT_IMAGE_ID"))

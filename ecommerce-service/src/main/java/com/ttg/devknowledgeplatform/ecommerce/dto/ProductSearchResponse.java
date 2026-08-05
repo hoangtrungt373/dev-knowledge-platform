@@ -23,5 +23,7 @@ public class ProductSearchResponse {
     private BigDecimal minPrice;
     private BigDecimal maxPrice;
     private boolean inStock;
+    /** The product's first gallery image by sort order (US-1.1); {@code null} if it has none yet. */
+    private String primaryImageStorageKey;
     private Map<String, List<String>> availableAttributes;
 }
