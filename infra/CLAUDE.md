@@ -49,6 +49,12 @@ Module-local guidance for `infra`. Read alongside the root `CLAUDE.md`.
   (e.g. `content-service`'s `QuestionAnswerSeeder`, `social-service`'s `FriendGraphSeeder`/
   `DmThreadSeeder`, which each persist more than one entity per unit of work) implements its own
   `seed()` instead of extending this.
+- `security/RsaKeyUtils` — parses PKCS#8/X.509 PEM key material (a Spring `Resource`) into
+  `PrivateKey`/`PublicKey`. Moved here because `identity-service`'s `JwtTokenProvider` (needs both
+  keys, to sign and verify the RS256 tokens it issues) and `ecommerce-service`'s `JwtVerifier`
+  (needs only the public key, to verify tokens issued elsewhere) are independent siblings that
+  can't depend on each other — same reasoning as `StorageService`/`CacheNames` below. See
+  `docs/CHANGELOG.md`'s `[Unreleased]` entry for the HS512→RS256 switch this supports.
 - `service/seed/Seeder` — documentation-only marker interface (`int seed()`) every seeder in the
   reactor implements, `CsvSeeder<T>` included — same "Find Implementations" purpose as this
   module's own `ApplicationEventHandler` marker for event handlers. **Not** used for polymorphic

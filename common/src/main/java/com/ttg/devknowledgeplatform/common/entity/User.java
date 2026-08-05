@@ -107,4 +107,12 @@ public class User extends AbstractEntity {
     // "already seeded" across re-runs without depending on EMAIL/USERNAME staying unchanged.
     @Column(name = "SEED_ID", length = 100)
     private String seedId;
+
+    // The Keycloak realm's subject (`sub` claim) this row is JIT-provisioned from/linked to.
+    // Null until the owner's first Keycloak-authenticated request (or a migration backfill).
+    // PROVIDER/PROVIDER_ID stay as inert historical columns rather than being reused for this —
+    // see Liquibase DKP-0025's comment for why.
+    @Size(max = 255)
+    @Column(name = "KEYCLOAK_SUBJECT_ID", length = 255, unique = true)
+    private String keycloakSubjectId;
 }

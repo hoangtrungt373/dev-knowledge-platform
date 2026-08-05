@@ -11,28 +11,14 @@ spring:
       max-file-size: 5MB
       max-request-size: 10MB
 
-  # OAuth 2.0
+  # OAuth2/OIDC — Keycloak is the identity provider now (hosted login page, Google/Facebook
+  # brokered inside Keycloak itself, not configured here). This app only ever verifies bearer
+  # tokens against Keycloak's JWKS — see oauth2.resourceserver below.
   security:
     oauth2:
-      client:
-        registration:
-          google:
-            scope: openid,profile,email
-            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
-          facebook:
-            scope: email,public_profile
-            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
-        provider:
-          google:
-            authorization-uri: https://accounts.google.com/o/oauth2/auth
-            token-uri: https://oauth2.googleapis.com/token
-            user-info-uri: https://www.googleapis.com/oauth2/v2/userinfo
-            user-name-attribute: sub
-          facebook:
-            authorization-uri: https://www.facebook.com/v18.0/dialog/oauth
-            token-uri: https://graph.facebook.com/v18.0/oauth/access_token
-            user-info-uri: https://graph.facebook.com/v18.0/me?fields=id,name,email,picture
-            user-name-attribute: id
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/dev-knowledge-platform}
 
   # Liquibase — disabled by default, enabled per profile
   liquibase:
@@ -64,19 +50,6 @@ spring:
           min-idle: ${REDIS_POOL_MIN_IDLE:0}
           max-wait: ${REDIS_POOL_MAX_WAIT:-1ms}
 
-  # Mail
-  mail:
-    host: ${MAIL_HOST:localhost}
-    port: ${MAIL_PORT:1025}
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
-    properties:
-      mail:
-        smtp:
-          auth: ${MAIL_SMTP_AUTH:false}
-          starttls:
-            enable: ${MAIL_SMTP_STARTTLS:false}
-
 # Server
 server:
   port: ${SERVER_PORT:8080}
@@ -93,21 +66,10 @@ server:
       # Must be true for TomcatMetricsBinder to register tomcat.threads.* metrics at /actuator/metrics.
       enabled: true
 
-# JWT
-jwt:
-  secret: ${JWT_SECRET:change-me-in-production-use-at-least-64-bytes-long-secret-key-here}
-  expiration: ${JWT_EXPIRATION:86400000}
-  refresh:
-    expiration: ${JWT_REFRESH_EXPIRATION:604800000}
-
 # Application
 app:
   frontend:
     url: ${FRONTEND_URL:http://localhost:3000}
-  mail:
-    from: ${MAIL_FROM:no-reply@devknowledge.local}
-    otp:
-      expiration-minutes: ${OTP_EXPIRATION_MINUTES:10}
   storage:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
     access-key: ${MINIO_ACCESS_KEY:minioadmin}
@@ -291,5 +253,3 @@ management:
 # Cache
 cache:
   default-ttl: ${CACHE_DEFAULT_TTL:PT5M}
-  ttl:
-    state-tokens: ${CACHE_TTL_STATE_TOKENS:PT5M}

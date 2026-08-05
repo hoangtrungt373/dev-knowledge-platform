@@ -1,0 +1,133 @@
+{
+  "realm": "dev-knowledge-platform",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "verifyEmail": true,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "smtpServer": {
+    "host": "mailpit",
+    "port": "1025",
+    "from": "no-reply@devknowledge.local",
+    "fromDisplayName": "Dev Knowledge Platform",
+    "auth": "false",
+    "ssl": "false",
+    "starttls": "false"
+  },
+  "roles": {
+    "realm": [
+      {
+        "name": "USER",
+        "description": "Standard authenticated user — every account gets this by default."
+      },
+      {
+        "name": "ADMIN",
+        "description": "Administrative access (mirrors the app's own UserRole.ADMIN)."
+      },
+      {
+        "name": "default-roles-dev-knowledge-platform",
+        "description": "${role_default-roles}",
+        "composite": true,
+        "composites": {
+          "realm": ["USER"]
+        }
+      }
+    ]
+  },
+  "defaultRole": {
+    "name": "default-roles-dev-knowledge-platform",
+    "description": "${role_default-roles}",
+    "composite": true,
+    "clientRole": false
+  },
+  "clients": [
+    {
+      "clientId": "gui",
+      "name": "Dev Knowledge Platform SPA",
+      "description": "Public SPA client — Authorization Code + PKCE only, no client secret.",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:3000/auth/callback"
+      ],
+      "webOrigins": ["http://localhost:3000"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    },
+    {
+      "clientId": "diagnostic-cli",
+      "name": "Diagnostic CLI (dev/test only)",
+      "description": "Dev/test-only diagnostic client (password grant) for smoke-testing token issuance. Not used by any application code — see docker/keycloak/README.md.",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": []
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "google",
+      "providerId": "google",
+      "enabled": false,
+      "trustEmail": true,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "REPLACE_WITH_GOOGLE_CLIENT_ID",
+        "clientSecret": "REPLACE_WITH_GOOGLE_CLIENT_SECRET",
+        "defaultScope": "openid profile email",
+        "syncMode": "IMPORT"
+      }
+    },
+    {
+      "alias": "facebook",
+      "providerId": "facebook",
+      "enabled": false,
+      "trustEmail": true,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "REPLACE_WITH_FACEBOOK_CLIENT_ID",
+        "clientSecret": "REPLACE_WITH_FACEBOOK_CLIENT_SECRET",
+        "defaultScope": "email public_profile",
+        "syncMode": "IMPORT"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "kc-smoke-test@devknowledge.local",
+      "email": "kc-smoke-test@devknowledge.local",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Smoke",
+      "lastName": "Test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "smoke-test-password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["USER", "ADMIN"]
+    }
+  ]
+}

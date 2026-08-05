@@ -36,7 +36,8 @@ services:
     image: axllent/mailpit:latest
     container_name: dev-premier-mailpit
     ports:
-      - "1025:1025"   # SMTP — Spring sends emails here
+      - "1025:1025"   # SMTP — Keycloak sends verification/reset emails here now (see the keycloak
+                      # service's realm config); no Spring app sends email anymore
       - "8025:8025"   # Web UI — open in browser to read emails
     environment:
       MP_MAX_MESSAGES: 100
@@ -58,6 +59,48 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Identity provider — dev-only mode (start-dev), backed by the same Postgres instance as every
+  # other module (own `keycloak` schema, not a second database), same convention
+  # ecommerce-service's extraction established. Port 8180, not 8080, to stay clear of gateway's
+  # own port. Realm config is imported from a checked-in export on every boot (--import-realm)
+  # rather than clicked together by hand each time — see docker/keycloak/realm-export.json. Import
+  # only applies if the realm doesn't already exist in the `keycloak` schema; re-export the file
+  # after any hand-edit in the Admin Console, and note that a changed export won't reapply against
+  # an existing volume without `docker compose down -v` first.
+  #
+  # Schema note: `product`/`ecommerce` are each created by their owning module's own first
+  # Liquibase changeset. Keycloak's own Liquibase migration instead assumes its schema already
+  # exists and fails otherwise — bootstrapped here by gateway's own DKP-0024 changeset (run via
+  # `dev-knowledge-platform-liquibase.yml`), reusing that same mechanism rather than a bespoke
+  # docker-compose init service. Because Liquibase is a separate, manual step in this project's
+  # workflow, keycloak may fail to boot (schema doesn't exist yet) on a first-ever `up` before that
+  # migration has run — `restart: on-failure` below means it recovers automatically on its own next
+  # restart attempt once the schema exists, no manual restart needed.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: dev-premier-keycloak
+    command: start-dev --import-realm
+    restart: on-failure
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/dev-premier
+      KC_DB_SCHEMA: keycloak
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: password
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: "8180"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./docker/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:

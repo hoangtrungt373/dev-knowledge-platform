@@ -3,53 +3,36 @@ package com.ttg.devknowledgeplatform.identity.security.service;
 import java.util.Optional;
 
 import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.common.enums.UserProvider;
 import com.ttg.devknowledgeplatform.common.enums.UserStatus;
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
-import com.ttg.devknowledgeplatform.identity.dto.OAuth2UserInfo;
 
 /**
- * Manages the lifecycle of {@link User} accounts for both local and OAuth2 sign-in flows.
+ * Manages the lifecycle of {@link User} accounts.
  *
  * <p>Lookup methods come in two flavours: throwing variants (no {@code Optional}) that
  * raise a {@code ResourceNotFoundException} when the user is absent, and {@code Optional}
  * variants for call sites where absence is a handled case rather than an error.
+ *
+ * <p>Login/registration/password/OTP-email are no longer this module's concern — Keycloak owns
+ * that whole lifecycle now (see {@code docs/CHANGELOG.md}'s Keycloak migration entry). This
+ * service's role narrowed to: resolving "the acting user" for a request, editable-profile updates,
+ * and {@link #findOrCreateFromKeycloak}, which keeps the local row in sync with Keycloak.
  */
 public interface UserService {
 
     /**
-     * Creates a new user from an OAuth2 provider login.
+     * Resolves the local {@link User} row for a verified Keycloak identity, creating it on first
+     * sight (JIT provisioning) or refreshing its denormalized fields if they've drifted from the
+     * token's claims.
      *
-     * @param userInfo the normalised profile data extracted from the provider
-     * @param provider the OAuth2 provider (e.g. {@code GOOGLE})
-     * @return the newly persisted {@link User}
+     * <p>Called on every authenticated request (it has to resolve the local numeric PK for
+     * {@code @CurrentUserId} and every {@code User} foreign key regardless), so implementations
+     * should only write when something actually changed, not unconditionally on every call.
+     *
+     * @param info the claims extracted from a verified Keycloak access token
+     * @return the linked (or newly created) {@link User}
      */
-    User registerOAuth2User(OAuth2UserInfo userInfo, UserProvider provider);
-
-    /**
-     * Synchronises a returning OAuth2 user's profile with the latest data from the provider.
-     *
-     * <p>Only fields that may change between logins (e.g. name, avatar URL) are updated.
-     *
-     * @param existingUser the user record already in the database
-     * @param userInfo     fresh profile data from the provider
-     * @return the updated and saved {@link User}
-     */
-    User updateOAuth2User(User existingUser, OAuth2UserInfo userInfo);
-
-    /**
-     * Creates a new user with email/password credentials.
-     *
-     * <p>The password is stored hashed; the account is initially unverified until
-     * the user completes OTP email verification.
-     *
-     * @param email       the registration email address
-     * @param firstName   the user's first name
-     * @param lastName    the user's last name
-     * @param rawPassword the plaintext password (hashed before persisting)
-     * @return the newly persisted {@link User}
-     */
-    User registerLocalUser(String email, String firstName, String lastName, String rawPassword);
+    User findOrCreateFromKeycloak(KeycloakUserInfo info);
 
     /**
      * Returns the user with the given email address, throwing if not found.
@@ -100,18 +83,6 @@ public interface UserService {
     Optional<User> findByUserUuidOptional(String userUuid);
 
     /**
-     * Looks up a user by their OAuth2 provider and provider-issued subject identifier.
-     *
-     * <p>Used during the OAuth2 login flow to detect returning users.
-     *
-     * @param provider   the OAuth2 provider
-     * @param providerId the subject identifier issued by the provider
-     * @return the matching {@link User}
-     * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException if no match is found
-     */
-    User findByProviderAndProviderId(UserProvider provider, String providerId);
-
-    /**
      * Updates the online/offline presence status of a user.
      *
      * @param userId the surrogate primary key of the user
@@ -141,14 +112,4 @@ public interface UserService {
      * @return the updated and saved {@link User}
      */
     User updateAvatar(String email, String objectKey);
-
-    /**
-     * Marks the user's email as verified and activates the account.
-     *
-     * <p>Called after a successful OTP verification during local registration.
-     *
-     * @param email the email address of the user to activate
-     * @return the updated and saved {@link User}
-     */
-    User enableUser(String email);
 }

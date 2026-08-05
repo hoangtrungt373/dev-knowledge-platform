@@ -1,16 +1,4 @@
 spring:
-  # OAuth 2.0 — client credentials must be set via env vars or IDE run config
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            client-id: ${GOOGLE_CLIENT_ID}
-            client-secret: ${GOOGLE_CLIENT_SECRET}
-          facebook:
-            client-id: ${FACEBOOK_CLIENT_ID:your-facebook-client-id}
-            client-secret: ${FACEBOOK_CLIENT_SECRET:your-facebook-client-secret}
-
   # Database
   datasource:
     url: jdbc:postgresql://localhost:5432/dev-premier

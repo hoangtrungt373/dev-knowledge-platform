@@ -33,6 +33,8 @@ public interface UserRepository extends JpaRepository<User, Integer>, JpaSpecifi
 
     Optional<User> findBySeedId(String seedId);
 
+    Optional<User> findByKeycloakSubjectId(String keycloakSubjectId);
+
     boolean existsByEmail(String email);
 
     boolean existsByUsername(String username);

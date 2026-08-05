@@ -3,24 +3,17 @@ package com.ttg.devknowledgeplatform.ws;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import java.time.Instant;
-import java.util.Date;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.stomp.StompSession;
 
 import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.identity.security.jwt.AccessTokenClaims;
 import com.ttg.devknowledgeplatform.social.dto.messaging.DmMessageResponse;
 import com.ttg.devknowledgeplatform.social.dto.messaging.SendMessageRequest;
 import com.ttg.devknowledgeplatform.social.dto.messaging.WsErrorResponse;
-
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 
 /**
  * Integration test for {@code DmMessagingController}, run against the real STOMP broker assembled
@@ -31,9 +24,6 @@ class DmMessagingStompIntegrationTest extends AbstractStompIntegrationTest {
 
     private static final String DM_QUEUE = "/user/queue/dms";
     private static final String ERROR_QUEUE = "/user/queue/errors";
-
-    @Value("${jwt.secret}")
-    private String jwtSecret;
 
     @Test
     void sendMessage_deliversToBothParticipants_whenFriends() throws Exception {
@@ -140,22 +130,6 @@ class DmMessagingStompIntegrationTest extends AbstractStompIntegrationTest {
         WsErrorResponse error = errorQueue.poll(5, TimeUnit.SECONDS);
         assertThat(error).isNotNull();
         assertThat(error.errorCode()).isEqualTo("USER_001");
-    }
-
-    /** Manually signs a token whose expiry is already in the past — {@code JwtTokenProvider}'s own
-     *  {@code generateToken} always uses the live {@code jwt.expiration} property, so it can't produce
-     *  an already-expired token; this reuses {@link AccessTokenClaims}'s claim shape instead of
-     *  duplicating it. */
-    private String buildExpiredAccessToken(User user) {
-        AccessTokenClaims claims = AccessTokenClaims.from(user);
-        Instant now = Instant.now();
-        return Jwts.builder()
-                .claims(claims.toClaimsMap())
-                .subject(user.getEmail())
-                .issuedAt(Date.from(now.minusSeconds(600)))
-                .expiration(Date.from(now.minusSeconds(300)))
-                .signWith(Keys.hmacShaKeyFor(jwtSecret.getBytes()), Jwts.SIG.HS512)
-                .compact();
     }
 
     /** STOMP SUBSCRIBE is fire-and-forget from the client's side; give the broker a moment to

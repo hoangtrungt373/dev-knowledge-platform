@@ -138,9 +138,10 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
 │   │                                    moved here from gateway (named api at the time) alongside
 │   │                                    StorageService below
 │   ├── cache/{CacheNames,CacheTtlProperties}.java — Redis cache-name constants + app.cache.* TTL
-│   │                                    binding; shared by `identity-service`'s `StateTokenServiceImpl`
-│   │                                    and `gateway`'s `RedisCacheConfig`, two modules that can't
-│   │                                    depend on each other
+│   │                                    binding, read by `gateway`'s `RedisCacheConfig`. Originally
+│   │                                    moved here because `identity-service`'s (now-deleted)
+│   │                                    `StateTokenServiceImpl` needed it too — see the Keycloak
+│   │                                    migration entry in `docs/CHANGELOG.md`
 │   └── thread/{AsyncEventThreadPoolConfig,AsyncEventThreadPoolProperties}.java — the
 │                                        asyncEventExecutor bean (app.threads.async-event.*); moved
 │                                        here from gateway since this module's own event/ framework
@@ -400,7 +401,8 @@ directly — no module-local wrapper repository needed, since `UserRepository` a
 `common` and extends `JpaSpecificationExecutor<User>` (for `UserSpecification` above). STOMP transport
 wiring (`WebSocketConfig`, `StompAuthChannelInterceptor`, `CurrentUserIdMessageArgumentResolver`) stays in
 `gateway` — edge/transport infra, not a `social-service` concern, same split as `SecurityConfig`/
-`JwtAuthenticationFilter` staying in `gateway` while `identity-service` owns the actual auth business logic.
+`KeycloakJwtAuthenticationConverter` staying in `gateway` while `identity-service` owns the actual
+JIT-provisioning business logic (`UserService.findOrCreateFromKeycloak`).
 
 `GroupService` and `DmService` are deliberately two services, not one — they gate access differently
 (open-add + role checks vs. friend-required) and share no entities, so combining them would mix two
@@ -744,58 +746,55 @@ Category's).
 
 ## identity-service
 
+Keycloak now owns login/registration/password/OTP/OAuth2-brokering entirely (see
+`docs/CHANGELOG.md`'s Keycloak migration entries) — this module narrowed to JIT-syncing a local
+`User` row from a verified Keycloak identity, plus the authenticated user's own profile.
+
 ```
 identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
 ├── api/
-│   ├── OAuth2Api.java                 — /api/v1/auth/**: OAuth2 redirect, local login/register/OTP flows,
-│   │                                     state-token exchange, refresh, logout, current-user retrieval
+│   ├── AuthApi.java                   — GET /api/v1/auth/user ONLY (renamed from OAuth2Api once
+│   │                                     every other endpoint on it was deleted — Keycloak's own
+│   │                                     /userinfo doesn't cover this app's avatar/username shape)
 │   ├── UserApi.java                   — PUT /me, POST /me/avatar ONLY — pure profile mutation. GET
 │   │   │                                 /public/{userUuid} and GET /search moved to `social-service`'s
 │   │   │                                 own `UserApi` instead (see that section) since they need
 │   │   │                                 `FriendService` for relationship enrichment, and this module
 │   │   │                                 must stay a pure `common`+`infra` leaf
-│   │   └── impl/                      — OAuth2Controller / UserController
+│   │   └── impl/                      — AuthController / UserController
 ├── mapper/
 │   └── UserMapper.java                — entity → dto/UserInfoResponse
 ├── dto/
-│   ├── RegisterRequest.java / UserInfoResponse.java
-│   ├── {Google,Facebook}OAuth2UserInfo.java / OAuth2UserInfo.java / OAuth2UserInfoFactory.java —
-│   │   per-provider OAuth2 attribute-map parsing
-│   ├── auth/                          — ExchangeStateRequest, LoginRequest/Response, LogoutRequest,
-│   │                                    RefreshTokenRequest, RegisterResponse, ResendOtpRequest,
-│   │                                    TokenResponse, VerifyOtpRequest
+│   ├── UserInfoResponse.java
 │   └── user/UpdateProfileRequest.java
 ├── service/seed/UserSeeder.java       — data/csv/users.csv (file itself stays under `gateway`'s
-│                                        resources); identity by seedId; extends infra's CsvSeeder;
-│                                        moved in from `gateway` alongside `PasswordEncoder` below,
-│                                        which it uses to hash the shared demo password every
-│                                        seeded account gets. Writes directly via common's
-│                                        UserRepository, not UserService, same reasoning as every
-│                                        other seeder in the reactor. `gateway`'s DataSeedingRunner
-│                                        imports it across the module boundary to run it in order
-└── security/
-    ├── JwtTokenProvider.java          — HMAC sign/verify/refresh; issues access + refresh tokens
-    ├── PasswordEncoderConfig.java     — @Bean PasswordEncoder (BCrypt); the ONE place in the whole
-    │                                    reactor this bean is defined — UserSeeder above uses it
-    │                                    directly now (same module); don't add a second one anywhere else
-    ├── jwt/                           — TokenClaims (sealed interface) + AccessTokenClaims/RefreshTokenClaims
-    ├── handler/OAuth2LoginSuccessHandler.java — issues JWTs + stores them in Redis via StateTokenService
-    │                                    on successful OAuth2 login; wired into `gateway`'s SecurityConfig
-    │                                    across the module boundary
-    └── service/                       — UserService/Impl (registration, password hashing, OTP-gated
-        │                                activation, provider linking), CustomOAuth2UserService (non-OIDC
-        │                                providers e.g. Facebook), CustomOidcUserService (OIDC e.g. Google),
-        │                                RefreshTokenBlacklistService/Impl (Redis), StateTokenService/Impl
-        │                                (Redis; OAuth2 state-token → JWT handoff)
-        └── (EmailService/OtpService also live at identity/service/ — OTP delivery)
+│                                        resources); identity by seedId; extends infra's CsvSeeder.
+│                                        Writes directly via common's UserRepository, not UserService,
+│                                        same reasoning as every other seeder in the reactor.
+│                                        `gateway`'s DataSeedingRunner imports it across the module
+│                                        boundary to run it in order
+└── security/service/                  — UserService/Impl, narrowed to findOrCreateFromKeycloak
+                                          (KeycloakUserInfo carrier record, same package — the
+                                          JIT-provisioning entry point gateway's
+                                          KeycloakJwtAuthenticationConverter calls on every
+                                          authenticated request), resolveCurrentUser, findByEmail/
+                                          findByUserUuid(Optional)/findById, updateStatus,
+                                          updateProfile, updateAvatar
 ```
 
-`gateway`'s `SecurityConfig`/`JwtAuthenticationFilter`/`WebSocketConfig`/`StompAuthChannelInterceptor`
-inject `JwtTokenProvider` and the `security.jwt.*` claim types from here across the module boundary —
-those stay in `gateway` because they're transport-edge wiring (the security filter chain, STOMP CONNECT
-authentication), not auth business logic. `CacheNames`/`CacheTtlProperties` (Redis TTL config, needed by
-`StateTokenServiceImpl` here and `gateway`'s `RedisCacheConfig`) live in `infra`, not either module —
-same "two siblings, shared utility" reasoning as `StorageService`.
+**Deleted outright** (all superseded by Keycloak): `security/JwtTokenProvider`,
+`security/jwt/{TokenClaims,AccessTokenClaims,RefreshTokenClaims}`, `security/PasswordEncoderConfig`,
+`security/service/{CustomOAuth2UserService,CustomOidcUserService}`,
+`security/handler/OAuth2LoginSuccessHandler`, `security/service/StateTokenService`(`Impl`),
+`security/service/RefreshTokenBlacklistService`(`Impl`), `service/{OtpService,EmailService}`(`Impl`),
+every `dto/auth/*` type, `dto/RegisterRequest`,
+`dto/{OAuth2UserInfo,GoogleOAuth2UserInfo,FacebookOAuth2UserInfo,OAuth2UserInfoFactory}`.
+
+`gateway`'s `SecurityConfig`/`KeycloakJwtAuthenticationConverter`/`StompAuthChannelInterceptor` call
+into `identity-service`'s `UserService.findOrCreateFromKeycloak` across the module boundary — the
+JIT-provisioning logic itself stays here (auth business logic), while token verification
+(`JwtDecoder`, auto-configured from `issuer-uri`) and the security filter chain stay in `gateway`
+(transport-edge wiring).
 
 ---
 
@@ -876,9 +875,9 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │                                        default PT5S); @EnableScheduling lives on this module's
 │                                        own EcommerceServiceApplication now
 ├── security/                    — this app's own filter chain, independent of gateway's
-│   ├── JwtVerifier.java             — verifies (never issues) HS512 tokens via the shared
-│   │                                    jwt.secret; same signing mechanism identity-service uses
-│   │                                    to issue them, so a token from there verifies here
+│   ├── JwtVerifier.java             — verifies (never issues) RS256 tokens via the public key at
+│   │                                    jwt.public-key-location (infra's RsaKeyUtils); this service
+│   │                                    never holds the private key identity-service signs with
 │   ├── JwtAuthenticationFilter.java — OncePerRequestFilter; builds a CustomOAuth2User principal
 │   │                                    from verified claims, mirrors gateway's filter shape
 │   └── SecurityConfig.java          — /api/v1/public/** permitAll, /api/v1/admin/** hasRole(ADMIN),
@@ -991,25 +990,38 @@ gateway/src/main/java/com/ttg/devknowledgeplatform/
 ├── (no event/ package — every listener moved into the module that owns the event it reacts to:
 │    ContentPublishedEventListener → ai-service, FriendRequestSentEventListener/
 │    FriendRequestAcceptedEventListener → social-service; none ever had a gateway-specific dependency)
-├── security/                         — JWT verification + OAuth2/STOMP transport wiring (edge concerns);
-│   │                                    the actual JWT issuance/OAuth2 business logic lives in
-│   │                                    identity-service — see that section
-│   ├── SecurityConfig.java           — JWT + OAuth2 filter chain; injects identity-service's
-│   │                                    CustomOAuth2UserService/CustomOidcUserService/OAuth2LoginSuccessHandler
+├── security/                         — OAuth2-resource-server verification + STOMP transport wiring
+│   │                                    (edge concerns); Keycloak is the identity provider — this
+│   │                                    app never issues tokens, only verifies them; JIT-provisioning
+│   │                                    business logic (finding/creating the local User row) lives
+│   │                                    in identity-service's UserService — see that section
+│   ├── SecurityConfig.java           — .oauth2ResourceServer(jwt -> ...) verifying bearer tokens
+│   │                                    against Keycloak's JWKS (spring.security.oauth2.
+│   │                                    resourceserver.jwt.issuer-uri); no .oauth2Login() anymore
+│   ├── KeycloakRealmRoleConverter.java — Converter<Jwt, Collection<GrantedAuthority>>; maps the
+│   │                                    token's realm_access.roles claim to ROLE_* authorities —
+│   │                                    Spring's default converter only reads a flat scope claim
+│   ├── KeycloakJwtAuthenticationConverter.java — Converter<Jwt, AbstractAuthenticationToken>; the
+│   │                                    JIT-provisioning glue — calls identity-service's
+│   │                                    UserService.findOrCreateFromKeycloak, builds the same
+│   │                                    CustomOAuth2User principal shape every call site expects.
+│   │                                    Rejects a refresh token presented as a bearer token via its
+│   │                                    typ claim. Shared by both the REST filter chain (above) and
+│   │                                    STOMP CONNECT (below) — one JIT-provisioning path, not two
 │   ├── CorsConfig.java / JsonAuthenticationEntryPoint.java / CurrentUserResolver.java
-│   ├── JwtAuthenticationFilter.java   — verifies bearer tokens via identity-service's JwtTokenProvider,
-│   │                                    populates common.dto.CustomOAuth2User on the SecurityContext
 │   ├── WebSocketConfig.java           — @EnableWebSocketMessageBroker; registers /ws with NO SockJS
 │   │                                    fallback (real handshake, not an emulated transport); simple
 │   │                                    broker on /topic + /queue; /app client-send prefix; wires
 │   │                                    StompAuthChannelInterceptor + CurrentUserIdMessageArgumentResolver;
 │   │                                    imports GroupMessagingController/DmMessagingController from
 │   │                                    social-service's social.api.impl package
-│   └── StompAuthChannelInterceptor.java — CONNECT: authenticates the JWT passed as a STOMP
-│                                          Authorization header (handshake itself is permitAll —
-│                                          browsers can't set headers on the handshake request),
-│                                          reusing identity-service's JwtTokenProvider the same way
-│                                          JwtAuthenticationFilter does for REST. SUBSCRIBE: authorizes
+│   └── StompAuthChannelInterceptor.java — CONNECT: decodes the JWT passed as a STOMP Authorization
+│                                          header (handshake itself is permitAll — browsers can't set
+│                                          headers on the handshake request) via an injected
+│                                          JwtDecoder (Spring's resource-server auto-config, no manual
+│                                          key handling), then reuses
+│                                          KeycloakJwtAuthenticationConverter.convert(jwt) — the same
+│                                          JIT-provisioning path REST uses. SUBSCRIBE: authorizes
 │                                          /topic/channels/{id} via social-service's GroupService.isChannelMember
 │                                          — the simple broker has no per-destination ACL of its own. DMs
 │                                          need no equivalent check (convertAndSendToUser's private queue

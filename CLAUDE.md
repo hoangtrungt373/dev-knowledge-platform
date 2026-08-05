@@ -84,7 +84,7 @@ one-directional data need on an existing sibling, that sibling too) — rather t
 # Run a single test class
 ./mvnw -pl social-service -Dtest=FriendServiceImplTest test
 
-# Start infrastructure (PostgreSQL pgvector, Redis, MinIO, Mailpit)
+# Start infrastructure (PostgreSQL pgvector, Redis, MinIO, Mailpit, Keycloak)
 docker-compose -f dev-knowledge-platform-docker-compose.yml up -d
 
 # Run Liquibase migrations
@@ -140,7 +140,7 @@ admin-triggered (`ai-service`'s `IngestionController`), not automatic on publish
 
 ### Security
 
-JWT + OAuth2 (Google). Flow: OAuth2 state stored in Redis (5 min TTL) as CSRF protection → token exchange → JWT issued. `JwtTokenProvider` (`identity-service`) handles sign/verify. All protected routes require a valid JWT; role-based access via `UserRole` enum. Current-user resolution patterns: `gateway/CLAUDE.md`.
+Keycloak is the identity provider (hosted login page, Authorization Code + PKCE; Google/Facebook brokered inside Keycloak itself). `gateway` is a pure OAuth2 resource server — it only ever verifies bearer tokens against Keycloak's JWKS (`spring.security.oauth2.resourceserver.jwt.issuer-uri`), never issues them. `KeycloakJwtAuthenticationConverter` (`gateway`) JIT-provisions/refreshes the local `User` row from the token's claims via `identity-service`'s `UserService.findOrCreateFromKeycloak`, so `@CurrentUserId`/`@AuthenticationPrincipal CustomOAuth2User` keep resolving to the same local numeric PK every other module's FKs/queries depend on. Role-based access via `UserRole` enum, sourced from the token's `realm_access.roles` claim. This is a multi-phase migration in progress — see `docs/CHANGELOG.md`'s `[Unreleased]` entries for what's landed vs. still pending (`ecommerce-service`'s equivalent switch, the `gui` rework). Current-user resolution patterns: `gateway/CLAUDE.md`.
 
 ## Database Conventions
 

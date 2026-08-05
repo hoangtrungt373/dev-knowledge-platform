@@ -1,19 +1,8 @@
 spring:
-  # OAuth2ClientAutoConfiguration requires a non-blank client-id/secret for every declared
-  # registration, even though the STOMP integration tests never drive an OAuth2 login flow.
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            client-id: test-google-client-id
-            client-secret: test-google-client-secret
-          facebook:
-            client-id: test-facebook-client-id
-            client-secret: test-facebook-client-secret
-
-  # Real datasource/redis/minio coordinates are injected per-test-run by
-  # AbstractStompIntegrationTest's @DynamicPropertySource (Testcontainers-assigned ports).
+  # Real datasource/redis/minio/keycloak coordinates are injected per-test-run by
+  # AbstractStompIntegrationTest's @DynamicPropertySource (Testcontainers-assigned ports) —
+  # including spring.security.oauth2.resourceserver.jwt.issuer-uri, since the Keycloak
+  # Testcontainer's URL isn't known until it starts.
   liquibase:
     enabled: true
 

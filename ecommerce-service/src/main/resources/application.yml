@@ -25,10 +25,11 @@ spring:
 server:
   port: ${SERVER_PORT:8081}
 
-# JWT — verification only (see security/JwtVerifier); jwt.secret must be the exact same value
-# configured for identity-service/gateway, so a token issued there verifies here too.
+# JWT — verification only (see security/JwtVerifier). This service never holds identity-service's
+# private key, only the public half — jwt.public-key-location must point at the matching public
+# key for whatever private key identity-service/gateway signs with.
 jwt:
-  secret: ${JWT_SECRET:change-me-in-production-use-at-least-64-bytes-long-secret-key-here}
+  public-key-location: ${JWT_PUBLIC_KEY_LOCATION:classpath:jwt/dev-jwt-public.pem}
 
 # Logging
 logging:

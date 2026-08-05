@@ -21,16 +21,22 @@ endpoint sitting in the entry-point module.
 ## What lives here
 
 - `security/` — transport/security **edge** infra, not auth business logic (that's
-  `identity-service`, see below): `SecurityConfig` (JWT + OAuth2 filter chain — injects
-  `identity-service`'s `CustomOAuth2UserService`/`CustomOidcUserService`/`OAuth2LoginSuccessHandler`
-  across the module boundary), `JwtAuthenticationFilter` (verifies bearer tokens via
-  `identity-service`'s `JwtTokenProvider`, populates `common.dto.CustomOAuth2User` on the
-  `SecurityContext`), `CorsConfig`, `JsonAuthenticationEntryPoint`, `CurrentUserResolver`,
-  `WebSocketConfig`, `StompAuthChannelInterceptor` (STOMP CONNECT/SUBSCRIBE auth — see `docs/
-  PROJECT_STRUCTURE.md` for the mechanics; imports `GroupMessagingController`/
-  `DmMessagingController` from `social-service`'s `social.api.impl` package,
-  `GroupService.isChannelMember` from `social-service`'s service layer, and `JwtTokenProvider`/
-  `security.jwt.*` claim types from `identity-service`).
+  `identity-service`, see below): `SecurityConfig` (Keycloak is the identity provider — this app is
+  a pure OAuth2 **resource server** now, `.oauth2ResourceServer(jwt -> ...)` verifying bearer
+  tokens against Keycloak's JWKS via `spring.security.oauth2.resourceserver.jwt.issuer-uri`; no
+  `.oauth2Login()`/custom filter anymore), `KeycloakRealmRoleConverter` (maps the token's
+  `realm_access.roles` claim to `ROLE_*` `GrantedAuthority`s — Spring's default converter doesn't
+  read Keycloak's nested claim shape), `KeycloakJwtAuthenticationConverter` (the JIT-provisioning
+  glue: calls `identity-service`'s `UserService.findOrCreateFromKeycloak` to sync the local `User`
+  row, builds the same `CustomOAuth2User` principal shape every call site already expects — shared
+  by both the REST filter chain and STOMP `CONNECT`, exactly one JIT-provisioning code path),
+  `CorsConfig`, `JsonAuthenticationEntryPoint`, `CurrentUserResolver`, `WebSocketConfig`,
+  `StompAuthChannelInterceptor` (STOMP CONNECT/SUBSCRIBE auth — see `docs/PROJECT_STRUCTURE.md` for
+  the mechanics; decodes the bearer token via an injected `JwtDecoder` — Spring Boot's
+  resource-server auto-config, no manual key handling — then reuses
+  `KeycloakJwtAuthenticationConverter.convert(jwt)`; imports `GroupMessagingController`/
+  `DmMessagingController` from `social-service`'s `social.api.impl` package and
+  `GroupService.isChannelMember` from `social-service`'s service layer).
 - `config/web/` — `WebMvcConfig` (SSE async-request wiring, reads `SSE_TIMEOUT_MS` from
   `ai-service`'s `SseStreamTemplate` rather than duplicating it; deliberately registers no
   interceptors of its own anymore — `ai-service`'s own `ChatMvcConfig` registers the chat
@@ -119,13 +125,20 @@ Two real patterns — do not reference `UserUtils.getCurrentUser()`, it doesn't 
   (`listMessages`, `listMyThreads`, etc.) would need the same treatment — they currently only work
   because OSIV papers over it.
 - **This is the only module with real tests today** (`src/test/java/.../ws/`) —
-  `AbstractStompIntegrationTest` (Testcontainers Postgres/Redis/MinIO, boots the full context) +
-  `DmMessagingStompIntegrationTest`. It has to be here, not `social-service`: `WebSocketConfig`/
-  `StompAuthChannelInterceptor` only ever get assembled together with `DmMessagingController` in a
-  running app in this module, since `social-service` has no `@SpringBootApplication` of its own. A
-  future STOMP/REST integration test for another feature's controller belongs here too, for the
-  same reason — a slice test (`@WebMvcTest`, plain Mockito) can still live in the owning feature
-  module if it doesn't need the real broker/security wiring.
+  `AbstractStompIntegrationTest` (Testcontainers Postgres/Redis/MinIO/**Keycloak** — the last via
+  `com.github.dasniko:testcontainers-keycloak` importing a dedicated, minimal test realm,
+  `src/test/resources/keycloak/test-realm-export.json`, separate from the dev realm export — boots
+  the full context) + `DmMessagingStompIntegrationTest`. It has to be here, not `social-service`:
+  `WebSocketConfig`/`StompAuthChannelInterceptor` only ever get assembled together with
+  `DmMessagingController` in a running app in this module, since `social-service` has no
+  `@SpringBootApplication` of its own. `persistUser()` provisions a matching Keycloak user per call
+  via the admin client (`KeycloakContainer.getKeycloakAdminClient()`), linked by
+  `keycloakSubjectId`, so tests exercise `KeycloakJwtAuthenticationConverter`'s realistic find-path;
+  `accessTokenFor`/`refreshTokenFor` fetch real tokens via a Resource Owner Password grant against a
+  test-only client (the real `gui` client disables that grant — never reuse this client shape
+  outside tests). A future STOMP/REST integration test for another feature's controller belongs
+  here too, for the same reason — a slice test (`@WebMvcTest`, plain Mockito) can still live in the
+  owning feature module if it doesn't need the real broker/security wiring.
 - **Any new public STOMP topic needs a `SUBSCRIBE`-time authorization check** in
   `StompAuthChannelInterceptor`, the same way `/topic/channels/{id}` has one via `social-service`'s
   `GroupService.isChannelMember`. The simple in-memory broker has no per-destination ACL — anyone

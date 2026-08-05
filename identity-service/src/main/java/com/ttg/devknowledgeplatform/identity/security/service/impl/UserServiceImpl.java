@@ -1,23 +1,21 @@
 package com.ttg.devknowledgeplatform.identity.security.service.impl;
 
-import java.security.SecureRandom;
-import java.util.Arrays;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.common.enums.UserProvider;
+import com.ttg.devknowledgeplatform.common.enums.UserRole;
 import com.ttg.devknowledgeplatform.common.enums.UserStatus;
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
-import com.ttg.devknowledgeplatform.identity.dto.OAuth2UserInfo;
 import com.ttg.devknowledgeplatform.common.repository.UserRepository;
+import com.ttg.devknowledgeplatform.identity.security.service.KeycloakUserInfo;
 import com.ttg.devknowledgeplatform.identity.security.service.UserService;
 
 import lombok.RequiredArgsConstructor;
@@ -29,69 +27,53 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional
 public class UserServiceImpl implements UserService {
 
-    private static final SecureRandom RANDOM = new SecureRandom();
-    private static final String SUFFIX_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
-    private static final int SUFFIX_LENGTH = 4;
+    // Never read/compared — Keycloak owns credentials entirely now. A real (non-null) value is
+    // still required: User.password is a bean-validation @NotNull column that predates Keycloak.
+    private static final String KEYCLOAK_MANAGED_PASSWORD_PLACEHOLDER = "KEYCLOAK_MANAGED";
 
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
 
     @Override
-    public User registerOAuth2User(OAuth2UserInfo userInfo, UserProvider provider) {
-        log.info("Registering new OAuth2 user: {} with provider: {}", userInfo.getEmail(), provider);
+    public User findOrCreateFromKeycloak(KeycloakUserInfo info) {
+        User user = userRepository.findByKeycloakSubjectId(info.subject())
+                .or(() -> userRepository.findByEmail(info.email()))
+                .orElseGet(() -> User.builder()
+                        .userUuid(UUID.randomUUID().toString())
+                        .password(KEYCLOAK_MANAGED_PASSWORD_PLACEHOLDER)
+                        .status(UserStatus.OFFLINE)
+                        .build());
 
-        User user = User.builder()
-                .userUuid(UUID.randomUUID().toString())
-                .username(generateUsername(userInfo.getName()))
-                .email(userInfo.getEmail())
-                .password(passwordEncoder.encode(UUID.randomUUID().toString()))
-                .firstName(extractFirstName(userInfo.getName()))
-                .lastName(extractLastName(userInfo.getName()))
-                .profilePicture(userInfo.getImageUrl())
-                .provider(provider)
-                .providerId(userInfo.getId())
-                .emailVerified(true)
-                .enabled(true)
-                .status(UserStatus.OFFLINE)
-                .build();
+        boolean isNew = user.getId() == null;
+        UserRole targetRole = info.admin() ? UserRole.ADMIN : UserRole.USER;
+
+        boolean changed = isNew
+                || !Objects.equals(user.getKeycloakSubjectId(), info.subject())
+                || !Objects.equals(user.getEmail(), info.email())
+                || !Objects.equals(user.getUsername(), info.username())
+                || !Objects.equals(user.getFirstName(), info.firstName())
+                || !Objects.equals(user.getLastName(), info.lastName())
+                || user.getRole() != targetRole
+                || !Boolean.TRUE.equals(user.getEmailVerified())
+                || !Boolean.TRUE.equals(user.getEnabled());
+
+        if (!changed) {
+            return user;
+        }
+
+        user.setKeycloakSubjectId(info.subject());
+        user.setEmail(info.email());
+        user.setUsername(info.username());
+        user.setFirstName(info.firstName());
+        user.setLastName(info.lastName());
+        user.setRole(targetRole);
+        user.setEmailVerified(true);
+        user.setEnabled(true);
 
         User saved = userRepository.save(user);
-        log.info("Registered OAuth2 user: {} (id={}, uuid={})", saved.getEmail(), saved.getId(), saved.getUserUuid());
-        return saved;
-    }
-
-    @Override
-    public User updateOAuth2User(User existingUser, OAuth2UserInfo userInfo) {
-        log.info("Updating OAuth2 user: {} (id={})", existingUser.getEmail(), existingUser.getId());
-
-        existingUser.setUsername(generateUsername(userInfo.getName()));
-        existingUser.setFirstName(extractFirstName(userInfo.getName()));
-        existingUser.setLastName(extractLastName(userInfo.getName()));
-        existingUser.setProfilePicture(userInfo.getImageUrl());
-        existingUser.setUsrLastModification("system");
-
-        User updated = userRepository.save(existingUser);
-        log.info("Updated OAuth2 user: {} (id={})", updated.getEmail(), updated.getId());
-        return updated;
-    }
-
-    @Override
-    public User registerLocalUser(String email, String firstName, String lastName, String rawPassword) {
-        log.info("Registering new local user: {}", email);
-        User user = User.builder()
-                .userUuid(UUID.randomUUID().toString())
-                .email(email)
-                .username(generateUsername(firstName + " " + lastName))
-                .password(passwordEncoder.encode(rawPassword))
-                .firstName(firstName)
-                .lastName(lastName)
-                .provider(UserProvider.LOCAL)
-                .emailVerified(false)
-                .enabled(true)
-                .status(UserStatus.OFFLINE)
-                .build();
-        User saved = userRepository.save(user);
-        log.info("Registered local user id={} uuid={}", saved.getId(), saved.getUserUuid());
+        if (isNew) {
+            log.info("JIT-provisioned new User from Keycloak subject={} email={} id={}",
+                    info.subject(), info.email(), saved.getId());
+        }
         return saved;
     }
 
@@ -119,11 +101,6 @@ public class UserServiceImpl implements UserService {
     @Override
     public Optional<User> findByUserUuidOptional(String userUuid) {
         return userRepository.findByUserUuid(userUuid);
-    }
-
-    @Override
-    public User findByProviderAndProviderId(UserProvider provider, String providerId) {
-        return userRepository.findByProviderAndProviderId(provider, providerId).orElse(null);
     }
 
     @Override
@@ -156,45 +133,4 @@ public class UserServiceImpl implements UserService {
         return userRepository.save(user);
     }
 
-    @Override
-    public User enableUser(String email) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND));
-        user.setEnabled(true);
-        user.setEmailVerified(true);
-        return userRepository.save(user);
-    }
-
-    private String generateUsername(String fullName) {
-        String base = (fullName == null || fullName.trim().isEmpty())
-                ? "user"
-                : fullName.toLowerCase()
-                        .replaceAll("[^a-z0-9]", "_")
-                        .replaceAll("_+", "_")
-                        .replaceAll("^_|_$", "");
-        String username;
-        do {
-            username = base + "_" + randomSuffix();
-        } while (userRepository.existsByUsername(username));
-        return username;
-    }
-
-    private String randomSuffix() {
-        StringBuilder sb = new StringBuilder(SUFFIX_LENGTH);
-        for (int i = 0; i < SUFFIX_LENGTH; i++) {
-            sb.append(SUFFIX_CHARS.charAt(RANDOM.nextInt(SUFFIX_CHARS.length())));
-        }
-        return sb.toString();
-    }
-
-    private static String extractFirstName(String fullName) {
-        if (fullName == null || fullName.trim().isEmpty()) return null;
-        return fullName.trim().split("\\s+")[0];
-    }
-
-    private static String extractLastName(String fullName) {
-        if (fullName == null || fullName.trim().isEmpty()) return null;
-        String[] parts = fullName.trim().split("\\s+");
-        return parts.length > 1 ? String.join(" ", Arrays.copyOfRange(parts, 1, parts.length)) : null;
-    }
 }

@@ -1,0 +1,60 @@
+{
+  "realm": "dev-knowledge-platform-test",
+  "enabled": true,
+  "sslRequired": "none",
+  "roles": {
+    "realm": [
+      {
+        "name": "USER",
+        "description": "Standard authenticated user."
+      },
+      {
+        "name": "ADMIN",
+        "description": "Administrative access."
+      },
+      {
+        "name": "default-roles-dev-knowledge-platform-test",
+        "description": "${role_default-roles}",
+        "composite": true,
+        "composites": {
+          "realm": ["USER"]
+        }
+      }
+    ]
+  },
+  "defaultRole": {
+    "name": "default-roles-dev-knowledge-platform-test",
+    "description": "${role_default-roles}",
+    "composite": true,
+    "clientRole": false
+  },
+  "clients": [
+    {
+      "clientId": "test-client",
+      "name": "Test client (Resource Owner Password grant only, no real app uses this shape)",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": []
+    },
+    {
+      "clientId": "test-client-short-lived",
+      "name": "Test client with a 1-second access token lifespan, for the expired-token rejection test",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [],
+      "attributes": {
+        "access.token.lifespan": "1"
+      }
+    }
+  ]
+}
