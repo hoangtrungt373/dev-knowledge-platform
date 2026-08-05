@@ -44,29 +44,20 @@
             <artifactId>mapstruct</artifactId>
         </dependency>
 
-        <!-- Spring Security — this module's own filter chain/JWT verification now that it's a
-             standalone app (see security/SecurityConfig). common declares this optional
-             (type-support only); this module needs the real thing. -->
+        <!-- Spring Security — this module's own filter chain now that it's a standalone app
+             (see security/SecurityConfig). common declares this optional (type-support only);
+             this module needs the real thing. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
-        <!-- JJWT — JwtVerifier verifies (never issues) tokens signed by identity-service using
-             the same shared secret; version managed centrally in the root pom. -->
+        <!-- OAuth2 Resource Server — Keycloak is the identity provider; this service only ever
+             verifies bearer tokens against Keycloak's JWKS (issuer-uri auto-discovery), never
+             issues them. Replaces the old JJWT-based JwtVerifier (manual RSA key loading). -->
         <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-impl</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-jackson</artifactId>
-            <scope>runtime</scope>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
         </dependency>
 
         <!-- PostgreSQL — this module's own datasource connection now that it's a standalone app
@@ -84,10 +75,10 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- JwtAuthenticationFilter builds a common.dto.CustomOAuth2User (implements OAuth2User)
-             as this app's own Authentication principal — common declares this starter optional
-             (type-support only), so it isn't inherited transitively; needed here on the classpath
-             for real, same reasoning content-service's pom documents for the same class. -->
+        <!-- KeycloakJwtAuthenticationConverter builds a common.dto.CustomOAuth2User (implements
+             OAuth2User) as this app's own Authentication principal — common declares this starter
+             optional (type-support only), so it isn't inherited transitively; needed here on the
+             classpath for real, same reasoning content-service's pom documents for the same class. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-oauth2-client</artifactId>

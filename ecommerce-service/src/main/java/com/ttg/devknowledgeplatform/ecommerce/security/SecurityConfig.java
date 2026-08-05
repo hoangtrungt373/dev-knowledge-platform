@@ -10,22 +10,22 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
  * This service's own security filter chain — independent of {@code gateway}'s, since once
  * extracted this app runs on its own port and must guard its own endpoints regardless of whether
  * {@code gateway} is proxying to it. Mirrors {@code gateway}'s {@code /api/v1/admin/**}/
- * {@code /api/v1/public/**} rule shape, minus everything specific to browser OAuth2 login (this
- * service never issues tokens or handles the login flow, only verifies bearer tokens issued
- * elsewhere — see {@link JwtVerifier}).
+ * {@code /api/v1/public/**} rule shape. Keycloak is the identity provider — this service is a pure
+ * OAuth2 resource server, verifying bearer tokens against Keycloak's JWKS
+ * ({@code spring.security.oauth2.resourceserver.jwt.issuer-uri}); it never issues tokens or
+ * handles a login flow.
  */
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final KeycloakJwtAuthenticationConverter keycloakJwtAuthenticationConverter;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -37,7 +37,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            .oauth2ResourceServer(oauth2 -> oauth2
+                .jwt(jwt -> jwt.jwtAuthenticationConverter(keycloakJwtAuthenticationConverter))
+            )
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)

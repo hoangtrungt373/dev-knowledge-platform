@@ -18,11 +18,22 @@ public browse/search/detail surface with attribute-value filtering — see below
 **This module is now a standalone Spring Boot application, not part of the monolith** — see the
 `project-ecommerce-service-module` memory for the full extraction history. Concretely: its own
 `EcommerceServiceApplication` entry point, its own `ecommerce` Postgres schema/database (separate
-from the monolith's `product` schema), its own JWT verification (`security/`, below — verifies
-tokens issued elsewhere, never issues its own), its own port (`8081`), and its own Liquibase
+from the monolith's `product` schema), its own port (`8081`), and its own Liquibase
 changelog/docker-compose file. `gateway` no longer has a Maven dependency on this module at all.
 **`gateway`-side HTTP proxying to this service is not built yet** — until it is, this service is
 only reachable directly on its own port, not through `gateway`.
+
+**JWT verification is Keycloak-backed** (`security/`, below): this service is a pure OAuth2
+resource server, verifying bearer tokens against Keycloak's JWKS
+(`spring.security.oauth2.resourceserver.jwt.issuer-uri`, same realm as `gateway`) — it never
+issues tokens or handles a login flow. `SecurityConfig` wires `.oauth2ResourceServer(...)` with a
+`KeycloakJwtAuthenticationConverter` (JIT-provisions/refreshes the local `User` row via
+`common.repository.UserRepository` directly, deliberately duplicated from `gateway`/
+`identity-service`'s equivalent rather than shared — this module has no Maven dependency on
+either) and `KeycloakRealmRoleConverter` (maps the token's `realm_access.roles` claim to
+`ROLE_*` authorities). The old JJWT-based `JwtVerifier`/`JwtAuthenticationFilter` (manual RSA
+public-key loading via `infra`'s now-deleted `RsaKeyUtils`) are gone — see `docs/CHANGELOG.md`'s
+Keycloak migration entries (Phase 3) for the full history.
 
 `entity/`:
 
