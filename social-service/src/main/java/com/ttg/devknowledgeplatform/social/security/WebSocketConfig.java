@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.security;
+package com.ttg.devknowledgeplatform.social.security;
 
 import java.util.List;
 
@@ -13,15 +13,17 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 
 import com.ttg.devknowledgeplatform.social.api.impl.DmMessagingController;
 import com.ttg.devknowledgeplatform.social.api.impl.GroupMessagingController;
-import com.ttg.devknowledgeplatform.config.web.CurrentUserIdMessageArgumentResolver;
+import com.ttg.devknowledgeplatform.social.config.web.CurrentUserIdMessageArgumentResolver;
 
 import lombok.RequiredArgsConstructor;
 
 /**
- * STOMP-over-WebSocket wiring for live group/DM chat push — the WebSocket-transport counterpart to
- * {@link SecurityConfig}, which is why it lives alongside it here rather than in a general
- * {@code config} package. The AI chat feature keeps its existing SSE stream — this is unrelated,
- * additive infrastructure for the social chat feature only.
+ * STOMP-over-WebSocket wiring for live group/DM chat push.
+ *
+ * <p>Duplicated from {@code gateway}'s class of the same name — relocated here as part of this
+ * module's standalone extraction. {@code gateway} had no other use for WebSocket/STOMP transport
+ * (this feature was the only one), so nothing remains there now; this module owns its own
+ * {@code /ws} endpoint, own port, entirely independent of {@code gateway}'s REST-only transport.
  *
  * <p>Destinations: {@code /app/**} — client-sent, routed to {@code @MessageMapping} handlers
  * ({@link GroupMessagingController}, {@link DmMessagingController}); {@code /topic/channels/{id}}

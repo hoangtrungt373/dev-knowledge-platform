@@ -13,45 +13,41 @@ dev-knowledge-platform/
 │                        the RAG pipeline; owns its own REST layer, mappers, and DTOs
 ├── ai-service/       — RAG pipeline (embedding, vector search, LLM generation via LangChain4j), the RAG-chat
 │                        REST feature, and the content+AI indexing orchestration layer (own REST layer too)
-├── social-service/   — friend graph (search visibility, requests, friendships, blocking) plus chat:
-│                        groups/channels (open-add, role-gated) and 1:1 DMs (friend-gated); own REST layer,
-│                        including the relationship-enriched user-directory endpoints (search, public profile)
-├── gateway/          — security/JWT-filter/STOMP transport wiring, Liquibase migrations, Spring Boot entry
+├── gateway/          — security/JWT-filter wiring, Liquibase migrations, Spring Boot entry
 │                        point. Holds **zero REST controllers of its own** (renamed from `api` once the last
 │                        one moved out — see `docs/CHANGELOG.md`)
 └── gui/              — React 18 + TypeScript + MUI frontend (Vite)
 ```
 
-`ecommerce-service/`, `identity-service/`, and `task-service/` are deliberately **not** in the tree
-above: all three are standalone Spring Boot applications, not part of this dependency graph at all
-(own schema, own JWT verification, own port; `gateway` has no Maven dependency on any of them, each
-extracted one at a time as a microservices-study exercise — see their own `## ecommerce-service`/
-`## identity-service`/`## task-service` sections further down and root `CLAUDE.md`). All three still
-compile against `common`+`infra` as ordinary library dependencies.
+`ecommerce-service/`, `identity-service/`, `task-service/`, and `social-service/` are deliberately
+**not** in the tree above: all four are standalone Spring Boot applications, not part of this
+dependency graph at all (own schema, own JWT verification, own port; `gateway` has no Maven
+dependency on any of them, each extracted one at a time as a microservices-study exercise — see
+their own `## ecommerce-service`/`## identity-service`/`## task-service`/`## social-service`
+sections further down and root `CLAUDE.md`). All four still compile against `common`+`infra` as
+ordinary library dependencies.
 
-Dependency order: `common` ← `infra` ← `content-service` ← `ai-service`;
-`common` ← `infra` ← `social-service`. `content-service`/`social-service` are parallel siblings
-depending only on `common`+`infra`; `ai-service` is allowed a single, real, one-directional
-dependency on a sibling module (`ai-service` → `content-service`) — never the reverse.
-`social-service` used to have the same kind of dependency on `identity-service` (`UserApi`'s
-`search`/`getPublicProfile`), and `task-service` used to be a third parallel sibling alongside
-`content-service`/`social-service` before its own extraction — both removed once the target module
-became a standalone service and could no longer be reached in-process (see below). `gateway` depends
-on these three remaining feature modules (`content-service`, `ai-service`, `social-service`); it's
-the only module allowed to depend on more than one,
-reserved for orchestration that needs two feature modules with **no** dependency relationship
-possible between them in either direction — currently nothing qualifies, which is why `gateway` has
-no REST layer of its own today. `gui` is independent of the whole Java reactor.
+Dependency order: `common` ← `infra` ← `content-service` ← `ai-service`. `ai-service` is allowed a
+single, real, one-directional dependency on `content-service` — never the reverse. `social-service`
+used to be a parallel sibling depending only on `common`+`infra`, with its own one-directional
+dependency on `identity-service` (`UserApi`'s `search`/`getPublicProfile`), and `task-service` used
+to be a second parallel sibling with its own one-directional dependency on `content-service` — both
+removed once the target module became a standalone service and could no longer be reached
+in-process, before each was itself extracted in turn (see below). `gateway` depends on these two
+remaining feature modules (`content-service`, `ai-service`); it's the only module allowed to depend
+on more than one, reserved for orchestration that needs two feature modules with **no** dependency
+relationship possible between them in either direction — currently nothing qualifies, which is why
+`gateway` has no REST layer of its own today. `gui` is independent of the whole Java reactor.
 
-Each of `content-service`/`social-service`/`ai-service` owns its own full vertical slice —
-entities/services *and* REST controllers, DTOs, MapStruct mappers — rather than the earlier shape where
-`api` (now `gateway`) centralized every controller/DTO/mapper regardless of which module owned the
-underlying entity. That centralized shape kept these modules transport-agnostic; the vertical-slice shape
-trades that away deliberately, in favor of each module being closer to an independently-deployable unit
-ahead of an eventual microservices split (see `docs/CHANGELOG.md`'s `[Unreleased]` entries for the full
-rationale and what moved). `identity-service` and `task-service` still own their own full vertical
-slice too — they just do so as standalone apps now rather than embedded modules (see their own
-sections further down).
+Each of `content-service`/`ai-service` owns its own full vertical slice — entities/services *and*
+REST controllers, DTOs, MapStruct mappers — rather than the earlier shape where `api` (now
+`gateway`) centralized every controller/DTO/mapper regardless of which module owned the underlying
+entity. That centralized shape kept these modules transport-agnostic; the vertical-slice shape
+trades that away deliberately, in favor of each module being closer to an independently-deployable
+unit ahead of an eventual microservices split (see `docs/CHANGELOG.md`'s `[Unreleased]` entries for
+the full rationale and what moved). `identity-service`, `task-service`, and `social-service` still
+own their own full vertical slice too — they just do so as standalone apps now rather than embedded
+modules (see their own sections further down).
 
 One real one-directional sibling dependency remains inside the monolith's dependency graph — a downstream
 module reaching into an upstream one for a genuine data/logic need, never the reverse:
@@ -265,23 +261,98 @@ mappers convert the returned entity back to a response DTO.
 
 ## social-service
 
+Friend graph (search visibility, requests, friendships, blocking) plus chat (groups/channels, 1:1
+DMs). **Now a standalone Spring Boot application, not part of the monolith** — the fourth module
+pulled out, following the `ecommerce-service`/`identity-service`/`task-service` precedent (see the
+`project-microservices-extraction-plan` memory for the full history).
+
+**Extraction (done):** own `SocialServiceApplication` entry point, own `social` Postgres schema,
+own JWT verification *and* its own full WebSocket/STOMP transport (`security/WebSocketConfig`/
+`StompAuthChannelInterceptor` — relocated here from `gateway` in full; this is the only one of the
+four extractions so far that had to bring real-time transport with it, not just REST), own port
+(`8084`), own Liquibase changelog + `social-service-liquibase.yml` docker-compose file, own test
+suite (relocated from `gateway`, see below). `gateway` no longer has a Maven dependency on this
+module — it never called into this module's Java classes in-process to begin with (`FriendApi`/
+`GroupApi`/`DmApi`/`UserApi` were already this module's own REST layer), but `gateway`'s
+`WebSocketConfig`/`StompAuthChannelInterceptor`/`CurrentUserIdMessageArgumentResolver` *did* wire
+this module's `GroupMessagingController`/`DmMessagingController` into a running broker — all three
+were deleted from `gateway` outright once relocated here, since chat was `gateway`'s only STOMP use
+case. **Not yet built:** the `gateway`-side HTTP proxy to this service — until that exists, it's
+only reachable directly on its own port, same limitation `ecommerce-service`/`identity-service`/
+`task-service` have.
+
+**No coupling to `common.entity.User`, unlike `gateway`/`identity-service`** — a deliberate design
+decision, not the default extraction pattern. This module genuinely needs a real local identity row
+(unlike `ecommerce-service`/`task-service`'s claims-based "Option C" shape), since it searches/
+lists/joins across *other* users' profile data — but instead of reusing the shared
+`common.entity.User` class, it persists its own **lean, module-local** `entity.SocialProfile`
+(table `social.PROFILE`) carrying only the columns this module's own code actually reads/writes
+(verified by grepping real usages): `profileUuid`/`keycloakSubjectId`/`email` for JIT-provisioning
+lookup, `username`/`firstName`/`lastName`/`profilePicture`/`status` for search/display, `seedId`
+for the demo-data seeders — no `password`, OAuth `provider`, `role`, `emailVerified`, or `enabled`.
+`role`/`provider`/`emailVerified` were also trimmed out of the public `UserInfoResponse` API shape
+(previously riding along via MapStruct's auto-mapping) after confirming via `gui` grep that nothing
+reads them off a friend's public profile — only off the *logged-in user's own* account dashboard,
+an entirely different endpoint on `identity-service`. See `social-service/CLAUDE.md`'s "No coupling
+to `common.entity.User`" rule for the full reasoning.
+
 ```
 social-service/src/main/java/com/ttg/devknowledgeplatform/social/
+├── SocialServiceApplication.java  — @SpringBootApplication entry point; sitting at this package
+│                                     (not the shared root gateway's main class uses) keeps
+│                                     content-service/ai-service/identity-service/task-service/
+│                                     ecommerce-service out of this app's component scan (no Maven
+│                                     dependency on any of them anyway). No @EntityScan/
+│                                     @EnableJpaRepositories — this module doesn't touch
+│                                     common.entity.User/common.repository.UserRepository at all;
+│                                     default scanning already covers this module's own entity/
+│                                     repository packages
+├── security/
+│   ├── SecurityConfig.java            — this app's own filter chain: everything requires auth
+│   │                                     except /api/v1/users/public/** (public profile lookup),
+│   │                                     the /ws/** handshake, and /actuator/**
+│   ├── KeycloakRealmRoleConverter.java — maps realm_access.roles to ROLE_* authorities; duplicated
+│   │                                     from gateway's/identity-service's/ecommerce-service's/
+│   │                                     task-service's converter of the same name
+│   ├── KeycloakJwtAuthenticationConverter.java — JIT-provisions/refreshes this app's own local
+│   │                                     SocialProfile row directly via SocialProfileRepository
+│   │                                     (find by keycloakSubjectId, fallback email, write only if
+│   │                                     changed) — inlined here (like gateway's/ecommerce-service's/
+│   │                                     task-service's), not delegated (unlike identity-service's)
+│   ├── CurrentUserResolver.java        — resolves the authenticated CustomOAuth2User principal's
+│   │                                     UUID to this app's own local SocialProfile numeric PK
+│   ├── WebSocketConfig.java            — relocated from gateway in full: registers /ws (no SockJS
+│   │                                     fallback), simple broker on /topic + /queue, /app prefix,
+│   │                                     wires StompAuthChannelInterceptor +
+│   │                                     CurrentUserIdMessageArgumentResolver
+│   └── StompAuthChannelInterceptor.java — relocated from gateway: CONNECT authenticates via this
+│                                          module's own KeycloakJwtAuthenticationConverter;
+│                                          SUBSCRIBE to /topic/channels/{id} authorizes via this
+│                                          module's own GroupService.isChannelMember
+├── config/web/
+│   ├── WebMvcConfig.java               — registers CurrentUserIdArgumentResolver
+│   ├── CurrentUserIdArgumentResolver.java — REST resolver, duplicated from gateway's, resolves
+│   │                                     against this module's own SocialProfileRepository
+│   └── CurrentUserIdMessageArgumentResolver.java — STOMP resolver, duplicated from gateway's,
+│                                        same resolution target
 ├── entity/
-│   ├── FriendRequest.java         — requester/addressee (User, common), status (FriendRequestStatus)
-│   ├── Friendship.java            — user1/user2 (User), canonically ordered (user1.id < user2.id) so each
-│   │                                 pair has exactly one row regardless of who sent the original request
-│   ├── UserBlock.java             — blocker/blocked (User); directional, independent of Friendship/FriendRequest
+│   ├── SocialProfile.java         — this module's own lean projection of a Keycloak identity —
+│   │                                 see the module-level note above for the full column list and
+│   │                                 why it isn't a copy of common.entity.User
+│   ├── FriendRequest.java         — requester/addressee (SocialProfile), status (FriendRequestStatus)
+│   ├── Friendship.java            — user1/user2 (SocialProfile), canonically ordered (user1.id < user2.id)
+│   │                                 so each pair has exactly one row regardless of who sent the original request
+│   ├── UserBlock.java             — blocker/blocked (SocialProfile); directional, independent of Friendship/FriendRequest
 │   ├── Group.java                 — name only; maps to table MESSAGE_GROUP (GROUP is a reserved word in
 │   │                                 PostgreSQL). No ownerId column — the owner is whichever GroupMember row
 │   │                                 holds role = OWNER, a single source of truth instead of a duplicated ref
-│   ├── GroupMember.java           — group/user (Group/User), role (GroupMemberRole); one row per (group, user) pair
+│   ├── GroupMember.java           — group/user (Group/SocialProfile), role (GroupMemberRole); one row per (group, user) pair
 │   ├── Channel.java                — group (Group), name; unique per group, not globally. Every group member can
 │   │                                 see every channel in this MVP — no private/restricted channel concept yet
-│   ├── DmThread.java               — user1/user2 (User), canonically ordered exactly like Friendship;
+│   ├── DmThread.java               — user1/user2 (SocialProfile), canonically ordered exactly like Friendship;
 │   │                                 lastMessageAt (denormalized, same reasoning as ChatSession.lastActivityAt —
 │   │                                 avoids a MAX(dteCreation) aggregate to render "my DMs, most recent first")
-│   ├── DmMessage.java              — dmThread, sender (User), messageType (MessageType), content + 4 nullable
+│   ├── DmMessage.java              — dmThread, sender (SocialProfile), messageType (MessageType), content + 4 nullable
 │   │                                 attachment columns (attachmentObjectKey is a MinIO object key, not a URL —
 │   │                                 same pattern as avatar images). content and the attachment columns are
 │   │                                 independently nullable, so a message can carry text, an attachment, or both.
@@ -293,6 +364,9 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │                                     "conversation" concept — mirrors keeping Friendship/UserBlock separate
 │                                     rather than one generic "relationship" table (see CHANGELOG for the fork)
 ├── enums/
+│   ├── ProfileStatus.java         — ONLINE, OFFLINE, AWAY, BUSY; SocialProfile's presence enum —
+│   │                                 deliberately not a reuse of common.enums.UserStatus, since
+│   │                                 this module no longer maps common.entity.User at all
 │   ├── FriendRequestStatus.java   — PENDING, ACCEPTED, REJECTED, CANCELLED
 │   ├── RelationshipStatus.java    — STRANGER, REQUEST_SENT, REQUEST_RECEIVED, FRIENDS, BLOCKED; computed
 │   │                                 (not persisted) per profile/search-result view from the viewer's perspective
@@ -300,6 +374,9 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │   └── MessageType.java           — TEXT, IMAGE, FILE; tags the primary content for rendering only — text and
 │                                     an attachment may coexist on one row regardless of this value
 ├── repository/
+│   ├── SocialProfileRepository.java  — this module's own repository over SocialProfile; the
+│   │                                    replacement for common's shared UserRepository, which this
+│   │                                    module no longer uses at all
 │   ├── FriendRequestRepository.java  — findPendingBetween (status-scoped); existsBetween (any status, either
 │   │                                    direction — FriendGraphSeeder's idempotency guard)
 │   ├── FriendshipRepository.java  — findFriendUserIds() used by the service for mutual-friend-count set intersection
@@ -314,8 +391,9 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │   ├── DmMessageRepository.java   — findByDmThreadOrderByDteCreationDesc, paginated
 │   ├── ChannelMessageRepository.java — findByChannelOrderByDteCreationDesc, paginated
 │   └── spec/
-│       └── UserSpecification.java — fuzzy username/name match, exact email match, excludes any user blocked
-│                                     in either direction relative to the viewer
+│       └── UserSpecification.java — now specified over SocialProfile, not common.entity.User; fuzzy
+│                                     username/name match, exact email match, excludes any user
+│                                     blocked in either direction relative to the viewer
 ├── event/
 │   ├── FriendRequestSentEvent.java     — record; published right after a pending FriendRequest is created
 │   ├── FriendRequestAcceptedEvent.java — record; published when a Friendship is created (explicit accept
@@ -338,8 +416,8 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │   │                                   blocked — no ownership-transfer story yet), changeRole (owner-only;
 │   │                                   ownership itself not reassignable), createChannel, postMessage, plus
 │   │                                   listMyGroups/listChannels/listMessages/isChannelMember (pure boolean
-│   │                                   membership check, used by gateway's StompAuthChannelInterceptor to
-│   │                                   authorize a channel-topic subscription before the broker admits it)
+│   │                                   membership check, used by this module's own StompAuthChannelInterceptor
+│   │                                   to authorize a channel-topic subscription before the broker admits it)
 │   ├── MessageAttachmentInput.java  — record: objectKey/mimeType/fileName/fileSize; shared optional-attachment
 │   │                                   input for both DmService.sendMessage and GroupService.postMessage
 │   ├── impl/
@@ -356,13 +434,25 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │   │                                   standing in for a full State-pattern class hierarchy at a scale that
 │   │                                   doesn't justify one
 │   └── seed/                        — sample social-graph data for the Friend Management GUI (see
-│       │                              docs/SEED_DATA_AUTHORING_GUIDE.md); requires gateway's UserSeeder to run first
+│       │                              docs/SEED_DATA_AUTHORING_GUIDE.md)
+│       ├── SocialProfileSeeder.java — this module's own copy of the demo-user seeder, reading this
+│       │                              module's own data/csv/users.csv (duplicated from gateway's
+│       │                              file, same id/seed-key values) — necessary because seed
+│       │                              accounts have no real Keycloak identity to JIT-provision
+│       │                              from, and this module has no access to gateway's
+│       │                              resources/classpath at runtime anymore
 │       ├── FriendGraphSeeder.java   — data/csv/friend-requests.csv (requesterId, addresseeId, status); an
 │       │                              ACCEPTED row also inserts the matching Friendship, canonically ordered,
 │       │                              mirroring FriendServiceImpl.acceptRequest's production behavior. Does
 │       │                              NOT extend infra's CsvSeeder — an ACCEPTED row persists two entities,
 │       │                              which doesn't fit CsvSeeder's one-entity-per-row shape
-│       └── UserBlockSeeder.java     — data/csv/user-blocks.csv (blockerId, blockedId); extends infra's CsvSeeder
+│       ├── UserBlockSeeder.java     — data/csv/user-blocks.csv (blockerId, blockedId); extends infra's CsvSeeder
+│       ├── DmThreadSeeder.java      — one random lorem-ipsum DM conversation per existing Friendship row
+│       └── DataSeedingRunner.java   — this module's own seeding orchestrator (ApplicationRunner,
+│                                      app.seed.enabled-gated), running SocialProfileSeeder →
+│                                      FriendGraphSeeder → UserBlockSeeder → DmThreadSeeder — not a
+│                                      continuation of gateway's runner, which no longer references
+│                                      any of these three seeders after this module's extraction
 ├── exception/
 │   └── SocialErrorCode.java         — FRIEND_*/DM_*/GROUP_*/CHANNEL_* codes, implements common's ErrorCode
 │                                       interface (moved out of common's CommonErrorCode). Renamed from
@@ -377,35 +467,27 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │   │                                    distinct from `identity-service`'s own (same `/api/v1/users` base
 │   │                                    mapping, different two methods: `updateProfile`/`uploadAvatar` live
 │   │                                    there instead, on a separate standalone app now). Resolves the base
-│   │                                    profile lookup directly via `common`'s `UserRepository` and this
-│   │                                    module's own `FriendMapper.toUserInfo` (a local `UserInfoResponse`
-│   │                                    DTO, duplicated from `identity-service`'s equivalent) before applying
-│   │                                    `FriendService` relationship enrichment — no longer reaches into
-│   │                                    `identity-service`, which is a standalone service now and can't be
-│   │                                    called in-process
+│   │                                    profile lookup directly via this module's own
+│   │                                    `SocialProfileRepository` and this module's own
+│   │                                    `FriendMapper.toUserInfo` (a local `UserInfoResponse`
+│   │                                    DTO, duplicated from `identity-service`'s equivalent, minus
+│   │                                    the `role`/`provider`/`emailVerified` fields) before applying
+│   │                                    `FriendService` relationship enrichment
 │   └── impl/                         — FriendController / GroupController / DmController /
 │                                        GroupMessagingController / DmMessagingController / UserController
 ├── mapper/                           — MapStruct: FriendMapper, MessagingMapper (both abstract classes —
 │                                        need an injected `infra`-owned `StorageService` for presigned avatar
 │                                        URLs, and MapStruct interfaces can't hold instance fields);
-│                                        `MessagingMapper` uses `FriendMapper` for User → UserSummaryResponse
+│                                        `MessagingMapper` uses `FriendMapper` for SocialProfile → UserSummaryResponse
 └── dto/
     ├── friend/                       — Java records: UserSummaryResponse, UserSearchResultResponse,
-    │                                    FriendRequestResponse, FriendSummaryResponse
+    │                                    FriendRequestResponse, FriendSummaryResponse, UserInfoResponse
+    │                                    (the last trimmed of role/provider/emailVerified — see above)
     └── messaging/                    — GroupResponse/CreateGroupRequest, GroupMemberResponse, ChannelResponse/
                                          CreateChannelRequest, ChangeRoleRequest, ChannelMessageResponse,
                                          DmMessageResponse, DmThreadResponse, SendMessageRequest,
                                          MessageAttachmentRequest/Response, WsErrorResponse (STOMP error payload)
 ```
-
-Read access to `User` (search, relationship resolution) goes through `common`'s own `UserRepository`
-directly — no module-local wrapper repository needed, since `UserRepository` already lives in
-`common` and extends `JpaSpecificationExecutor<User>` (for `UserSpecification` above). STOMP transport
-wiring (`WebSocketConfig`, `StompAuthChannelInterceptor`, `CurrentUserIdMessageArgumentResolver`) stays in
-`gateway` — edge/transport infra, not a `social-service` concern. `gateway`'s own
-`KeycloakJwtAuthenticationConverter` now also owns the JIT-provisioning business logic itself
-(`findOrCreateUser`, inlined via `UserRepository` directly) rather than delegating to
-`identity-service`'s `UserService` — see the `## identity-service` section below for why.
 
 `GroupService` and `DmService` are deliberately two services, not one — they gate access differently
 (open-add + role checks vs. friend-required) and share no entities, so combining them would mix two
@@ -415,10 +497,24 @@ directly, avoiding a second implementation of the canonicalization + mutual-invi
 REST layer: this module's own `GroupApi`/`GroupController` and `DmApi`/`DmController`, DTOs in
 `dto/messaging/`, `MessagingMapper` — see `api/` above. No upload endpoint yet for message attachments;
 `MessageAttachmentRequest.objectKey` assumes the client already has a MinIO object key from
-somewhere else. `UserApi`/`UserController` (also `api/` above) used to be this module's one
-dependency on `identity-service`; that dependency was removed once `identity-service` became a
-standalone service (see the `## identity-service` section below) — this module's `pom.xml` no
-longer declares it.
+somewhere else.
+
+**Liquibase:** own changelog tree (`database/sql/social-service.xml` + `2026/0.0.1/*.sql`), applied
+via the standalone `social-service-liquibase.yml` docker-compose file. `DKP-0029` adds
+`social.PROFILE`; `DKP-0030` adds a fresh snapshot of the friend-graph + chat tables — the final
+shape `gateway`'s old `DKP-0015`/`DKP-0019` reached — with every FK repointed at `social.PROFILE`
+instead of `product.USER`. Those `gateway`-tree changesets are untouched (frozen, already-run
+history) but now describe an orphaned table set `gateway`'s own Spring context no longer maps any
+entity to.
+
+**Test suite:** `src/test/java/.../ws/` — `AbstractStompIntegrationTest` (Testcontainers Postgres/
+MinIO/Keycloak — no Redis, unlike `gateway`'s original version of this suite, since this module has
+no Redis-backed bean of its own) + `DmMessagingStompIntegrationTest`, relocated from `gateway` now
+that this module has its own `@SpringBootApplication` to boot them against.
+
+**Compiles cleanly** (full reactor including the extraction changes; needs `JAVA_HOME` pointed at a
+JDK 21 install) but hasn't been run against a real Postgres yet — same unverified-at-runtime caveat
+as `ecommerce-service`/`identity-service`/`task-service`.
 
 ---
 
@@ -1087,9 +1183,10 @@ for the rules this module follows.
 
 Renamed from `api` once its last REST controller (`UserApi.search`/`getPublicProfile`) moved to
 `social-service` (see `docs/CHANGELOG.md`) — this module holds **zero REST controllers of its own**
-today. Still the Spring Boot entry point and the one module allowed to depend on every feature
-module, reserved for orchestration that needs two feature modules with no dependency relationship
-possible between them in either direction (currently nothing qualifies).
+today. Still the Spring Boot entry point and the one module allowed to depend on more than one
+feature module, reserved for orchestration that needs two feature modules with no dependency
+relationship possible between them in either direction (currently nothing qualifies — it depends on
+just `content-service`/`ai-service` now).
 
 ```
 gateway/src/main/java/com/ttg/devknowledgeplatform/
@@ -1121,21 +1218,24 @@ gateway/src/main/java/com/ttg/devknowledgeplatform/
 │       │                               ChatMvcConfig registers the chat rate-limit interceptor via its
 │       │                               own composed WebMvcConfigurer bean instead (Spring merges every
 │       │                               WebMvcConfigurer bean in the context automatically)
-│       ├── CurrentUserIdArgumentResolver.java — Spring MVC HandlerMethodArgumentResolver for
-│       │                               @CurrentUserId (common.annotation), reads common.dto.CustomOAuth2User
-│       │                               from the SecurityContext
-│       └── CurrentUserIdMessageArgumentResolver.java — same, Spring Messaging's resolver interface, for
-│                                       STOMP @MessageMapping methods
+│       └── CurrentUserIdArgumentResolver.java — Spring MVC HandlerMethodArgumentResolver for
+│                                       @CurrentUserId (common.annotation), reads common.dto.CustomOAuth2User
+│                                       from the SecurityContext. No
+│                                       CurrentUserIdMessageArgumentResolver here anymore — that
+│                                       STOMP-side counterpart moved to social-service alongside
+│                                       WebSocketConfig once that module was extracted
 ├── database/
 │   └── sql/                          — Liquibase changelogs (master: dev-knowledge-platform.xml)
 ├── (no event/ package — every listener moved into the module that owns the event it reacts to:
 │    ContentPublishedEventListener → ai-service, FriendRequestSentEventListener/
-│    FriendRequestAcceptedEventListener → social-service; none ever had a gateway-specific dependency)
-├── security/                         — OAuth2-resource-server verification + STOMP transport wiring
-│   │                                    (edge concerns); Keycloak is the identity provider — this
-│   │                                    app never issues tokens, only verifies them; JIT-provisioning
-│   │                                    business logic (finding/creating this app's own local User
-│   │                                    row) lives right here now — see below
+│    FriendRequestAcceptedEventListener → social-service, before that module's own later
+│    extraction; none ever had a gateway-specific dependency)
+├── security/                         — OAuth2-resource-server verification (edge concerns);
+│   │                                    Keycloak is the identity provider — this app never issues
+│   │                                    tokens, only verifies them; JIT-provisioning business logic
+│   │                                    (finding/creating this app's own local User row) lives
+│   │                                    right here now — see below. No WebSocket/STOMP transport
+│   │                                    here anymore — see below
 │   ├── SecurityConfig.java           — .oauth2ResourceServer(jwt -> ...) verifying bearer tokens
 │   │                                    against Keycloak's JWKS (spring.security.oauth2.
 │   │                                    resourceserver.jwt.issuer-uri); no .oauth2Login() anymore
@@ -1150,31 +1250,17 @@ gateway/src/main/java/com/ttg/devknowledgeplatform/
 │   │                                    UserService, which is a standalone service now and can't be
 │   │                                    called in-process (deliberately duplicated — note
 │   │                                    ecommerce-service's own converter of this name does NOT
-│   │                                    persist anything at all; this app's `Task`/`Friendship`/etc.
-│   │                                    FKs genuinely need a real local User row, ecommerce-service's
+│   │                                    persist anything at all; this app's `Friendship`/etc.
+│   │                                    FKs genuinely needed a real local User row, ecommerce-service's
 │   │                                    entities don't). Builds the same CustomOAuth2User principal
-│   │                                    shape every call site expects.
-│   │                                    Rejects a refresh token presented as a bearer token via its
-│   │                                    typ claim. Shared by both the REST filter chain (above) and
-│   │                                    STOMP CONNECT (below) — one JIT-provisioning path, not two
-│   ├── CorsConfig.java / JsonAuthenticationEntryPoint.java / CurrentUserResolver.java
-│   ├── WebSocketConfig.java           — @EnableWebSocketMessageBroker; registers /ws with NO SockJS
-│   │                                    fallback (real handshake, not an emulated transport); simple
-│   │                                    broker on /topic + /queue; /app client-send prefix; wires
-│   │                                    StompAuthChannelInterceptor + CurrentUserIdMessageArgumentResolver;
-│   │                                    imports GroupMessagingController/DmMessagingController from
-│   │                                    social-service's social.api.impl package
-│   └── StompAuthChannelInterceptor.java — CONNECT: decodes the JWT passed as a STOMP Authorization
-│                                          header (handshake itself is permitAll — browsers can't set
-│                                          headers on the handshake request) via an injected
-│                                          JwtDecoder (Spring's resource-server auto-config, no manual
-│                                          key handling), then reuses
-│                                          KeycloakJwtAuthenticationConverter.convert(jwt) — the same
-│                                          JIT-provisioning path REST uses. SUBSCRIBE: authorizes
-│                                          /topic/channels/{id} via social-service's GroupService.isChannelMember
-│                                          — the simple broker has no per-destination ACL of its own. DMs
-│                                          need no equivalent check (convertAndSendToUser's private queue
-│                                          has no public topic string to subscribe to)
+│   │                                    shape every remaining call site expects. Rejects a refresh
+│   │                                    token presented as a bearer token via its typ claim.
+│   │                                    **No longer shared with a STOMP CONNECT path** — this app
+│   │                                    has no WebSocket/STOMP transport of its own anymore
+│   └── CorsConfig.java / JsonAuthenticationEntryPoint.java / CurrentUserResolver.java
+│       (**No `WebSocketConfig`/`StompAuthChannelInterceptor` here anymore** — both relocated to
+│       `social-service`'s own `security/` package once that module became a standalone app owning
+│       the whole WebSocket/STOMP transport for chat; this app never had a second use for it)
 └── service/
     └── seed/
         ├── UserSeeder.java               — same package as DataSeedingRunner now (relocated from
@@ -1182,37 +1268,37 @@ gateway/src/main/java/com/ttg/devknowledgeplatform/
         │                                    service — see its own section); writes directly via
         │                                    common's UserRepository, no logic change from the move
         └── DataSeedingRunner.java        — ApplicationRunner, @ConditionalOnProperty(app.seed.enabled);
-                                             runs seeders in order: category → tag → questionAnswer → user →
-                                             friend graph → blocks. CategorySeeder/TagSeeder/QuestionAnswerSeeder
-                                             live in content-service/service/seed/, UserSeeder right here now,
-                                             FriendGraphSeeder/UserBlockSeeder in social-service/service/seed/
-                                             (see those modules' sections) — this runner just injects and calls
-                                             all of them
+                                             runs seeders in order: category → tag → questionAnswer →
+                                             user. CategorySeeder/TagSeeder/QuestionAnswerSeeder live
+                                             in content-service/service/seed/, UserSeeder right here
+                                             now. **No longer seeds the friend graph/blocks/DM
+                                             conversations** — FriendGraphSeeder/UserBlockSeeder/
+                                             DmThreadSeeder moved fully into social-service's own
+                                             seeding orchestration (its own DataSeedingRunner) once
+                                             that module was extracted with no Maven dependency from
+                                             this one
 ```
 
 Everything that used to live flat here — every feature's REST controllers, DTOs, and MapStruct
 mappers, including the one composed `UserApi.search`/`getPublicProfile` endpoint (moved to
-`social-service`, which used to reach into `identity-service` for the base lookup before that
-module became standalone — it resolves the base lookup itself now) — moved into the owning feature
-module (`content-service`, `social-service`, `ai-service`, `identity-service` before its later
-extraction); see those modules' sections and `docs/CHANGELOG.md`'s `[Unreleased]` entries for the
-full move and its rationale. Chat-specific rate limiting (`ChatRateLimiter`/`RateLimitProperties`/
-`ChatRateLimitInterceptor`) and the `asyncEventExecutor` thread pool moved out too, to `ai-service`
-and `infra` respectively — see those modules' sections. What's left here is transport/security edge
-infra (`SecurityConfig`, JWT filter, STOMP wiring, the `sseStreamExecutor` pool), Liquibase
-migrations for every module's tables, and the cross-domain seeding orchestrator
-(`DataSeedingRunner`).
+`social-service`, which used to reach into `identity-service` for the base lookup before both
+modules became standalone — it resolves the base lookup itself now, against its own entity) —
+moved into the owning feature module (`content-service`, `ai-service`, `social-service`/
+`identity-service` before their later extractions); see those modules' sections and
+`docs/CHANGELOG.md`'s `[Unreleased]` entries for the full move and its rationale. Chat-specific rate
+limiting (`ChatRateLimiter`/`RateLimitProperties`/`ChatRateLimitInterceptor`) and the
+`asyncEventExecutor` thread pool moved out too, to `ai-service` and `infra` respectively — see those
+modules' sections. What's left here is transport/security edge infra (`SecurityConfig`, JWT filter,
+the `sseStreamExecutor` pool — **no STOMP wiring anymore**, see above), Liquibase migrations for
+every remaining embedded module's tables, and the seeding orchestrator (`DataSeedingRunner`, now
+narrowed to just this app's own concerns).
 
-`gateway/src/test/` — the reactor's first test source (every other module's `src/test` is still
-empty): `ws/AbstractStompIntegrationTest.java` (Testcontainers Postgres/Redis/MinIO +
-`@DynamicPropertySource`, boots the full context — the only place `WebSocketConfig`/
-`StompAuthChannelInterceptor` and `social-service`'s `DmMessagingController` actually get wired
-together) and `ws/DmMessagingStompIntegrationTest.java` (the real STOMP flow: dual delivery,
-thread reuse, CONNECT rejection cases, `WsErrorResponse` business-rule cases — see
-`docs/CHANGELOG.md`'s `[Unreleased]` entry for the full scenario list). `application-test.yml`
-under `src/test/resources` activates profile `test` (placeholder OAuth2 client-id/secret so
-context startup doesn't fail; `spring.liquibase.enabled: true`; real datasource/redis/minio
-coordinates come from the Testcontainers instances at runtime, not this file).
+**This module currently has no test suite of its own** — its only tests
+(`ws/AbstractStompIntegrationTest.java`/`ws/DmMessagingStompIntegrationTest.java`, plus
+`application-test.yml`/`keycloak/test-realm-export.json`) were relocated to `social-service` in
+full once that module got its own `@SpringBootApplication` to boot them against (see that module's
+own section) — they existed here only because `WebSocketConfig`/`StompAuthChannelInterceptor` and
+`social-service`'s `DmMessagingController` used to get wired together exclusively in this app.
 
 `gateway/src/main/resources/data/` (separate resources tree, not nested under the Java sources above):
 
@@ -1224,14 +1310,13 @@ data/
 │   │                                    id (→ seedId), never name/slug
 │   ├── categories.csv                    — id, name, parentId (parentId references another row's id)
 │   ├── tags.csv                           — id, name, status
-│   ├── users.csv                          — id, email, username, firstName, lastName (UserSeeder, gateway —
-│   │                                         relocated here from identity-service once that module became a
-│   │                                         standalone service); 20 sample login-able accounts for the
-│   │                                         Friend Management GUI
-│   ├── friend-requests.csv                — requesterId, addresseeId, status (FriendGraphSeeder,
-│   │                                         social-service); references users.csv rows by id
-│   └── user-blocks.csv                    — blockerId, blockedId (UserBlockSeeder, social-service);
-│                                             references users.csv rows by id
+│   └── users.csv                          — id, email, username, firstName, lastName (UserSeeder, gateway —
+│                                             relocated here from identity-service once that module became a
+│                                             standalone service); 20 sample login-able accounts. **No longer
+│                                             followed by `friend-requests.csv`/`user-blocks.csv` here** —
+│                                             both moved to `social-service`'s own resources (a duplicated
+│                                             copy of this same `users.csv`, plus both CSVs) once that module
+│                                             was extracted and stopped reading this app's classpath
 ├── question-answers/                 — one Markdown file per question; references Category/Tag
 │   │                                    by id (categoryId/tagIds), not name or slug — see
 │   │                                    docs/SEED_DATA_AUTHORING_GUIDE.md; 100 files (qa-*.md),
@@ -1306,51 +1391,48 @@ expected over time, and are modelled as data, not schema:
 - `SYS_PARAM` — general-purpose key-value table; stores corpus centroid vectors and future AI/config parameters
 - `CATEGORY` / `TAG` / `CONTENT_ITEM` / `CONTENT_ITEM_TAG` / `QUESTION_ANSWER` / `ARTICLE` — backing
   `content-service`'s entities of the same names (schema unchanged by the module extraction — see `CHANGELOG.md`)
-- `FRIEND_REQUEST` / `FRIENDSHIP` / `USER_BLOCK` (DKP-0015) — friend graph, backing `social-service`'s
-  entities of the same names. `FRIENDSHIP` stores each pair once with `USER_ID_1 < USER_ID_2` enforced by
-  a check constraint. `FRIEND_REQUEST` has a partial unique index on the unordered pair
-  `WHERE STATUS = 'PENDING'` — only pending rows are constrained, so a rejected/cancelled request doesn't
-  block a later re-request. `USER_BLOCK` is directional (no implied reverse row). None of the three have
-  their own `SEED_ID` (see `DKP-0016` below) — a pair's identity has no editable-field equivalent to
-  `NAME`/`EMAIL` that could invalidate a pair-based idempotency check.
-- `MESSAGE_GROUP` / `GROUP_MEMBER` / `CHANNEL` / `DM_THREAD` / `DM_MESSAGE` / `CHANNEL_MESSAGE` (DKP-0019)
-  — chat MVP, backing `social-service`'s entities of the same names (`Group` maps to `MESSAGE_GROUP`,
-  not `GROUP` — a reserved word in PostgreSQL). `DM_THREAD` reuses `FRIENDSHIP`'s canonical-pair-ordering
-  convention (`USER_ID_1 < USER_ID_2` check constraint). `DM_MESSAGE`/`CHANNEL_MESSAGE` are deliberately
-  separate tables rather than one unified "conversation" concept (same reasoning as keeping `FRIENDSHIP`/
-  `USER_BLOCK` separate); both have independently-nullable `CONTENT`/`ATTACHMENT_*` columns so a message
-  can carry text, an attachment, or both. `ON DELETE CASCADE` from messages up through channel/group and
-  from members up through group.
+- **Historical, orphaned:** `FRIEND_REQUEST` / `FRIENDSHIP` / `USER_BLOCK` (`DKP-0015`) and
+  `MESSAGE_GROUP` / `GROUP_MEMBER` / `CHANNEL` / `DM_THREAD` / `DM_MESSAGE` / `CHANNEL_MESSAGE`
+  (`DKP-0019`) used to back `social-service`'s entities of the same names while that module was
+  still embedded. Both changesets are untouched (frozen, already-run history, per this repo's
+  never-edit-an-executed-changeset convention) but now describe tables `gateway`'s own Spring
+  context no longer maps any entity to — `social-service` migrates a fresh snapshot of this same
+  shape into its own `social` schema instead (`DKP-0029`/`DKP-0030` in that module's own tree),
+  with every FK repointed at `social.PROFILE` (that module's own lean entity) instead of
+  `product.USER`, and no `SEED_ID` on the pair tables for either — see that module's `CLAUDE.md` for
+  why (a pair's identity has no editable-field equivalent to `NAME`/`EMAIL` that could invalidate a
+  pair-based idempotency check).
 - `USER.SEED_ID` (DKP-0016, nullable, unique index) — same pattern as `DKP-0013`'s `CATEGORY`/`TAG`/
   `CONTENT_ITEM`; sole idempotency key for `UserSeeder`'s (`gateway`) 20 sample login-able accounts.
 - Migrations: `gateway/src/main/java/com/ttg/devknowledgeplatform/database/sql/` (Liquibase config
-  lives in `gateway` regardless of which module owns the entities the migration backs —
-  `social-service`'s tables are migrated from here too, same as `ai-service`'s)
+  lives in `gateway` for every remaining *embedded* module's tables — `ai-service`'s and
+  `content-service`'s tables are migrated from here too. `social-service`'s tables are **not** —
+  that module migrates its own `social` schema from its own changelog tree now, see above)
   - Naming: `YYYY/VERSION/YYYYMMDDHHMI__VERSION__TICKET__description.sql`
 
 ---
 
 ## Deployment
 
-Four independently-runnable Spring Boot processes exist today — `gateway` (the monolith),
-`ecommerce-service`, `identity-service`, and `task-service` (the latter three standalone
-microservices-study extractions) — each with its own `Dockerfile` (multi-stage:
+Five independently-runnable Spring Boot processes exist today — `gateway` (the monolith),
+`ecommerce-service`, `identity-service`, `task-service`, and `social-service` (the latter four
+standalone microservices-study extractions) — each with its own `Dockerfile` (multi-stage:
 `maven:3.9.9-eclipse-temurin-21` build stage running `mvn -pl <module> -am package` against the full
-reactor, `eclipse-temurin:21-jre-jammy` runtime stage). All four Dockerfiles use the **repo root**
+reactor, `eclipse-temurin:21-jre-jammy` runtime stage). All five Dockerfiles use the **repo root**
 as their build context, since the Maven reactor build needs sibling-module sources
 (`docker build -f gateway/Dockerfile .`, not `docker build gateway/`). `gateway`'s `Dockerfile` only
-`COPY`s the sources of modules it actually depends on
-(`common`/`infra`/`content-service`/`ai-service`/`social-service`) plus every module's `pom.xml`
-(needed for Maven to parse the reactor's full `<modules>` list even for modules it won't build) — it
-does not copy `identity-service`, `ecommerce-service`, or `task-service` sources.
+`COPY`s the sources of modules it actually depends on (`common`/`infra`/`content-service`/
+`ai-service`) plus every module's `pom.xml` (needed for Maven to parse the reactor's full
+`<modules>` list even for modules it won't build) — it does not copy `identity-service`,
+`ecommerce-service`, `task-service`, or `social-service` sources.
 
-`dev-knowledge-platform-apps-docker-compose.yml` (repo root) brings up all four app containers plus
+`dev-knowledge-platform-apps-docker-compose.yml` (repo root) brings up all five app containers plus
 one-shot Liquibase migration runners (`dkp-liquibase`, `ecommerce-liquibase`, `identity-liquibase`,
-`task-liquibase`) ahead of them via `depends_on: condition: service_completed_successfully`. It has
-no infra containers of its own — it must be run combined with
-`dev-knowledge-platform-docker-compose.yml` in one command, since that's what puts every container
-in a single Compose project/network so service-name DNS (`postgres`/`redis`/`minio`/`keycloak`)
-resolves:
+`task-liquibase`, `social-liquibase`) ahead of them via
+`depends_on: condition: service_completed_successfully`. It has no infra containers of its own — it
+must be run combined with `dev-knowledge-platform-docker-compose.yml` in one command, since that's
+what puts every container in a single Compose project/network so service-name DNS
+(`postgres`/`redis`/`minio`/`keycloak`) resolves:
 
 ```bash
 docker compose -f dev-knowledge-platform-docker-compose.yml \
@@ -1358,17 +1440,21 @@ docker compose -f dev-knowledge-platform-docker-compose.yml \
                 up -d --build
 ```
 
-`ecommerce-service`, `identity-service`, and `task-service` share the same `dev-premier` Postgres
-database as `gateway`, each in its own schema (`ecommerce`/`identity`/`task` vs. `gateway`'s
-`product`) — per-service-per-schema, not per-service-per-database (see root `CLAUDE.md`'s Database
-Conventions and the `project-microservices-extraction-plan` memory for why). Each service also has
-its own standalone `*-liquibase.yml` compose file at the repo root for migrating its own schema
-outside the combined apps-compose flow (`ecommerce-service-liquibase.yml`,
-`identity-service-liquibase.yml`, `task-service-liquibase.yml`).
+`ecommerce-service`, `identity-service`, `task-service`, and `social-service` share the same
+`dev-premier` Postgres database as `gateway`, each in its own schema (`ecommerce`/`identity`/`task`/
+`social` vs. `gateway`'s `product`) — per-service-per-schema, not per-service-per-database (see root
+`CLAUDE.md`'s Database Conventions and the `project-microservices-extraction-plan` memory for why).
+Each service also has its own standalone `*-liquibase.yml` compose file at the repo root for
+migrating its own schema outside the combined apps-compose flow (`ecommerce-service-liquibase.yml`,
+`identity-service-liquibase.yml`, `task-service-liquibase.yml`, `social-service-liquibase.yml`).
+`social-service` additionally needs a real MinIO connection at runtime (`app.storage.*`, for avatar/
+attachment presigned URLs via `infra`'s `StorageService`) — the only one of the four standalone
+extractions so far with that requirement, since none of the other three ever mapped avatar/
+attachment data.
 
 `common`, `infra`, and the root `pom.xml` needed no changes for any of this — they already function
 as this repo's shared-foundation modules (proven by `ecommerce-service` already depending on
 `common`+`infra` as ordinary library jars, with zero Maven dependency on `gateway`, before
-`identity-service` and `task-service` followed the same pattern). Kafka/RabbitMQ messaging and a
-`kubernetes/` directory are not part of this yet — see `docs/CHANGELOG.md`'s `[Unreleased]` entry
-for current scope.
+`identity-service`, `task-service`, and `social-service` followed the same pattern).
+Kafka/RabbitMQ messaging and a `kubernetes/` directory are not part of this yet — see
+`docs/CHANGELOG.md`'s `[Unreleased]` entry for current scope.

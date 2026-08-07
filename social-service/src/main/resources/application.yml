@@ -1,0 +1,68 @@
+app:
+  # Consumed by security.WebSocketConfig's CORS-allowed-origin for the STOMP handshake — same
+  # property key gateway used for the same purpose before this module's extraction.
+  frontend:
+    url: ${FRONTEND_URL:http://localhost:3000}
+  # Gates service.seed.DataSeedingRunner — same property key/default-false convention gateway
+  # uses for its own seeders, overridden to true in docker (see the apps-docker-compose file).
+  seed:
+    enabled: ${APP_SEED_ENABLED:false}
+  # infra's StorageConfig/StorageProperties — needed for FriendMapper/MessagingMapper's avatar/
+  # attachment presigned-URL resolution (infra.service.StorageService), same MinIO instance
+  # gateway/identity-service already use, same property keys/defaults as gateway's application.yml.
+  storage:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${MINIO_SECRET_KEY:minioadmin}
+    bucket: ${MINIO_BUCKET:user-avatars}
+    presigned-url-expiry-minutes: ${MINIO_PRESIGNED_EXPIRY:60}
+
+spring:
+  application:
+    name: social-service
+
+  # OAuth2/OIDC — Keycloak is the identity provider; this service only ever verifies bearer
+  # tokens against Keycloak's JWKS, same realm as gateway/ecommerce-service/identity-service/
+  # task-service.
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/dev-knowledge-platform}
+
+  # Liquibase — disabled by default, same convention as every other standalone service: migrations
+  # are applied via the standalone social-service-liquibase.yml docker-compose file, not on app boot.
+  liquibase:
+    enabled: false
+    change-log: classpath:com/ttg/devknowledgeplatform/social/database/sql/social-service.xml
+
+  # JPA — this module's own schema (`social`), separate from the monolith's `product` schema.
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_schema: social
+
+# Server — 8084, distinct from gateway's 8080, ecommerce-service's 8081, identity-service's 8082,
+# and task-service's 8083 (this app runs alongside all four, not instead of any, until gateway's
+# HTTP proxy to this service is built).
+server:
+  port: ${SERVER_PORT:8084}
+
+# Logging
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Management
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized

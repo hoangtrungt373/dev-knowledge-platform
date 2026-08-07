@@ -5,19 +5,19 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
-import com.ttg.devknowledgeplatform.common.repository.UserRepository;
 import com.ttg.devknowledgeplatform.common.util.DateUtils;
 import com.ttg.devknowledgeplatform.social.entity.DmMessage;
 import com.ttg.devknowledgeplatform.social.entity.DmThread;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
 import com.ttg.devknowledgeplatform.social.enums.MessageType;
 import com.ttg.devknowledgeplatform.social.enums.RelationshipStatus;
 import com.ttg.devknowledgeplatform.social.exception.SocialErrorCode;
 import com.ttg.devknowledgeplatform.social.repository.DmMessageRepository;
 import com.ttg.devknowledgeplatform.social.repository.DmThreadRepository;
+import com.ttg.devknowledgeplatform.social.repository.SocialProfileRepository;
 import com.ttg.devknowledgeplatform.social.service.DmService;
 import com.ttg.devknowledgeplatform.social.service.FriendService;
 import com.ttg.devknowledgeplatform.social.dto.messaging.MessageAttachmentInput;
@@ -33,15 +33,15 @@ public class DmServiceImpl implements DmService {
 
     private final DmThreadRepository dmThreadRepository;
     private final DmMessageRepository dmMessageRepository;
-    private final UserRepository userRepository;
+    private final SocialProfileRepository socialProfileRepository;
     private final FriendService friendService;
 
     @Override
     public DmMessage sendMessage(Integer senderId, String recipientUuid, String content, MessageAttachmentInput attachment) {
         requireContentOrAttachment(content, attachment);
 
-        User sender = resolveUser(senderId);
-        User recipient = resolveUserByUuid(recipientUuid);
+        SocialProfile sender = resolveUser(senderId);
+        SocialProfile recipient = resolveUserByUuid(recipientUuid);
 
         // Single gate for "not friends" and "blocked" alike — reuses FriendService's own
         // mutual-invisibility-preserving lookup instead of re-querying Friendship/UserBlock here.
@@ -85,8 +85,8 @@ public class DmServiceImpl implements DmService {
         return dmMessageRepository.findByDmThreadOrderByDteCreationDesc(thread, pageable);
     }
 
-    private DmThread resolveOrCreateThread(User a, User b) {
-        User[] pair = canonicalize(a, b);
+    private DmThread resolveOrCreateThread(SocialProfile a, SocialProfile b) {
+        SocialProfile[] pair = canonicalize(a, b);
         return dmThreadRepository.findByUser1AndUser2(pair[0], pair[1])
                 .orElseGet(() -> dmThreadRepository.save(DmThread.builder().user1(pair[0]).user2(pair[1]).build()));
     }
@@ -106,17 +106,17 @@ public class DmServiceImpl implements DmService {
                 : MessageType.FILE;
     }
 
-    private User[] canonicalize(User a, User b) {
-        return a.getId() < b.getId() ? new User[] {a, b} : new User[] {b, a};
+    private SocialProfile[] canonicalize(SocialProfile a, SocialProfile b) {
+        return a.getId() < b.getId() ? new SocialProfile[] {a, b} : new SocialProfile[] {b, a};
     }
 
-    private User resolveUser(Integer userId) {
-        return userRepository.findById(userId)
+    private SocialProfile resolveUser(Integer userId) {
+        return socialProfileRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND));
     }
 
-    private User resolveUserByUuid(String userUuid) {
-        return userRepository.findByUserUuid(userUuid)
+    private SocialProfile resolveUserByUuid(String userUuid) {
+        return socialProfileRepository.findByProfileUuid(userUuid)
                 .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found: " + userUuid));
     }
 }

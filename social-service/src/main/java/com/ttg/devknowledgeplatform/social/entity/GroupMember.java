@@ -1,7 +1,6 @@
 package com.ttg.devknowledgeplatform.social.entity;
 
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.social.enums.GroupMemberRole;
 
 import jakarta.persistence.AttributeOverride;
@@ -30,7 +29,7 @@ import lombok.ToString;
 @Entity
 @Table(
         name = "GROUP_MEMBER",
-        schema = "product",
+        schema = "social",
         uniqueConstraints = @UniqueConstraint(name = "UK_GROUP_MEMBER_GROUP_USER", columnNames = {"GROUP_ID", "USER_ID"})
 )
 @AttributeOverride(name = "id", column = @Column(name = "GROUP_MEMBER_ID"))
@@ -48,7 +47,7 @@ public class GroupMember extends AbstractEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "USER_ID", nullable = false)
-    private User user;
+    private SocialProfile user;
 
     @NotNull
     @Enumerated(EnumType.STRING)

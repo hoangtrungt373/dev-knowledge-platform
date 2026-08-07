@@ -5,7 +5,6 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.infra.service.StorageService;
 import com.ttg.devknowledgeplatform.social.dto.messaging.ChannelMessageResponse;
 import com.ttg.devknowledgeplatform.social.dto.messaging.ChannelResponse;
@@ -21,6 +20,7 @@ import com.ttg.devknowledgeplatform.social.entity.DmMessage;
 import com.ttg.devknowledgeplatform.social.entity.DmThread;
 import com.ttg.devknowledgeplatform.social.entity.Group;
 import com.ttg.devknowledgeplatform.social.entity.GroupMember;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
 import com.ttg.devknowledgeplatform.social.dto.messaging.MessageAttachmentInput;
 
 /**
@@ -78,7 +78,7 @@ public abstract class MessagingMapper {
         return new MessageAttachmentResponse(storageService.getPresignedUrl(objectKey), mimeType, fileName, fileSize);
     }
 
-    protected User otherUser(DmThread thread, Integer viewerId) {
+    protected SocialProfile otherUser(DmThread thread, Integer viewerId) {
         return thread.getUser1().getId().equals(viewerId) ? thread.getUser2() : thread.getUser1();
     }
 }

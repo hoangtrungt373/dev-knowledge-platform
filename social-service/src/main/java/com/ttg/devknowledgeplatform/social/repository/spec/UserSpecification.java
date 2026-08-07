@@ -11,7 +11,7 @@ import jakarta.persistence.criteria.Subquery;
 
 import org.springframework.data.jpa.domain.Specification;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
 import com.ttg.devknowledgeplatform.social.entity.UserBlock;
 
 public class UserSpecification {
@@ -23,7 +23,7 @@ public class UserSpecification {
      * When {@code q} looks like an email address it is matched exactly (prevents scraping the
      * user directory by partial email); otherwise it's matched fuzzily against username/name.
      */
-    public static Specification<User> search(String q, Integer viewerId) {
+    public static Specification<SocialProfile> search(String q, Integer viewerId) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.notEqual(root.get("id"), viewerId));
@@ -49,7 +49,7 @@ public class UserSpecification {
     }
 
     private static Subquery<Integer> notBlockedEitherDirection(
-            Root<User> root, CriteriaQuery<?> query, CriteriaBuilder cb, Integer viewerId) {
+            Root<SocialProfile> root, CriteriaQuery<?> query, CriteriaBuilder cb, Integer viewerId) {
         Subquery<Integer> subquery = query.subquery(Integer.class);
         Root<UserBlock> blockRoot = subquery.from(UserBlock.class);
         subquery.select(cb.literal(1));

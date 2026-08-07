@@ -10,13 +10,13 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.social.entity.FriendRequest;
 import com.ttg.devknowledgeplatform.social.entity.Friendship;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
 import com.ttg.devknowledgeplatform.social.entity.UserBlock;
 import com.ttg.devknowledgeplatform.social.enums.FriendRequestStatus;
 import com.ttg.devknowledgeplatform.social.enums.RelationshipStatus;
@@ -25,7 +25,7 @@ import com.ttg.devknowledgeplatform.social.event.FriendRequestSentEvent;
 import com.ttg.devknowledgeplatform.social.exception.SocialErrorCode;
 import com.ttg.devknowledgeplatform.social.repository.FriendRequestRepository;
 import com.ttg.devknowledgeplatform.social.repository.FriendshipRepository;
-import com.ttg.devknowledgeplatform.common.repository.UserRepository;
+import com.ttg.devknowledgeplatform.social.repository.SocialProfileRepository;
 import com.ttg.devknowledgeplatform.social.repository.UserBlockRepository;
 import com.ttg.devknowledgeplatform.social.repository.spec.UserSpecification;
 import com.ttg.devknowledgeplatform.social.service.FriendService;
@@ -42,13 +42,13 @@ public class FriendServiceImpl implements FriendService {
     private final FriendRequestRepository friendRequestRepository;
     private final FriendshipRepository friendshipRepository;
     private final UserBlockRepository userBlockRepository;
-    private final UserRepository userRepository;
+    private final SocialProfileRepository socialProfileRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public FriendRequest sendRequest(Integer requesterId, String addresseeUuid) {
-        User requester = resolveUser(requesterId);
-        User addressee = resolveVisibleTarget(requester, addresseeUuid);
+        SocialProfile requester = resolveUser(requesterId);
+        SocialProfile addressee = resolveVisibleTarget(requester, addresseeUuid);
 
         if (requester.getId().equals(addressee.getId())) {
             throw new BusinessException(SocialErrorCode.CANNOT_FRIEND_SELF);
@@ -57,7 +57,7 @@ public class FriendServiceImpl implements FriendService {
             throw new BusinessException(SocialErrorCode.USER_ALREADY_BLOCKED, "You have blocked this user — unblock them first");
         }
 
-        User[] pair = canonicalize(requester, addressee);
+        SocialProfile[] pair = canonicalize(requester, addressee);
         if (friendshipRepository.existsByUser1AndUser2(pair[0], pair[1])) {
             throw new BusinessException(SocialErrorCode.ALREADY_FRIENDS, "You are already friends with this user");
         }
@@ -120,9 +120,9 @@ public class FriendServiceImpl implements FriendService {
 
     @Override
     public void unfriend(Integer userId, String otherUserUuid) {
-        User user = resolveUser(userId);
-        User other = resolveVisibleTarget(user, otherUserUuid);
-        User[] pair = canonicalize(user, other);
+        SocialProfile user = resolveUser(userId);
+        SocialProfile other = resolveVisibleTarget(user, otherUserUuid);
+        SocialProfile[] pair = canonicalize(user, other);
         if (!friendshipRepository.existsByUser1AndUser2(pair[0], pair[1])) {
             throw new BusinessException(SocialErrorCode.NOT_FRIENDS, "You are not friends with this user");
         }
@@ -132,8 +132,8 @@ public class FriendServiceImpl implements FriendService {
 
     @Override
     public UserBlock block(Integer blockerId, String blockedUuid) {
-        User blocker = resolveUser(blockerId);
-        User blocked = resolveUserByUuid(blockedUuid);
+        SocialProfile blocker = resolveUser(blockerId);
+        SocialProfile blocked = resolveUserByUuid(blockedUuid);
         if (blocker.getId().equals(blocked.getId())) {
             throw new BusinessException(SocialErrorCode.CANNOT_BLOCK_SELF);
         }
@@ -141,7 +141,7 @@ public class FriendServiceImpl implements FriendService {
             throw new BusinessException(SocialErrorCode.USER_ALREADY_BLOCKED);
         }
 
-        User[] pair = canonicalize(blocker, blocked);
+        SocialProfile[] pair = canonicalize(blocker, blocked);
         friendshipRepository.deleteByUser1AndUser2(pair[0], pair[1]);
         friendRequestRepository.findPendingBetween(blocker, blocked).ifPresent(pending -> {
             pending.setStatus(FriendRequestStatus.CANCELLED);
@@ -155,16 +155,16 @@ public class FriendServiceImpl implements FriendService {
 
     @Override
     public void unblock(Integer blockerId, String blockedUuid) {
-        User blocker = resolveUser(blockerId);
-        User blocked = resolveUserByUuid(blockedUuid);
+        SocialProfile blocker = resolveUser(blockerId);
+        SocialProfile blocked = resolveUserByUuid(blockedUuid);
         userBlockRepository.deleteByBlockerAndBlocked(blocker, blocked);
         log.info("User {} unblocked user {}", blockerId, blocked.getId());
     }
 
     @Override
     public RelationshipStatus getRelationshipStatus(Integer viewerId, String targetUuid) {
-        User viewer = resolveUser(viewerId);
-        User target = resolveVisibleTarget(viewer, targetUuid);
+        SocialProfile viewer = resolveUser(viewerId);
+        SocialProfile target = resolveVisibleTarget(viewer, targetUuid);
 
         if (viewer.getId().equals(target.getId())) {
             return RelationshipStatus.STRANGER;
@@ -173,7 +173,7 @@ public class FriendServiceImpl implements FriendService {
             return RelationshipStatus.BLOCKED;
         }
 
-        User[] pair = canonicalize(viewer, target);
+        SocialProfile[] pair = canonicalize(viewer, target);
         if (friendshipRepository.existsByUser1AndUser2(pair[0], pair[1])) {
             return RelationshipStatus.FRIENDS;
         }
@@ -188,8 +188,8 @@ public class FriendServiceImpl implements FriendService {
 
     @Override
     public long countMutualFriends(Integer viewerId, String targetUuid) {
-        User viewer = resolveUser(viewerId);
-        User target = resolveVisibleTarget(viewer, targetUuid);
+        SocialProfile viewer = resolveUser(viewerId);
+        SocialProfile target = resolveVisibleTarget(viewer, targetUuid);
         Set<Integer> viewerFriends = new HashSet<>(friendshipRepository.findFriendUserIds(viewer));
         viewerFriends.retainAll(new HashSet<>(friendshipRepository.findFriendUserIds(target)));
         return viewerFriends.size();
@@ -211,17 +211,17 @@ public class FriendServiceImpl implements FriendService {
     }
 
     @Override
-    public Page<User> listBlockedUsers(Integer blockerId, Pageable pageable) {
+    public Page<SocialProfile> listBlockedUsers(Integer blockerId, Pageable pageable) {
         return userBlockRepository.findByBlocker(resolveUser(blockerId), pageable).map(UserBlock::getBlocked);
     }
 
     @Override
-    public Page<User> searchUsers(Integer viewerId, String q, Pageable pageable) {
-        Specification<User> spec = UserSpecification.search(q, viewerId);
-        return userRepository.findAll(spec, pageable);
+    public Page<SocialProfile> searchUsers(Integer viewerId, String q, Pageable pageable) {
+        Specification<SocialProfile> spec = UserSpecification.search(q, viewerId);
+        return socialProfileRepository.findAll(spec, pageable);
     }
 
-    private void createFriendship(User[] canonicalPair) {
+    private void createFriendship(SocialProfile[] canonicalPair) {
         Friendship friendship = friendshipRepository.save(
                 Friendship.builder().user1(canonicalPair[0]).user2(canonicalPair[1]).build());
         eventPublisher.publishEvent(
@@ -253,17 +253,17 @@ public class FriendServiceImpl implements FriendService {
         }
     }
 
-    private User[] canonicalize(User a, User b) {
-        return a.getId() < b.getId() ? new User[] {a, b} : new User[] {b, a};
+    private SocialProfile[] canonicalize(SocialProfile a, SocialProfile b) {
+        return a.getId() < b.getId() ? new SocialProfile[] {a, b} : new SocialProfile[] {b, a};
     }
 
-    private User resolveUser(Integer userId) {
-        return userRepository.findById(userId)
+    private SocialProfile resolveUser(Integer userId) {
+        return socialProfileRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND));
     }
 
-    private User resolveUserByUuid(String userUuid) {
-        return userRepository.findByUserUuid(userUuid)
+    private SocialProfile resolveUserByUuid(String userUuid) {
+        return socialProfileRepository.findByProfileUuid(userUuid)
                 .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found: " + userUuid));
     }
 
@@ -272,8 +272,8 @@ public class FriendServiceImpl implements FriendService {
      * {@code target} has blocked {@code viewer}, this throws the same {@code USER_NOT_FOUND}
      * error as a nonexistent UUID rather than a distinguishable "blocked" error.
      */
-    private User resolveVisibleTarget(User viewer, String targetUuid) {
-        User target = resolveUserByUuid(targetUuid);
+    private SocialProfile resolveVisibleTarget(SocialProfile viewer, String targetUuid) {
+        SocialProfile target = resolveUserByUuid(targetUuid);
         if (userBlockRepository.existsByBlockerAndBlocked(target, viewer)) {
             throw new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found: " + targetUuid);
         }

@@ -1,0 +1,18 @@
+services:
+  social-liquibase:
+    image: liquibase/liquibase:4.29
+    container_name: dev-premier-social-liquibase
+    restart: "no"
+    entrypoint: ["liquibase"]
+    command:
+      - --search-path=/changelog
+      - --changelog-file=social-service.xml
+      - --url=${LIQUIBASE_COMMAND_URL:-jdbc:postgresql://host.docker.internal:5432/dev-premier}
+      - --username=${LIQUIBASE_COMMAND_USERNAME:-postgres}
+      - --password=${LIQUIBASE_COMMAND_PASSWORD:-password}
+      - --driver=org.postgresql.Driver
+      - update
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./social-service/src/main/java/com/ttg/devknowledgeplatform/social/database/sql:/changelog:ro

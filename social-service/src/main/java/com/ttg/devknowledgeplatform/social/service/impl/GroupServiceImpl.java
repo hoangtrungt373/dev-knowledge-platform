@@ -7,15 +7,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
-import com.ttg.devknowledgeplatform.common.repository.UserRepository;
 import com.ttg.devknowledgeplatform.social.entity.Channel;
 import com.ttg.devknowledgeplatform.social.entity.ChannelMessage;
 import com.ttg.devknowledgeplatform.social.entity.Group;
 import com.ttg.devknowledgeplatform.social.entity.GroupMember;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
 import com.ttg.devknowledgeplatform.social.enums.GroupMemberRole;
 import com.ttg.devknowledgeplatform.social.enums.MessageType;
 import com.ttg.devknowledgeplatform.social.exception.SocialErrorCode;
@@ -23,6 +22,7 @@ import com.ttg.devknowledgeplatform.social.repository.ChannelMessageRepository;
 import com.ttg.devknowledgeplatform.social.repository.ChannelRepository;
 import com.ttg.devknowledgeplatform.social.repository.GroupMemberRepository;
 import com.ttg.devknowledgeplatform.social.repository.GroupRepository;
+import com.ttg.devknowledgeplatform.social.repository.SocialProfileRepository;
 import com.ttg.devknowledgeplatform.social.service.GroupService;
 import com.ttg.devknowledgeplatform.social.dto.messaging.MessageAttachmentInput;
 
@@ -39,11 +39,11 @@ public class GroupServiceImpl implements GroupService {
     private final GroupMemberRepository groupMemberRepository;
     private final ChannelRepository channelRepository;
     private final ChannelMessageRepository channelMessageRepository;
-    private final UserRepository userRepository;
+    private final SocialProfileRepository socialProfileRepository;
 
     @Override
     public Group createGroup(Integer creatorId, String name) {
-        User creator = resolveUser(creatorId);
+        SocialProfile creator = resolveUser(creatorId);
         Group group = groupRepository.save(Group.builder().name(name).build());
         groupMemberRepository.save(GroupMember.builder().group(group).user(creator).role(GroupMemberRole.OWNER).build());
         log.info("User {} created group {} ({})", creatorId, group.getId(), name);
@@ -55,7 +55,7 @@ public class GroupServiceImpl implements GroupService {
         Group group = resolveGroup(groupId);
         requireManagementRole(resolveMembership(group, resolveUser(actingUserId)).getRole());
 
-        User newMember = resolveUserByUuid(newMemberUuid);
+        SocialProfile newMember = resolveUserByUuid(newMemberUuid);
         return groupMemberRepository.findByGroupAndUser(group, newMember)
                 .orElseGet(() -> {
                     GroupMember saved = groupMemberRepository.save(
@@ -71,7 +71,7 @@ public class GroupServiceImpl implements GroupService {
         GroupMemberRole actingRole = resolveMembership(group, resolveUser(actingUserId)).getRole();
         requireManagementRole(actingRole);
 
-        User target = resolveUserByUuid(targetUserUuid);
+        SocialProfile target = resolveUserByUuid(targetUserUuid);
         GroupMember targetMembership = groupMemberRepository.findByGroupAndUser(group, target)
                 .orElseThrow(() -> new ResourceNotFoundException(SocialErrorCode.GROUP_MEMBER_NOT_FOUND));
 
@@ -108,7 +108,7 @@ public class GroupServiceImpl implements GroupService {
             throw new BusinessException(SocialErrorCode.CANNOT_CHANGE_OWNER_ROLE);
         }
 
-        User target = resolveUserByUuid(targetUserUuid);
+        SocialProfile target = resolveUserByUuid(targetUserUuid);
         GroupMember targetMembership = groupMemberRepository.findByGroupAndUser(group, target)
                 .orElseThrow(() -> new ResourceNotFoundException(SocialErrorCode.GROUP_MEMBER_NOT_FOUND));
         if (targetMembership.getRole() == GroupMemberRole.OWNER) {
@@ -141,7 +141,7 @@ public class GroupServiceImpl implements GroupService {
         }
 
         Channel channel = resolveChannel(channelId);
-        User sender = resolveUser(senderId);
+        SocialProfile sender = resolveUser(senderId);
         resolveMembership(channel.getGroup(), sender);
 
         ChannelMessage saved = channelMessageRepository.save(ChannelMessage.builder()
@@ -180,7 +180,7 @@ public class GroupServiceImpl implements GroupService {
     @Override
     public boolean isChannelMember(Integer userId, Integer channelId) {
         return channelRepository.findById(channelId)
-                .flatMap(channel -> userRepository.findById(userId)
+                .flatMap(channel -> socialProfileRepository.findById(userId)
                         .map(user -> groupMemberRepository.existsByGroupAndUser(channel.getGroup(), user)))
                 .orElse(false);
     }
@@ -201,7 +201,7 @@ public class GroupServiceImpl implements GroupService {
         }
     }
 
-    private GroupMember resolveMembership(Group group, User user) {
+    private GroupMember resolveMembership(Group group, SocialProfile user) {
         return groupMemberRepository.findByGroupAndUser(group, user)
                 .orElseThrow(() -> new BusinessException(SocialErrorCode.NOT_GROUP_MEMBER));
     }
@@ -225,13 +225,13 @@ public class GroupServiceImpl implements GroupService {
                 .orElseThrow(() -> new ResourceNotFoundException(SocialErrorCode.CHANNEL_NOT_FOUND));
     }
 
-    private User resolveUser(Integer userId) {
-        return userRepository.findById(userId)
+    private SocialProfile resolveUser(Integer userId) {
+        return socialProfileRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND));
     }
 
-    private User resolveUserByUuid(String userUuid) {
-        return userRepository.findByUserUuid(userUuid)
+    private SocialProfile resolveUserByUuid(String userUuid) {
+        return socialProfileRepository.findByProfileUuid(userUuid)
                 .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found: " + userUuid));
     }
 }

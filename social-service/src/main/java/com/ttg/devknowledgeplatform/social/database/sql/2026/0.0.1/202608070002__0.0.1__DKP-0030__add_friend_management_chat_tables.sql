@@ -1,0 +1,295 @@
+-- liquibase formatted sql
+-- changeset ttg:202608070002__0.0.1__DKP-0030__add_friend_management_chat_tables logicalFilePath:SocialService
+-- comment: Friend graph + chat (groups/channels/DMs) — fresh snapshot in the `social` schema
+--
+-- Fresh snapshot of gateway's product.FRIEND_REQUEST/FRIENDSHIP/USER_BLOCK/MESSAGE_GROUP/
+-- GROUP_MEMBER/CHANNEL/DM_THREAD/DM_MESSAGE/CHANNEL_MESSAGE as of DKP-0019 (final shape after
+-- DKP-0015's friend graph + DKP-0019's chat tables) — not a replay of that migration history.
+-- Every FK that used to reference product.USER (USER_ID) now references social.PROFILE
+-- (PROFILE_ID) instead — this module's own lean projection of a Keycloak identity, not a
+-- foreign key onto any other service's table (see database.sql's DKP-0029 and
+-- entity.SocialProfile's Javadoc for why).
+
+-- =============================================================================
+-- FRIEND_REQUEST
+-- =============================================================================
+
+CREATE SEQUENCE IF NOT EXISTS social.FRIEND_REQUEST_SEQ
+    START WITH 1 INCREMENT BY 50 NO MAXVALUE NO CYCLE;
+
+CREATE TABLE IF NOT EXISTS social.FRIEND_REQUEST (
+    FRIEND_REQUEST_ID       INTEGER                         NOT NULL,
+    REQUESTER_ID            INTEGER                         NOT NULL,
+    ADDRESSEE_ID            INTEGER                         NOT NULL,
+    STATUS                  VARCHAR(50)                     NOT NULL,
+    USR_CREATION            VARCHAR(128)                    NOT NULL,
+    DTE_CREATION            TIMESTAMP WITH TIME ZONE        NOT NULL,
+    USR_LAST_MODIFICATION   VARCHAR(128)                    NOT NULL,
+    DTE_LAST_MODIFICATION   TIMESTAMP WITH TIME ZONE        NOT NULL,
+    VERSION                 INTEGER                         NOT NULL,
+
+    CONSTRAINT PK_FRIEND_REQUEST PRIMARY KEY (FRIEND_REQUEST_ID),
+
+    CONSTRAINT FK_FRIEND_REQUEST_REQUESTER FOREIGN KEY (REQUESTER_ID) REFERENCES social.PROFILE (PROFILE_ID),
+    CONSTRAINT FK_FRIEND_REQUEST_ADDRESSEE FOREIGN KEY (ADDRESSEE_ID) REFERENCES social.PROFILE (PROFILE_ID),
+
+    CONSTRAINT CKC_FRIEND_REQUEST_STATUS CHECK (STATUS IN ('PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED'))
+);
+
+ALTER SEQUENCE social.FRIEND_REQUEST_SEQ OWNED BY social.FRIEND_REQUEST.FRIEND_REQUEST_ID;
+
+CREATE INDEX IF NOT EXISTS IDX_FRIEND_REQUEST_REQUESTER ON social.FRIEND_REQUEST (REQUESTER_ID);
+CREATE INDEX IF NOT EXISTS IDX_FRIEND_REQUEST_ADDRESSEE ON social.FRIEND_REQUEST (ADDRESSEE_ID);
+
+CREATE UNIQUE INDEX IF NOT EXISTS IDX_FRIEND_REQUEST_PENDING_PAIR
+    ON social.FRIEND_REQUEST (LEAST(REQUESTER_ID, ADDRESSEE_ID), GREATEST(REQUESTER_ID, ADDRESSEE_ID))
+    WHERE STATUS = 'PENDING';
+
+-- =============================================================================
+-- FRIENDSHIP
+-- =============================================================================
+
+CREATE SEQUENCE IF NOT EXISTS social.FRIENDSHIP_SEQ
+    START WITH 1 INCREMENT BY 50 NO MAXVALUE NO CYCLE;
+
+CREATE TABLE IF NOT EXISTS social.FRIENDSHIP (
+    FRIENDSHIP_ID           INTEGER                         NOT NULL,
+    USER_ID_1               INTEGER                         NOT NULL,
+    USER_ID_2               INTEGER                         NOT NULL,
+    USR_CREATION            VARCHAR(128)                    NOT NULL,
+    DTE_CREATION            TIMESTAMP WITH TIME ZONE        NOT NULL,
+    USR_LAST_MODIFICATION   VARCHAR(128)                    NOT NULL,
+    DTE_LAST_MODIFICATION   TIMESTAMP WITH TIME ZONE        NOT NULL,
+    VERSION                 INTEGER                         NOT NULL,
+
+    CONSTRAINT PK_FRIENDSHIP PRIMARY KEY (FRIENDSHIP_ID),
+
+    CONSTRAINT FK_FRIENDSHIP_USER_1 FOREIGN KEY (USER_ID_1) REFERENCES social.PROFILE (PROFILE_ID),
+    CONSTRAINT FK_FRIENDSHIP_USER_2 FOREIGN KEY (USER_ID_2) REFERENCES social.PROFILE (PROFILE_ID),
+
+    CONSTRAINT CKC_FRIENDSHIP_ORDER CHECK (USER_ID_1 < USER_ID_2)
+);
+
+ALTER SEQUENCE social.FRIENDSHIP_SEQ OWNED BY social.FRIENDSHIP.FRIENDSHIP_ID;
+
+CREATE UNIQUE INDEX IF NOT EXISTS IDX_FRIENDSHIP_PAIR ON social.FRIENDSHIP (USER_ID_1, USER_ID_2);
+CREATE INDEX IF NOT EXISTS IDX_FRIENDSHIP_USER_1 ON social.FRIENDSHIP (USER_ID_1);
+CREATE INDEX IF NOT EXISTS IDX_FRIENDSHIP_USER_2 ON social.FRIENDSHIP (USER_ID_2);
+
+-- =============================================================================
+-- USER_BLOCK
+-- =============================================================================
+
+CREATE SEQUENCE IF NOT EXISTS social.USER_BLOCK_SEQ
+    START WITH 1 INCREMENT BY 50 NO MAXVALUE NO CYCLE;
+
+CREATE TABLE IF NOT EXISTS social.USER_BLOCK (
+    USER_BLOCK_ID           INTEGER                         NOT NULL,
+    BLOCKER_ID              INTEGER                         NOT NULL,
+    BLOCKED_ID              INTEGER                         NOT NULL,
+    USR_CREATION            VARCHAR(128)                    NOT NULL,
+    DTE_CREATION            TIMESTAMP WITH TIME ZONE        NOT NULL,
+    USR_LAST_MODIFICATION   VARCHAR(128)                    NOT NULL,
+    DTE_LAST_MODIFICATION   TIMESTAMP WITH TIME ZONE        NOT NULL,
+    VERSION                 INTEGER                         NOT NULL,
+
+    CONSTRAINT PK_USER_BLOCK PRIMARY KEY (USER_BLOCK_ID),
+
+    CONSTRAINT FK_USER_BLOCK_BLOCKER FOREIGN KEY (BLOCKER_ID) REFERENCES social.PROFILE (PROFILE_ID),
+    CONSTRAINT FK_USER_BLOCK_BLOCKED FOREIGN KEY (BLOCKED_ID) REFERENCES social.PROFILE (PROFILE_ID),
+
+    CONSTRAINT CKC_USER_BLOCK_NOT_SELF CHECK (BLOCKER_ID <> BLOCKED_ID)
+);
+
+ALTER SEQUENCE social.USER_BLOCK_SEQ OWNED BY social.USER_BLOCK.USER_BLOCK_ID;
+
+CREATE UNIQUE INDEX IF NOT EXISTS IDX_USER_BLOCK_PAIR ON social.USER_BLOCK (BLOCKER_ID, BLOCKED_ID);
+CREATE INDEX IF NOT EXISTS IDX_USER_BLOCK_BLOCKER ON social.USER_BLOCK (BLOCKER_ID);
+CREATE INDEX IF NOT EXISTS IDX_USER_BLOCK_BLOCKED ON social.USER_BLOCK (BLOCKED_ID);
+
+-- =============================================================================
+-- MESSAGE_GROUP
+-- =============================================================================
+
+CREATE SEQUENCE IF NOT EXISTS social.MESSAGE_GROUP_SEQ
+    START WITH 1 INCREMENT BY 50 NO MAXVALUE NO CYCLE;
+
+CREATE TABLE IF NOT EXISTS social.MESSAGE_GROUP (
+    GROUP_ID                INTEGER                         NOT NULL,
+    NAME                    VARCHAR(255)                    NOT NULL,
+    USR_CREATION            VARCHAR(128)                    NOT NULL,
+    DTE_CREATION            TIMESTAMP WITH TIME ZONE        NOT NULL,
+    USR_LAST_MODIFICATION   VARCHAR(128)                    NOT NULL,
+    DTE_LAST_MODIFICATION   TIMESTAMP WITH TIME ZONE        NOT NULL,
+    VERSION                 INTEGER                         NOT NULL,
+
+    CONSTRAINT PK_MESSAGE_GROUP PRIMARY KEY (GROUP_ID)
+);
+
+ALTER SEQUENCE social.MESSAGE_GROUP_SEQ OWNED BY social.MESSAGE_GROUP.GROUP_ID;
+
+-- =============================================================================
+-- GROUP_MEMBER
+-- =============================================================================
+
+CREATE SEQUENCE IF NOT EXISTS social.GROUP_MEMBER_SEQ
+    START WITH 1 INCREMENT BY 50 NO MAXVALUE NO CYCLE;
+
+CREATE TABLE IF NOT EXISTS social.GROUP_MEMBER (
+    GROUP_MEMBER_ID         INTEGER                         NOT NULL,
+    GROUP_ID                INTEGER                         NOT NULL,
+    USER_ID                 INTEGER                         NOT NULL,
+    ROLE                    VARCHAR(20)                     NOT NULL,
+    USR_CREATION            VARCHAR(128)                    NOT NULL,
+    DTE_CREATION            TIMESTAMP WITH TIME ZONE        NOT NULL,
+    USR_LAST_MODIFICATION   VARCHAR(128)                    NOT NULL,
+    DTE_LAST_MODIFICATION   TIMESTAMP WITH TIME ZONE        NOT NULL,
+    VERSION                 INTEGER                         NOT NULL,
+
+    CONSTRAINT PK_GROUP_MEMBER PRIMARY KEY (GROUP_MEMBER_ID),
+
+    CONSTRAINT FK_GROUP_MEMBER_GROUP FOREIGN KEY (GROUP_ID)
+        REFERENCES social.MESSAGE_GROUP (GROUP_ID) ON DELETE CASCADE,
+    CONSTRAINT FK_GROUP_MEMBER_USER FOREIGN KEY (USER_ID)
+        REFERENCES social.PROFILE (PROFILE_ID),
+
+    CONSTRAINT CKC_GROUP_MEMBER_ROLE CHECK (ROLE IN ('OWNER', 'ADMIN', 'MEMBER'))
+);
+
+ALTER SEQUENCE social.GROUP_MEMBER_SEQ OWNED BY social.GROUP_MEMBER.GROUP_MEMBER_ID;
+
+CREATE UNIQUE INDEX IF NOT EXISTS UK_GROUP_MEMBER_GROUP_USER ON social.GROUP_MEMBER (GROUP_ID, USER_ID);
+CREATE INDEX IF NOT EXISTS IDX_GROUP_MEMBER_USER ON social.GROUP_MEMBER (USER_ID);
+
+-- =============================================================================
+-- CHANNEL
+-- =============================================================================
+
+CREATE SEQUENCE IF NOT EXISTS social.CHANNEL_SEQ
+    START WITH 1 INCREMENT BY 50 NO MAXVALUE NO CYCLE;
+
+CREATE TABLE IF NOT EXISTS social.CHANNEL (
+    CHANNEL_ID              INTEGER                         NOT NULL,
+    GROUP_ID                INTEGER                         NOT NULL,
+    NAME                    VARCHAR(100)                    NOT NULL,
+    USR_CREATION            VARCHAR(128)                    NOT NULL,
+    DTE_CREATION            TIMESTAMP WITH TIME ZONE        NOT NULL,
+    USR_LAST_MODIFICATION   VARCHAR(128)                    NOT NULL,
+    DTE_LAST_MODIFICATION   TIMESTAMP WITH TIME ZONE        NOT NULL,
+    VERSION                 INTEGER                         NOT NULL,
+
+    CONSTRAINT PK_CHANNEL PRIMARY KEY (CHANNEL_ID),
+
+    CONSTRAINT FK_CHANNEL_GROUP FOREIGN KEY (GROUP_ID)
+        REFERENCES social.MESSAGE_GROUP (GROUP_ID) ON DELETE CASCADE
+);
+
+ALTER SEQUENCE social.CHANNEL_SEQ OWNED BY social.CHANNEL.CHANNEL_ID;
+
+CREATE UNIQUE INDEX IF NOT EXISTS UK_CHANNEL_GROUP_NAME ON social.CHANNEL (GROUP_ID, NAME);
+
+-- =============================================================================
+-- DM_THREAD
+-- =============================================================================
+
+CREATE SEQUENCE IF NOT EXISTS social.DM_THREAD_SEQ
+    START WITH 1 INCREMENT BY 50 NO MAXVALUE NO CYCLE;
+
+CREATE TABLE IF NOT EXISTS social.DM_THREAD (
+    DM_THREAD_ID            INTEGER                         NOT NULL,
+    USER_ID_1               INTEGER                         NOT NULL,
+    USER_ID_2               INTEGER                         NOT NULL,
+    LAST_MESSAGE_AT         TIMESTAMP WITH TIME ZONE,
+    USR_CREATION            VARCHAR(128)                    NOT NULL,
+    DTE_CREATION            TIMESTAMP WITH TIME ZONE        NOT NULL,
+    USR_LAST_MODIFICATION   VARCHAR(128)                    NOT NULL,
+    DTE_LAST_MODIFICATION   TIMESTAMP WITH TIME ZONE        NOT NULL,
+    VERSION                 INTEGER                         NOT NULL,
+
+    CONSTRAINT PK_DM_THREAD PRIMARY KEY (DM_THREAD_ID),
+
+    CONSTRAINT FK_DM_THREAD_USER_1 FOREIGN KEY (USER_ID_1) REFERENCES social.PROFILE (PROFILE_ID),
+    CONSTRAINT FK_DM_THREAD_USER_2 FOREIGN KEY (USER_ID_2) REFERENCES social.PROFILE (PROFILE_ID),
+
+    CONSTRAINT CKC_DM_THREAD_ORDER CHECK (USER_ID_1 < USER_ID_2)
+);
+
+ALTER SEQUENCE social.DM_THREAD_SEQ OWNED BY social.DM_THREAD.DM_THREAD_ID;
+
+CREATE UNIQUE INDEX IF NOT EXISTS UK_DM_THREAD_USER_PAIR ON social.DM_THREAD (USER_ID_1, USER_ID_2);
+CREATE INDEX IF NOT EXISTS IDX_DM_THREAD_USER_1 ON social.DM_THREAD (USER_ID_1);
+CREATE INDEX IF NOT EXISTS IDX_DM_THREAD_USER_2 ON social.DM_THREAD (USER_ID_2);
+
+-- =============================================================================
+-- DM_MESSAGE
+-- =============================================================================
+
+CREATE SEQUENCE IF NOT EXISTS social.DM_MESSAGE_SEQ
+    START WITH 1 INCREMENT BY 50 NO MAXVALUE NO CYCLE;
+
+CREATE TABLE IF NOT EXISTS social.DM_MESSAGE (
+    DM_MESSAGE_ID           INTEGER                         NOT NULL,
+    DM_THREAD_ID            INTEGER                         NOT NULL,
+    SENDER_ID               INTEGER                         NOT NULL,
+    MESSAGE_TYPE            VARCHAR(20)                     NOT NULL,
+    CONTENT                 TEXT,
+    ATTACHMENT_OBJECT_KEY   VARCHAR(500),
+    ATTACHMENT_MIME_TYPE    VARCHAR(100),
+    ATTACHMENT_FILE_NAME    VARCHAR(255),
+    ATTACHMENT_FILE_SIZE    BIGINT,
+    USR_CREATION            VARCHAR(128)                    NOT NULL,
+    DTE_CREATION            TIMESTAMP WITH TIME ZONE        NOT NULL,
+    USR_LAST_MODIFICATION   VARCHAR(128)                    NOT NULL,
+    DTE_LAST_MODIFICATION   TIMESTAMP WITH TIME ZONE        NOT NULL,
+    VERSION                 INTEGER                         NOT NULL,
+
+    CONSTRAINT PK_DM_MESSAGE PRIMARY KEY (DM_MESSAGE_ID),
+
+    CONSTRAINT FK_DM_MESSAGE_THREAD FOREIGN KEY (DM_THREAD_ID)
+        REFERENCES social.DM_THREAD (DM_THREAD_ID) ON DELETE CASCADE,
+    CONSTRAINT FK_DM_MESSAGE_SENDER FOREIGN KEY (SENDER_ID)
+        REFERENCES social.PROFILE (PROFILE_ID),
+
+    CONSTRAINT CKC_DM_MESSAGE_TYPE CHECK (MESSAGE_TYPE IN ('TEXT', 'IMAGE', 'FILE'))
+);
+
+ALTER SEQUENCE social.DM_MESSAGE_SEQ OWNED BY social.DM_MESSAGE.DM_MESSAGE_ID;
+
+CREATE INDEX IF NOT EXISTS IDX_DM_MESSAGE_THREAD_CREATED ON social.DM_MESSAGE (DM_THREAD_ID, DTE_CREATION);
+
+-- =============================================================================
+-- CHANNEL_MESSAGE
+-- =============================================================================
+
+CREATE SEQUENCE IF NOT EXISTS social.CHANNEL_MESSAGE_SEQ
+    START WITH 1 INCREMENT BY 50 NO MAXVALUE NO CYCLE;
+
+CREATE TABLE IF NOT EXISTS social.CHANNEL_MESSAGE (
+    CHANNEL_MESSAGE_ID      INTEGER                         NOT NULL,
+    CHANNEL_ID              INTEGER                         NOT NULL,
+    SENDER_ID               INTEGER                         NOT NULL,
+    MESSAGE_TYPE            VARCHAR(20)                     NOT NULL,
+    CONTENT                 TEXT,
+    ATTACHMENT_OBJECT_KEY   VARCHAR(500),
+    ATTACHMENT_MIME_TYPE    VARCHAR(100),
+    ATTACHMENT_FILE_NAME    VARCHAR(255),
+    ATTACHMENT_FILE_SIZE    BIGINT,
+    USR_CREATION            VARCHAR(128)                    NOT NULL,
+    DTE_CREATION            TIMESTAMP WITH TIME ZONE        NOT NULL,
+    USR_LAST_MODIFICATION   VARCHAR(128)                    NOT NULL,
+    DTE_LAST_MODIFICATION   TIMESTAMP WITH TIME ZONE        NOT NULL,
+    VERSION                 INTEGER                         NOT NULL,
+
+    CONSTRAINT PK_CHANNEL_MESSAGE PRIMARY KEY (CHANNEL_MESSAGE_ID),
+
+    CONSTRAINT FK_CHANNEL_MESSAGE_CHANNEL FOREIGN KEY (CHANNEL_ID)
+        REFERENCES social.CHANNEL (CHANNEL_ID) ON DELETE CASCADE,
+    CONSTRAINT FK_CHANNEL_MESSAGE_SENDER FOREIGN KEY (SENDER_ID)
+        REFERENCES social.PROFILE (PROFILE_ID),
+
+    CONSTRAINT CKC_CHANNEL_MESSAGE_TYPE CHECK (MESSAGE_TYPE IN ('TEXT', 'IMAGE', 'FILE'))
+);
+
+ALTER SEQUENCE social.CHANNEL_MESSAGE_SEQ OWNED BY social.CHANNEL_MESSAGE.CHANNEL_MESSAGE_ID;
+
+CREATE INDEX IF NOT EXISTS IDX_CHANNEL_MESSAGE_CHANNEL_CREATED ON social.CHANNEL_MESSAGE (CHANNEL_ID, DTE_CREATION);

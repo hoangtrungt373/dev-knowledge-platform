@@ -10,8 +10,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.social.entity.Friendship;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
 
 /**
  * All methods here take an already-canonicalized pair ({@code user1.id < user2.id}) — see
@@ -20,14 +20,14 @@ import com.ttg.devknowledgeplatform.social.entity.Friendship;
 @Repository
 public interface FriendshipRepository extends JpaRepository<Friendship, Integer> {
 
-    boolean existsByUser1AndUser2(User user1, User user2);
+    boolean existsByUser1AndUser2(SocialProfile user1, SocialProfile user2);
 
-    Optional<Friendship> findByUser1AndUser2(User user1, User user2);
+    Optional<Friendship> findByUser1AndUser2(SocialProfile user1, SocialProfile user2);
 
-    void deleteByUser1AndUser2(User user1, User user2);
+    void deleteByUser1AndUser2(SocialProfile user1, SocialProfile user2);
 
     @Query("SELECT f FROM Friendship f WHERE f.user1 = :user OR f.user2 = :user")
-    Page<Friendship> findAllForUser(@Param("user") User user, Pageable pageable);
+    Page<Friendship> findAllForUser(@Param("user") SocialProfile user, Pageable pageable);
 
     /**
      * IDs of every user friended with {@code user}, regardless of which canonical side they're
@@ -36,5 +36,5 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Integer>
      */
     @Query("SELECT CASE WHEN f.user1 = :user THEN f.user2.id ELSE f.user1.id END "
             + "FROM Friendship f WHERE f.user1 = :user OR f.user2 = :user")
-    List<Integer> findFriendUserIds(@Param("user") User user);
+    List<Integer> findFriendUserIds(@Param("user") SocialProfile user);
 }

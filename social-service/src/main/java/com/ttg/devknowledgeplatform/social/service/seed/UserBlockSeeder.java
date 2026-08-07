@@ -3,10 +3,10 @@ package com.ttg.devknowledgeplatform.social.service.seed;
 import org.apache.commons.csv.CSVRecord;
 import org.springframework.stereotype.Component;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.common.repository.UserRepository;
 import com.ttg.devknowledgeplatform.infra.service.seed.CsvSeeder;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
 import com.ttg.devknowledgeplatform.social.entity.UserBlock;
+import com.ttg.devknowledgeplatform.social.repository.SocialProfileRepository;
 import com.ttg.devknowledgeplatform.social.repository.UserBlockRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -30,7 +30,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class UserBlockSeeder extends CsvSeeder<UserBlock> {
 
-    private final UserRepository userRepository;
+    private final SocialProfileRepository socialProfileRepository;
     private final UserBlockRepository userBlockRepository;
 
     @Override
@@ -40,15 +40,15 @@ public class UserBlockSeeder extends CsvSeeder<UserBlock> {
 
     @Override
     protected boolean alreadyExists(CSVRecord record) {
-        User blocker = resolveUser(record.get("blockerId"));
-        User blocked = resolveUser(record.get("blockedId"));
+        SocialProfile blocker = resolveUser(record.get("blockerId"));
+        SocialProfile blocked = resolveUser(record.get("blockedId"));
         return userBlockRepository.existsEitherDirection(blocker, blocked);
     }
 
     @Override
     protected UserBlock buildEntity(CSVRecord record) {
-        User blocker = resolveUser(record.get("blockerId"));
-        User blocked = resolveUser(record.get("blockedId"));
+        SocialProfile blocker = resolveUser(record.get("blockerId"));
+        SocialProfile blocked = resolveUser(record.get("blockedId"));
         return UserBlock.builder().blocker(blocker).blocked(blocked).build();
     }
 
@@ -62,8 +62,8 @@ public class UserBlockSeeder extends CsvSeeder<UserBlock> {
         return record.get("blockerId") + " -> " + record.get("blockedId");
     }
 
-    private User resolveUser(String seedId) {
-        return userRepository.findBySeedId(seedId)
+    private SocialProfile resolveUser(String seedId) {
+        return socialProfileRepository.findBySeedId(seedId)
                 .orElseThrow(() -> new IllegalStateException(
                         "user-blocks.csv references unknown user id '" + seedId + "' — run UserSeeder first"));
     }

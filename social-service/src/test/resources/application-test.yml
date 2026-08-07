@@ -1,5 +1,5 @@
 spring:
-  # Real datasource/redis/minio/keycloak coordinates are injected per-test-run by
+  # Real datasource/minio/keycloak coordinates are injected per-test-run by
   # AbstractStompIntegrationTest's @DynamicPropertySource (Testcontainers-assigned ports) —
   # including spring.security.oauth2.resourceserver.jwt.issuer-uri, since the Keycloak
   # Testcontainer's URL isn't known until it starts.

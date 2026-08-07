@@ -35,24 +35,45 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- UserApi's @AuthenticationPrincipal CustomOAuth2User params need spring-security-core.
-             Used to arrive transitively via the identity-service dependency (declared there
-             non-optionally); declared directly here now that this module no longer depends on
-             identity-service — common declares this starter optional=true (annotation/type support
-             only), same pattern as ai-service/ecommerce-service/gateway. -->
+        <!-- Spring Security — this module's own filter chain now that it's a standalone app
+             (see security/SecurityConfig), same reasoning as identity-service's/ecommerce-service's/
+             task-service's pom.xml. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
-        <!-- CustomOAuth2User implements OAuth2User (org.springframework.security.oauth2.core.user),
-             which lives in spring-security-oauth2-client, not spring-security-core. optional=true —
-             type support only, same convention as ai-service's identical dependency (see that
-             module's CLAUDE.md); this module never runs its own OAuth2 login flow. -->
+        <!-- OAuth2 Resource Server — Keycloak is the identity provider; this service only ever
+             verifies bearer tokens against Keycloak's JWKS (issuer-uri auto-discovery), never
+             issues them. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+
+        <!-- OAuth2 Client — KeycloakJwtAuthenticationConverter/CurrentUserResolver build/read a
+             common.dto.CustomOAuth2User (implements OAuth2User) as this app's own Authentication
+             principal — no longer just compile-time type support now that this module runs its own
+             resource-server filter chain, so declared plainly (not optional=true) like
+             task-service's identical dependency. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-oauth2-client</artifactId>
-            <optional>true</optional>
+        </dependency>
+
+        <!-- PostgreSQL — this module's own datasource connection now that it's a standalone app
+             with its own schema (`social`), not sharing gateway's connection. -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Actuator — health/info/metrics endpoints, same as gateway/ecommerce-service/
+             identity-service/task-service, now that this module is independently deployable. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
         <!-- FriendMapper/MessagingMapper (MapStruct) now live here, moved from api. No <version> —
@@ -64,14 +85,76 @@
         </dependency>
 
         <!-- GroupMessagingController/DmMessagingController (STOMP @MessageMapping controllers,
-             moved from api) need spring-messaging's annotations plus SimpMessagingTemplate —
-             api's own justification for this dependency ("WebSocket/STOMP — live push for
-             group/DM chat") applies here too now that the controllers themselves live here. -->
+             moved from api) need spring-messaging's annotations plus SimpMessagingTemplate. Now
+             that this module's own WebSocketConfig/StompAuthChannelInterceptor also live here
+             (relocated from gateway), this dependency covers the full WebSocket/STOMP transport,
+             not just the message-mapping annotations. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
 
+        <!-- Testcontainers — real Postgres/MinIO/Keycloak for the STOMP DM integration test, so
+             the test exercises the same WebSocketConfig/StompAuthChannelInterceptor/
+             KeycloakJwtAuthenticationConverter wiring this module boots in production instead of
+             mocking around it. Moved here from gateway's pom.xml alongside the tests themselves —
+             no Redis dependency, unlike gateway's original version, since this module has no
+             Redis-backed bean of its own. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- dasniko/testcontainers-keycloak — the de facto standard Testcontainers module for
+             Keycloak; transitively brings org.keycloak:keycloak-admin-client (compile scope in
+             its own POM), used to provision a matching Keycloak user per persistUser() call -->
+        <dependency>
+            <groupId>com.github.dasniko</groupId>
+            <artifactId>testcontainers-keycloak</artifactId>
+            <version>3.7.0</version>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
+
+    <build>
+        <!-- Include the Liquibase changelog XML/SQL bundled under src/main/java so they end up on
+             the runtime classpath — same shape as identity-service's/ecommerce-service's/
+             task-service's pom.xml. This module's own changelog is run via a standalone
+             social-service-liquibase.yml docker-compose file (spring.liquibase.enabled stays false
+             here too), not on app boot. -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>src/main/java</directory>
+                <includes>
+                    <include>**/*.xml</include>
+                    <include>**/*.sql</include>
+                </includes>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

@@ -4,15 +4,15 @@ import java.util.Set;
 
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
-import com.ttg.devknowledgeplatform.common.repository.UserRepository;
 import com.ttg.devknowledgeplatform.social.api.UserApi;
 import com.ttg.devknowledgeplatform.social.dto.friend.UserInfoResponse;
 import com.ttg.devknowledgeplatform.social.dto.friend.UserSearchResultResponse;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
 import com.ttg.devknowledgeplatform.social.enums.RelationshipStatus;
 import com.ttg.devknowledgeplatform.social.mapper.FriendMapper;
+import com.ttg.devknowledgeplatform.social.repository.SocialProfileRepository;
 import com.ttg.devknowledgeplatform.social.service.FriendService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -27,15 +27,13 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>Bean explicitly named {@code socialUserController} — {@code identity-service} has its own,
  * unrelated {@code UserController} (different {@code UserApi}, different package) fronting pure
  * profile-mutation endpoints. Spring's default bean name is the decapitalized simple class name
- * only, ignoring package, so both would otherwise collide as {@code userController} once a single
- * component scan (from {@code gateway}'s {@code @SpringBootApplication}) covers every feature
- * module.
+ * only, ignoring package, so both would otherwise collide if ever assembled into one context.
  *
- * <p>Resolves the base {@code User} lookup directly via {@code common}'s {@link UserRepository}
- * rather than {@code identity-service}'s {@code UserService} — {@code identity-service} is a
- * standalone service now (own schema, own port) and can no longer be reached in-process. This
- * module's own {@code product.USER} row is kept in sync independently, by {@code gateway}'s own
- * duplicated JIT-provisioning logic (see that module's {@code KeycloakJwtAuthenticationConverter}).
+ * <p>Resolves the base lookup directly via this module's own {@link SocialProfileRepository} —
+ * never {@code identity-service}'s {@code UserService}, which is a standalone service now and
+ * can't be reached in-process. This module's own {@code social.PROFILE} row is kept in sync
+ * independently, by this module's own JIT-provisioning logic (see
+ * {@code security.KeycloakJwtAuthenticationConverter}).
  */
 @RestController("socialUserController")
 @RequiredArgsConstructor
@@ -43,13 +41,13 @@ public class UserController implements UserApi {
 
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("id", "username", "dteCreation");
 
-    private final UserRepository userRepository;
+    private final SocialProfileRepository socialProfileRepository;
     private final FriendService friendService;
     private final FriendMapper friendMapper;
 
     @Override
     public ResponseEntity<UserInfoResponse> getPublicProfile(CustomOAuth2User principal, String userUuid) {
-        User user = userRepository.findByUserUuid(userUuid)
+        SocialProfile user = socialProfileRepository.findByProfileUuid(userUuid)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         CommonErrorCode.USER_NOT_FOUND, "User not found: " + userUuid));
         UserInfoResponse response = friendMapper.toUserInfo(user);
@@ -76,8 +74,8 @@ public class UserController implements UserApi {
         var result = friendService.searchUsers(viewerId, q, pageable)
                 .map(user -> friendMapper.toSearchResult(
                         user,
-                        friendService.getRelationshipStatus(viewerId, user.getUserUuid()),
-                        friendService.countMutualFriends(viewerId, user.getUserUuid())));
+                        friendService.getRelationshipStatus(viewerId, user.getProfileUuid()),
+                        friendService.countMutualFriends(viewerId, user.getProfileUuid())));
         return ResponseEntity.ok(PagedResponse.from(result));
     }
 
@@ -88,7 +86,7 @@ public class UserController implements UserApi {
     }
 
     private Integer resolveCurrentUserId(CustomOAuth2User principal) {
-        return userRepository.findByEmail(principal.getEmail())
+        return socialProfileRepository.findByEmail(principal.getEmail())
                 .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND))
                 .getId();
     }

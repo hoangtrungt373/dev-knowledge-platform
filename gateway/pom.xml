@@ -33,10 +33,6 @@
             <groupId>com.ttg</groupId>
             <artifactId>ai-service</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.ttg</groupId>
-            <artifactId>social-service</artifactId>
-        </dependency>
 
         <!-- No identity-service dependency: it's a standalone Spring Boot app now (its own
              `identity` schema, own JWT verification, own port), not wired into this Spring
@@ -63,18 +59,26 @@
              Maven dependency) — so nothing needed rewriting here, this was a pure pom.xml removal.
              gateway will reach task-service over HTTP once the proxy layer is built — not done yet.
              Do not re-add this as a Maven dependency; that would put its beans back on this app's
-             classpath and cause both apps to run them at once. -->
+             classpath and cause both apps to run them at once.
+
+             No social-service dependency either: it's a standalone Spring Boot app now (its own
+             `social` schema, own JWT verification, own port 8084), not wired into this Spring
+             context. Unlike identity-service/ecommerce-service, this app never called into
+             social-service's Java classes in-process to begin with (FriendApi/GroupApi/DmApi/
+             UserApi were already that module's own REST layer, just riding on this app's Spring
+             context via the Maven dependency) — so the only rewriting needed here was
+             DataSeedingRunner (no longer seeds the friend graph/blocks/DMs — see that class's
+             Javadoc) and removing this app's own WebSocketConfig/StompAuthChannelInterceptor/
+             CurrentUserIdMessageArgumentResolver entirely, since chat was the only STOMP use case
+             in this reactor and social-service now owns that whole transport on its own port.
+             gateway will reach social-service over HTTP once the proxy layer is built — not done
+             yet. Do not re-add this as a Maven dependency; that would put its beans back on this
+             app's classpath and cause both apps to run them at once. -->
 
         <!-- Spring Web -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-
-        <!-- WebSocket/STOMP — live push for group/DM chat (AI chat streaming stays on SSE) -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
 
         <!-- Spring Boot Security -->
@@ -185,31 +189,6 @@
             <artifactId>spring-boot-docker-compose</artifactId>
             <scope>runtime</scope>
             <optional>true</optional>
-        </dependency>
-
-        <!-- Testcontainers — real Postgres/Redis/MinIO/Keycloak for the STOMP DM integration test,
-             so the test exercises the same WebSocketConfig/StompAuthChannelInterceptor/
-             KeycloakJwtAuthenticationConverter wiring this module boots in production instead of
-             mocking around it -->
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>postgresql</artifactId>
-            <scope>test</scope>
-        </dependency>
-
-        <!-- dasniko/testcontainers-keycloak — the de facto standard Testcontainers module for
-             Keycloak; transitively brings org.keycloak:keycloak-admin-client (compile scope in
-             its own POM), used to provision a matching Keycloak user per persistUser() call -->
-        <dependency>
-            <groupId>com.github.dasniko</groupId>
-            <artifactId>testcontainers-keycloak</artifactId>
-            <version>3.7.0</version>
-            <scope>test</scope>
         </dependency>
 
     </dependencies>

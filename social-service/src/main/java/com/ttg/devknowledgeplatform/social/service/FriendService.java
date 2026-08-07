@@ -3,9 +3,9 @@ package com.ttg.devknowledgeplatform.social.service;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.social.entity.FriendRequest;
 import com.ttg.devknowledgeplatform.social.entity.Friendship;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
 import com.ttg.devknowledgeplatform.social.entity.UserBlock;
 import com.ttg.devknowledgeplatform.social.enums.RelationshipStatus;
 
@@ -80,11 +80,11 @@ public interface FriendService {
     Page<FriendRequest> listOutgoingRequests(Integer userId, Pageable pageable);
 
     /** Users blocked by {@code blockerId}. */
-    Page<User> listBlockedUsers(Integer blockerId, Pageable pageable);
+    Page<SocialProfile> listBlockedUsers(Integer blockerId, Pageable pageable);
 
     /**
      * Searches users visible to {@code viewerId} — excludes the viewer themselves and anyone
      * blocked in either direction. See {@code UserSpecification} for the exact/fuzzy match rules.
      */
-    Page<User> searchUsers(Integer viewerId, String q, Pageable pageable);
+    Page<SocialProfile> searchUsers(Integer viewerId, String q, Pageable pageable);
 }

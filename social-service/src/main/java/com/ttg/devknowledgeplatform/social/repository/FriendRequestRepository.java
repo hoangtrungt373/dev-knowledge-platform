@@ -9,23 +9,23 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.social.entity.FriendRequest;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
 import com.ttg.devknowledgeplatform.social.enums.FriendRequestStatus;
 
 @Repository
 public interface FriendRequestRepository extends JpaRepository<FriendRequest, Integer> {
 
     Optional<FriendRequest> findByRequesterAndAddresseeAndStatus(
-            User requester, User addressee, FriendRequestStatus status);
+            SocialProfile requester, SocialProfile addressee, FriendRequestStatus status);
 
-    Page<FriendRequest> findByAddresseeAndStatus(User addressee, FriendRequestStatus status, Pageable pageable);
+    Page<FriendRequest> findByAddresseeAndStatus(SocialProfile addressee, FriendRequestStatus status, Pageable pageable);
 
-    Page<FriendRequest> findByRequesterAndStatus(User requester, FriendRequestStatus status, Pageable pageable);
+    Page<FriendRequest> findByRequesterAndStatus(SocialProfile requester, FriendRequestStatus status, Pageable pageable);
 
     @Query("SELECT fr FROM FriendRequest fr WHERE fr.status = 'PENDING' "
             + "AND ((fr.requester = :a AND fr.addressee = :b) OR (fr.requester = :b AND fr.addressee = :a))")
-    Optional<FriendRequest> findPendingBetween(@Param("a") User a, @Param("b") User b);
+    Optional<FriendRequest> findPendingBetween(@Param("a") SocialProfile a, @Param("b") SocialProfile b);
 
     /**
      * Whether a request of any status already exists between the pair, in either direction. Used
@@ -36,5 +36,5 @@ public interface FriendRequestRepository extends JpaRepository<FriendRequest, In
      */
     @Query("SELECT CASE WHEN COUNT(fr) > 0 THEN true ELSE false END FROM FriendRequest fr "
             + "WHERE (fr.requester = :a AND fr.addressee = :b) OR (fr.requester = :b AND fr.addressee = :a)")
-    boolean existsBetween(@Param("a") User a, @Param("b") User b);
+    boolean existsBetween(@Param("a") SocialProfile a, @Param("b") SocialProfile b);
 }

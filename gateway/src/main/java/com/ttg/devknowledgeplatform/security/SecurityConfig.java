@@ -40,14 +40,6 @@ public class SecurityConfig {
                 // Public content browsing
                 .requestMatchers("/api/v1/public/**").permitAll()
 
-                // Public user profiles
-                .requestMatchers("/api/v1/users/public/**").permitAll()
-
-                // WebSocket/STOMP handshake — browsers can't set an Authorization header on the
-                // handshake request itself; real auth happens on the STOMP CONNECT frame via
-                // StompAuthChannelInterceptor instead (see WebSocketConfig, this same package)
-                .requestMatchers("/ws/**").permitAll()
-
                 // Spring Actuator
                 .requestMatchers("/actuator/**").permitAll()
 

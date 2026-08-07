@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.ws;
+package com.ttg.devknowledgeplatform.social.ws;
 
 import java.lang.reflect.Type;
 import java.net.URI;
@@ -42,12 +42,10 @@ import org.testcontainers.utility.DockerImageName;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.common.enums.UserProvider;
-import com.ttg.devknowledgeplatform.common.enums.UserRole;
-import com.ttg.devknowledgeplatform.common.enums.UserStatus;
-import com.ttg.devknowledgeplatform.common.repository.UserRepository;
 import com.ttg.devknowledgeplatform.social.entity.FriendRequest;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
+import com.ttg.devknowledgeplatform.social.enums.ProfileStatus;
+import com.ttg.devknowledgeplatform.social.repository.SocialProfileRepository;
 import com.ttg.devknowledgeplatform.social.service.FriendService;
 
 import dasniko.testcontainers.keycloak.KeycloakContainer;
@@ -56,13 +54,15 @@ import jakarta.ws.rs.core.Response;
 /**
  * Base class for STOMP integration tests against the real WebSocket stack.
  *
- * <p>Boots the full {@code gateway} application context (not a slice) because
- * {@code WebSocketConfig}/{@code StompAuthChannelInterceptor} — the classes that actually wire
- * {@code social-service}'s {@code DmMessagingController} into a running STOMP broker — only ever
- * get assembled together here; {@code social-service} itself has no {@code @SpringBootApplication}.
- * Postgres, Redis, MinIO, and Keycloak are all real Testcontainers instances (rather than mocking
- * the Redis-cache/MinIO-storage/JWT-verification beans this context also creates) so a passing
- * test means the whole wiring genuinely works, not just the DM-specific slice of it.
+ * <p>Duplicated (and adapted) from {@code gateway}'s class of the same name — relocated here as
+ * part of this module's standalone extraction, since {@code WebSocketConfig}/
+ * {@code StompAuthChannelInterceptor} (the classes that actually wire {@code DmMessagingController}
+ * into a running STOMP broker) now live in this module's own package, and this module has its own
+ * {@code @SpringBootApplication} to boot them against. Postgres, MinIO, and Keycloak are all real
+ * Testcontainers instances (rather than mocking the MinIO-storage/JWT-verification beans this
+ * context also creates) so a passing test means the whole wiring genuinely works, not just the
+ * DM-specific slice of it. No Redis container here, unlike {@code gateway}'s original version —
+ * this module has no Redis-backed bean of its own (no cache config, no rate limiter) to satisfy.
  *
  * <p>The Keycloak realm imported here ({@code keycloak/test-realm-export.json}) is a separate,
  * minimal realm from the checked-in dev one (`docker/keycloak/realm-export.json`) — just enough
@@ -86,12 +86,6 @@ public abstract class AbstractStompIntegrationTest {
             new PostgreSQLContainer<>(DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
 
     @Container
-    static final GenericContainer<?> REDIS =
-            new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
-                    .withExposedPorts(6379)
-                    .waitingFor(Wait.forListeningPort());
-
-    @Container
     static final GenericContainer<?> MINIO =
             new GenericContainer<>(DockerImageName.parse("minio/minio:latest"))
                     .withExposedPorts(9000)
@@ -111,9 +105,6 @@ public abstract class AbstractStompIntegrationTest {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
 
-        registry.add("spring.data.redis.host", REDIS::getHost);
-        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
-
         registry.add("app.storage.endpoint", () -> "http://" + MINIO.getHost() + ":" + MINIO.getMappedPort(9000));
 
         registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri",
@@ -124,7 +115,7 @@ public abstract class AbstractStompIntegrationTest {
     private int port;
 
     @Autowired
-    protected UserRepository userRepository;
+    protected SocialProfileRepository socialProfileRepository;
 
     @Autowired
     protected FriendService friendService;
@@ -145,30 +136,25 @@ public abstract class AbstractStompIntegrationTest {
     }
 
     /**
-     * Persists a distinct {@link User} row backed by a matching Keycloak user (created via the
-     * admin client), linked via {@code keycloakSubjectId} — so {@link #accessTokenFor} mints a
-     * real token whose {@code sub} this row already matches, exercising
+     * Persists a distinct {@link SocialProfile} row backed by a matching Keycloak user (created
+     * via the admin client), linked via {@code keycloakSubjectId} — so {@link #accessTokenFor}
+     * mints a real token whose {@code sub} this row already matches, exercising
      * {@code KeycloakJwtAuthenticationConverter}'s find-path (the realistic production path) on
      * every STOMP CONNECT, not its JIT-create-path.
      */
-    protected User persistUser() {
+    protected SocialProfile persistUser() {
         String suffix = UUID.randomUUID().toString();
         String email = "user-" + suffix + "@test.local";
         String keycloakSubjectId = createKeycloakUser(email);
 
-        User user = User.builder()
-                .userUuid(suffix)
+        SocialProfile profile = SocialProfile.builder()
+                .profileUuid(suffix)
                 .email(email)
                 .username("user-" + suffix)
-                .password("not-used-in-these-tests")
-                .provider(UserProvider.LOCAL)
-                .role(UserRole.USER)
-                .status(UserStatus.OFFLINE)
-                .emailVerified(true)
-                .enabled(true)
+                .status(ProfileStatus.OFFLINE)
                 .keycloakSubjectId(keycloakSubjectId)
                 .build();
-        return userRepository.save(user);
+        return socialProfileRepository.save(profile);
     }
 
     private static String createKeycloakUser(String email) {
@@ -194,16 +180,16 @@ public abstract class AbstractStompIntegrationTest {
     }
 
     /** Establishes an accepted friendship between two users via the real service, not a repository shortcut. */
-    protected void makeFriends(User a, User b) {
-        FriendRequest request = friendService.sendRequest(a.getId(), b.getUserUuid());
+    protected void makeFriends(SocialProfile a, SocialProfile b) {
+        FriendRequest request = friendService.sendRequest(a.getId(), b.getProfileUuid());
         friendService.acceptRequest(request.getId(), b.getId());
     }
 
-    protected String accessTokenFor(User user) {
+    protected String accessTokenFor(SocialProfile user) {
         return fetchToken(TEST_CLIENT_ID, user.getEmail(), "access_token");
     }
 
-    protected String refreshTokenFor(User user) {
+    protected String refreshTokenFor(SocialProfile user) {
         return fetchToken(TEST_CLIENT_ID, user.getEmail(), "refresh_token");
     }
 
@@ -214,7 +200,7 @@ public abstract class AbstractStompIntegrationTest {
      * longer holds a private key to sign with (Keycloak does), so a genuinely-expired real token
      * is the only way to test rejection now.
      */
-    protected String buildExpiredAccessToken(User user) {
+    protected String buildExpiredAccessToken(SocialProfile user) {
         String token = fetchToken(TEST_CLIENT_SHORT_LIVED_ID, user.getEmail(), "access_token");
         try {
             Thread.sleep(2000);

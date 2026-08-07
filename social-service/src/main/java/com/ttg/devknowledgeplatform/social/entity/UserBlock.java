@@ -1,7 +1,6 @@
 package com.ttg.devknowledgeplatform.social.entity;
 
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
-import com.ttg.devknowledgeplatform.common.entity.User;
 
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
@@ -23,7 +22,7 @@ import lombok.ToString;
  * Unlike {@link Friendship}, this is never symmetric — the reverse direction has no implied row.
  */
 @Entity
-@Table(name = "USER_BLOCK", schema = "product")
+@Table(name = "USER_BLOCK", schema = "social")
 @AttributeOverride(name = "id", column = @Column(name = "USER_BLOCK_ID"))
 @Data
 @Builder
@@ -35,9 +34,9 @@ public class UserBlock extends AbstractEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "BLOCKER_ID", nullable = false)
-    private User blocker;
+    private SocialProfile blocker;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "BLOCKED_ID", nullable = false)
-    private User blocked;
+    private SocialProfile blocked;
 }

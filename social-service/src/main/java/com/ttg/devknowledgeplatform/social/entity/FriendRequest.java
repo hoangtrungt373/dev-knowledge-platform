@@ -1,7 +1,6 @@
 package com.ttg.devknowledgeplatform.social.entity;
 
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.social.enums.FriendRequestStatus;
 
 import jakarta.persistence.AttributeOverride;
@@ -29,7 +28,7 @@ import lombok.ToString;
  * to it (or its rejection/cancellation).
  */
 @Entity
-@Table(name = "FRIEND_REQUEST", schema = "product")
+@Table(name = "FRIEND_REQUEST", schema = "social")
 @AttributeOverride(name = "id", column = @Column(name = "FRIEND_REQUEST_ID"))
 @Data
 @Builder
@@ -41,11 +40,11 @@ public class FriendRequest extends AbstractEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "REQUESTER_ID", nullable = false)
-    private User requester;
+    private SocialProfile requester;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ADDRESSEE_ID", nullable = false)
-    private User addressee;
+    private SocialProfile addressee;
 
     @NotNull
     @Enumerated(EnumType.STRING)

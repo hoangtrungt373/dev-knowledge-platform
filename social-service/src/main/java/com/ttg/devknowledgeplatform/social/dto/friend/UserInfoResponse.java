@@ -25,9 +25,6 @@ public class UserInfoResponse {
     private String firstName;
     private String lastName;
     private String profilePicture;
-    private String provider;
-    private String role;
-    private Boolean emailVerified;
     private String status;
     private Instant createdAt;
     private Instant lastModified;

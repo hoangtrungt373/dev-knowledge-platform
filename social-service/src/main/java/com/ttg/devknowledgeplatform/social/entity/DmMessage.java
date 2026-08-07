@@ -1,7 +1,6 @@
 package com.ttg.devknowledgeplatform.social.entity;
 
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.social.enums.MessageType;
 
 import jakarta.persistence.AttributeOverride;
@@ -37,7 +36,7 @@ import lombok.ToString;
 @Entity
 @Table(
         name = "DM_MESSAGE",
-        schema = "product",
+        schema = "social",
         indexes = @Index(name = "IDX_DM_MESSAGE_THREAD_CREATED", columnList = "DM_THREAD_ID, DTE_CREATION")
 )
 @AttributeOverride(name = "id", column = @Column(name = "DM_MESSAGE_ID"))
@@ -55,7 +54,7 @@ public class DmMessage extends AbstractEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "SENDER_ID", nullable = false)
-    private User sender;
+    private SocialProfile sender;
 
     @NotNull
     @Enumerated(EnumType.STRING)

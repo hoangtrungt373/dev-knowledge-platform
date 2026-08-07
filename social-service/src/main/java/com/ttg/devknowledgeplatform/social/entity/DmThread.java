@@ -1,7 +1,6 @@
 package com.ttg.devknowledgeplatform.social.entity;
 
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
-import com.ttg.devknowledgeplatform.common.entity.User;
 
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
@@ -33,7 +32,7 @@ import java.time.Instant;
 @Entity
 @Table(
         name = "DM_THREAD",
-        schema = "product",
+        schema = "social",
         uniqueConstraints = @UniqueConstraint(name = "UK_DM_THREAD_USER_PAIR", columnNames = {"USER_ID_1", "USER_ID_2"})
 )
 @AttributeOverride(name = "id", column = @Column(name = "DM_THREAD_ID"))
@@ -47,11 +46,11 @@ public class DmThread extends AbstractEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "USER_ID_1", nullable = false)
-    private User user1;
+    private SocialProfile user1;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "USER_ID_2", nullable = false)
-    private User user2;
+    private SocialProfile user2;
 
     /**
      * Timestamp of the most recently sent {@code DmMessage} in this thread. Denormalized so the

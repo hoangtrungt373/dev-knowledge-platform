@@ -11,14 +11,14 @@ import org.apache.commons.csv.CSVRecord;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.common.repository.UserRepository;
 import com.ttg.devknowledgeplatform.infra.service.seed.Seeder;
 import com.ttg.devknowledgeplatform.social.entity.FriendRequest;
 import com.ttg.devknowledgeplatform.social.entity.Friendship;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
 import com.ttg.devknowledgeplatform.social.enums.FriendRequestStatus;
 import com.ttg.devknowledgeplatform.social.repository.FriendRequestRepository;
 import com.ttg.devknowledgeplatform.social.repository.FriendshipRepository;
+import com.ttg.devknowledgeplatform.social.repository.SocialProfileRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -58,7 +58,7 @@ public class FriendGraphSeeder implements Seeder {
 
     private static final String CSV_LOCATION = "data/csv/friend-requests.csv";
 
-    private final UserRepository userRepository;
+    private final SocialProfileRepository socialProfileRepository;
     private final FriendRequestRepository friendRequestRepository;
     private final FriendshipRepository friendshipRepository;
 
@@ -84,8 +84,8 @@ public class FriendGraphSeeder implements Seeder {
              CSVParser parser = format.parse(reader)) {
 
             for (CSVRecord record : parser) {
-                User requester = resolveUser(record.get("requesterId"));
-                User addressee = resolveUser(record.get("addresseeId"));
+                SocialProfile requester = resolveUser(record.get("requesterId"));
+                SocialProfile addressee = resolveUser(record.get("addresseeId"));
                 FriendRequestStatus status = FriendRequestStatus.valueOf(record.get("status").trim().toUpperCase());
 
                 if (friendRequestRepository.existsBetween(requester, addressee)) {
@@ -116,14 +116,14 @@ public class FriendGraphSeeder implements Seeder {
         return inserted;
     }
 
-    private void createFriendship(User a, User b) {
-        User user1 = a.getId() < b.getId() ? a : b;
-        User user2 = a.getId() < b.getId() ? b : a;
+    private void createFriendship(SocialProfile a, SocialProfile b) {
+        SocialProfile user1 = a.getId() < b.getId() ? a : b;
+        SocialProfile user2 = a.getId() < b.getId() ? b : a;
         friendshipRepository.save(Friendship.builder().user1(user1).user2(user2).build());
     }
 
-    private User resolveUser(String seedId) {
-        return userRepository.findBySeedId(seedId)
+    private SocialProfile resolveUser(String seedId) {
+        return socialProfileRepository.findBySeedId(seedId)
                 .orElseThrow(() -> new IllegalStateException(
                         "friend-requests.csv references unknown user id '" + seedId + "' — run UserSeeder first"));
     }

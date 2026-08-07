@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.security;
+package com.ttg.devknowledgeplatform.social.security;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -19,7 +19,7 @@ import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import com.ttg.devknowledgeplatform.common.repository.UserRepository;
+import com.ttg.devknowledgeplatform.social.repository.SocialProfileRepository;
 import com.ttg.devknowledgeplatform.social.service.GroupService;
 
 import lombok.RequiredArgsConstructor;
@@ -28,6 +28,11 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * Authenticates STOMP {@code CONNECT} frames and authorizes {@code SUBSCRIBE} frames to channel
  * topics.
+ *
+ * <p>Duplicated from {@code gateway}'s class of the same name — relocated here now that this
+ * module is a standalone app owning its own WebSocket/STOMP transport (see
+ * {@link WebSocketConfig}); {@code gateway} never had a second use for STOMP, so nothing remains
+ * there once this module was extracted.
  *
  * <p><b>CONNECT:</b> the WebSocket HTTP handshake itself is {@code permitAll} in
  * {@link SecurityConfig} — browsers can't set an {@code Authorization} header on the handshake
@@ -52,7 +57,7 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
 
     private final JwtDecoder jwtDecoder;
     private final KeycloakJwtAuthenticationConverter keycloakJwtAuthenticationConverter;
-    private final UserRepository userRepository;
+    private final SocialProfileRepository socialProfileRepository;
     private final GroupService groupService;
 
     @Override
@@ -119,7 +124,7 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
         }
 
         Integer channelId = Integer.valueOf(matcher.group(1));
-        Integer userId = CurrentUserResolver.resolveUserId(accessor.getUser(), userRepository);
+        Integer userId = CurrentUserResolver.resolveUserId(accessor.getUser(), socialProfileRepository);
         if (!groupService.isChannelMember(userId, channelId)) {
             log.warn("Rejected subscription to channel {} — user {} is not a member", channelId, userId);
             throw new MessagingException("Not a member of this channel");

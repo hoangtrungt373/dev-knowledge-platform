@@ -1,6 +1,6 @@
-# App containers for the four independently-runnable Spring Boot processes in this repo today
-# (gateway, ecommerce-service, identity-service, task-service), plus their one-shot Liquibase
-# migrations.
+# App containers for the five independently-runnable Spring Boot processes in this repo today
+# (gateway, ecommerce-service, identity-service, task-service, social-service), plus their
+# one-shot Liquibase migrations.
 #
 # This file MUST be run combined with dev-knowledge-platform-docker-compose.yml in the same
 # command — that's what puts every container in one Compose project/network so service-name DNS
@@ -87,6 +87,23 @@ services:
       postgres:
         condition: service_healthy
 
+  social-liquibase:
+    image: liquibase/liquibase:4.29
+    entrypoint: ["liquibase"]
+    command:
+      - --search-path=/changelog
+      - --changelog-file=social-service.xml
+      - --url=jdbc:postgresql://postgres:5432/dev-premier
+      - --username=postgres
+      - --password=password
+      - --driver=org.postgresql.Driver
+      - update
+    volumes:
+      - ./social-service/src/main/java/com/ttg/devknowledgeplatform/social/database/sql:/changelog:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   gateway:
     build:
       context: .
@@ -161,3 +178,26 @@ services:
     depends_on:
       task-liquibase:
         condition: service_completed_successfully
+
+  social-service:
+    build:
+      context: .
+      dockerfile: social-service/Dockerfile
+    container_name: dev-premier-social-service
+    restart: on-failure
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/dev-premier
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/dev-knowledge-platform
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      MINIO_ENDPOINT: http://minio:9000
+      APP_SEED_ENABLED: "true"
+    ports:
+      - "8084:8084"
+    depends_on:
+      social-liquibase:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy

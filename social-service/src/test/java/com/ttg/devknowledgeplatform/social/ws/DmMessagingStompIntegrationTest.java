@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.ws;
+package com.ttg.devknowledgeplatform.social.ws;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -10,14 +10,14 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.messaging.simp.stomp.StompSession;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.social.dto.messaging.DmMessageResponse;
 import com.ttg.devknowledgeplatform.social.dto.messaging.SendMessageRequest;
 import com.ttg.devknowledgeplatform.social.dto.messaging.WsErrorResponse;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
 
 /**
  * Integration test for {@code DmMessagingController}, run against the real STOMP broker assembled
- * by {@code gateway}'s {@code WebSocketConfig}/{@code StompAuthChannelInterceptor} — see
+ * by this module's own {@code WebSocketConfig}/{@code StompAuthChannelInterceptor} — see
  * {@link AbstractStompIntegrationTest}'s Javadoc for why the full context is required.
  */
 class DmMessagingStompIntegrationTest extends AbstractStompIntegrationTest {
@@ -27,8 +27,8 @@ class DmMessagingStompIntegrationTest extends AbstractStompIntegrationTest {
 
     @Test
     void sendMessage_deliversToBothParticipants_whenFriends() throws Exception {
-        User sender = persistUser();
-        User recipient = persistUser();
+        SocialProfile sender = persistUser();
+        SocialProfile recipient = persistUser();
         makeFriends(sender, recipient);
 
         StompSession senderSession = connect(accessTokenFor(sender));
@@ -37,7 +37,7 @@ class DmMessagingStompIntegrationTest extends AbstractStompIntegrationTest {
         BlockingQueue<DmMessageResponse> recipientQueue = subscribeQueue(recipientSession, DM_QUEUE, DmMessageResponse.class);
         awaitSubscription();
 
-        senderSession.send("/app/dms/" + recipient.getUserUuid() + "/messages", new SendMessageRequest("Hello there", null));
+        senderSession.send("/app/dms/" + recipient.getProfileUuid() + "/messages", new SendMessageRequest("Hello there", null));
 
         DmMessageResponse deliveredToSender = senderQueue.poll(5, TimeUnit.SECONDS);
         DmMessageResponse deliveredToRecipient = recipientQueue.poll(5, TimeUnit.SECONDS);
@@ -57,19 +57,19 @@ class DmMessagingStompIntegrationTest extends AbstractStompIntegrationTest {
         // the controller runs. If that lazy association were ever touched there, this second send
         // would silently fail to arrive (a LazyInitializationException isn't an ApiException, so it
         // never becomes a WsErrorResponse) rather than throw somewhere this test can catch directly.
-        User sender = persistUser();
-        User recipient = persistUser();
+        SocialProfile sender = persistUser();
+        SocialProfile recipient = persistUser();
         makeFriends(sender, recipient);
 
         StompSession senderSession = connect(accessTokenFor(sender));
         BlockingQueue<DmMessageResponse> senderQueue = subscribeQueue(senderSession, DM_QUEUE, DmMessageResponse.class);
         awaitSubscription();
 
-        senderSession.send("/app/dms/" + recipient.getUserUuid() + "/messages", new SendMessageRequest("first", null));
+        senderSession.send("/app/dms/" + recipient.getProfileUuid() + "/messages", new SendMessageRequest("first", null));
         DmMessageResponse first = senderQueue.poll(5, TimeUnit.SECONDS);
         assertThat(first).isNotNull();
 
-        senderSession.send("/app/dms/" + recipient.getUserUuid() + "/messages", new SendMessageRequest("second", null));
+        senderSession.send("/app/dms/" + recipient.getProfileUuid() + "/messages", new SendMessageRequest("second", null));
         DmMessageResponse second = senderQueue.poll(5, TimeUnit.SECONDS);
 
         assertThat(second).isNotNull();
@@ -84,7 +84,7 @@ class DmMessagingStompIntegrationTest extends AbstractStompIntegrationTest {
 
     @Test
     void connect_rejected_whenTokenExpired() {
-        User user = persistUser();
+        SocialProfile user = persistUser();
         String expiredToken = buildExpiredAccessToken(user);
 
         assertThrows(Exception.class, () -> connect(expiredToken));
@@ -92,7 +92,7 @@ class DmMessagingStompIntegrationTest extends AbstractStompIntegrationTest {
 
     @Test
     void connect_rejected_whenRefreshTokenPresentedInsteadOfAccessToken() {
-        User user = persistUser();
+        SocialProfile user = persistUser();
         String refreshToken = refreshTokenFor(user);
 
         assertThrows(Exception.class, () -> connect(refreshToken));
@@ -100,8 +100,8 @@ class DmMessagingStompIntegrationTest extends AbstractStompIntegrationTest {
 
     @Test
     void sendMessage_producesWsErrorResponse_whenNotFriends() throws Exception {
-        User sender = persistUser();
-        User stranger = persistUser();
+        SocialProfile sender = persistUser();
+        SocialProfile stranger = persistUser();
         // deliberately no makeFriends(...) call
 
         StompSession senderSession = connect(accessTokenFor(sender));
@@ -109,7 +109,7 @@ class DmMessagingStompIntegrationTest extends AbstractStompIntegrationTest {
         BlockingQueue<DmMessageResponse> dmQueue = subscribeQueue(senderSession, DM_QUEUE, DmMessageResponse.class);
         awaitSubscription();
 
-        senderSession.send("/app/dms/" + stranger.getUserUuid() + "/messages", new SendMessageRequest("hi", null));
+        senderSession.send("/app/dms/" + stranger.getProfileUuid() + "/messages", new SendMessageRequest("hi", null));
 
         WsErrorResponse error = errorQueue.poll(5, TimeUnit.SECONDS);
         assertThat(error).isNotNull();
@@ -119,7 +119,7 @@ class DmMessagingStompIntegrationTest extends AbstractStompIntegrationTest {
 
     @Test
     void sendMessage_producesWsErrorResponse_whenRecipientUuidUnknown() throws Exception {
-        User sender = persistUser();
+        SocialProfile sender = persistUser();
 
         StompSession senderSession = connect(accessTokenFor(sender));
         BlockingQueue<WsErrorResponse> errorQueue = subscribeQueue(senderSession, ERROR_QUEUE, WsErrorResponse.class);

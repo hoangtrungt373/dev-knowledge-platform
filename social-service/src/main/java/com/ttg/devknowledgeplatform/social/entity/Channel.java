@@ -27,7 +27,7 @@ import lombok.ToString;
 @Entity
 @Table(
         name = "CHANNEL",
-        schema = "product",
+        schema = "social",
         uniqueConstraints = @UniqueConstraint(name = "UK_CHANNEL_GROUP_NAME", columnNames = {"GROUP_ID", "NAME"})
 )
 @AttributeOverride(name = "id", column = @Column(name = "CHANNEL_ID"))

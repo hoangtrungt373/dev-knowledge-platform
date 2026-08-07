@@ -5,7 +5,6 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.infra.service.StorageService;
 import com.ttg.devknowledgeplatform.social.dto.friend.FriendRequestResponse;
 import com.ttg.devknowledgeplatform.social.dto.friend.FriendSummaryResponse;
@@ -14,6 +13,7 @@ import com.ttg.devknowledgeplatform.social.dto.friend.UserSearchResultResponse;
 import com.ttg.devknowledgeplatform.social.dto.friend.UserSummaryResponse;
 import com.ttg.devknowledgeplatform.social.entity.FriendRequest;
 import com.ttg.devknowledgeplatform.social.entity.Friendship;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
 import com.ttg.devknowledgeplatform.social.enums.RelationshipStatus;
 
 /**
@@ -30,7 +30,7 @@ public abstract class FriendMapper {
     protected StorageService storageService;
 
     @Mapping(target = "profilePicture", expression = "java(resolveProfilePicture(user))")
-    public abstract UserSummaryResponse toUserSummary(User user);
+    public abstract UserSummaryResponse toUserSummary(SocialProfile user);
 
     @Mapping(target = "status", expression = "java(friendRequest.getStatus().name())")
     @Mapping(target = "createdAt", source = "dteCreation")
@@ -41,17 +41,17 @@ public abstract class FriendMapper {
     public abstract FriendSummaryResponse toFriendSummary(Friendship friendship, @Context Integer viewerId);
 
     public abstract UserSearchResultResponse toSearchResult(
-            User user, RelationshipStatus relationshipStatus, long mutualFriendCount);
+            SocialProfile user, RelationshipStatus relationshipStatus, long mutualFriendCount);
 
-    @Mapping(source = "userUuid", target = "id")
+    @Mapping(source = "profileUuid", target = "id")
     @Mapping(source = "dteCreation", target = "createdAt")
     @Mapping(source = "dteLastModification", target = "lastModified")
     @Mapping(target = "profilePicture", expression = "java(resolveProfilePicture(user))")
     @Mapping(target = "relationshipStatus", ignore = true)
     @Mapping(target = "mutualFriendCount", ignore = true)
-    public abstract UserInfoResponse toUserInfo(User user);
+    public abstract UserInfoResponse toUserInfo(SocialProfile user);
 
-    protected String resolveProfilePicture(User user) {
+    protected String resolveProfilePicture(SocialProfile user) {
         String pic = user.getProfilePicture();
         if (pic != null && !pic.startsWith("http")) {
             return storageService.getPresignedUrl(pic);
@@ -59,7 +59,7 @@ public abstract class FriendMapper {
         return pic;
     }
 
-    protected User otherUser(Friendship friendship, Integer viewerId) {
+    protected SocialProfile otherUser(Friendship friendship, Integer viewerId) {
         return friendship.getUser1().getId().equals(viewerId) ? friendship.getUser2() : friendship.getUser1();
     }
 }

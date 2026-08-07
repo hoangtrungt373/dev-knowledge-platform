@@ -24,7 +24,7 @@ import lombok.ToString;
  * word in PostgreSQL (used by {@code GROUP BY}) and would need quoting in every raw query.
  */
 @Entity
-@Table(name = "MESSAGE_GROUP", schema = "product")
+@Table(name = "MESSAGE_GROUP", schema = "social")
 @AttributeOverride(name = "id", column = @Column(name = "GROUP_ID"))
 @Data
 @Builder

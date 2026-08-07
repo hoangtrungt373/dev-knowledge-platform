@@ -9,10 +9,10 @@ import java.util.Random;
 
 import org.springframework.stereotype.Component;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.social.entity.DmMessage;
 import com.ttg.devknowledgeplatform.social.entity.DmThread;
 import com.ttg.devknowledgeplatform.social.entity.Friendship;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
 import com.ttg.devknowledgeplatform.infra.service.seed.Seeder;
 import com.ttg.devknowledgeplatform.social.enums.MessageType;
 import com.ttg.devknowledgeplatform.social.repository.DmMessageRepository;
@@ -81,8 +81,8 @@ public class DmThreadSeeder implements Seeder {
         int inserted = 0;
         int skipped = 0;
         for (Friendship friendship : friendships) {
-            User user1 = friendship.getUser1();
-            User user2 = friendship.getUser2();
+            SocialProfile user1 = friendship.getUser1();
+            SocialProfile user2 = friendship.getUser2();
 
             if (dmThreadRepository.findByUser1AndUser2(user1, user2).isPresent()) {
                 skipped++;
@@ -97,14 +97,14 @@ public class DmThreadSeeder implements Seeder {
         return inserted;
     }
 
-    private void seedThread(User user1, User user2) {
+    private void seedThread(SocialProfile user1, SocialProfile user2) {
         DmThread thread = dmThreadRepository.save(DmThread.builder().user1(user1).user2(user2).build());
 
         int messageCount = MIN_MESSAGES + random.nextInt(MAX_MESSAGES - MIN_MESSAGES + 1);
         List<Instant> timestamps = randomSpreadTimestamps(messageCount);
 
         for (Instant timestamp : timestamps) {
-            User sender = random.nextBoolean() ? user1 : user2;
+            SocialProfile sender = random.nextBoolean() ? user1 : user2;
             DmMessage message = dmMessageRepository.save(DmMessage.builder()
                     .dmThread(thread)
                     .sender(sender)

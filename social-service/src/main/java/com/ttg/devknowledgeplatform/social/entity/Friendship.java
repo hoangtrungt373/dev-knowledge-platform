@@ -1,7 +1,6 @@
 package com.ttg.devknowledgeplatform.social.entity;
 
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
-import com.ttg.devknowledgeplatform.common.entity.User;
 
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
@@ -25,7 +24,7 @@ import lombok.ToString;
  * {@link com.ttg.devknowledgeplatform.social.service.impl.FriendServiceImpl} does this.
  */
 @Entity
-@Table(name = "FRIENDSHIP", schema = "product")
+@Table(name = "FRIENDSHIP", schema = "social")
 @AttributeOverride(name = "id", column = @Column(name = "FRIENDSHIP_ID"))
 @Data
 @Builder
@@ -37,9 +36,9 @@ public class Friendship extends AbstractEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "USER_ID_1", nullable = false)
-    private User user1;
+    private SocialProfile user1;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "USER_ID_2", nullable = false)
-    private User user2;
+    private SocialProfile user2;
 }

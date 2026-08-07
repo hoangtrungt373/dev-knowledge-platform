@@ -20,15 +20,14 @@ COPY ecommerce-service/pom.xml ecommerce-service/pom.xml
 COPY gateway/pom.xml gateway/pom.xml
 RUN mvn -B -pl gateway -am dependency:go-offline
 
-# Real sources for gateway and everything it depends on. No identity-service or ecommerce-service
-# here — both are standalone apps now with no Maven dependency from gateway (see root CLAUDE.md);
-# their poms above are only needed for Maven to parse the reactor's full <modules> list.
+# Real sources for gateway and everything it depends on. No identity-service, ecommerce-service,
+# task-service, or social-service here — all four are standalone apps now with no Maven dependency
+# from gateway (see root CLAUDE.md); their poms above are only needed for Maven to parse the
+# reactor's full <modules> list.
 COPY common common
 COPY infra infra
 COPY content-service content-service
 COPY ai-service ai-service
-COPY task-service task-service
-COPY social-service social-service
 COPY gateway gateway
 RUN mvn -B -pl gateway -am -DskipTests package
 

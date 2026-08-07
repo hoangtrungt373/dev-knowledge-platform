@@ -5,9 +5,9 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.social.entity.Group;
 import com.ttg.devknowledgeplatform.social.entity.GroupMember;
+import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
 
 /**
  * Repository for {@link GroupMember} — the (group, user) membership row carrying a
@@ -16,9 +16,9 @@ import com.ttg.devknowledgeplatform.social.entity.GroupMember;
 @Repository
 public interface GroupMemberRepository extends JpaRepository<GroupMember, Integer> {
 
-    Optional<GroupMember> findByGroupAndUser(Group group, User user);
+    Optional<GroupMember> findByGroupAndUser(Group group, SocialProfile user);
 
-    boolean existsByGroupAndUser(Group group, User user);
+    boolean existsByGroupAndUser(Group group, SocialProfile user);
 
-    void deleteByGroupAndUser(Group group, User user);
+    void deleteByGroupAndUser(Group group, SocialProfile user);
 }
