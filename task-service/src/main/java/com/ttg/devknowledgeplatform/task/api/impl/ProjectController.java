@@ -34,35 +34,35 @@ public class ProjectController implements ProjectApi {
     private final ProjectMapper projectMapper;
 
     @Override
-    public ResponseEntity<ProjectResponse> create(Integer userId, CreateProjectRequest request) {
+    public ResponseEntity<ProjectResponse> create(String ownerUuid, CreateProjectRequest request) {
         ProjectCommands.Create command = new ProjectCommands.Create(request.getName(), request.getDescription());
-        Project created = projectService.createProject(userId, command);
+        Project created = projectService.createProject(ownerUuid, command);
         return ResponseEntity.status(HttpStatus.CREATED).body(projectMapper.toResponse(created));
     }
 
     @Override
-    public ResponseEntity<ProjectResponse> getById(Integer userId, Integer id) {
-        return ResponseEntity.ok(projectMapper.toResponse(projectService.getProject(userId, id)));
+    public ResponseEntity<ProjectResponse> getById(String ownerUuid, Integer id) {
+        return ResponseEntity.ok(projectMapper.toResponse(projectService.getProject(ownerUuid, id)));
     }
 
     @Override
     public ResponseEntity<PagedResponse<ProjectResponse>> list(
-            Integer userId, int page, int size, String sortBy, String sortDir) {
+            String ownerUuid, int page, int size, String sortBy, String sortDir) {
         Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
-        var result = projectService.listProjects(userId, pageable).map(projectMapper::toResponse);
+        var result = projectService.listProjects(ownerUuid, pageable).map(projectMapper::toResponse);
         return ResponseEntity.ok(PagedResponse.from(result));
     }
 
     @Override
-    public ResponseEntity<ProjectResponse> update(Integer userId, Integer id, UpdateProjectRequest request) {
+    public ResponseEntity<ProjectResponse> update(String ownerUuid, Integer id, UpdateProjectRequest request) {
         ProjectCommands.Update command = new ProjectCommands.Update(request.getName(), request.getDescription());
-        Project updated = projectService.updateProject(userId, id, command);
+        Project updated = projectService.updateProject(ownerUuid, id, command);
         return ResponseEntity.ok(projectMapper.toResponse(updated));
     }
 
     @Override
-    public ResponseEntity<ProjectResponse> archive(Integer userId, Integer id) {
-        Project archived = projectService.archiveProject(userId, id);
+    public ResponseEntity<ProjectResponse> archive(String ownerUuid, Integer id) {
+        Project archived = projectService.archiveProject(ownerUuid, id);
         return ResponseEntity.ok(projectMapper.toResponse(archived));
     }
 

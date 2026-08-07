@@ -26,7 +26,13 @@ import lombok.ToString;
 @Entity
 @Table(
         name = "USER",
-        schema = "product",
+        // No hardcoded schema here (unlike most entities in this reactor) — deliberately, since
+        // this class is shared as-is across every standalone deployable (gateway's monolith,
+        // ecommerce-service, identity-service), each with its own USER table in its own schema
+        // (product/ecommerce/identity respectively). Each app's own `hibernate.default_schema`
+        // property resolves the actual schema at runtime; a hardcoded schema here would silently
+        // force every deployable's User rows into the same physical table regardless of that
+        // per-app setting, defeating per-service-per-schema for the one entity every service needs.
         // PROVIDER_ID is nullable (LOCAL accounts have none); a unique constraint still works
         // here since Postgres treats every NULL as distinct from every other NULL.
         uniqueConstraints = @UniqueConstraint(name = "UK_USER_PROVIDER_PROVIDER_ID", columnNames = {"PROVIDER", "PROVIDER_ID"})

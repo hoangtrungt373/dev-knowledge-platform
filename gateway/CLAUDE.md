@@ -2,35 +2,49 @@
 
 Module-local guidance for `gateway` (formerly named `api` — renamed once its REST controller layer
 finished moving out into the feature modules, see `docs/CHANGELOG.md`). Read alongside the root
-`CLAUDE.md`. This is the module every other module gets wired up through — Spring Boot entry point,
-security/JWT-filter/STOMP transport wiring, Liquibase migrations — so it depends on `common`,
-`infra`, `content-service`, `ai-service`, `social-service`, and `identity-service`.
+`CLAUDE.md`. This is the module every other embedded module gets wired up through — Spring Boot
+entry point, security/JWT-filter/STOMP transport wiring, Liquibase migrations — so it depends on
+`common`, `infra`, `content-service`, `ai-service`, and `social-service`.
+**No Maven dependency on `identity-service`, `ecommerce-service`, or `task-service`** — all three
+are standalone Spring Boot applications now (see root `CLAUDE.md`); this app JIT-provisions its own
+local `User` copy directly instead of calling any of them in-process (see `security/` below).
+`task-service` never actually needed a rewritten call site when its dependency was dropped, unlike
+`identity-service` — `gateway` never called into its Java classes in-process to begin with
+(`ProjectApi`/`TaskApi` were already that module's own REST layer, just riding on this app's Spring
+context via the Maven dependency), so removing it was a pure `pom.xml` edit.
 
 Every feature's REST controllers, DTOs, and MapStruct mappers now live in the feature module that
 owns the underlying entities/services (`content-service`, `social-service`, `ai-service`,
-`identity-service`) instead of centralized here — see root `CLAUDE.md`'s Module Structure table and
-`docs/PROJECT_STRUCTURE.md` for the full per-module breakdown, and `docs/CHANGELOG.md`'s
-`[Unreleased]` entry for why (microservices-readiness: each module owning its full vertical slice —
-entity through REST controller — instead of one module centralizing every controller regardless of
-which module owns the entity). **This module holds zero REST controllers of its own** — even the one
-composed `UserApi.search`/`getPublicProfile` endpoint that used to live here moved to
-`social-service` (it reaches into `identity-service` for the base lookup; see that module's
-`CLAUDE.md`) once a one-directional sibling dependency became the better fit than a orchestration
-endpoint sitting in the entry-point module.
+`identity-service` before its later extraction) instead of centralized here — see root
+`CLAUDE.md`'s Module Structure table and `docs/PROJECT_STRUCTURE.md` for the full per-module
+breakdown, and `docs/CHANGELOG.md`'s `[Unreleased]` entry for why (microservices-readiness: each
+module owning its full vertical slice — entity through REST controller — instead of one module
+centralizing every controller regardless of which module owns the entity). **This module holds zero
+REST controllers of its own** — even the one composed `UserApi.search`/`getPublicProfile` endpoint
+that used to live here moved to `social-service` (which resolves its own base lookup via `common`'s
+`UserRepository` now, rather than reaching into `identity-service` — see that module's `CLAUDE.md`)
+once a one-directional sibling dependency became the better fit than an orchestration endpoint
+sitting in the entry-point module, and later became a plain local lookup once `identity-service`
+was extracted into a standalone service.
 
 ## What lives here
 
-- `security/` — transport/security **edge** infra, not auth business logic (that's
-  `identity-service`, see below): `SecurityConfig` (Keycloak is the identity provider — this app is
-  a pure OAuth2 **resource server** now, `.oauth2ResourceServer(jwt -> ...)` verifying bearer
-  tokens against Keycloak's JWKS via `spring.security.oauth2.resourceserver.jwt.issuer-uri`; no
-  `.oauth2Login()`/custom filter anymore), `KeycloakRealmRoleConverter` (maps the token's
-  `realm_access.roles` claim to `ROLE_*` `GrantedAuthority`s — Spring's default converter doesn't
-  read Keycloak's nested claim shape), `KeycloakJwtAuthenticationConverter` (the JIT-provisioning
-  glue: calls `identity-service`'s `UserService.findOrCreateFromKeycloak` to sync the local `User`
-  row, builds the same `CustomOAuth2User` principal shape every call site already expects — shared
-  by both the REST filter chain and STOMP `CONNECT`, exactly one JIT-provisioning code path),
-  `CorsConfig`, `JsonAuthenticationEntryPoint`, `CurrentUserResolver`, `WebSocketConfig`,
+- `security/` — transport/security **edge** infra. `SecurityConfig` (Keycloak is the identity
+  provider — this app is a pure OAuth2 **resource server** now, `.oauth2ResourceServer(jwt -> ...)`
+  verifying bearer tokens against Keycloak's JWKS via
+  `spring.security.oauth2.resourceserver.jwt.issuer-uri`; no `.oauth2Login()`/custom filter
+  anymore), `KeycloakRealmRoleConverter` (maps the token's `realm_access.roles` claim to `ROLE_*`
+  `GrantedAuthority`s — Spring's default converter doesn't read Keycloak's nested claim shape),
+  `KeycloakJwtAuthenticationConverter` — the JIT-provisioning glue, **now inlined here directly**
+  via `common`'s `UserRepository` (find by `keycloakSubjectId`, fallback `email`, write only if
+  changed), maintaining this app's own `product.USER` row. Used to delegate to `identity-service`'s
+  `UserService.findOrCreateFromKeycloak` across the module boundary; that stopped being possible
+  once `identity-service` became a standalone service with no Maven dependency from this one — see
+  that module's `CLAUDE.md`. Deliberately duplicated from `identity-service`'s/`ecommerce-service`'s
+  equivalent logic rather than shared. Builds the same `CustomOAuth2User` principal shape every call
+  site already expects — shared by both the REST filter chain and STOMP `CONNECT`, exactly one
+  JIT-provisioning code path. `CorsConfig`, `JsonAuthenticationEntryPoint`, `CurrentUserResolver`,
+  `WebSocketConfig`,
   `StompAuthChannelInterceptor` (STOMP CONNECT/SUBSCRIBE auth — see `docs/PROJECT_STRUCTURE.md` for
   the mechanics; decodes the bearer token via an injected `JwtDecoder` — Spring Boot's
   resource-server auto-config, no manual key handling — then reuses
@@ -59,17 +73,33 @@ endpoint sitting in the entry-point module.
   `social-service`, alongside the events themselves). Same "does this genuinely need to be at the
   entry-point module" question already applied to `config/`; none of the three ever had a
   `gateway`-specific dependency.
-- `service/seed/DataSeedingRunner` — orchestrates every seeder in dependency order (category → tag
-  → question-answer → user → friend graph → blocks); every seeder it calls lives in the feature
-  module owning what it seeds (`content-service`, `identity-service`'s own `UserSeeder`,
-  `social-service`) — this runner is the one place that imports across all of them, same as
-  `IngestionApi` used to be the "needs 2 modules" case before `ai-service` absorbed it. The actual
+- `service/seed/{DataSeedingRunner,UserSeeder}` — `DataSeedingRunner` orchestrates every seeder in
+  dependency order (category → tag → question-answer → user → friend graph → blocks); most seeders
+  it calls live in the feature module owning what they seed (`content-service`, `social-service`),
+  but `UserSeeder` lives right here now — relocated from `identity-service` once that module became
+  a standalone service and could no longer be imported across the module boundary. `UserSeeder`
+  still only writes via `common`'s `UserRepository` directly, same as before the move. The actual
   seed data files (`data/csv/*.csv`, `data/question-answers/*.md`) stay under this module's own
   `src/main/resources/` regardless of which module the seeder Java class lives in.
-- `database/sql/` — Liquibase changelogs for **every** module's tables, not just this module's own —
-  `content-service`'s, `social-service`'s, and `identity-service`-adjacent `USER` tables are all
-  migrated from here too (see root `CLAUDE.md`'s Database Conventions). New feature modules don't
-  get their own changelog folder.
+- `database/sql/` — Liquibase changelogs for this module's own tables plus every *embedded* feature
+  module's — `content-service`'s, `social-service`'s, and this app's own `product.USER` are all
+  migrated from here (see root `CLAUDE.md`'s Database Conventions). `identity-service`'s,
+  `ecommerce-service`'s, and `task-service`'s tables are **not** here — each standalone service
+  migrates its own schema from its own changelog tree now (see their `CLAUDE.md`s). `DKP-0020`/
+  `DKP-0021`/`DKP-0022` (the old `product.PROJECT`/`product.TASK` tables, `OWNER_ID` as a real FK to
+  `product.USER`) are still physically present in this tree as already-run history — frozen, not
+  deleted, per this repo's never-edit-an-executed-changeset convention — but describe an orphaned
+  pair no entity in this app's Spring context maps to anymore, now that `task-service` migrates its
+  own fresh `task.PROJECT`/`task.TASK` snapshot instead (`DKP-0028` in that module's own tree, with
+  a plain `OWNER_UUID` column replacing that FK entirely — see `task-service/CLAUDE.md`). New
+  embedded feature modules don't get their own changelog folder; a module extracted into a
+  standalone service does.
+- `Dockerfile` (repo root as build context) — multi-stage build producing this module's runtime
+  image. Relies entirely on `application-docker.yml`'s existing env-var defaults
+  (`DB_HOST`/`REDIS_HOST`/`MINIO_ENDPOINT` already default to the infra compose's service names);
+  the new `dev-knowledge-platform-apps-docker-compose.yml` at the repo root only overrides the
+  values that have no default (`KEYCLOAK_ISSUER_URI`, `FRONTEND_URL`, `OPENAI_API_KEY`). See root
+  `CLAUDE.md`'s Build & Run Commands and `docs/PROJECT_STRUCTURE.md`'s Deployment section.
 
 ## Current-user resolution
 
@@ -78,9 +108,14 @@ Two real patterns — do not reference `UserUtils.getCurrentUser()`, it doesn't 
 - **`@CurrentUserId Integer userId`** controller parameter (`common.annotation.CurrentUserId`,
   resolved by `CurrentUserIdArgumentResolver` in `config/web/`) — use when you only need the numeric
   `User` PK and the endpoint requires authentication (JWT).
-- **`userService.resolveCurrentUser(CustomOAuth2User principal)`** (`identity-service`'s
-  `UserService`) — use when the endpoint takes `@AuthenticationPrincipal CustomOAuth2User principal`
-  (`common.dto.CustomOAuth2User`) and you need the full `User` entity, not just the id.
+- **Resolve the full `User` entity from a `CustomOAuth2User` principal directly via `common`'s
+  `UserRepository.findByEmail(principal.getEmail())`** when the endpoint takes
+  `@AuthenticationPrincipal CustomOAuth2User principal` (`common.dto.CustomOAuth2User`) and needs
+  the full entity, not just the id. This used to be `identity-service`'s
+  `UserService.resolveCurrentUser(...)`, callable in-process; that stopped being an option once
+  `identity-service` became a standalone service, so every module in this reactor that needs this
+  now resolves it locally the same way `social-service`'s `UserController` does (see that module's
+  `CLAUDE.md`).
 - `common`'s `UserUtils.getUserName()` is unrelated — it's for populating audit-column string
   fields (`usrCreation`/`usrLastModification`), not for resolving "the acting user" in a controller.
 - **STOMP counterpart:** `@CurrentUserId Integer userId` also works on `@MessageMapping` methods
@@ -94,10 +129,14 @@ Two real patterns — do not reference `UserUtils.getCurrentUser()`, it doesn't 
 - **This is the only module allowed to depend on more than one feature module — but that no longer
   means REST endpoints live here.** A new REST endpoint's controller/DTO/mapper belongs in whichever
   single feature module owns the entities it fronts, even if that means one feature module taking a
-  one-directional dependency on a sibling (see `social-service` → `identity-service`, mirroring
-  `ai-service` → `content-service`). Only reach for putting something in this module if it genuinely
-  needs two feature modules that have **no** dependency relationship possible between them in either
-  direction — that's now a narrow, rare case (there is currently no REST endpoint that qualifies).
+  one-directional dependency on a sibling (see `ai-service` → `content-service`). `social-service` →
+  `identity-service` used to be a second example of this shape; it was removed once
+  `identity-service` was extracted into a standalone service (see that module's `CLAUDE.md`) — a
+  standalone service can never be the target of an in-process sibling dependency like this, only a
+  future network call through this module's (not-yet-built) proxy layer. Only reach for putting
+  something in this module if it genuinely needs two feature modules that have **no** dependency
+  relationship possible between them in either direction — that's now a narrow, rare case (there is
+  currently no REST endpoint that qualifies).
 - **Business logic (validation, uniqueness checks, cascades) belongs in the owning feature module's
   service, not in a controller** — but there are no controllers in this module anymore, so this
   mainly matters as guidance for whoever's tempted to add one here instead of in a feature module.

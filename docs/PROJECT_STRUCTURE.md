@@ -13,10 +13,6 @@ dev-knowledge-platform/
 │                        the RAG pipeline; owns its own REST layer, mappers, and DTOs
 ├── ai-service/       — RAG pipeline (embedding, vector search, LLM generation via LangChain4j), the RAG-chat
 │                        REST feature, and the content+AI indexing orchestration layer (own REST layer too)
-├── task-service/     — personal task/project management; MVP is single-user (owner-only), entity/enum
-│                        layer only so far
-├── identity-service/ — authentication (local + OAuth2/OIDC login), JWT issuance, OTP-gated registration,
-│                        and pure user-profile mutation (update profile, avatar upload)
 ├── social-service/   — friend graph (search visibility, requests, friendships, blocking) plus chat:
 │                        groups/channels (open-add, role-gated) and 1:1 DMs (friend-gated); own REST layer,
 │                        including the relationship-enriched user-directory endpoints (search, public profile)
@@ -26,45 +22,44 @@ dev-knowledge-platform/
 └── gui/              — React 18 + TypeScript + MUI frontend (Vite)
 ```
 
-`ecommerce-service/` — study-project e-commerce vertical slice — is deliberately **not** in the
-tree above: it's a standalone Spring Boot application, not part of this dependency graph at all
-(own DB, own JWT verification, own port; `gateway` has no Maven dependency on it, extracted
-specifically as a microservices-study exercise — see its own `## ecommerce-service` section
-further down and root `CLAUDE.md`). It still compiles against `common`+`infra` as ordinary
-library dependencies.
+`ecommerce-service/`, `identity-service/`, and `task-service/` are deliberately **not** in the tree
+above: all three are standalone Spring Boot applications, not part of this dependency graph at all
+(own schema, own JWT verification, own port; `gateway` has no Maven dependency on any of them, each
+extracted one at a time as a microservices-study exercise — see their own `## ecommerce-service`/
+`## identity-service`/`## task-service` sections further down and root `CLAUDE.md`). All three still
+compile against `common`+`infra` as ordinary library dependencies.
 
 Dependency order: `common` ← `infra` ← `content-service` ← `ai-service`;
-`infra` ← `identity-service` ← `social-service`; `common` ← `infra` ← `task-service`.
-`content-service`/`identity-service`/`task-service` are parallel siblings depending only on
-`common`+`infra`; `ai-service` and `social-service` are each allowed a single, real,
-one-directional dependency on a sibling module (`ai-service` → `content-service`,
-`social-service` → `identity-service`) — never the reverse. `gateway`
-depends on these five feature modules; it's the only module allowed to depend on more than one, reserved for
-orchestration that needs two feature modules with **no** dependency relationship possible between them in
-either direction — currently nothing qualifies, which is why `gateway` has no REST layer of its own today.
-`gui` is independent of the whole Java reactor.
+`common` ← `infra` ← `social-service`. `content-service`/`social-service` are parallel siblings
+depending only on `common`+`infra`; `ai-service` is allowed a single, real, one-directional
+dependency on a sibling module (`ai-service` → `content-service`) — never the reverse.
+`social-service` used to have the same kind of dependency on `identity-service` (`UserApi`'s
+`search`/`getPublicProfile`), and `task-service` used to be a third parallel sibling alongside
+`content-service`/`social-service` before its own extraction — both removed once the target module
+became a standalone service and could no longer be reached in-process (see below). `gateway` depends
+on these three remaining feature modules (`content-service`, `ai-service`, `social-service`); it's
+the only module allowed to depend on more than one,
+reserved for orchestration that needs two feature modules with **no** dependency relationship
+possible between them in either direction — currently nothing qualifies, which is why `gateway` has
+no REST layer of its own today. `gui` is independent of the whole Java reactor.
 
-Each of `content-service`/`social-service`/`ai-service`/`identity-service` owns its own full vertical slice —
+Each of `content-service`/`social-service`/`ai-service` owns its own full vertical slice —
 entities/services *and* REST controllers, DTOs, MapStruct mappers — rather than the earlier shape where
 `api` (now `gateway`) centralized every controller/DTO/mapper regardless of which module owned the
 underlying entity. That centralized shape kept these modules transport-agnostic; the vertical-slice shape
 trades that away deliberately, in favor of each module being closer to an independently-deployable unit
 ahead of an eventual microservices split (see `docs/CHANGELOG.md`'s `[Unreleased]` entries for the full
-rationale and what moved).
+rationale and what moved). `identity-service` and `task-service` still own their own full vertical
+slice too — they just do so as standalone apps now rather than embedded modules (see their own
+sections further down).
 
-Two real one-directional sibling dependencies exist, both following the same shape — a downstream module
-reaching into an upstream one for a genuine data/logic need, never the reverse:
+One real one-directional sibling dependency remains inside the monolith's dependency graph — a downstream
+module reaching into an upstream one for a genuine data/logic need, never the reverse:
 - `ai-service` → `content-service`: `ContentEmbedding` has a real `@ManyToOne` FK to `ContentItem`, and
   `ContentIngestionService.ingest(...)` takes a `ContentItem` parameter. This is also why the content+AI
   indexing orchestration layer (`IngestionApi`, `EmbeddingIndexApi`, `PublicContentApi`) lives in
   `ai-service` rather than `gateway`: `ai-service` is the one module (besides `gateway`) that can already
   see both `content-service` and itself.
-- `social-service` → `identity-service`: `UserApi`'s `search`/`getPublicProfile` endpoints (in
-  `social-service`) need `identity-service`'s `UserService`/`UserMapper` for the base profile lookup before
-  applying `social-service`'s own `FriendService` relationship enrichment. `identity-service` stays a pure
-  `common`+`infra` leaf specifically so this dependency is safe in this one direction — the reverse
-  (`identity-service` depending on `social-service`) would invert the usual auth-is-foundational hierarchy
-  and mix a social-graph view into an auth module.
 
 ---
 
@@ -77,9 +72,14 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │   └── User.java                     — userUuid, email, username, password, firstName, lastName, profilePicture,
 │                                        provider (UserProvider), role (UserRole), providerId, emailVerified, status
 │                                        (UserStatus, presence), enabled, seedId (String, nullable, DB SEED_ID,
-│                                        DKP-0016 — sole idempotency key for UserSeeder, identity-service); referenced by FK from
-│                                        social-service's FriendRequest/Friendship/UserBlock entities (which live
-│                                        there, not here — see social-service section below)
+│                                        DKP-0016 — sole idempotency key for UserSeeder, now in `gateway`); referenced
+│                                        by FK from social-service's FriendRequest/Friendship/UserBlock entities
+│                                        (which live there, not here — see social-service section below). `@Table`
+│                                        deliberately does NOT hardcode a schema — see this class's own Javadoc:
+│                                        every standalone deployable (`gateway`, `ecommerce-service`,
+│                                        `identity-service`) maps this same class into its own schema via its own
+│                                        `hibernate.default_schema`, each with its own independently
+│                                        JIT-provisioned copy of a given Keycloak identity
 ├── enums/
 │   ├── UserProvider.java
 │   ├── UserRole.java
@@ -91,7 +91,7 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
 │                                        gateway) can reach it directly — this also retired social-service's
 │                                        own SocialUserRepository, a near-duplicate that existed only because
 │                                        this repository used to live in gateway; findBySeedId(String) added
-│                                        for UserSeeder (identity-service) idempotency
+│                                        for UserSeeder (now in `gateway`) idempotency
 └── exception/
     ├── ApiException.java
     ├── BusinessException.java
@@ -166,7 +166,7 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
                                          independent siblings that can't depend on each other, so the shared
                                          template moved to infra, which both already depend on (same reasoning
                                          as SlugService above). Used by content-service's CategorySeeder/
-                                         TagSeeder, identity-service's UserSeeder, and social-service's UserBlockSeeder.
+                                         TagSeeder, gateway's UserSeeder, and social-service's UserBlockSeeder.
 ```
 
 ---
@@ -356,7 +356,7 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │   │                                   standing in for a full State-pattern class hierarchy at a scale that
 │   │                                   doesn't justify one
 │   └── seed/                        — sample social-graph data for the Friend Management GUI (see
-│       │                              docs/SEED_DATA_AUTHORING_GUIDE.md); requires identity-service's UserSeeder to run first
+│       │                              docs/SEED_DATA_AUTHORING_GUIDE.md); requires gateway's UserSeeder to run first
 │       ├── FriendGraphSeeder.java   — data/csv/friend-requests.csv (requesterId, addresseeId, status); an
 │       │                              ACCEPTED row also inserts the matching Friendship, canonically ordered,
 │       │                              mirroring FriendServiceImpl.acceptRequest's production behavior. Does
@@ -376,11 +376,13 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │   ├── UserApi.java                  — GET /public/{userUuid}, GET /search — a **second** `UserApi`,
 │   │                                    distinct from `identity-service`'s own (same `/api/v1/users` base
 │   │                                    mapping, different two methods: `updateProfile`/`uploadAvatar` live
-│   │                                    there instead). The one place in the whole reactor where a
-│   │                                    controller reaches across into a sibling module
-│   │                                    (`identity-service`'s `UserService`/`UserMapper`, for the base
-│   │                                    profile lookup) before applying this module's own `FriendService`
-│   │                                    enrichment
+│   │                                    there instead, on a separate standalone app now). Resolves the base
+│   │                                    profile lookup directly via `common`'s `UserRepository` and this
+│   │                                    module's own `FriendMapper.toUserInfo` (a local `UserInfoResponse`
+│   │                                    DTO, duplicated from `identity-service`'s equivalent) before applying
+│   │                                    `FriendService` relationship enrichment — no longer reaches into
+│   │                                    `identity-service`, which is a standalone service now and can't be
+│   │                                    called in-process
 │   └── impl/                         — FriendController / GroupController / DmController /
 │                                        GroupMessagingController / DmMessagingController / UserController
 ├── mapper/                           — MapStruct: FriendMapper, MessagingMapper (both abstract classes —
@@ -400,9 +402,10 @@ Read access to `User` (search, relationship resolution) goes through `common`'s 
 directly — no module-local wrapper repository needed, since `UserRepository` already lives in
 `common` and extends `JpaSpecificationExecutor<User>` (for `UserSpecification` above). STOMP transport
 wiring (`WebSocketConfig`, `StompAuthChannelInterceptor`, `CurrentUserIdMessageArgumentResolver`) stays in
-`gateway` — edge/transport infra, not a `social-service` concern, same split as `SecurityConfig`/
-`KeycloakJwtAuthenticationConverter` staying in `gateway` while `identity-service` owns the actual
-JIT-provisioning business logic (`UserService.findOrCreateFromKeycloak`).
+`gateway` — edge/transport infra, not a `social-service` concern. `gateway`'s own
+`KeycloakJwtAuthenticationConverter` now also owns the JIT-provisioning business logic itself
+(`findOrCreateUser`, inlined via `UserRepository` directly) rather than delegating to
+`identity-service`'s `UserService` — see the `## identity-service` section below for why.
 
 `GroupService` and `DmService` are deliberately two services, not one — they gate access differently
 (open-add + role checks vs. friend-required) and share no entities, so combining them would mix two
@@ -412,8 +415,10 @@ directly, avoiding a second implementation of the canonicalization + mutual-invi
 REST layer: this module's own `GroupApi`/`GroupController` and `DmApi`/`DmController`, DTOs in
 `dto/messaging/`, `MessagingMapper` — see `api/` above. No upload endpoint yet for message attachments;
 `MessageAttachmentRequest.objectKey` assumes the client already has a MinIO object key from
-somewhere else. `UserApi`/`UserController` (also `api/` above) is this module's one dependency on
-`identity-service` — see the Module layout section's rationale for why that direction is safe.
+somewhere else. `UserApi`/`UserController` (also `api/` above) used to be this module's one
+dependency on `identity-service`; that dependency was removed once `identity-service` became a
+standalone service (see the `## identity-service` section below) — this module's `pom.xml` no
+longer declares it.
 
 ---
 
@@ -662,38 +667,93 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ## task-service
 
 Personal task/project management (MVP, built in phases — see `docs/CHANGELOG.md`). Single-user for
-now: every `Project`/`Task` has an `owner`, no shared membership yet. Entity/enum layer (phase 1),
-repository/service layer (phase 2), and REST/DTO/mapper layer (phase 3) all exist now; only
-`gateway` wiring and tests remain.
+now: every `Project`/`Task` has an `ownerUuid`, no shared membership yet. **Now a standalone Spring
+Boot application, not part of the monolith** — the third module pulled out, following the
+`ecommerce-service`/`identity-service` precedent (see the `project-microservices-extraction-plan`
+memory for the full history).
+
+**Extraction (done):** own `TaskServiceApplication` entry point, own `task` Postgres schema
+(separate from the monolith's `product` schema), own JWT verification (`security/` — verifies
+tokens issued by Keycloak, never issues its own), own port (`8083`), own Liquibase changelog +
+`task-service-liquibase.yml` docker-compose file. `gateway` no longer has a Maven dependency on
+this module — it never called into task-service's Java classes in-process to begin with
+(`ProjectApi`/`TaskApi` were already this module's own REST layer, just riding on `gateway`'s
+Spring context via the Maven dependency), so this was a pure `pom.xml` removal, no rewritten call
+sites. **Not yet built:** the `gateway`-side HTTP proxy to this service — until that exists, it's
+only reachable directly on its own port, same limitation `ecommerce-service`/`identity-service`
+have.
+
+**No local `User` copy, unlike `gateway`/`identity-service`** (see below) — mirroring
+`ecommerce-service`'s "Option C" shape, just for a different concrete reason: `Project.ownerUuid`/
+`Task.ownerUuid` are plain columns compared directly against the caller's verified JWT `sub` claim,
+never a `@ManyToOne User` foreign key. Every ownership check this module does only ever answers "is
+this row's owner the caller," never "show me someone else's profile" — so there's no cross-service
+`User` duplication to justify, no `@EntityScan`/`@EnableJpaRepositories` widening onto
+`common.entity`/`common.repository`, and no database access at all in the current-user resolution
+path. (An earlier revision of this module briefly gave it its own JIT-provisioned `task.USER` table
+plus both annotations, on the assumption that a real relational owner reference meant it needed a
+real local `User` row — reverted once that distinction became clear; see
+`task-service/CLAUDE.md`'s "No local `User` copy" rule.)
 
 ```
 task-service/src/main/java/com/ttg/devknowledgeplatform/task/
+├── TaskServiceApplication.java        — @SpringBootApplication entry point; sitting at this package
+│                                        (not the shared root gateway's main class uses) keeps
+│                                        content-service/social-service/ai-service/identity-service
+│                                        out of this app's component scan (no Maven dependency on any
+│                                        of them anyway). No @EntityScan/@EnableJpaRepositories —
+│                                        this module doesn't touch common.entity.User/
+│                                        common.repository.UserRepository at all; default scanning
+│                                        already covers this module's own entity/repository packages
+├── security/
+│   ├── SecurityConfig.java            — this app's own filter chain (everything requires auth
+│   │                                     except `/actuator/**` — no public/admin surface, single-
+│   │                                     user personal task tracker); pure OAuth2 resource server,
+│   │                                     verifies bearer tokens against Keycloak's JWKS
+│   ├── KeycloakRealmRoleConverter.java — maps `realm_access.roles` to `ROLE_*` authorities;
+│   │                                     duplicated from gateway's/identity-service's/ecommerce-
+│   │                                     service's converter of the same name rather than shared
+│   ├── KeycloakJwtAuthenticationConverter.java — builds the CustomOAuth2User principal directly
+│   │                                     from the verified JWT's claims (sub stands in for
+│   │                                     userUuid) — persists nothing, mirroring ecommerce-
+│   │                                     service's converter of the same name, not gateway's/
+│   │                                     identity-service's
+│   └── CurrentUserResolver.java        — reads the authenticated CustomOAuth2User principal's UUID
+│                                         straight off the principal, no database lookup
+├── config/web/
+│   ├── WebMvcConfig.java               — registers CurrentUserIdArgumentResolver
+│   └── CurrentUserIdArgumentResolver.java — resolves common.annotation.CurrentUserId String-
+│                                         annotated controller parameters via CurrentUserResolver;
+│                                         duplicated from gateway's class of the same name (no STOMP
+│                                         transport here, so no message-argument-resolver
+│                                         counterpart needed)
 ├── entity/
-│   ├── Project.java                  — name, description, owner (User, @ManyToOne), status (ProjectStatus)
+│   ├── Project.java                  — name, description, ownerUuid (String, plain column — see
+│   │                                    above), status (ProjectStatus)
 │   └── Task.java                     — project (Project, @ManyToOne, nullable — standalone tasks allowed),
-│                                        owner (User, @ManyToOne), title, description, status (TaskStatus,
-│                                        default TODO), priority (TaskPriority, default MEDIUM), dueDate
-│                                        (Instant, nullable), parentTask (Task, @ManyToOne, nullable — self-FK,
-│                                        capped at one level deep) + subtasks (List<Task>, @OneToMany,
-│                                        cascade ALL + orphanRemoval)
+│                                        ownerUuid (String, plain column), title, description, status
+│                                        (TaskStatus, default TODO), priority (TaskPriority, default
+│                                        MEDIUM), dueDate (Instant, nullable), parentTask (Task,
+│                                        @ManyToOne, nullable — self-FK, capped at one level deep) +
+│                                        subtasks (List<Task>, @OneToMany, cascade ALL + orphanRemoval)
 ├── enums/
 │   ├── ProjectStatus.java             — ACTIVE, ARCHIVED
 │   ├── TaskPriority.java              — LOW, MEDIUM, HIGH, URGENT
 │   └── TaskStatus.java                — TODO, IN_PROGRESS, DONE; canTransitionTo(target) guards only the
 │                                         no-op case (target == this) — deliberately permissive otherwise
 ├── repository/
-│   ├── ProjectRepository.java         — JpaRepository<Project, Integer> + findByOwner(User, Pageable)
+│   ├── ProjectRepository.java         — JpaRepository<Project, Integer> + findByOwnerUuid(String, Pageable)
 │   ├── TaskRepository.java            — JpaRepository<Task, Integer> + JpaSpecificationExecutor<Task>
 │   └── spec/
-│       └── TaskSpecification.java     — withFilters(ownerId, projectId, status, priority, dueBefore, dueAfter);
-│                                         ownerId and "parentTask IS NULL" (top-level only) are always applied,
+│       └── TaskSpecification.java     — withFilters(ownerUuid, projectId, status, priority, dueBefore, dueAfter);
+│                                         ownerUuid and "parentTask IS NULL" (top-level only) are always applied,
 │                                         the rest are optional equality/range predicates
 ├── service/
 │   ├── ProjectService.java (+ impl/)  — CRUD; every method ownership-checked via a private
-│   │                                     resolveOwnedProject(ownerId, projectId) helper
-│   ├── TaskService.java (+ impl/)     — CRUD + changeStatus(ownerId, taskId, newStatus) (uses
+│   │                                     resolveOwnedProject(ownerUuid, projectId) helper
+│   ├── TaskService.java (+ impl/)     — CRUD + changeStatus(ownerUuid, taskId, newStatus) (uses
 │   │                                     TaskStatus.canTransitionTo, throws TASK_INVALID_STATUS_TRANSITION
-│   │                                     on a no-op) + listSubtasks(ownerId, parentTaskId) (unpaginated —
+│   │                                     on a no-op) + listSubtasks(ownerUuid, parentTaskId) (unpaginated —
 │   │                                     nesting capped at one level)
 │   ├── ProjectCommands.java           — Create/Update records (name, description)
 │   ├── TaskCommands.java              — Create/Update records (title, description, projectId, priority,
@@ -720,7 +780,8 @@ task-service/src/main/java/com/ttg/devknowledgeplatform/task/
 │                                         (task.getProject()/getParentTask() != null ? ... : null)
 └── api/ (+ api/impl/)
     ├── ProjectApi.java (+ ProjectController.java) — /api/v1/projects: create, getById, list,
-    │                                     update, POST /{id}/archive
+    │                                     update, POST /{id}/archive; every method takes
+    │                                     @CurrentUserId String ownerUuid
     └── TaskApi.java (+ TaskController.java)       — /api/v1/tasks: create, getById, list (+
                                           projectId/status/priority/dueBefore/dueAfter filters, always
                                           top-level only), update, POST /{id}/status,
@@ -729,18 +790,39 @@ task-service/src/main/java/com/ttg/devknowledgeplatform/task/
 
 Depends on `common` + `infra` only — no dependency on `content-service`; `Task` used to carry an
 optional `@ManyToOne` FK to `content-service`'s `ContentItem`, removed as unused (see
-`docs/CHANGELOG.md`'s `[Unreleased]` entry). Liquibase: `DKP-0020` (`gateway`'s changelog tree,
-same as every other module's tables — `PROJECT`/`TASK`, both `product` schema, in its *original*
-shape including `CONTENT_ITEM_ID` — it had already executed against a real DB by the time both
-follow-on changes below came up, so it's frozen as-is) plus `DKP-0021` (adds
-`TASK.PARENT_TASK_ID`/`FK_TASK_PARENT`/`IDX_TASK_PARENT`) and `DKP-0022` (drops
-`TASK.CONTENT_ITEM_ID`/`FK_TASK_CONTENT_ITEM`/`IDX_TASK_CONTENT_ITEM`) — each its own changeset
-rather than an edit to `DKP-0020`; see `task-service/CLAUDE.md`'s Liquibase rule for why.
+`docs/CHANGELOG.md`'s `[Unreleased]` entry). **Historical:** while still embedded in the monolith,
+this module's tables migrated from `gateway`'s changelog tree — `DKP-0020` (`PROJECT`/`TASK`, both
+`product` schema, in its *original* shape including `CONTENT_ITEM_ID`, `OWNER_ID` as a real FK to
+`product.USER` — it had already executed against a real DB by the time both follow-on changes came
+up, so it stayed frozen as-is) plus `DKP-0021` (added `TASK.PARENT_TASK_ID`/`FK_TASK_PARENT`/
+`IDX_TASK_PARENT`) and `DKP-0022` (dropped `TASK.CONTENT_ITEM_ID`/`FK_TASK_CONTENT_ITEM`/
+`IDX_TASK_CONTENT_ITEM`). Those `gateway`-tree migrations are untouched (already-run history, per
+this repo's frozen-changeset convention) but now describe an orphaned `product.PROJECT`/
+`product.TASK` pair `gateway`'s own Spring context no longer maps any entity to.
+
+**Now (post-extraction):** this module migrates its own `task` schema from its own changelog tree
+(`task-service/.../database/sql/task-service.xml` + `2026/0.0.1/*.sql`), applied via the standalone
+`task-service-liquibase.yml` docker-compose file at the repo root — the same pattern
+`ecommerce-service`/`identity-service` established. `DKP-0028` is the *only* migration in this
+tree — it adds `task.PROJECT`/`task.TASK` as a fresh snapshot of the *final* shape those tables
+reached in `gateway`'s tree (post-`DKP-0022` — no `CONTENT_ITEM_ID` column at all, `PARENT_TASK_ID`
+present from the start), not a replay of `DKP-0020`→`DKP-0021`→`DKP-0022`'s incremental history,
+with one deliberate deviation: `OWNER_UUID` (`VARCHAR(36)`, indexed, no FK) replaces `OWNER_ID`
+entirely — there is no `task.USER` table (see the "no local `User` copy" note above; an earlier
+revision of this migration briefly added one as `DKP-0028`, with the `PROJECT`/`TASK` tables as a
+second changeset `DKP-0029` — both were collapsed back into this single migration once the `USER`
+table was found to be unnecessary). Any further `PROJECT`/`TASK` schema change gets its own new
+changeset in *this* module's tree now, per the same frozen-changeset convention — see
+`task-service/CLAUDE.md`'s Liquibase rule.
 
 `Task.parentTask`/`subtasks` mirror `content-service`'s `Category` self-referential parent/child
 tree, capped at one level deep instead of Category's arbitrary depth (see `task-service/CLAUDE.md`
 for the full reasoning and the delete/status/listing behavior that intentionally diverges from
 Category's).
+
+**Compiles cleanly** (full reactor including the extraction changes; needs `JAVA_HOME` pointed at a
+JDK 21 install) but hasn't been run against a real Postgres yet — same unverified-at-runtime caveat
+as `ecommerce-service`/`identity-service`.
 
 ---
 
@@ -748,36 +830,60 @@ Category's).
 
 Keycloak now owns login/registration/password/OTP/OAuth2-brokering entirely (see
 `docs/CHANGELOG.md`'s Keycloak migration entries) — this module narrowed to JIT-syncing a local
-`User` row from a verified Keycloak identity, plus the authenticated user's own profile.
+`User` row from a verified Keycloak identity, plus the authenticated user's own profile. **Now a
+standalone Spring Boot application, not part of the monolith** — see the
+`project-microservices-extraction-plan` memory for the full extraction history.
+
+**Extraction (done):** own `IdentityServiceApplication` entry point (`@EntityScan`/
+`@EnableJpaRepositories` pointed at `common.entity`/`common.repository`, since this module owns no
+entities/repositories of its own and default Spring Boot scanning wouldn't otherwise reach
+`common`'s), own `identity` Postgres schema (separate from the monolith's `product` schema), own
+JWT verification (`security/` — verifies tokens issued by Keycloak, never issues its own), own port
+(`8082`), own Liquibase changelog + `identity-service-liquibase.yml` docker-compose file. `gateway`
+no longer has a Maven dependency on this module, and vice versa was never true. **Not yet built:**
+the `gateway`-side HTTP proxy to this service — until that exists, it's only reachable directly on
+its own port, same limitation `ecommerce-service` has.
 
 ```
 identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
+├── IdentityServiceApplication.java    — @SpringBootApplication entry point; sitting at this package
+│                                        (not the shared root gateway's main class uses) keeps
+│                                        content-service/social-service/ai-service/task-service out
+│                                        of this app's component scan (no Maven dependency on any of
+│                                        them anyway); @EntityScan/@EnableJpaRepositories widen JPA
+│                                        scanning to also cover common.entity/common.repository,
+│                                        which default scanning wouldn't reach on its own
 ├── api/
 │   ├── AuthApi.java                   — GET /api/v1/auth/user ONLY (renamed from OAuth2Api once
 │   │                                     every other endpoint on it was deleted — Keycloak's own
 │   │                                     /userinfo doesn't cover this app's avatar/username shape)
 │   ├── UserApi.java                   — PUT /me, POST /me/avatar ONLY — pure profile mutation. GET
-│   │   │                                 /public/{userUuid} and GET /search moved to `social-service`'s
+│   │   │                                 /public/{userUuid} and GET /search live in `social-service`'s
 │   │   │                                 own `UserApi` instead (see that section) since they need
-│   │   │                                 `FriendService` for relationship enrichment, and this module
-│   │   │                                 must stay a pure `common`+`infra` leaf
+│   │   │                                 `FriendService` for relationship enrichment — that module
+│   │   │                                 now resolves the base lookup itself rather than reaching
+│   │   │                                 into this now-standalone service
 │   │   └── impl/                      — AuthController / UserController
 ├── mapper/
 │   └── UserMapper.java                — entity → dto/UserInfoResponse
 ├── dto/
 │   ├── UserInfoResponse.java
 │   └── user/UpdateProfileRequest.java
-├── service/seed/UserSeeder.java       — data/csv/users.csv (file itself stays under `gateway`'s
-│                                        resources); identity by seedId; extends infra's CsvSeeder.
-│                                        Writes directly via common's UserRepository, not UserService,
-│                                        same reasoning as every other seeder in the reactor.
-│                                        `gateway`'s DataSeedingRunner imports it across the module
-│                                        boundary to run it in order
-└── security/service/                  — UserService/Impl, narrowed to findOrCreateFromKeycloak
-                                          (KeycloakUserInfo carrier record, same package — the
-                                          JIT-provisioning entry point gateway's
-                                          KeycloakJwtAuthenticationConverter calls on every
-                                          authenticated request), resolveCurrentUser, findByEmail/
+└── security/
+    ├── SecurityConfig.java            — this app's own filter chain (everything requires auth
+    │                                    except `/actuator/**` — no public/admin surface here, unlike
+    │                                    content-service/ecommerce-service); pure OAuth2 resource
+    │                                    server, verifies bearer tokens against Keycloak's JWKS
+    ├── KeycloakRealmRoleConverter.java — maps `realm_access.roles` to `ROLE_*` authorities;
+    │                                    duplicated from gateway's/ecommerce-service's converter of
+    │                                    the same name rather than shared (no Maven dependency)
+    ├── KeycloakJwtAuthenticationConverter.java — the one converter in the reactor that still
+    │                                    *delegates* rather than inlining: calls this module's own
+    │                                    in-process `service/UserService.findOrCreateFromKeycloak`
+    │                                    directly, since both live in this same standalone app
+    └── service/                       — UserService/Impl, narrowed to findOrCreateFromKeycloak
+                                          (KeycloakUserInfo carrier record, same package),
+                                          resolveCurrentUser, findByEmail/
                                           findByUserUuid(Optional)/findById, updateStatus,
                                           updateProfile, updateAvatar
 ```
@@ -788,13 +894,26 @@ identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
 `security/handler/OAuth2LoginSuccessHandler`, `security/service/StateTokenService`(`Impl`),
 `security/service/RefreshTokenBlacklistService`(`Impl`), `service/{OtpService,EmailService}`(`Impl`),
 every `dto/auth/*` type, `dto/RegisterRequest`,
-`dto/{OAuth2UserInfo,GoogleOAuth2UserInfo,FacebookOAuth2UserInfo,OAuth2UserInfoFactory}`.
+`dto/{OAuth2UserInfo,GoogleOAuth2UserInfo,FacebookOAuth2UserInfo,OAuth2UserInfoFactory}`, and (as
+part of this extraction) `service/seed/UserSeeder` — relocated to `gateway`, not deleted: it only
+ever wrote via `common`'s `UserRepository` directly, no other dependency on this module, and
+`gateway` still needs to seed its own `product.USER` for the modules still embedded there. This
+module needs no seed data of its own — a seeded demo account has no matching Keycloak identity, so
+this module's own `identity.USER` table only ever fills via JIT-provisioning on a real login. The
+Keycloak-migration pom cleanup (JJWT, Redis-for-blacklist, mail-for-OTP — all left over from before
+those classes were deleted) happened alongside this extraction too.
 
-`gateway`'s `SecurityConfig`/`KeycloakJwtAuthenticationConverter`/`StompAuthChannelInterceptor` call
-into `identity-service`'s `UserService.findOrCreateFromKeycloak` across the module boundary — the
-JIT-provisioning logic itself stays here (auth business logic), while token verification
-(`JwtDecoder`, auto-configured from `issuer-uri`) and the security filter chain stay in `gateway`
-(transport-edge wiring).
+`gateway`'s own `KeycloakJwtAuthenticationConverter` no longer calls into this module's
+`UserService.findOrCreateFromKeycloak` across a module boundary — that stopped being possible once
+this module became a standalone service with no Maven dependency from either. It now inlines the
+same find-or-create logic directly via `common`'s `UserRepository`, JIT-provisioning its own local
+`User` copy into `product.USER`. `ecommerce-service`'s converter takes a different path entirely —
+it persists nothing at all, building its principal straight from the JWT's claims (see its own
+section below for why). There is no single canonical `User` row shared across deployables; see root
+`CLAUDE.md`'s Security section.
+
+**Compiles cleanly** (full reactor; needs `JAVA_HOME` pointed at a JDK 21 install) but hasn't been
+run against a real Postgres yet — same unverified-at-runtime caveat as `ecommerce-service`.
 
 ---
 
@@ -808,7 +927,8 @@ CRUD for `ProductCategory`/`Product` including independent variant/image add-rem
 outbox relay, and a public browse/search/detail surface with attribute-value filtering.
 
 **Extraction (done):** own `EcommerceServiceApplication` entry point, own `ecommerce` Postgres
-schema/database (separate from the monolith's `product` schema), own JWT verification
+schema (same `dev-premier` database as the monolith, not a separate database instance —
+per-service-per-schema, see root `CLAUDE.md`'s Database Conventions), own JWT verification
 (`security/` — verifies tokens issued elsewhere, never issues its own), own port (`8081`), own
 Liquibase changelog + `ecommerce-service-liquibase.yml` docker-compose file. `gateway` no longer
 has a Maven dependency on this module. **Not yet built:** the `gateway`-side HTTP proxy to this
@@ -816,17 +936,28 @@ service — until that exists, it's only reachable directly on its own port.
 
 **Compiles cleanly** (full reactor including the extraction changes; needs `JAVA_HOME` pointed at
 a JDK 21 install) but hasn't been run against a real Postgres yet — the Liquibase migration
-against the new `ecommerce` schema, the native SQL in `ProductSearchViewRepository.search`, and
-the new JWT verification path are all still unverified at runtime.
+against the `ecommerce` schema, the native SQL in `ProductSearchViewRepository.search`, and the JWT
+verification path are all still unverified at runtime.
+
+**Does not persist a `User` row at all** — none of this module's own entities have a foreign key
+onto a user, so `KeycloakJwtAuthenticationConverter` only ever needs "who is the caller, and are
+they an admin," both fully answerable from the verified JWT's claims. An earlier revision briefly
+added `@EntityScan`/`@EnableJpaRepositories` plus an `ecommerce.USER` table (found alongside a real
+bug: neither annotation existed, so `common.repository.UserRepository` would never have become a
+bean and this app would have failed to start) — reverted once it became clear this module never
+actually needed a persisted `User` copy in the first place. See the `## identity-service` section
+above and the `project-microservices-extraction-plan` memory for the full "Option C" reasoning.
 
 ```
 ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 ├── EcommerceServiceApplication.java — @SpringBootApplication + @EnableScheduling entry point;
-│                                       sitting at this package (not the shared root gateway's
-│                                       main class uses) means default component/entity/
-│                                       repository scanning never picks up common.entity.User or
-│                                       common.repository.UserRepository — this service's own DB
-│                                       has no USER table — with zero extra @EntityScan config
+│                                       sitting at this package (not the shared root gateway's main
+│                                       class uses) keeps content-service/social-service/ai-service/
+│                                       task-service/identity-service out of this app's component
+│                                       scan. No @EntityScan/@EnableJpaRepositories — this module
+│                                       never touches common.entity.User/common.repository.
+│                                       UserRepository (see above), and default scanning already
+│                                       covers this module's own entity/repository packages
 ├── entity/
 │   ├── ProductCategory.java    — flat taxonomy (table PRODUCT_CATEGORY, not CATEGORY — avoids
 │   │                              colliding with content-service's Category in the shared schema)
@@ -874,14 +1005,24 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   └── OutboxRelay.java            — @Scheduled poller (app.ecommerce.outbox.relay.poll-interval,
 │                                        default PT5S); @EnableScheduling lives on this module's
 │                                        own EcommerceServiceApplication now
-├── security/                    — this app's own filter chain, independent of gateway's
-│   ├── JwtVerifier.java             — verifies (never issues) RS256 tokens via the public key at
-│   │                                    jwt.public-key-location (infra's RsaKeyUtils); this service
-│   │                                    never holds the private key identity-service signs with
-│   ├── JwtAuthenticationFilter.java — OncePerRequestFilter; builds a CustomOAuth2User principal
-│   │                                    from verified claims, mirrors gateway's filter shape
-│   └── SecurityConfig.java          — /api/v1/public/** permitAll, /api/v1/admin/** hasRole(ADMIN),
-│                                        stateless, no OAuth2 login (this service never issues tokens)
+├── security/                    — this app's own filter chain, independent of gateway's; pure
+│   │                                OAuth2 resource server (Keycloak-backed, same as every other
+│   │                                deployable — the old JJWT-based JwtVerifier/
+│   │                                JwtAuthenticationFilter shown in earlier revisions of this doc
+│   │                                are gone, see docs/CHANGELOG.md's Keycloak migration entries)
+│   ├── SecurityConfig.java          — /api/v1/public/** permitAll, /api/v1/admin/** hasRole(ADMIN),
+│   │                                    stateless, .oauth2ResourceServer(...) verifying bearer
+│   │                                    tokens against Keycloak's JWKS — never issues tokens itself
+│   ├── KeycloakRealmRoleConverter.java — maps realm_access.roles to ROLE_* authorities; duplicated
+│   │                                    from gateway's/identity-service's converter of the same name
+│   └── KeycloakJwtAuthenticationConverter.java — builds the CustomOAuth2User principal directly
+│                                        from the verified JWT's claims (sub stands in for
+│                                        userUuid) — persists nothing, unlike gateway's/
+│                                        identity-service's converters of the same name. This
+│                                        module's own entities have no foreign key onto a user, so
+│                                        the only real need was resolving the caller's identity/role,
+│                                        fully answerable from the token alone (see this module's
+│                                        own CLAUDE.md for the "Option C" reasoning)
 ├── service/
 │   ├── ProductCategoryService.java / ProductService.java / ProductSearchService.java — return
 │   │   entities, not REST DTOs; this module's own mapper/ does entity→response mapping (same
@@ -993,18 +1134,26 @@ gateway/src/main/java/com/ttg/devknowledgeplatform/
 ├── security/                         — OAuth2-resource-server verification + STOMP transport wiring
 │   │                                    (edge concerns); Keycloak is the identity provider — this
 │   │                                    app never issues tokens, only verifies them; JIT-provisioning
-│   │                                    business logic (finding/creating the local User row) lives
-│   │                                    in identity-service's UserService — see that section
+│   │                                    business logic (finding/creating this app's own local User
+│   │                                    row) lives right here now — see below
 │   ├── SecurityConfig.java           — .oauth2ResourceServer(jwt -> ...) verifying bearer tokens
 │   │                                    against Keycloak's JWKS (spring.security.oauth2.
 │   │                                    resourceserver.jwt.issuer-uri); no .oauth2Login() anymore
 │   ├── KeycloakRealmRoleConverter.java — Converter<Jwt, Collection<GrantedAuthority>>; maps the
 │   │                                    token's realm_access.roles claim to ROLE_* authorities —
 │   │                                    Spring's default converter only reads a flat scope claim
-│   ├── KeycloakJwtAuthenticationConverter.java — Converter<Jwt, AbstractAuthenticationToken>; the
-│   │                                    JIT-provisioning glue — calls identity-service's
-│   │                                    UserService.findOrCreateFromKeycloak, builds the same
-│   │                                    CustomOAuth2User principal shape every call site expects.
+│   ├── KeycloakJwtAuthenticationConverter.java — Converter<Jwt, AbstractAuthenticationToken>; JIT-
+│   │                                    provisions/refreshes this app's own product.USER row
+│   │                                    directly via common's UserRepository (find by
+│   │                                    keycloakSubjectId, fallback email, write only if changed) —
+│   │                                    inlined here rather than delegating to identity-service's
+│   │                                    UserService, which is a standalone service now and can't be
+│   │                                    called in-process (deliberately duplicated — note
+│   │                                    ecommerce-service's own converter of this name does NOT
+│   │                                    persist anything at all; this app's `Task`/`Friendship`/etc.
+│   │                                    FKs genuinely need a real local User row, ecommerce-service's
+│   │                                    entities don't). Builds the same CustomOAuth2User principal
+│   │                                    shape every call site expects.
 │   │                                    Rejects a refresh token presented as a bearer token via its
 │   │                                    typ claim. Shared by both the REST filter chain (above) and
 │   │                                    STOMP CONNECT (below) — one JIT-provisioning path, not two
@@ -1028,21 +1177,26 @@ gateway/src/main/java/com/ttg/devknowledgeplatform/
 │                                          has no public topic string to subscribe to)
 └── service/
     └── seed/
+        ├── UserSeeder.java               — same package as DataSeedingRunner now (relocated from
+        │                                    identity-service once that module became a standalone
+        │                                    service — see its own section); writes directly via
+        │                                    common's UserRepository, no logic change from the move
         └── DataSeedingRunner.java        — ApplicationRunner, @ConditionalOnProperty(app.seed.enabled);
                                              runs seeders in order: category → tag → questionAnswer → user →
                                              friend graph → blocks. CategorySeeder/TagSeeder/QuestionAnswerSeeder
-                                             live in content-service/service/seed/, UserSeeder in
-                                             identity-service/service/seed/, FriendGraphSeeder/
-                                             UserBlockSeeder in social-service/service/seed/ (see those modules'
-                                             sections) — this runner just injects and calls all of them
+                                             live in content-service/service/seed/, UserSeeder right here now,
+                                             FriendGraphSeeder/UserBlockSeeder in social-service/service/seed/
+                                             (see those modules' sections) — this runner just injects and calls
+                                             all of them
 ```
 
 Everything that used to live flat here — every feature's REST controllers, DTOs, and MapStruct
 mappers, including the one composed `UserApi.search`/`getPublicProfile` endpoint (moved to
-`social-service`, which reaches into `identity-service` for the base lookup) — moved into the owning
-feature module (`content-service`, `social-service`, `ai-service`, `identity-service`); see those
-modules' sections and `docs/CHANGELOG.md`'s `[Unreleased]` entries for the full move and its
-rationale. Chat-specific rate limiting (`ChatRateLimiter`/`RateLimitProperties`/
+`social-service`, which used to reach into `identity-service` for the base lookup before that
+module became standalone — it resolves the base lookup itself now) — moved into the owning feature
+module (`content-service`, `social-service`, `ai-service`, `identity-service` before its later
+extraction); see those modules' sections and `docs/CHANGELOG.md`'s `[Unreleased]` entries for the
+full move and its rationale. Chat-specific rate limiting (`ChatRateLimiter`/`RateLimitProperties`/
 `ChatRateLimitInterceptor`) and the `asyncEventExecutor` thread pool moved out too, to `ai-service`
 and `infra` respectively — see those modules' sections. What's left here is transport/security edge
 infra (`SecurityConfig`, JWT filter, STOMP wiring, the `sseStreamExecutor` pool), Liquibase
@@ -1070,9 +1224,10 @@ data/
 │   │                                    id (→ seedId), never name/slug
 │   ├── categories.csv                    — id, name, parentId (parentId references another row's id)
 │   ├── tags.csv                           — id, name, status
-│   ├── users.csv                          — id, email, username, firstName, lastName (UserSeeder, identity-service;
-│   │                                         file itself stays under gateway's resources);
-│   │                                         20 sample login-able accounts for the Friend Management GUI
+│   ├── users.csv                          — id, email, username, firstName, lastName (UserSeeder, gateway —
+│   │                                         relocated here from identity-service once that module became a
+│   │                                         standalone service); 20 sample login-able accounts for the
+│   │                                         Friend Management GUI
 │   ├── friend-requests.csv                — requesterId, addresseeId, status (FriendGraphSeeder,
 │   │                                         social-service); references users.csv rows by id
 │   └── user-blocks.csv                    — blockerId, blockedId (UserBlockSeeder, social-service);
@@ -1167,8 +1322,53 @@ expected over time, and are modelled as data, not schema:
   can carry text, an attachment, or both. `ON DELETE CASCADE` from messages up through channel/group and
   from members up through group.
 - `USER.SEED_ID` (DKP-0016, nullable, unique index) — same pattern as `DKP-0013`'s `CATEGORY`/`TAG`/
-  `CONTENT_ITEM`; sole idempotency key for `UserSeeder`'s (`identity-service`) 20 sample login-able accounts.
+  `CONTENT_ITEM`; sole idempotency key for `UserSeeder`'s (`gateway`) 20 sample login-able accounts.
 - Migrations: `gateway/src/main/java/com/ttg/devknowledgeplatform/database/sql/` (Liquibase config
   lives in `gateway` regardless of which module owns the entities the migration backs —
   `social-service`'s tables are migrated from here too, same as `ai-service`'s)
   - Naming: `YYYY/VERSION/YYYYMMDDHHMI__VERSION__TICKET__description.sql`
+
+---
+
+## Deployment
+
+Four independently-runnable Spring Boot processes exist today — `gateway` (the monolith),
+`ecommerce-service`, `identity-service`, and `task-service` (the latter three standalone
+microservices-study extractions) — each with its own `Dockerfile` (multi-stage:
+`maven:3.9.9-eclipse-temurin-21` build stage running `mvn -pl <module> -am package` against the full
+reactor, `eclipse-temurin:21-jre-jammy` runtime stage). All four Dockerfiles use the **repo root**
+as their build context, since the Maven reactor build needs sibling-module sources
+(`docker build -f gateway/Dockerfile .`, not `docker build gateway/`). `gateway`'s `Dockerfile` only
+`COPY`s the sources of modules it actually depends on
+(`common`/`infra`/`content-service`/`ai-service`/`social-service`) plus every module's `pom.xml`
+(needed for Maven to parse the reactor's full `<modules>` list even for modules it won't build) — it
+does not copy `identity-service`, `ecommerce-service`, or `task-service` sources.
+
+`dev-knowledge-platform-apps-docker-compose.yml` (repo root) brings up all four app containers plus
+one-shot Liquibase migration runners (`dkp-liquibase`, `ecommerce-liquibase`, `identity-liquibase`,
+`task-liquibase`) ahead of them via `depends_on: condition: service_completed_successfully`. It has
+no infra containers of its own — it must be run combined with
+`dev-knowledge-platform-docker-compose.yml` in one command, since that's what puts every container
+in a single Compose project/network so service-name DNS (`postgres`/`redis`/`minio`/`keycloak`)
+resolves:
+
+```bash
+docker compose -f dev-knowledge-platform-docker-compose.yml \
+                -f dev-knowledge-platform-apps-docker-compose.yml \
+                up -d --build
+```
+
+`ecommerce-service`, `identity-service`, and `task-service` share the same `dev-premier` Postgres
+database as `gateway`, each in its own schema (`ecommerce`/`identity`/`task` vs. `gateway`'s
+`product`) — per-service-per-schema, not per-service-per-database (see root `CLAUDE.md`'s Database
+Conventions and the `project-microservices-extraction-plan` memory for why). Each service also has
+its own standalone `*-liquibase.yml` compose file at the repo root for migrating its own schema
+outside the combined apps-compose flow (`ecommerce-service-liquibase.yml`,
+`identity-service-liquibase.yml`, `task-service-liquibase.yml`).
+
+`common`, `infra`, and the root `pom.xml` needed no changes for any of this — they already function
+as this repo's shared-foundation modules (proven by `ecommerce-service` already depending on
+`common`+`infra` as ordinary library jars, with zero Maven dependency on `gateway`, before
+`identity-service` and `task-service` followed the same pattern). Kafka/RabbitMQ messaging and a
+`kubernetes/` directory are not part of this yet — see `docs/CHANGELOG.md`'s `[Unreleased]` entry
+for current scope.

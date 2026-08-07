@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: identity-service
+
+  # OAuth2/OIDC — Keycloak is the identity provider; this service only ever verifies bearer
+  # tokens against Keycloak's JWKS, same realm as gateway/ecommerce-service.
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/dev-knowledge-platform}
+
+  # Liquibase — disabled by default, same convention as gateway/ecommerce-service: migrations are
+  # applied via the standalone identity-service-liquibase.yml docker-compose file, not on app boot.
+  liquibase:
+    enabled: false
+    change-log: classpath:com/ttg/devknowledgeplatform/identity/database/sql/identity-service.xml
+
+  # JPA — this module's own schema (`identity`), separate from the monolith's `product` schema.
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_schema: identity
+
+# Server — 8082, distinct from gateway's 8080 and ecommerce-service's 8081 (this app runs
+# alongside both, not instead of either, until gateway's HTTP proxy to this service is built).
+server:
+  port: ${SERVER_PORT:8082}
+
+# Logging
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Management
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized

@@ -43,6 +43,79 @@
             <artifactId>mapstruct</artifactId>
         </dependency>
 
+        <!-- Spring Security — this module's own filter chain now that it's a standalone app
+             (see security/SecurityConfig), same reasoning as identity-service's/ecommerce-service's
+             pom.xml. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- OAuth2 Resource Server — Keycloak is the identity provider; this service only ever
+             verifies bearer tokens against Keycloak's JWKS (issuer-uri auto-discovery), never
+             issues them. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+
+        <!-- OAuth2 Client — KeycloakJwtAuthenticationConverter/CurrentUserResolver build/read a
+             common.dto.CustomOAuth2User (implements OAuth2User) as this app's own Authentication
+             principal; common declares this starter optional (type-support only), so it isn't
+             inherited transitively. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+        </dependency>
+
+        <!-- PostgreSQL — this module's own datasource connection now that it's a standalone app
+             with its own schema (`task`), not sharing gateway's connection. -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Actuator — health/info/metrics endpoints, same as gateway/ecommerce-service/
+             identity-service, now that this module is independently deployable. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
     </dependencies>
+
+    <build>
+        <!-- Include the Liquibase changelog XML/SQL bundled under src/main/java so they end up on
+             the runtime classpath — same shape as identity-service's/ecommerce-service's pom.xml.
+             This module's own changelog is run via a standalone task-service-liquibase.yml
+             docker-compose file (spring.liquibase.enabled stays false here too), not on app boot. -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>src/main/java</directory>
+                <includes>
+                    <include>**/*.xml</include>
+                    <include>**/*.sql</include>
+                </includes>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

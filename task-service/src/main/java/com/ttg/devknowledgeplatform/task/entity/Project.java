@@ -1,7 +1,6 @@
 package com.ttg.devknowledgeplatform.task.entity;
 
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.task.enums.ProjectStatus;
 
 import jakarta.persistence.AttributeOverride;
@@ -9,9 +8,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -21,21 +17,26 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import lombok.ToString;
 
 /**
- * A named grouping of {@link Task}s owned by a single {@link User}. MVP is single-user — there
- * is no shared membership yet, only an {@link #owner}.
+ * A named grouping of {@link Task}s owned by a single Keycloak identity. MVP is single-user —
+ * there is no shared membership yet, only an {@link #ownerUuid}.
+ *
+ * <p>{@link #ownerUuid} is a plain column (the Keycloak JWT's {@code sub} claim), not a foreign
+ * key to a local {@code User} row — this module never needs to display another user's profile,
+ * only "is this project's owner the caller," which a direct string comparison against the
+ * authenticated principal's UUID already answers with no join. See
+ * {@code security.KeycloakJwtAuthenticationConverter}'s Javadoc for the "no persisted User copy"
+ * reasoning this mirrors from {@code ecommerce-service}.
  */
 @Entity
-@Table(name = "PROJECT", schema = "product")
+@Table(name = "PROJECT", schema = "task")
 @AttributeOverride(name = "id", column = @Column(name = "PROJECT_ID"))
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(callSuper = true, exclude = "owner")
-@ToString(exclude = "owner")
+@EqualsAndHashCode(callSuper = true)
 public class Project extends AbstractEntity {
 
     @NotNull
@@ -46,9 +47,10 @@ public class Project extends AbstractEntity {
     @Column(name = "DESCRIPTION")
     private String description;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "OWNER_ID", nullable = false)
-    private User owner;
+    @NotNull
+    @Size(max = 36)
+    @Column(name = "OWNER_UUID", length = 36, nullable = false)
+    private String ownerUuid;
 
     @NotNull
     @Enumerated(EnumType.STRING)

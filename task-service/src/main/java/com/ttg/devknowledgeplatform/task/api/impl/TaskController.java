@@ -40,55 +40,55 @@ public class TaskController implements TaskApi {
     private final TaskMapper taskMapper;
 
     @Override
-    public ResponseEntity<TaskResponse> create(Integer userId, CreateTaskRequest request) {
+    public ResponseEntity<TaskResponse> create(String ownerUuid, CreateTaskRequest request) {
         TaskCommands.Create command = new TaskCommands.Create(
                 request.getTitle(), request.getDescription(), request.getProjectId(),
                 request.getPriority(), request.getDueDate(), request.getParentTaskId());
-        Task created = taskService.createTask(userId, command);
+        Task created = taskService.createTask(ownerUuid, command);
         return ResponseEntity.status(HttpStatus.CREATED).body(taskMapper.toResponse(created));
     }
 
     @Override
-    public ResponseEntity<TaskResponse> getById(Integer userId, Integer id) {
-        return ResponseEntity.ok(taskMapper.toResponse(taskService.getTask(userId, id)));
+    public ResponseEntity<TaskResponse> getById(String ownerUuid, Integer id) {
+        return ResponseEntity.ok(taskMapper.toResponse(taskService.getTask(ownerUuid, id)));
     }
 
     @Override
     public ResponseEntity<PagedResponse<TaskResponse>> list(
-            Integer userId, int page, int size, String sortBy, String sortDir,
+            String ownerUuid, int page, int size, String sortBy, String sortDir,
             Integer projectId, TaskStatus status, TaskPriority priority, Instant dueBefore, Instant dueAfter) {
         Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
         TaskFilter filter = new TaskFilter(projectId, status, priority, dueBefore, dueAfter);
-        var result = taskService.listTasks(userId, filter, pageable).map(taskMapper::toResponse);
+        var result = taskService.listTasks(ownerUuid, filter, pageable).map(taskMapper::toResponse);
         return ResponseEntity.ok(PagedResponse.from(result));
     }
 
     @Override
-    public ResponseEntity<List<TaskResponse>> listSubtasks(Integer userId, Integer id) {
-        List<TaskResponse> subtasks = taskService.listSubtasks(userId, id).stream()
+    public ResponseEntity<List<TaskResponse>> listSubtasks(String ownerUuid, Integer id) {
+        List<TaskResponse> subtasks = taskService.listSubtasks(ownerUuid, id).stream()
                 .map(taskMapper::toResponse)
                 .toList();
         return ResponseEntity.ok(subtasks);
     }
 
     @Override
-    public ResponseEntity<TaskResponse> update(Integer userId, Integer id, UpdateTaskRequest request) {
+    public ResponseEntity<TaskResponse> update(String ownerUuid, Integer id, UpdateTaskRequest request) {
         TaskCommands.Update command = new TaskCommands.Update(
                 request.getTitle(), request.getDescription(), request.getProjectId(),
                 request.getPriority(), request.getDueDate(), request.getParentTaskId());
-        Task updated = taskService.updateTask(userId, id, command);
+        Task updated = taskService.updateTask(ownerUuid, id, command);
         return ResponseEntity.ok(taskMapper.toResponse(updated));
     }
 
     @Override
-    public ResponseEntity<TaskResponse> changeStatus(Integer userId, Integer id, ChangeTaskStatusRequest request) {
-        Task updated = taskService.changeStatus(userId, id, request.getStatus());
+    public ResponseEntity<TaskResponse> changeStatus(String ownerUuid, Integer id, ChangeTaskStatusRequest request) {
+        Task updated = taskService.changeStatus(ownerUuid, id, request.getStatus());
         return ResponseEntity.ok(taskMapper.toResponse(updated));
     }
 
     @Override
-    public ResponseEntity<Void> delete(Integer userId, Integer id) {
-        taskService.deleteTask(userId, id);
+    public ResponseEntity<Void> delete(String ownerUuid, Integer id) {
+        taskService.deleteTask(ownerUuid, id);
         return ResponseEntity.noContent().build();
     }
 

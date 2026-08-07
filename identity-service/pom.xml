@@ -26,62 +26,90 @@
             <artifactId>infra</artifactId>
         </dependency>
 
-        <!-- Spring Web -->
+        <!-- Spring Web — AuthController/UserController are @RestController -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- Spring Boot Security -->
+        <!-- Spring Security — this module's own filter chain now that it's a standalone app
+             (see security/SecurityConfig), same reasoning as ecommerce-service's pom.xml. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
-        <!-- Spring Boot OAuth2 Client (provides OidcUserService, OAuth2 login flow) -->
+        <!-- OAuth2 Resource Server — Keycloak is the identity provider; this service only ever
+             verifies bearer tokens against Keycloak's JWKS (issuer-uri auto-discovery), never
+             issues them. Was missing here before this module ran embedded in gateway, which
+             supplied it; needed directly now that this app runs standalone. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+
+        <!-- OAuth2 Client — KeycloakJwtAuthenticationConverter builds a common.dto.CustomOAuth2User
+             (implements OAuth2User) as this app's own Authentication principal; common declares
+             this starter optional (type-support only), so it isn't inherited transitively. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-oauth2-client</artifactId>
         </dependency>
 
-        <!-- JWT (JJWT) -->
+        <!-- PostgreSQL — this module's own datasource connection now that it's a standalone app
+             with its own schema (`identity`), not sharing gateway's connection. -->
         <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-impl</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-jackson</artifactId>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Redis — refresh-token blacklist / OAuth2 state-token storage -->
+        <!-- Actuator — health/info/metrics endpoints, same as gateway/ecommerce-service, now that
+             this module is independently deployable and needs its own health check. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-pool2</artifactId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- Email — OTP delivery -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-mail</artifactId>
-        </dependency>
-
-        <!-- MapStruct -->
+        <!-- MapStruct — UserMapper (entity <-> UserInfoResponse) -->
         <dependency>
             <groupId>org.mapstruct</groupId>
             <artifactId>mapstruct</artifactId>
         </dependency>
 
     </dependencies>
+
+    <build>
+        <!-- Include the Liquibase changelog XML/SQL bundled under src/main/java so they end up on
+             the runtime classpath — same shape as ecommerce-service's pom.xml. This module's own
+             changelog is run via a standalone identity-service-liquibase.yml docker-compose file
+             (spring.liquibase.enabled stays false here too), not on app boot. -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>src/main/java</directory>
+                <includes>
+                    <include>**/*.xml</include>
+                    <include>**/*.sql</include>
+                </includes>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

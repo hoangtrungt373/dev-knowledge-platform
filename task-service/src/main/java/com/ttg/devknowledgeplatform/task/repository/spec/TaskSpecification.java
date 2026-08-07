@@ -22,7 +22,7 @@ public class TaskSpecification {
     private TaskSpecification() {}
 
     public static Specification<Task> withFilters(
-            Integer ownerId,
+            String ownerUuid,
             Integer projectId,
             TaskStatus status,
             TaskPriority priority,
@@ -32,7 +32,7 @@ public class TaskSpecification {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            predicates.add(cb.equal(root.get("owner").get("id"), ownerId));
+            predicates.add(cb.equal(root.get("ownerUuid"), ownerUuid));
             predicates.add(cb.isNull(root.get("parentTask")));
 
             if (projectId != null) {

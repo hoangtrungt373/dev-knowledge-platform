@@ -1,7 +1,6 @@
 package com.ttg.devknowledgeplatform.task.entity;
 
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.task.enums.TaskPriority;
 import com.ttg.devknowledgeplatform.task.enums.TaskStatus;
 
@@ -34,31 +33,35 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A unit of work owned by a single {@link User}, optionally grouped under a {@link Project}.
+ * A unit of work owned by a single Keycloak identity, optionally grouped under a {@link Project}.
  * {@link #project} is nullable — standalone tasks (no project) are allowed by design, for quick
  * capture. {@link #parentTask} is nullable and capped at one level deep — a subtask cannot itself
  * have subtasks (see {@code TaskServiceImpl.validateParentAssignment}); mirrors {@code
  * content-service}'s {@code Category} self-referential parent/child shape, just depth-limited
  * instead of an arbitrary tree.
+ *
+ * <p>{@link #ownerUuid} is a plain column (the Keycloak JWT's {@code sub} claim), not a foreign
+ * key to a local {@code User} row — see {@link Project}'s Javadoc for why.
  */
 @Entity
-@Table(name = "TASK", schema = "product")
+@Table(name = "TASK", schema = "task")
 @AttributeOverride(name = "id", column = @Column(name = "TASK_ID"))
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(callSuper = true, exclude = {"project", "owner", "parentTask", "subtasks"})
-@ToString(exclude = {"project", "owner", "parentTask", "subtasks"})
+@EqualsAndHashCode(callSuper = true, exclude = {"project", "parentTask", "subtasks"})
+@ToString(exclude = {"project", "parentTask", "subtasks"})
 public class Task extends AbstractEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "PROJECT_ID", nullable = true)
     private Project project;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "OWNER_ID", nullable = false)
-    private User owner;
+    @NotNull
+    @Size(max = 36)
+    @Column(name = "OWNER_UUID", length = 36, nullable = false)
+    private String ownerUuid;
 
     @NotNull
     @Size(max = 255)

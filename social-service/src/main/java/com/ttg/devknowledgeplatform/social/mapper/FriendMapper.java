@@ -9,6 +9,7 @@ import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.infra.service.StorageService;
 import com.ttg.devknowledgeplatform.social.dto.friend.FriendRequestResponse;
 import com.ttg.devknowledgeplatform.social.dto.friend.FriendSummaryResponse;
+import com.ttg.devknowledgeplatform.social.dto.friend.UserInfoResponse;
 import com.ttg.devknowledgeplatform.social.dto.friend.UserSearchResultResponse;
 import com.ttg.devknowledgeplatform.social.dto.friend.UserSummaryResponse;
 import com.ttg.devknowledgeplatform.social.entity.FriendRequest;
@@ -41,6 +42,14 @@ public abstract class FriendMapper {
 
     public abstract UserSearchResultResponse toSearchResult(
             User user, RelationshipStatus relationshipStatus, long mutualFriendCount);
+
+    @Mapping(source = "userUuid", target = "id")
+    @Mapping(source = "dteCreation", target = "createdAt")
+    @Mapping(source = "dteLastModification", target = "lastModified")
+    @Mapping(target = "profilePicture", expression = "java(resolveProfilePicture(user))")
+    @Mapping(target = "relationshipStatus", ignore = true)
+    @Mapping(target = "mutualFriendCount", ignore = true)
+    public abstract UserInfoResponse toUserInfo(User user);
 
     protected String resolveProfilePicture(User user) {
         String pic = user.getProfilePicture();

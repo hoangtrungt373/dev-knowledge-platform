@@ -35,23 +35,35 @@
         </dependency>
         <dependency>
             <groupId>com.ttg</groupId>
-            <artifactId>task-service</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.ttg</groupId>
             <artifactId>social-service</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.ttg</groupId>
-            <artifactId>identity-service</artifactId>
-        </dependency>
 
-        <!-- No ecommerce-service dependency: it's a standalone Spring Boot app now (its own
-             database, own JWT verification, own port), not wired into this Spring context.
-             gateway will reach it over HTTP once the proxy layer is built — not done yet, see
-             docs/CHANGELOG.md. Do not re-add this as a Maven dependency; that would put its
-             beans (OutboxRelay, controllers, etc.) back on this app's classpath and cause both
-             apps to run them at once. -->
+        <!-- No identity-service dependency: it's a standalone Spring Boot app now (its own
+             `identity` schema, own JWT verification, own port), not wired into this Spring
+             context — see the project-microservices-extraction-plan memory / root CLAUDE.md.
+             This app now JIT-provisions/refreshes its own local `product.USER` row directly
+             (security/KeycloakJwtAuthenticationConverter), duplicated from identity-service's
+             equivalent rather than shared, same reasoning as ecommerce-service's copy below.
+             gateway will reach identity-service over HTTP once the proxy layer is built — not
+             done yet. Do not re-add this as a Maven dependency; that would put its beans back on
+             this app's classpath and cause both apps to run them at once.
+
+             No ecommerce-service dependency either, for the same reason: it's a standalone Spring
+             Boot app now (its own database, own JWT verification, own port), not wired into this
+             Spring context. gateway will reach it over HTTP once the proxy layer is built — not
+             done yet, see docs/CHANGELOG.md. Do not re-add this as a Maven dependency; that would
+             put its beans (OutboxRelay, controllers, etc.) back on this app's classpath and cause
+             both apps to run them at once.
+
+             No task-service dependency either, same reasoning again: it's a standalone Spring Boot
+             app now (its own `task` schema, own JWT verification, own port 8083), not wired into
+             this Spring context. Unlike identity-service/ecommerce-service, this app never called
+             into task-service's Java classes in-process to begin with (ProjectApi/TaskApi were
+             already that module's own REST layer, just riding on this app's Spring context via the
+             Maven dependency) — so nothing needed rewriting here, this was a pure pom.xml removal.
+             gateway will reach task-service over HTTP once the proxy layer is built — not done yet.
+             Do not re-add this as a Maven dependency; that would put its beans back on this app's
+             classpath and cause both apps to run them at once. -->
 
         <!-- Spring Web -->
         <dependency>

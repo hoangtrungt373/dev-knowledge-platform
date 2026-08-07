@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: task-service
+
+  # OAuth2/OIDC — Keycloak is the identity provider; this service only ever verifies bearer
+  # tokens against Keycloak's JWKS, same realm as gateway/ecommerce-service/identity-service.
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/dev-knowledge-platform}
+
+  # Liquibase — disabled by default, same convention as every other standalone service: migrations
+  # are applied via the standalone task-service-liquibase.yml docker-compose file, not on app boot.
+  liquibase:
+    enabled: false
+    change-log: classpath:com/ttg/devknowledgeplatform/task/database/sql/task-service.xml
+
+  # JPA — this module's own schema (`task`), separate from the monolith's `product` schema.
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_schema: task
+
+# Server — 8083, distinct from gateway's 8080, ecommerce-service's 8081, and identity-service's
+# 8082 (this app runs alongside all three, not instead of any, until gateway's HTTP proxy to this
+# service is built).
+server:
+  port: ${SERVER_PORT:8083}
+
+# Logging
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Management
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized

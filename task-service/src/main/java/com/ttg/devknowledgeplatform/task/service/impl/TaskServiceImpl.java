@@ -6,12 +6,9 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
-import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
-import com.ttg.devknowledgeplatform.common.repository.UserRepository;
 import com.ttg.devknowledgeplatform.task.entity.Project;
 import com.ttg.devknowledgeplatform.task.entity.Task;
 import com.ttg.devknowledgeplatform.task.enums.TaskStatus;
@@ -37,84 +34,82 @@ public class TaskServiceImpl implements TaskService {
 
     private final TaskRepository taskRepository;
     private final ProjectRepository projectRepository;
-    private final UserRepository userRepository;
 
     @Override
-    public Task createTask(Integer ownerId, TaskCommands.Create command) {
-        User owner = resolveUser(ownerId);
+    public Task createTask(String ownerUuid, TaskCommands.Create command) {
         Task task = Task.builder()
-                .owner(owner)
-                .project(resolveOwnedProjectOrNull(ownerId, command.projectId()))
+                .ownerUuid(ownerUuid)
+                .project(resolveOwnedProjectOrNull(ownerUuid, command.projectId()))
                 .title(command.title())
                 .description(command.description())
                 .status(TaskStatus.TODO)
                 .priority(command.priority())
                 .dueDate(command.dueDate())
                 .build();
-        Task parent = resolveOwnedParentTaskOrNull(ownerId, command.parentTaskId());
+        Task parent = resolveOwnedParentTaskOrNull(ownerUuid, command.parentTaskId());
         validateParentAssignment(task, parent);
         task.setParentTask(parent);
         Task saved = taskRepository.save(task);
-        log.info("User {} created task {}", ownerId, saved.getId());
+        log.info("User {} created task {}", ownerUuid, saved.getId());
         return saved;
     }
 
     @Override
-    public Task getTask(Integer ownerId, Integer taskId) {
-        return resolveOwnedTask(ownerId, taskId);
+    public Task getTask(String ownerUuid, Integer taskId) {
+        return resolveOwnedTask(ownerUuid, taskId);
     }
 
     @Override
-    public Page<Task> listTasks(Integer ownerId, TaskFilter filter, Pageable pageable) {
+    public Page<Task> listTasks(String ownerUuid, TaskFilter filter, Pageable pageable) {
         Specification<Task> spec = TaskSpecification.withFilters(
-                ownerId, filter.projectId(), filter.status(), filter.priority(),
+                ownerUuid, filter.projectId(), filter.status(), filter.priority(),
                 filter.dueBefore(), filter.dueAfter());
         return taskRepository.findAll(spec, pageable);
     }
 
     @Override
-    public List<Task> listSubtasks(Integer ownerId, Integer parentTaskId) {
-        Task parent = resolveOwnedTask(ownerId, parentTaskId);
+    public List<Task> listSubtasks(String ownerUuid, Integer parentTaskId) {
+        Task parent = resolveOwnedTask(ownerUuid, parentTaskId);
         return new ArrayList<>(parent.getSubtasks());
     }
 
     @Override
-    public Task updateTask(Integer ownerId, Integer taskId, TaskCommands.Update command) {
-        Task task = resolveOwnedTask(ownerId, taskId);
-        task.setProject(resolveOwnedProjectOrNull(ownerId, command.projectId()));
+    public Task updateTask(String ownerUuid, Integer taskId, TaskCommands.Update command) {
+        Task task = resolveOwnedTask(ownerUuid, taskId);
+        task.setProject(resolveOwnedProjectOrNull(ownerUuid, command.projectId()));
         task.setTitle(command.title());
         task.setDescription(command.description());
         task.setPriority(command.priority());
         task.setDueDate(command.dueDate());
-        Task parent = resolveOwnedParentTaskOrNull(ownerId, command.parentTaskId());
+        Task parent = resolveOwnedParentTaskOrNull(ownerUuid, command.parentTaskId());
         validateParentAssignment(task, parent);
         task.setParentTask(parent);
-        log.info("User {} updated task {}", ownerId, taskId);
+        log.info("User {} updated task {}", ownerUuid, taskId);
         return taskRepository.save(task);
     }
 
     @Override
-    public Task changeStatus(Integer ownerId, Integer taskId, TaskStatus newStatus) {
-        Task task = resolveOwnedTask(ownerId, taskId);
+    public Task changeStatus(String ownerUuid, Integer taskId, TaskStatus newStatus) {
+        Task task = resolveOwnedTask(ownerUuid, taskId);
         if (!task.getStatus().canTransitionTo(newStatus)) {
             throw new BusinessException(TaskErrorCode.TASK_INVALID_STATUS_TRANSITION);
         }
         task.setStatus(newStatus);
-        log.info("User {} moved task {} to {}", ownerId, taskId, newStatus);
+        log.info("User {} moved task {} to {}", ownerUuid, taskId, newStatus);
         return taskRepository.save(task);
     }
 
     @Override
-    public void deleteTask(Integer ownerId, Integer taskId) {
-        Task task = resolveOwnedTask(ownerId, taskId);
+    public void deleteTask(String ownerUuid, Integer taskId) {
+        Task task = resolveOwnedTask(ownerUuid, taskId);
         taskRepository.delete(task);
-        log.info("User {} deleted task {}", ownerId, taskId);
+        log.info("User {} deleted task {}", ownerUuid, taskId);
     }
 
-    private Task resolveOwnedTask(Integer ownerId, Integer taskId) {
+    private Task resolveOwnedTask(String ownerUuid, Integer taskId) {
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new ResourceNotFoundException(TaskErrorCode.TASK_NOT_FOUND));
-        if (!task.getOwner().getId().equals(ownerId)) {
+        if (!task.getOwnerUuid().equals(ownerUuid)) {
             throw new ResourceNotFoundException(TaskErrorCode.TASK_NOT_FOUND);
         }
         return task;
@@ -125,25 +120,25 @@ public class TaskServiceImpl implements TaskService {
      * directly rather than delegating to {@code ProjectService}, unlike e.g. {@code social-service}'s
      * {@code DmServiceImpl} reusing {@code FriendService.getRelationshipStatus} for real shared logic.
      */
-    private Project resolveOwnedProjectOrNull(Integer ownerId, Integer projectId) {
+    private Project resolveOwnedProjectOrNull(String ownerUuid, Integer projectId) {
         if (projectId == null) {
             return null;
         }
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(TaskErrorCode.PROJECT_NOT_FOUND));
-        if (!project.getOwner().getId().equals(ownerId)) {
+        if (!project.getOwnerUuid().equals(ownerUuid)) {
             throw new ResourceNotFoundException(TaskErrorCode.PROJECT_NOT_FOUND);
         }
         return project;
     }
 
-    private Task resolveOwnedParentTaskOrNull(Integer ownerId, Integer parentTaskId) {
+    private Task resolveOwnedParentTaskOrNull(String ownerUuid, Integer parentTaskId) {
         if (parentTaskId == null) {
             return null;
         }
         Task parent = taskRepository.findById(parentTaskId)
                 .orElseThrow(() -> new ResourceNotFoundException(TaskErrorCode.TASK_NOT_FOUND));
-        if (!parent.getOwner().getId().equals(ownerId)) {
+        if (!parent.getOwnerUuid().equals(ownerUuid)) {
             throw new ResourceNotFoundException(TaskErrorCode.TASK_NOT_FOUND);
         }
         return parent;
@@ -167,10 +162,5 @@ public class TaskServiceImpl implements TaskService {
         if (!task.getSubtasks().isEmpty()) {
             throw new ApiException(TaskErrorCode.TASK_INVALID_PARENT, "This task already has its own subtasks");
         }
-    }
-
-    private User resolveUser(Integer userId) {
-        return userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND));
     }
 }

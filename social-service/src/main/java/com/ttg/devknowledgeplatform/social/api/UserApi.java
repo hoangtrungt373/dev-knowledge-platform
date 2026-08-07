@@ -2,7 +2,7 @@ package com.ttg.devknowledgeplatform.social.api;
 
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
-import com.ttg.devknowledgeplatform.identity.dto.UserInfoResponse;
+import com.ttg.devknowledgeplatform.social.dto.friend.UserInfoResponse;
 import com.ttg.devknowledgeplatform.social.dto.friend.UserSearchResultResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -15,16 +15,16 @@ import org.springframework.web.bind.annotation.RequestParam;
  * HTTP contract for the user-directory API: public profile lookup (with friend-graph
  * enrichment) and user search.
  *
- * <p>Lives here (not `identity-service`) because both methods need `identity-service`'s
- * {@code UserService} for the base lookup <em>and</em> this module's own {@code FriendService} for
- * relationship enrichment — the reverse direction (identity-service depending on social-service)
- * would invert the usual auth-is-foundational hierarchy and mix a social-graph view into an auth
- * module. `identity-service` depends only on {@code common}+{@code infra}, so this module reaching
- * into it (the same direction {@code ai-service} already reaches into {@code content-service}) is
- * safe. The pure profile-mutation endpoints ({@code updateProfile}, {@code uploadAvatar}) live in
- * `identity-service`'s own {@code UserApi} instead, since those only need {@code UserService}. The
- * implementation ({@link com.ttg.devknowledgeplatform.social.api.impl.UserController}) carries no
- * HTTP annotations.
+ * <p>Lives here (not `identity-service`) because both methods need the base {@code User} lookup
+ * <em>and</em> this module's own {@code FriendService} for relationship enrichment. This module
+ * resolves the base lookup directly via {@code common}'s {@code UserRepository} and its own
+ * {@code FriendMapper.toUserInfo} rather than calling into `identity-service` — `identity-service`
+ * is a standalone service now (see the {@code project-microservices-extraction-plan} memory / root
+ * {@code CLAUDE.md}) and can no longer be reached in-process. The pure profile-mutation endpoints
+ * ({@code updateProfile}, {@code uploadAvatar}) live in `identity-service`'s own {@code UserApi}
+ * instead. The implementation
+ * ({@link com.ttg.devknowledgeplatform.social.api.impl.UserController}) carries no HTTP
+ * annotations.
  */
 @RequestMapping("/api/v1/users")
 public interface UserApi {

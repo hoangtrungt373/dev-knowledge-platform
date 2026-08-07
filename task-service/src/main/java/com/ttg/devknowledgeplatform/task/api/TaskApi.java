@@ -39,7 +39,7 @@ public interface TaskApi {
      */
     @PostMapping
     ResponseEntity<TaskResponse> create(
-            @CurrentUserId Integer userId, @Valid @RequestBody CreateTaskRequest request);
+            @CurrentUserId String ownerUuid, @Valid @RequestBody CreateTaskRequest request);
 
     /**
      * Fetches a task owned by the caller.
@@ -47,7 +47,7 @@ public interface TaskApi {
      * @return {@code 200} with the task
      */
     @GetMapping("/{id}")
-    ResponseEntity<TaskResponse> getById(@CurrentUserId Integer userId, @PathVariable Integer id);
+    ResponseEntity<TaskResponse> getById(@CurrentUserId String ownerUuid, @PathVariable Integer id);
 
     /**
      * Lists the caller's tasks, optionally narrowed by project, status, priority, and due-date range.
@@ -64,7 +64,7 @@ public interface TaskApi {
      */
     @GetMapping
     ResponseEntity<PagedResponse<TaskResponse>> list(
-            @CurrentUserId Integer userId,
+            @CurrentUserId String ownerUuid,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "id") String sortBy,
@@ -81,7 +81,7 @@ public interface TaskApi {
      * @return {@code 200} with the subtasks
      */
     @GetMapping("/{id}/subtasks")
-    ResponseEntity<List<TaskResponse>> listSubtasks(@CurrentUserId Integer userId, @PathVariable Integer id);
+    ResponseEntity<List<TaskResponse>> listSubtasks(@CurrentUserId String ownerUuid, @PathVariable Integer id);
 
     /**
      * Replaces a task's fields — see {@link UpdateTaskRequest}'s Javadoc for replace semantics.
@@ -90,7 +90,7 @@ public interface TaskApi {
      */
     @PutMapping("/{id}")
     ResponseEntity<TaskResponse> update(
-            @CurrentUserId Integer userId, @PathVariable Integer id, @Valid @RequestBody UpdateTaskRequest request);
+            @CurrentUserId String ownerUuid, @PathVariable Integer id, @Valid @RequestBody UpdateTaskRequest request);
 
     /**
      * Moves a task to a new status.
@@ -99,7 +99,7 @@ public interface TaskApi {
      */
     @PostMapping("/{id}/status")
     ResponseEntity<TaskResponse> changeStatus(
-            @CurrentUserId Integer userId, @PathVariable Integer id, @Valid @RequestBody ChangeTaskStatusRequest request);
+            @CurrentUserId String ownerUuid, @PathVariable Integer id, @Valid @RequestBody ChangeTaskStatusRequest request);
 
     /**
      * Deletes a task.
@@ -107,5 +107,5 @@ public interface TaskApi {
      * @return {@code 204 No Content}
      */
     @DeleteMapping("/{id}")
-    ResponseEntity<Void> delete(@CurrentUserId Integer userId, @PathVariable Integer id);
+    ResponseEntity<Void> delete(@CurrentUserId String ownerUuid, @PathVariable Integer id);
 }

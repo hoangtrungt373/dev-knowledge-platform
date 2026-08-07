@@ -32,7 +32,7 @@ public interface ProjectApi {
      */
     @PostMapping
     ResponseEntity<ProjectResponse> create(
-            @CurrentUserId Integer userId, @Valid @RequestBody CreateProjectRequest request);
+            @CurrentUserId String ownerUuid, @Valid @RequestBody CreateProjectRequest request);
 
     /**
      * Fetches a project owned by the caller.
@@ -40,7 +40,7 @@ public interface ProjectApi {
      * @return {@code 200} with the project
      */
     @GetMapping("/{id}")
-    ResponseEntity<ProjectResponse> getById(@CurrentUserId Integer userId, @PathVariable Integer id);
+    ResponseEntity<ProjectResponse> getById(@CurrentUserId String ownerUuid, @PathVariable Integer id);
 
     /**
      * Lists every project owned by the caller.
@@ -52,7 +52,7 @@ public interface ProjectApi {
      */
     @GetMapping
     ResponseEntity<PagedResponse<ProjectResponse>> list(
-            @CurrentUserId Integer userId,
+            @CurrentUserId String ownerUuid,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "id") String sortBy,
@@ -65,7 +65,7 @@ public interface ProjectApi {
      */
     @PutMapping("/{id}")
     ResponseEntity<ProjectResponse> update(
-            @CurrentUserId Integer userId, @PathVariable Integer id, @Valid @RequestBody UpdateProjectRequest request);
+            @CurrentUserId String ownerUuid, @PathVariable Integer id, @Valid @RequestBody UpdateProjectRequest request);
 
     /**
      * Marks a project {@code ARCHIVED}.
@@ -73,5 +73,5 @@ public interface ProjectApi {
      * @return {@code 200} with the archived project
      */
     @PostMapping("/{id}/archive")
-    ResponseEntity<ProjectResponse> archive(@CurrentUserId Integer userId, @PathVariable Integer id);
+    ResponseEntity<ProjectResponse> archive(@CurrentUserId String ownerUuid, @PathVariable Integer id);
 }

@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.identity.service.seed;
+package com.ttg.devknowledgeplatform.service.seed;
 
 import java.util.UUID;
 
@@ -26,16 +26,21 @@ import lombok.RequiredArgsConstructor;
  * <p>{@code id} is a permanent, seed-file-only identifier (persisted as {@code User.seedId},
  * never shown to end users) — the sole idempotency key, deliberately decoupled from
  * {@code email}/{@code username} for the same reason as {@code CategorySeeder}: those fields are
- * human-editable ({@code UserServiceImpl.updateProfile}) and must stay free to change without
- * risking a duplicate insert on the next seeding run. {@code social-service}'s
- * {@code FriendGraphSeeder}/{@code UserBlockSeeder} reference users by this same {@code id},
- * resolved via {@link UserRepository#findBySeedId}.
+ * human-editable and must stay free to change without risking a duplicate insert on the next
+ * seeding run. {@code social-service}'s {@code FriendGraphSeeder}/{@code UserBlockSeeder}
+ * reference users by this same {@code id}, resolved via {@link UserRepository#findBySeedId}.
  *
  * <p>Extends {@code infra}'s generic {@link CsvSeeder} Template Method — the same one
  * {@code content-service}'s {@code CategorySeeder}/{@code TagSeeder} and {@code social-service}'s
- * {@code UserBlockSeeder} use. The seed data file itself stays under {@code gateway}'s
- * {@code src/main/resources/data/csv/users.csv} — moving a seeder's Java class doesn't move the
- * data file, same precedent as every other seeder extraction.
+ * {@code UserBlockSeeder} use. Moved here from {@code identity-service} once that module became a
+ * standalone service with its own schema (see root {@code CLAUDE.md}'s microservices-extraction
+ * notes) — this class only ever wrote directly via {@code common}'s {@code UserRepository}, no
+ * other {@code identity-service} dependency, so the move is a pure relocation. {@code gateway}
+ * still needs to seed its own {@code product.USER} table for the remaining embedded modules
+ * ({@code content-service}/{@code ai-service}/{@code social-service}/{@code task-service}) to
+ * reference; {@code identity-service} itself needs no seed data of its own, since seeded demo
+ * accounts have no matching Keycloak identity and JIT-provisioning is the only way its own
+ * {@code identity.USER} table is ever populated.
  *
  * @author ttg
  */

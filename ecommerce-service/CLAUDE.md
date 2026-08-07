@@ -17,23 +17,36 @@ public browse/search/detail surface with attribute-value filtering — see below
 
 **This module is now a standalone Spring Boot application, not part of the monolith** — see the
 `project-ecommerce-service-module` memory for the full extraction history. Concretely: its own
-`EcommerceServiceApplication` entry point, its own `ecommerce` Postgres schema/database (separate
-from the monolith's `product` schema), its own port (`8081`), and its own Liquibase
+`EcommerceServiceApplication` entry point, its own `ecommerce` Postgres schema (the same
+`dev-premier` database as the monolith, not a separate database instance — per-service-per-schema,
+see root `CLAUDE.md`'s Database Conventions), its own port (`8081`), and its own Liquibase
 changelog/docker-compose file. `gateway` no longer has a Maven dependency on this module at all.
 **`gateway`-side HTTP proxying to this service is not built yet** — until it is, this service is
 only reachable directly on its own port, not through `gateway`.
+
+**No `@EntityScan`/`@EnableJpaRepositories` on `EcommerceServiceApplication`, and no dependency on
+`common.entity.User`/`common.repository.UserRepository` anywhere in this module** — this module
+doesn't persist a local `User` row at all (see `KeycloakJwtAuthenticationConverter`, below, and the
+"Option C" decision in the `project-microservices-extraction-plan` memory). An earlier revision of
+this module briefly added `@EntityScan`/`@EnableJpaRepositories` plus an `ecommerce.USER` table
+migration (`DKP-0027`), on the assumption this module needed a real local `User` copy the way
+`identity-service` does — reverted once it became clear the only real need was resolving the
+current caller's identity, which the verified JWT already answers on its own. Don't re-add either
+annotation or a `USER` table migration here without a concrete new reason (e.g. a future entity
+that actually needs a foreign key onto a user — see the Rules section below for how to handle that
+without resurrecting a full `User` copy).
 
 **JWT verification is Keycloak-backed** (`security/`, below): this service is a pure OAuth2
 resource server, verifying bearer tokens against Keycloak's JWKS
 (`spring.security.oauth2.resourceserver.jwt.issuer-uri`, same realm as `gateway`) — it never
 issues tokens or handles a login flow. `SecurityConfig` wires `.oauth2ResourceServer(...)` with a
-`KeycloakJwtAuthenticationConverter` (JIT-provisions/refreshes the local `User` row via
-`common.repository.UserRepository` directly, deliberately duplicated from `gateway`/
-`identity-service`'s equivalent rather than shared — this module has no Maven dependency on
-either) and `KeycloakRealmRoleConverter` (maps the token's `realm_access.roles` claim to
-`ROLE_*` authorities). The old JJWT-based `JwtVerifier`/`JwtAuthenticationFilter` (manual RSA
-public-key loading via `infra`'s now-deleted `RsaKeyUtils`) are gone — see `docs/CHANGELOG.md`'s
-Keycloak migration entries (Phase 3) for the full history.
+`KeycloakJwtAuthenticationConverter` (builds the `CustomOAuth2User` principal directly from the
+verified JWT's claims — `sub` stands in for `userUuid`, since there's no locally-generated one — no
+DB read/write at all) and `KeycloakRealmRoleConverter` (maps the token's `realm_access.roles` claim
+to `ROLE_*` authorities, duplicated from `gateway`'s/`identity-service`'s converter of the same
+name — this module has no Maven dependency on either). The old JJWT-based `JwtVerifier`/
+`JwtAuthenticationFilter` (manual RSA public-key loading via `infra`'s now-deleted `RsaKeyUtils`)
+are gone — see `docs/CHANGELOG.md`'s Keycloak migration entries (Phase 3) for the full history.
 
 `entity/`:
 
@@ -71,9 +84,13 @@ Keycloak migration entries (Phase 3) for the full history.
 
 Liquibase migration: `ecommerce-service/.../database/sql/2026/0.0.1/202608040001__0.0.1__DKP-0023__add_ecommerce_catalog_tables.sql`
 under this module's **own** changelog tree (`database/sql/ecommerce-service.xml` +
-`2026/0.0.1/*.sql`) — no longer under `gateway`'s, now that this module migrates its own
-database. Applied via the standalone `ecommerce-service-liquibase.yml` docker-compose file at the
-repo root (`docker-compose -f ecommerce-service-liquibase.yml up`), mirroring
+`2026/0.0.1/*.sql`) — no longer under `gateway`'s, now that this module migrates its own schema. A
+short-lived `DKP-0027__add_ecommerce_user_table.sql` existed briefly alongside `identity-service`'s
+extraction (an `ecommerce.USER` table, added when this module was thought to need a persisted
+`User` copy) and was removed once that assumption turned out to be wrong — see
+`EcommerceServiceApplication`'s Javadoc above. Applied via the standalone
+`ecommerce-service-liquibase.yml` docker-compose file at the repo root
+(`docker-compose -f ecommerce-service-liquibase.yml up`), mirroring
 `dev-knowledge-platform-liquibase.yml`'s shape; the app itself still runs with
 `spring.liquibase.enabled: false`, same convention as `gateway`.
 
@@ -193,7 +210,13 @@ changes, `./mvnw -pl gateway -am compile`, needs `JAVA_HOME` pointed at a JDK 21
 `reference-jdk21-location` memory) but has **not** been run: the app hasn't been booted against a
 real Postgres, so the Liquibase migration against the new `ecommerce` schema, Hibernate's
 `ddl-auto: validate` check against it, the native SQL in `ProductSearchViewRepository.search`,
-and the JWT verification path are all still unverified at runtime.
+and the JWT verification path are all still unverified at runtime. A new `Dockerfile` +
+`dev-knowledge-platform-apps-docker-compose.yml` (repo root) exist to run this module in a
+container for the first time — see root `CLAUDE.md`'s Build & Run Commands — which will be the
+first real exercise of all of the above. Container datasource config is supplied via plain
+`SPRING_DATASOURCE_URL`/`_USERNAME`/`_PASSWORD`/`_DRIVER_CLASS_NAME` environment variables in that
+compose file (this module still has no base-profile `spring.datasource` block and no
+`application-docker.yml` — don't add one for this; env vars are the deliberate choice here).
 
 ## Rules specific to this module
 

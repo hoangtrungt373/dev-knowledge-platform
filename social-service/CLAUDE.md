@@ -23,15 +23,21 @@ and data model.
   the STOMP annotations/`SimpMessagingTemplate` the messaging controllers use.
   - `api/UserApi` + `api/impl/UserController` — a **second** `UserApi`, distinct from
     `identity-service`'s own (same `/api/v1/users` base mapping, different two methods:
-    `getPublicProfile`/`search` here vs. `updateProfile`/`uploadAvatar` there). This is the one
-    place in the whole reactor where a controller reaches across into a sibling module
-    (`identity-service`'s `UserService`/`UserMapper`, for the base profile lookup) before applying
-    this module's own `FriendService` enrichment — see the module-dependency rule below for why
-    that direction (not the reverse) is correct.
+    `getPublicProfile`/`search` here vs. `updateProfile`/`uploadAvatar` there, on a separate
+    standalone app now). Resolves the base profile lookup directly via `common`'s `UserRepository`
+    and this module's own `FriendMapper.toUserInfo` (a local `UserInfoResponse` DTO, duplicated from
+    `identity-service`'s equivalent) before applying this module's own `FriendService` enrichment —
+    used to reach into `identity-service`'s `UserService`/`UserMapper` for that lookup, but that
+    module is a standalone service now and can no longer be called in-process (see the
+    module-dependency rule below and the `project-microservices-extraction-plan` memory).
 - `mapper/` — `FriendMapper`, `MessagingMapper` (MapStruct, moved from `gateway`). Both are abstract
   classes (not plain interfaces) needing an injected `infra`'s `StorageService` for presigned-URL
   resolution — MapStruct interfaces can't hold instance fields. `MessagingMapper` `uses =
   FriendMapper.class` for `User` → `UserSummaryResponse` so avatar resolution isn't duplicated.
+  `FriendMapper.toUserInfo` (entity → `dto/friend/UserInfoResponse`) was added when
+  `identity-service` was extracted into a standalone service — duplicated from that module's own
+  `UserMapper.toUserInfo`, since this module's `UserApi.getPublicProfile` can no longer call it
+  in-process.
 - `dto/friend/`, `dto/messaging/` — REST response/request records, moved from `gateway`
   (`UserSummaryResponse`, `FriendRequestResponse`, `FriendSummaryResponse`,
   `UserSearchResultResponse`; `SendMessageRequest`, `ChangeRoleRequest`, `CreateGroupRequest`,
@@ -104,15 +110,14 @@ and data model.
 
 ## Rules specific to this module
 
-- **Depends on `common` + `infra` + `identity-service`. Never add a dependency on `gateway`,
-  `ai-service`, or `content-service`.** `identity-service` is the one exception to the
-  parallel-sibling rule: it depends only on `common`+`infra` itself (same as this module), so this
-  module reaching into it is a one-directional sibling dependency, not a cycle — the same shape as
-  `ai-service` depending on `content-service`. It exists specifically for `api/UserApi`'s
-  `getPublicProfile`/`search` (need `identity-service`'s `UserService`/`UserMapper` for the base
-  profile lookup before this module's own `FriendService` enrichment). Don't reach for
-  `identity-service` for anything else without a similarly concrete reason — this isn't a general
-  license to pull in arbitrary sibling functionality.
+- **Depends only on `common` + `infra`. Never add a dependency on `gateway`, `ai-service`,
+  `content-service`, or `identity-service`.** This module used to have a one-directional dependency
+  on `identity-service` (`api/UserApi`'s `getPublicProfile`/`search`, for the base profile lookup
+  before this module's own `FriendService` enrichment) — removed once `identity-service` was
+  extracted into a standalone service with no shared Spring context (see the
+  `project-microservices-extraction-plan` memory). That lookup now goes through `common`'s
+  `UserRepository` directly instead; don't re-add the `identity-service` dependency without
+  confirming this is still the intended shape.
 - **Every service here returns entities, never a mapper/DTO type** — `FriendService`'s own Javadoc
   documents this: "Returns entities rather than REST DTOs — `FriendMapper` does the
   entity-to-response mapping." `GroupService`/`DmService` follow the same rule; any new method does
