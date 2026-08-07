@@ -67,17 +67,17 @@ public class RagQueryServiceImpl implements RagQueryService {
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
-    public RagAnswer query(String question, ConversationContext context, RagFilter filter, Integer userId, String chatModel) {
-        log.info("RAG query: history={} turns, hasSummary={}, filter={}, userId={}, chatModel={}",
+    public RagAnswer query(String question, ConversationContext context, RagFilter filter, String userUuid, String chatModel) {
+        log.info("RAG query: history={} turns, hasSummary={}, filter={}, userUuid={}, chatModel={}",
                 context.recentTurns().size(), context.hasSummary(),
-                filter.isEmpty() ? "none" : filter, userId, chatModel);
+                filter.isEmpty() ? "none" : filter, userUuid, chatModel);
         // Resolved before any pipeline work starts: an unsupported model id must reject the
         // request outright (400), not after retrieval has already spent embedding calls.
         ChatLanguageModel model = chatModelResolver.resolveBlocking(chatModel);
         try {
             ConversationContext effectiveContext = conversationTopicGuardService.guard(question, context);
             RagPipelineContext pipelineCtx = new RagPipelineContext(question, effectiveContext, filter);
-            pipelineCtx.setUserId(userId);
+            pipelineCtx.setUserUuid(userUuid);
             pipelineCtx.setResolvedChatModel(chatModelResolver.resolveModelId(chatModel));
             pipelineRunner.run(pipelineCtx);
             recordPipelineMetrics(pipelineCtx);
@@ -110,17 +110,17 @@ public class RagQueryServiceImpl implements RagQueryService {
 
     @Override
     public void queryStream(String question, ConversationContext context,
-                            RagFilter filter, Integer userId, String chatModel, RagStreamHandler handler) {
-        log.info("RAG stream query: history={} turns, hasSummary={}, filter={}, userId={}, chatModel={}",
+                            RagFilter filter, String userUuid, String chatModel, RagStreamHandler handler) {
+        log.info("RAG stream query: history={} turns, hasSummary={}, filter={}, userUuid={}, chatModel={}",
                 context.recentTurns().size(), context.hasSummary(),
-                filter.isEmpty() ? "none" : filter, userId, chatModel);
+                filter.isEmpty() ? "none" : filter, userUuid, chatModel);
         // Resolved before any pipeline work starts: an unsupported model id must reject the
         // request outright (400), not after retrieval has already spent embedding calls.
         StreamingChatLanguageModel model = chatModelResolver.resolveStreaming(chatModel);
         try {
             ConversationContext effectiveContext = conversationTopicGuardService.guard(question, context);
             RagPipelineContext pipelineCtx = new RagPipelineContext(question, effectiveContext, filter);
-            pipelineCtx.setUserId(userId);
+            pipelineCtx.setUserUuid(userUuid);
             pipelineCtx.setResolvedChatModel(chatModelResolver.resolveModelId(chatModel));
             pipelineRunner.run(pipelineCtx);
             recordPipelineMetrics(pipelineCtx);

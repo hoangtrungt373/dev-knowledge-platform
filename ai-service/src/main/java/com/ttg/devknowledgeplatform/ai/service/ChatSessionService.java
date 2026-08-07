@@ -29,16 +29,16 @@ public interface ChatSessionService {
      * Returns the ID of an existing session or creates a new one.
      *
      * <p>If {@code requestedSessionId} is {@code null}, a new session is created.
-     * If it is provided, the session is loaded and verified to belong to {@code userId}
+     * If it is provided, the session is loaded and verified to belong to {@code userUuid}
      * (throws {@link com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException}
      * otherwise). If the session has been inactive for more than 24 hours, its message
      * history is cleared before returning.
      *
      * @param requestedSessionId optional session ID from the client request; null = new session
-     * @param userId             the authenticated user's identifier
+     * @param userUuid           the authenticated user's Keycloak subject id
      * @return the active session ID to return to the client
      */
-    Integer getOrCreateSessionId(Integer requestedSessionId, Integer userId);
+    Integer getOrCreateSessionId(Integer requestedSessionId, String userUuid);
 
     /**
      * Returns the last {@code maxTurns} Q&A pairs from a session as conversation turns,
@@ -77,22 +77,22 @@ public interface ChatSessionService {
     void addTurn(Integer sessionId, String question, String answer);
 
     /**
-     * Returns a summary of every session belonging to {@code userId}, ordered by most recent
+     * Returns a summary of every session belonging to {@code userUuid}, ordered by most recent
      * activity first. Suitable for rendering a conversation list (sidebar).
      *
-     * @param userId the authenticated user's identifier
+     * @param userUuid the authenticated user's Keycloak subject id
      * @return list of session summaries, newest first
      */
-    List<ChatSessionSummaryDto> listSessions(Integer userId);
+    List<ChatSessionSummaryDto> listSessions(String userUuid);
 
     /**
-     * Returns the full message history for a session, verifying that it belongs to {@code userId}.
+     * Returns the full message history for a session, verifying that it belongs to {@code userUuid}.
      *
      * @param sessionId the session ID
-     * @param userId    the authenticated user's identifier
+     * @param userUuid  the authenticated user's Keycloak subject id
      * @return all messages ordered by turn index ascending
      * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException
      *         if the session does not exist or belongs to a different user
      */
-    List<ChatMessage> getHistory(Integer sessionId, Integer userId);
+    List<ChatMessage> getHistory(Integer sessionId, String userUuid);
 }

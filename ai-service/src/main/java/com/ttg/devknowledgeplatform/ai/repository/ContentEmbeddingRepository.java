@@ -19,7 +19,7 @@ public interface ContentEmbeddingRepository extends JpaRepository<ContentEmbeddi
      */
     @Query(value = """
             SELECT content_embedding_id
-            FROM product.content_embedding
+            FROM ai.content_embedding
             ORDER BY embedding <=> CAST(:embedding AS vector)
             LIMIT :limit
             """, nativeQuery = true)
@@ -80,7 +80,7 @@ public interface ContentEmbeddingRepository extends JpaRepository<ContentEmbeddi
      */
     @Query(value = """
             SELECT CAST(avg(embedding) AS text)
-            FROM product.content_embedding
+            FROM ai.content_embedding
             WHERE source_type = :sourceType
             """, nativeQuery = true)
     String computeCentroidBySourceType(@Param("sourceType") String sourceType);
@@ -95,7 +95,7 @@ public interface ContentEmbeddingRepository extends JpaRepository<ContentEmbeddi
      */
     @Query(value = """
             SELECT CAST(avg(embedding) AS text)
-            FROM product.content_embedding
+            FROM ai.content_embedding
             """, nativeQuery = true)
     String computeGlobalCentroid();
 }

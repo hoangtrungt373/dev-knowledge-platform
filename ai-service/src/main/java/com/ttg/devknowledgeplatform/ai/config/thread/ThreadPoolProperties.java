@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.config.thread;
+package com.ttg.devknowledgeplatform.ai.config.thread;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -11,7 +11,9 @@ import org.springframework.validation.annotation.Validated;
 /**
  * Externalised sizing for the {@code sseStreamExecutor} bean.
  *
- * <p>Bound from the {@code app.threads} prefix. Override via environment variables, e.g.
+ * <p>Moved here from {@code gateway}'s class of the same name — {@code sseStreamExecutor} only
+ * ever served this module's own SSE streaming and MVC async dispatch. Bound from the
+ * {@code app.threads} prefix. Override via environment variables, e.g.
  * {@code APP_THREADS_SSE_EXECUTOR_CORE_POOL_SIZE=20}.
  *
  * <p>The {@code asyncEventExecutor} bulkhead's sizing lives in {@code infra}'s own

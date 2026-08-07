@@ -107,8 +107,8 @@ public class RagPipelineContext {
     // Cost & latency monitoring (Features 1–3)
     // -------------------------------------------------------------------------
 
-    /** User ID from the authenticated session; {@code null} for anonymous or internal calls. */
-    private Integer userId;
+    /** Authenticated user's Keycloak subject id; {@code null} for anonymous or internal calls. */
+    private String userUuid;
 
     /**
      * Id of the chat model profile actually resolved for this request (see

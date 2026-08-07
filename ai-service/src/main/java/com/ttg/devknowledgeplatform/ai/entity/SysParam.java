@@ -36,7 +36,7 @@ import java.time.Instant;
  * actually ran.
  */
 @Entity
-@Table(name = "SYS_PARAM", schema = "product")
+@Table(name = "SYS_PARAM")
 @AttributeOverride(name = "id", column = @Column(name = "SYS_PARAM_ID"))
 @Data
 @NoArgsConstructor

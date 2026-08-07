@@ -51,7 +51,7 @@ public interface PipelineMetricsRepository extends JpaRepository<PipelineMetrics
                            + COALESCE(generation_output_tokens, 0)), 0)                            AS total_completion_tokens,
                 COALESCE(SUM(COALESCE(embedding_tokens, 0)
                            + COALESCE(quality_embedding_tokens, 0)), 0)                            AS total_embedding_tokens
-            FROM product.PIPELINE_METRICS
+            FROM ai.PIPELINE_METRICS
             WHERE created_at >= :since
             """, nativeQuery = true)
     PipelineMetricsSummaryProjection fetchSummary(@Param("since") Instant since);

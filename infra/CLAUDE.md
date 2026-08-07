@@ -17,14 +17,15 @@ Module-local guidance for `infra`. Read alongside the root `CLAUDE.md`.
 - `config/thread/{AsyncEventThreadPoolConfig,AsyncEventThreadPoolProperties}` — the
   `asyncEventExecutor` bean every `@EventHandler` dispatches through, moved here from `gateway`:
   this module's own event framework is the thing that actually owns this pool's purpose (a
-  bulkhead separate from `gateway`'s `sseStreamExecutor`, so a burst of SSE streams can't starve
+  bulkhead separate from the `sseStreamExecutor` pool, so a burst of SSE streams can't starve
   background event handling and vice versa), so the bean definition belongs alongside it rather
   than trusting `gateway` to supply it. Bound from `app.threads.async-event` (previously nested
   under `gateway`'s `app.threads.async-event-executor` — no existing `application.yml` override
-  referenced the old path, so the prefix changed freely). `gateway`'s own `sseStreamExecutor`
-  stays there — `WebMvcConfig.configureAsyncSupport` (a single global MVC-config point) is its
-  only real consumer beyond `ai-service`'s `SseStreamTemplate`, which reaches it by
-  `@Qualifier`/bean-name regardless of which module defines it.
+  referenced the old path, so the prefix changed freely). The `sseStreamExecutor` pool itself no
+  longer lives in `gateway` either — it moved to `ai-service`'s own `config/thread/` once that
+  module became standalone (`gateway` has no SSE endpoint left to feed); `ai-service`'s own
+  `SseStreamTemplate`/`ChatMvcConfig.configureAsyncSupport` reach it by `@Qualifier`/bean-name, same
+  as before the move.
 - `context/MdcKeys` — MDC key constants (`TRACE_ID`), shared so no module hardcodes the string.
 - `service/SlugService` (+ impl) — generic slug generation/uniqueness utility. Lives here (not
   `gateway`, not any feature module) specifically because feature modules that need it
@@ -37,9 +38,20 @@ Module-local guidance for `infra`. Read alongside the root `CLAUDE.md`.
   same reasoning as `SlugService` above, just discovered later.
 - `config/storage/{StorageConfig,StorageProperties}` — `MinioClient` bean + `app.storage.*`
   properties, moved here alongside `StorageService` for the same reason.
-- `config/cache/{CacheNames,CacheTtlProperties}` — Redis cache-name constants + `app.cache.*` TTL
-  binding, moved here because `identity-service`'s `StateTokenServiceImpl` and `gateway`'s
-  `RedisCacheConfig` both need them and can't depend on each other.
+- **No `config/cache/{CacheNames,CacheTtlProperties}` here anymore — deleted outright, not moved,
+  during `ai-service`'s standalone extraction.** These used to back `gateway`'s
+  `config/cache/RedisCacheConfig` (`@EnableCaching` + a per-cache-TTL `RedisCacheManager`). While
+  extracting `ai-service`, a reactor-wide grep for `@Cacheable`/`@CacheEvict`/`@CachePut` found
+  **zero real usages anywhere in the whole codebase** — that half of `RedisCacheConfig` (and these
+  two classes backing it) had been wired up and shipped but never actually consumed by a single
+  Spring-managed cache annotation. Only `RedisCacheConfig`'s other bean, the dedicated Bucket4j
+  Redis connection (`ChatRateLimiter`'s per-user rate-limit buckets), was real — that one moved to
+  `ai-service`'s own `config/RedisConfig` as its sole bean; `CacheNames`/`CacheTtlProperties` had no
+  real consumer left once `RedisCacheConfig` itself was deleted, so they were deleted too rather
+  than moved anywhere. See `ai-service/CLAUDE.md`'s Rules section for the full finding. If a real
+  `@Cacheable` use case shows up in this reactor later, rebuild the cache-name-constant +
+  TTL-binding pair from scratch in whichever module first needs it — don't assume the deleted
+  classes are worth resurrecting as-is.
 - `service/seed/CsvSeeder<T>` — Template Method for idempotent CSV-based seeding (read/iterate/
   skip-or-insert). Moved here from `content-service` once `social-service`'s `UserBlockSeeder`
   needed it too — `content-service` and `social-service` are independent siblings that can't

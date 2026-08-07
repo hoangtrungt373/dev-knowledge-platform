@@ -52,7 +52,7 @@ public class IndexingQualityServiceImpl implements IndexingQualityService {
 
     @Override
     public QualityVerdict assess(Integer contentItemId, ContentType contentType) {
-        List<ContentEmbedding> embeddings = embeddingRepository.findByContentItem_Id(contentItemId);
+        List<ContentEmbedding> embeddings = embeddingRepository.findByContentItemId(contentItemId);
 
         if (embeddings.isEmpty()) {
             log.debug("No embeddings found for content item id={} — skipping quality check", contentItemId);

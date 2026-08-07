@@ -42,11 +42,11 @@ public class ChatController implements ChatApi {
     private final SseStreamTemplate sseStreamTemplate;
 
     @Override
-    public ResponseEntity<ChatResponse> chat(ChatRequest request, Integer userId) {
-        Integer sessionId = chatSessionService.getOrCreateSessionId(request.sessionId(), userId);
+    public ResponseEntity<ChatResponse> chat(ChatRequest request, String userUuid) {
+        Integer sessionId = chatSessionService.getOrCreateSessionId(request.sessionId(), userUuid);
         ConversationContext context = chatSessionService.getConversationContext(sessionId, MAX_CONTEXT_TURNS);
 
-        var answer = ragQueryService.query(request.question(), context, buildFilter(request), userId, request.chatModel());
+        var answer = ragQueryService.query(request.question(), context, buildFilter(request), userUuid, request.chatModel());
         chatSessionService.addTurn(sessionId, request.question(), answer.answer());
 
         log.info("Chat query completed: sessionId={} questionLength={}", sessionId, request.question().length());
@@ -54,14 +54,14 @@ public class ChatController implements ChatApi {
     }
 
     @Override
-    public SseEmitter chatStream(ChatRequest request, Integer userId) {
-        Integer sessionId = chatSessionService.getOrCreateSessionId(request.sessionId(), userId);
+    public SseEmitter chatStream(ChatRequest request, String userUuid) {
+        Integer sessionId = chatSessionService.getOrCreateSessionId(request.sessionId(), userUuid);
         ConversationContext context = chatSessionService.getConversationContext(sessionId, MAX_CONTEXT_TURNS);
         StringBuilder answerBuffer = new StringBuilder();
 
         return sseStreamTemplate.stream(writer -> {
             writer.send("session", Map.of("sessionId", sessionId));
-            ragQueryService.queryStream(request.question(), context, buildFilter(request), userId, request.chatModel(), new RagStreamHandler() {
+            ragQueryService.queryStream(request.question(), context, buildFilter(request), userUuid, request.chatModel(), new RagStreamHandler() {
                 @Override
                 public void onSources(List<RagSource> sources) {
                     writer.send("sources", sources);
@@ -95,13 +95,13 @@ public class ChatController implements ChatApi {
     }
 
     @Override
-    public ResponseEntity<List<ChatSessionSummaryDto>> listSessions(Integer userId) {
-        return ResponseEntity.ok(chatSessionService.listSessions(userId));
+    public ResponseEntity<List<ChatSessionSummaryDto>> listSessions(String userUuid) {
+        return ResponseEntity.ok(chatSessionService.listSessions(userUuid));
     }
 
     @Override
-    public ResponseEntity<ChatSessionHistoryDto> getSessionHistory(Integer id, Integer userId) {
-        List<ChatMessage> messages = chatSessionService.getHistory(id, userId);
+    public ResponseEntity<ChatSessionHistoryDto> getSessionHistory(Integer id, String userUuid) {
+        List<ChatMessage> messages = chatSessionService.getHistory(id, userUuid);
         List<ChatSessionHistoryDto.MessageDto> dtos = messages.stream()
                 .map(m -> new ChatSessionHistoryDto.MessageDto(
                         m.getRole().name(), m.getContent(), m.getTurnIndex()))

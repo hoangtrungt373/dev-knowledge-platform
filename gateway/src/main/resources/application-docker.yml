@@ -17,21 +17,12 @@ spring:
   liquibase:
     enabled: true
 
-  # Redis — service name and password differ from base defaults
-  data:
-    redis:
-      host: ${REDIS_HOST:redis}
-      password: ${REDIS_PASSWORD:password}
-
 # Application
 app:
   frontend:
     url: ${FRONTEND_URL}
   storage:
     endpoint: ${MINIO_ENDPOINT:http://minio:9000}
-  ai:
-    embedding-model:
-      api-key: ${OPENAI_API_KEY}
   seed:
     enabled: true
 

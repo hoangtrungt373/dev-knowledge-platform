@@ -22,7 +22,7 @@ import java.util.List;
 /**
  * Represents a single conversation session between a user and the RAG chatbot.
  *
- * <p>Sessions are keyed by {@code userId} and carry a {@code lastActivityAt} timestamp
+ * <p>Sessions are keyed by {@code userUuid} and carry a {@code lastActivityAt} timestamp
  * used to enforce a 24-hour inactivity TTL. When a session expires, its message history
  * is cleared and a fresh conversation begins under the same session ID.
  *
@@ -34,7 +34,7 @@ import java.util.List;
  * without inflating the LLM token budget.
  */
 @Entity
-@Table(name = "CHAT_SESSION", schema = "product")
+@Table(name = "CHAT_SESSION")
 @AttributeOverride(name = "id", column = @Column(name = "CHAT_SESSION_ID"))
 @Data
 @NoArgsConstructor
@@ -43,9 +43,14 @@ import java.util.List;
 @ToString(exclude = "messages")
 public class ChatSession extends AbstractEntity {
 
-    /** Surrogate PK of the owning {@code User} row — integer FK without a JPA association to avoid eager loading. */
-    @Column(name = "USER_ID", nullable = false)
-    private Integer userId;
+    /**
+     * The Keycloak JWT's {@code sub} claim of the authenticated owner — a plain column, never a
+     * foreign key onto a local {@code User} table. This module resolves "who is the caller"
+     * straight from the verified JWT (no persistence), so every ownership check here only ever
+     * compares two UUIDs.
+     */
+    @Column(name = "USER_UUID", nullable = false)
+    private String userUuid;
 
     /**
      * Auto-generated title derived from the first question in the session (capped at 100 chars).

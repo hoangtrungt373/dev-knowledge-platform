@@ -2,11 +2,15 @@
 
 Module-local guidance for `gateway` (formerly named `api` — renamed once its REST controller layer
 finished moving out into the feature modules, see `docs/CHANGELOG.md`). Read alongside the root
-`CLAUDE.md`. This is the module every other embedded module gets wired up through — Spring Boot
-entry point, security/JWT-filter wiring, Liquibase migrations — so it depends on `common`, `infra`,
-and `ai-service` (its one remaining embedded feature module).
+`CLAUDE.md`. This is the module every other embedded module used to get wired up through — Spring
+Boot entry point, security/JWT-filter wiring, Liquibase migrations — but **it now depends on nothing
+but `common` and `infra`.** `ai-service` was the sixth and final embedded feature module (following
+`identity-service`/`ecommerce-service`/`task-service`/`social-service`/`content-service` out the
+door); once its Maven dependency was dropped, `gateway` reached **zero embedded feature modules
+remaining** — see root `CLAUDE.md`'s Long-term direction section, which explicitly calls this a
+stopping point for the microservices-study exercise, not a pause partway through one.
 **No Maven dependency on `identity-service`, `ecommerce-service`, `task-service`, `social-service`,
-or `content-service`** — all five are standalone Spring Boot applications now (see root
+`content-service`, or `ai-service`** — all six are standalone Spring Boot applications now (see root
 `CLAUDE.md`); this app JIT-provisions its own local `User` copy directly instead of calling any of
 them in-process (see `security/` below). Removing `task-service`'s and `social-service`'s
 dependencies needed no rewritten call site, unlike `identity-service` — `gateway` never called into
@@ -17,13 +21,23 @@ this app's Spring context via the Maven dependency), so removing them was mostly
 `StompAuthChannelInterceptor`/`CurrentUserIdMessageArgumentResolver` outright, since chat was the
 only STOMP use case in this reactor and `social-service` now owns that whole transport on its own
 port (`8084`) — **this app has no WebSocket/STOMP transport of its own anymore.**
-`content-service`'s removal was the odd one out: unlike the other four, `ai-service` (still
-embedded here) had a real one-directional Maven dependency on `content-service` (a JPA FK, a live
-entity parameter, and `PublicContentApi`/`PublicContentController`), so removing it required a real
-HTTP rewrite (`ai-service`'s `ContentServiceClient`) before the `pom.xml` edit was safe, plus moving
-`PublicContentApi`/`PublicContentController` back into `content-service` and narrowing this app's
-own `DataSeedingRunner` to `UserSeeder` only (see that class's Javadoc and
-`content-service/CLAUDE.md`).
+`content-service`'s removal needed a real HTTP rewrite first, unlike the other three: `ai-service`
+(still embedded at the time) had a real one-directional Maven dependency on `content-service` (a JPA
+FK, a live entity parameter, and `PublicContentApi`/`PublicContentController`), so removing it
+required `ai-service`'s `ContentServiceClient` HTTP rewrite before the `pom.xml` edit was safe, plus
+moving `PublicContentApi`/`PublicContentController` back into `content-service` and narrowing this
+app's own `DataSeedingRunner` to `UserSeeder` only (see that class's Javadoc and
+`content-service/CLAUDE.md`). `ai-service`'s own removal, by contrast, needed **no** further HTTP
+rewrite — by the time it was extracted, `ai-service` already had no Maven dependency on
+`content-service` of its own (that was severed during `content-service`'s extraction, not this one),
+so dropping `gateway`'s dependency on `ai-service` was a straightforward `pom.xml`/config/Dockerfile
+cleanup, not a rewrite of any call site: `gateway` never called into `ai-service`'s Java classes
+in-process either (`ChatApi`/`IngestionApi`/`EmbeddingIndexApi`/`PipelineMetricsApi` were already
+`ai-service`'s own REST layer). What *did* need moving out of `gateway` alongside the Maven
+dependency was infrastructure `ai-service`'s controllers/services actually used at runtime —
+`sseStreamExecutor`, the Bucket4j Redis connection, the SSE/`@CurrentUserId` MVC wiring — see "What
+lives here" below for exactly what moved vs. what turned out to be dead code and was deleted
+outright instead.
 
 Every feature's REST controllers, DTOs, and MapStruct mappers now live in the feature module that
 owns the underlying entities/services (`content-service`, `ai-service`, `social-service`/
@@ -60,23 +74,37 @@ standalone services.
   `social-service`'s own `security/` package (same package name there) once that module became a
   standalone app owning the whole WebSocket/STOMP transport for chat; this app never had a second
   use for it.
-- `config/web/` — `WebMvcConfig` (SSE async-request wiring, reads `SSE_TIMEOUT_MS` from
-  `ai-service`'s `SseStreamTemplate` rather than duplicating it; deliberately registers no
-  interceptors of its own anymore — `ai-service`'s own `ChatMvcConfig` registers the chat
-  rate-limit interceptor via its own composed `WebMvcConfigurer` bean instead, see that module's
-  `CLAUDE.md`), `CurrentUserIdArgumentResolver` (resolves `common.annotation.CurrentUserId` for
-  REST controllers — the annotation itself lives in `common` so every feature module's controllers
-  can use it without depending on this module). **No `CurrentUserIdMessageArgumentResolver` here
-  anymore** — that STOMP-side counterpart moved to `social-service` alongside `WebSocketConfig`.
-- `config/cache/RedisCacheConfig` — `@EnableCaching`, base `RedisCacheConfiguration` + per-cache TTL
-  `RedisCacheManager` (reads `infra`'s `CacheTtlProperties`), dedicated Bucket4j Redis connection
-  (also used by `ai-service`'s `ChatRateLimiter`, injected there by type — no import needed).
-- `config/thread/` — `ThreadPoolConfig`/`ThreadPoolProperties`: `sseStreamExecutor` only (SSE/MVC
-  async dispatch) — the `asyncEventExecutor` bulkhead (`@EventHandler` dispatch) moved to `infra`'s
-  own `AsyncEventThreadPoolConfig`/`AsyncEventThreadPoolProperties`, since `infra`'s own event
-  framework is the thing that owns that pool's purpose, not this module. Don't conflate the two
-  when reasoning about thread pool exhaustion — they're deliberately separate bulkheads in
-  separate modules now.
+- **`config/` now holds only `JacksonConfig`** (shared `ObjectMapper` customization) — every other
+  class that used to live under `config/` was either relocated to `ai-service` (the module that
+  actually consumed it) or deleted outright as dead code once `ai-service` went standalone:
+  - **No `config/web/` here anymore.** `WebMvcConfig` (SSE async-request wiring) and
+    `CurrentUserIdArgumentResolver` (resolved `common.annotation.CurrentUserId` for REST
+    controllers) both moved to `ai-service`'s own `config/web/` — the only module in this reactor
+    with a REST controller left to resolve `@CurrentUserId` for, or an SSE endpoint to configure
+    async-request timeouts for. `ai-service`'s own `ChatMvcConfig` now registers **both**
+    `ChatRateLimitInterceptor` and its ported `CurrentUserIdArgumentResolver` via its own composed
+    `WebMvcConfigurer` bean — see `ai-service/CLAUDE.md`. **No `CurrentUserIdMessageArgumentResolver`
+    here either** — that STOMP-side counterpart moved to `social-service` alongside `WebSocketConfig`
+    in an earlier extraction.
+  - **No `config/cache/RedisCacheConfig` here anymore, and it was *not* moved to `ai-service`
+    either — it was deleted outright, because half of it was dead code.** While extracting
+    `ai-service`, a reactor-wide grep for `@Cacheable`/`@CacheEvict`/`@CachePut` came back with
+    **zero real usages anywhere in the whole codebase**. `RedisCacheConfig`'s `@EnableCaching` +
+    `cacheManager`/`baseRedisCacheConfiguration` beans (backed by `infra`'s now-deleted
+    `CacheTtlProperties`/`CacheNames`) had been fully wired up and shipped but never actually
+    consumed by a single Spring-managed cache annotation — a scaffold that looked load-bearing but
+    wasn't, same class of finding as `ai-service`'s own `SearchDocument` dead-entity finding from the
+    `content-service` extraction. Only the one real consumer, the dedicated Bucket4j Redis
+    connection (`ChatRateLimiter`'s per-user rate-limit buckets), moved — into `ai-service`'s own new
+    `config/RedisConfig`, as its sole bean. If a real `@Cacheable` use case ever shows up in this
+    reactor, build `@EnableCaching`/a `RedisCacheManager` from scratch wherever it's actually needed;
+    don't assume the deleted classes are worth resurrecting as-is.
+  - **No `config/thread/` here anymore.** `ThreadPoolConfig`/`ThreadPoolProperties` (`sseStreamExecutor`
+    — SSE/MVC async dispatch, 10 core / 50 max / queue 100) moved to `ai-service` **verbatim** — the
+    only module left with an SSE endpoint or MVC async dispatch to feed. This app has no thread pool
+    configuration of its own left at all; the separate `asyncEventExecutor` bulkhead (`@EventHandler`
+    dispatch) already lived in `infra`'s own `AsyncEventThreadPoolConfig`/
+    `AsyncEventThreadPoolProperties` before this extraction and is unaffected.
 - **No `event/` package here anymore** — every listener moved into the module that owns the event
   it reacts to (`FriendRequestSentEventListener`/`FriendRequestAcceptedEventListener` →
   `social-service`, alongside the events themselves, before that module's own later extraction).
@@ -102,39 +130,51 @@ standalone services.
   categories.csv`/`tags.csv`, `data/question-answers/*.md`, `data/csv/friend-requests.csv`/
   `user-blocks.csv` were all deleted from here (moved to `content-service`'s/`social-service`'s own
   resources respectively, since this app no longer reads any of them).
-- `database/sql/` — Liquibase changelogs for this module's own tables plus `ai-service`'s (this
-  app's remaining *embedded* feature module) — this app's own `product.USER` is also migrated from
-  here (see root `CLAUDE.md`'s Database Conventions). `identity-service`'s, `ecommerce-service`'s,
-  `task-service`'s, `social-service`'s, and `content-service`'s tables are **not** here — each
-  standalone service migrates its own schema from its own changelog tree now (see their
-  `CLAUDE.md`s). Several
-  changesets are still physically present in this tree as already-run history — frozen, not
-  deleted, per this repo's never-edit-an-executed-changeset convention — but now describe tables no
-  entity in this app's Spring context maps to anymore: `DKP-0020`/`DKP-0021`/`DKP-0022` (the old
-  `product.PROJECT`/`product.TASK`, `OWNER_ID` a real FK to `product.USER` — `task-service` migrates
-  its own fresh `task.PROJECT`/`task.TASK` snapshot instead, `DKP-0028` in that module's own tree,
-  with a plain `OWNER_UUID` column replacing that FK entirely) and `DKP-0015`/`DKP-0019` (the old
-  `product.FRIEND_REQUEST`/`FRIENDSHIP`/`USER_BLOCK`/`MESSAGE_GROUP`/`GROUP_MEMBER`/`CHANNEL`/
-  `DM_THREAD`/`DM_MESSAGE`/`CHANNEL_MESSAGE` — `social-service` migrates its own fresh
-  `social.PROFILE` + friend-graph/chat snapshot instead, `DKP-0029`/`DKP-0030` in that module's own
-  tree, with every FK repointed at `social.PROFILE` instead of `product.USER`, since that module
-  persists its own lean entity now rather than reusing `common.entity.User` — see
-  `social-service/CLAUDE.md`) and `DKP-0001`-`0004`/`0009`/`0013`/`0014`/`0018` (the old
-  `product.CATEGORY`/`TAG`/`CONTENT_ITEM`/`CONTENT_ITEM_TAG`/`QUESTION_ANSWER`/`ARTICLE`,
-  `AUTHOR_ID` a plain unindexed-by-FK column — `content-service` migrates its own fresh snapshot of
-  the same final shape instead, `DKP-0031` in that module's own tree, with `AUTHOR_UUID` (a plain
-  Keycloak-subject-id column) replacing `AUTHOR_ID` entirely — see `content-service/CLAUDE.md`).
-  New embedded feature modules don't get their own changelog folder; a module extracted into a
-  standalone service does.
+- `database/sql/` — Liquibase changelogs for this app's own `product.USER` table only now (see root
+  `CLAUDE.md`'s Database Conventions), plus every embedded feature module's tables from before each
+  one was extracted, all now frozen history. `identity-service`'s, `ecommerce-service`'s,
+  `task-service`'s, `social-service`'s, `content-service`'s, and `ai-service`'s tables are **not**
+  here — each standalone service migrates its own schema from its own changelog tree now (see their
+  `CLAUDE.md`s). Several changesets are still physically present in this tree as already-run
+  history — frozen, not deleted, per this repo's never-edit-an-executed-changeset convention — but
+  now describe tables no entity in this app's Spring context maps to anymore: `DKP-0020`/`DKP-0021`/
+  `DKP-0022` (the old `product.PROJECT`/`product.TASK`, `OWNER_ID` a real FK to `product.USER` —
+  `task-service` migrates its own fresh `task.PROJECT`/`task.TASK` snapshot instead, `DKP-0028` in
+  that module's own tree, with a plain `OWNER_UUID` column replacing that FK entirely);
+  `DKP-0015`/`DKP-0019` (the old `product.FRIEND_REQUEST`/`FRIENDSHIP`/`USER_BLOCK`/
+  `MESSAGE_GROUP`/`GROUP_MEMBER`/`CHANNEL`/`DM_THREAD`/`DM_MESSAGE`/`CHANNEL_MESSAGE` —
+  `social-service` migrates its own fresh `social.PROFILE` + friend-graph/chat snapshot instead,
+  `DKP-0029`/`DKP-0030` in that module's own tree, with every FK repointed at `social.PROFILE`
+  instead of `product.USER`, since that module persists its own lean entity now rather than reusing
+  `common.entity.User` — see `social-service/CLAUDE.md`); `DKP-0001`-`0004`/`0009`/`0013`/`0014`/
+  `0018` (the old `product.CATEGORY`/`TAG`/`CONTENT_ITEM`/`CONTENT_ITEM_TAG`/`QUESTION_ANSWER`/
+  `ARTICLE`, `AUTHOR_ID` a plain unindexed-by-FK column — `content-service` migrates its own fresh
+  snapshot of the same final shape instead, `DKP-0031` in that module's own tree, with `AUTHOR_UUID`
+  (a plain Keycloak-subject-id column) replacing `AUTHOR_ID` entirely — see
+  `content-service/CLAUDE.md`); and now, from this module's own extraction, `DKP-0005`/`DKP-0006`/
+  `DKP-0007`/`DKP-0008`/`DKP-0010`/`DKP-0011`/`DKP-0012` (the old
+  `product.CONTENT_EMBEDDING`/`CHAT_SESSION`/`CHAT_MESSAGE`/`SYS_PARAM`/`PIPELINE_METRICS` —
+  `ai-service` migrates its own fresh snapshot of the final shape instead, `DKP-0032` in that
+  module's own tree, with `CHAT_SESSION.USER_UUID`/`PIPELINE_METRICS.USER_UUID` (plain
+  Keycloak-subject-id columns) replacing `USER_ID` entirely — see `ai-service/CLAUDE.md`). New
+  embedded feature modules don't get their own changelog folder; a module extracted into a
+  standalone service does — but there are no more embedded feature modules left in this reactor to
+  extract, so this tree's job going forward is purely `product.USER` plus this now-closed set of
+  frozen historical changesets.
 - `Dockerfile` (repo root as build context) — multi-stage build producing this module's runtime
-  image. `COPY`s only the sources of modules it actually still depends on (`common`/`infra`/
-  `ai-service`) — every other module's `pom.xml` alone, needed only for Maven to
-  parse the reactor's full `<modules>` list. Relies entirely on `application-docker.yml`'s existing
-  env-var defaults (`DB_HOST`/`REDIS_HOST`/`MINIO_ENDPOINT` already default to the infra compose's
-  service names); the new `dev-knowledge-platform-apps-docker-compose.yml` at the repo root only
-  overrides the values that have no default (`KEYCLOAK_ISSUER_URI`, `FRONTEND_URL`,
-  `OPENAI_API_KEY`). See root `CLAUDE.md`'s Build & Run Commands and `docs/PROJECT_STRUCTURE.md`'s
-  Deployment section.
+  image. `COPY`s only the sources of modules it actually still depends on (`common`/`infra`) —
+  every other module's `pom.xml` alone, needed only for Maven to parse the reactor's full
+  `<modules>` list. This app's own `Dockerfile` no longer copies `ai-service`'s sources either, now
+  that its Maven dependency is gone — the same treatment every other departed module's `COPY` line
+  already got. Relies entirely on `application-docker.yml`'s existing env-var defaults
+  (`DB_HOST`/`MINIO_ENDPOINT` already default to the infra compose's service names); the
+  `dev-knowledge-platform-apps-docker-compose.yml` at the repo root only overrides the values that
+  have no default (`KEYCLOAK_ISSUER_URI`, `FRONTEND_URL`). This app's own container block in that
+  compose file no longer needs `OPENAI_API_KEY`/`CONTENT_SERVICE_BASE_URL`/`INTERNAL_API_KEY` (all
+  three were only ever read by `ai-service`'s beans while it was still embedded here) or a
+  `redis`/`content-service` `depends_on` — just `SPRING_PROFILES_ACTIVE`/`KEYCLOAK_ISSUER_URI`/
+  `FRONTEND_URL`, depending on `dkp-liquibase`+`minio`. See root `CLAUDE.md`'s Build & Run Commands
+  and `docs/PROJECT_STRUCTURE.md`'s Deployment section.
 
 ## Current-user resolution
 
@@ -162,29 +202,33 @@ Two real patterns — do not reference `UserUtils.getCurrentUser()`, it doesn't 
 
 ## Rules specific to this module
 
-- **This is the only module allowed to depend on more than one feature module — but that no longer
-  means REST endpoints live here.** A new REST endpoint's controller/DTO/mapper belongs in whichever
-  single feature module owns the entities it fronts, even if that means one feature module taking a
-  one-directional dependency on a sibling. `ai-service` → `content-service` used to be the standing
-  example of this shape (real FK coupling via `ContentEmbedding`/`ContentItem`), but it was removed
-  during `content-service`'s own extraction — `ai-service`'s indexing pipeline now calls
-  `content-service`'s internal API over HTTP instead, so the two are parallel siblings with no
-  Maven dependency relationship at all (see root `CLAUDE.md`'s Module Structure section). This
-  module (`gateway`) is the only one now positioned to depend on both, if a future orchestration
-  endpoint genuinely needs to — none exists yet. `social-service` →
+- **This module is nominally still "the only one allowed to depend on more than one feature
+  module" — but that's now doubly moot, since there are zero embedded feature modules left to
+  depend on at all.** A new REST endpoint's controller/DTO/mapper belongs in whichever single
+  standalone service owns the entities it fronts, even if that means one service taking a
+  one-directional Maven dependency on a sibling that's also still embedded (there are none of those
+  left either) — or, for two already-standalone services, a real HTTP call, never a resurrected
+  Maven dependency. `ai-service` → `content-service` used to be the standing example of this shape
+  (real FK coupling via `ContentEmbedding`/`ContentItem`), but it was removed during
+  `content-service`'s own extraction — `ai-service`'s indexing pipeline called `content-service`'s
+  internal API over HTTP instead well before `ai-service` itself went standalone, so the two were
+  already parallel siblings with no Maven dependency relationship at all (see root `CLAUDE.md`'s
+  Module Structure section) by the time this module's own extraction happened. `social-service` →
   `identity-service` used to be a second example of this shape; it was removed once
   `identity-service` was extracted into a standalone service (see that module's `CLAUDE.md`) — a
   standalone service can never be the target of an in-process sibling dependency like this, only a
-  future network call through this module's (not-yet-built) proxy layer. Only reach for putting
-  something in this module if it genuinely needs two feature modules that have **no** dependency
-  relationship possible between them in either direction — that's now a narrow, rare case (there is
-  currently no REST endpoint that qualifies).
+  future network call through this module's (not-yet-built) proxy layer. A future orchestration
+  endpoint that genuinely needs two standalone services with **no** dependency relationship possible
+  between them in either direction is the one case that would still land here — none exists yet, and
+  it would need a real HTTP call to each service regardless, not a Maven dependency on either.
 - **Business logic (validation, uniqueness checks, cascades) belongs in the owning feature module's
   service, not in a controller** — but there are no controllers in this module anymore, so this
   mainly matters as guidance for whoever's tempted to add one here instead of in a feature module.
-- SSE streaming runs on `sseStreamExecutor` (10 core / 50 max / queue 100, configured here); event
-  listener dispatch runs on the separate `asyncEventExecutor` (`infra`) — don't conflate the two
-  when reasoning about thread pool exhaustion.
+- SSE streaming runs on `sseStreamExecutor` (10 core / 50 max / queue 100) — **no longer configured
+  here**, moved to `ai-service`'s own `config/thread/` as part of this module's extraction, since
+  this app has no SSE endpoint left to feed it; event listener dispatch runs on the separate
+  `asyncEventExecutor` (`infra`) — don't conflate the two when reasoning about thread pool
+  exhaustion.
 - **Never expose a raw integer PK for any user other than the authenticated caller** — path
   variables/service params referencing "the other user" take a UUID (`String ...Uuid`), never an
   `Integer ...Id`. The authenticated caller's own id is fine as a raw `Integer` (`@CurrentUserId`,

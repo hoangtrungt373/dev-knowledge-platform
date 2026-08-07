@@ -23,18 +23,18 @@ public interface ChatSessionRepository extends JpaRepository<ChatSession, Intege
      * Finds a session by its ID and owning user, returning empty if either the session
      * does not exist or belongs to a different user.
      *
-     * @param id     the session primary key
-     * @param userId the authenticated user's identifier
+     * @param id       the session primary key
+     * @param userUuid the authenticated user's Keycloak subject id
      * @return the session if found and owned by the user
      */
-    Optional<ChatSession> findByIdAndUserId(Integer id, Integer userId);
+    Optional<ChatSession> findByIdAndUserUuid(Integer id, String userUuid);
 
     /**
-     * Returns a summary row for every session belonging to {@code userId}, ordered by most
+     * Returns a summary row for every session belonging to {@code userUuid}, ordered by most
      * recent activity first. Message count is computed in a single query via {@code COUNT(m)}
      * to avoid N+1 fetches.
      *
-     * @param userId the authenticated user's identifier
+     * @param userUuid the authenticated user's Keycloak subject id
      * @return list of session summaries, newest first
      */
     @Query("""
@@ -42,9 +42,9 @@ public interface ChatSessionRepository extends JpaRepository<ChatSession, Intege
                 s.id, s.title, s.lastActivityAt, COUNT(m)
             )
             FROM ChatSession s LEFT JOIN s.messages m
-            WHERE s.userId = :userId
+            WHERE s.userUuid = :userUuid
             GROUP BY s.id, s.title, s.lastActivityAt
             ORDER BY s.lastActivityAt DESC
             """)
-    List<ChatSessionSummaryDto> findSessionSummariesByUserId(@Param("userId") Integer userId);
+    List<ChatSessionSummaryDto> findSessionSummariesByUserUuid(@Param("userUuid") String userUuid);
 }

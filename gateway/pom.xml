@@ -25,10 +25,6 @@
             <groupId>com.ttg</groupId>
             <artifactId>infra</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.ttg</groupId>
-            <artifactId>ai-service</artifactId>
-        </dependency>
 
         <!-- No identity-service dependency: it's a standalone Spring Boot app now (its own
              `identity` schema, own JWT verification, own port), not wired into this Spring
@@ -84,7 +80,19 @@
              ai-service, which stopped being a real constraint once ai-service already depended on
              content-service directly. gateway will reach content-service over HTTP once the proxy
              layer is built — not done yet. Do not re-add this as a Maven dependency; that would put
-             its beans back on this app's classpath and cause both apps to run them at once. -->
+             its beans back on this app's classpath and cause both apps to run them at once.
+
+             No ai-service dependency either — the sixth and final embedded feature module,
+             extracted the same way as content-service (its own `ai` schema, own JWT verification,
+             own port 8086, own claims-based KeycloakJwtAuthenticationConverter —
+             ChatSession.userUuid/PipelineMetrics.userUuid are plain columns now, not a FK to
+             product.USER). This app now has zero remaining embedded feature modules and zero REST
+             controllers of its own — see root CLAUDE.md's Long-term direction section for what (if
+             anything) comes next for this module. gateway will reach ai-service over HTTP once the
+             proxy layer is built — not done yet. Do not re-add this as a Maven dependency; that
+             would put its beans (sseStreamExecutor, the chat/ingestion/embedding-index/
+             pipeline-metrics controllers, etc.) back on this app's classpath and cause both apps to
+             run them at once. -->
 
         <!-- Spring Web -->
         <dependency>
@@ -124,18 +132,6 @@
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-jackson</artifactId>
             <scope>runtime</scope>
-        </dependency>
-
-        <!-- Redis -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
-        </dependency>
-
-        <!-- Spring Cache -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-cache</artifactId>
         </dependency>
 
         <!-- Actuator -->
@@ -178,12 +174,6 @@
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-        </dependency>
-
-        <!-- Bucket4j — token-bucket rate limiting with Redis backend -->
-        <dependency>
-            <groupId>com.bucket4j</groupId>
-            <artifactId>bucket4j-redis</artifactId>
         </dependency>
 
         <!-- Dev Tools -->

@@ -58,14 +58,14 @@ public class ChatSessionServiceImpl implements ChatSessionService {
     private final ChatSessionProperties sessionProperties;
 
     @Override
-    public Integer getOrCreateSessionId(Integer requestedSessionId, Integer userId) {
+    public Integer getOrCreateSessionId(Integer requestedSessionId, String userUuid) {
         if (requestedSessionId == null) {
-            return createNewSession(userId);
+            return createNewSession(userUuid);
         }
-        ChatSession session = chatSessionRepository.findByIdAndUserId(requestedSessionId, userId)
+        ChatSession session = chatSessionRepository.findByIdAndUserUuid(requestedSessionId, userUuid)
                 .orElseThrow(() -> new ResourceNotFoundException(ChatErrorCode.CHAT_SESSION_NOT_FOUND));
         if (isExpired(session)) {
-            log.info("Session {} expired; clearing history for user {}", requestedSessionId, userId);
+            log.info("Session {} expired; clearing history for user {}", requestedSessionId, userUuid);
             session.getMessages().clear();
             session.setSummary(null);
             session.setLastActivityAt(DateUtils.getCurrentDateTime());
@@ -134,13 +134,13 @@ public class ChatSessionServiceImpl implements ChatSessionService {
     }
 
     @Override
-    public List<ChatSessionSummaryDto> listSessions(Integer userId) {
-        return chatSessionRepository.findSessionSummariesByUserId(userId);
+    public List<ChatSessionSummaryDto> listSessions(String userUuid) {
+        return chatSessionRepository.findSessionSummariesByUserUuid(userUuid);
     }
 
     @Override
-    public List<ChatMessage> getHistory(Integer sessionId, Integer userId) {
-        chatSessionRepository.findByIdAndUserId(sessionId, userId)
+    public List<ChatMessage> getHistory(Integer sessionId, String userUuid) {
+        chatSessionRepository.findByIdAndUserUuid(sessionId, userUuid)
                 .orElseThrow(() -> new ResourceNotFoundException(ChatErrorCode.CHAT_SESSION_NOT_FOUND));
         return chatMessageRepository.findByChatSession_IdOrderByTurnIndexAsc(sessionId);
     }
@@ -183,12 +183,12 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         log.info("Updated rolling summary for session {} ({} turns compressed)", session.getId(), toCompress.size());
     }
 
-    private Integer createNewSession(Integer userId) {
+    private Integer createNewSession(String userUuid) {
         ChatSession session = new ChatSession();
-        session.setUserId(userId);
+        session.setUserUuid(userUuid);
         session.setLastActivityAt(DateUtils.getCurrentDateTime());
         Integer id = chatSessionRepository.save(session).getId();
-        log.debug("Created new chat session {} for user {}", id, userId);
+        log.debug("Created new chat session {} for user {}", id, userUuid);
         return id;
     }
 

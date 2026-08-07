@@ -28,7 +28,6 @@ import lombok.ToString;
 @Entity
 @Table(
         name = "CHAT_MESSAGE",
-        schema = "product",
         uniqueConstraints = @UniqueConstraint(name = "UK_CHAT_MESSAGE_TURN_ORDER", columnNames = {"CHAT_SESSION_ID", "TURN_INDEX"})
 )
 @AttributeOverride(name = "id", column = @Column(name = "CHAT_MESSAGE_ID"))

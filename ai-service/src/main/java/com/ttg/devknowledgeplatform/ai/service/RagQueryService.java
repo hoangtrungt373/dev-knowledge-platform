@@ -75,7 +75,7 @@ public interface RagQueryService {
      * narrow the vector-search candidate set before scoring and threshold filtering.
      *
      * <p>Delegates to {@link #query(String, ConversationContext, RagFilter, Integer)} with
-     * {@code userId = null}. Use the four-argument overload when the caller has an authenticated
+     * {@code userUuid = null}. Use the four-argument overload when the caller has an authenticated
      * user ID to attribute cost and usage to.
      *
      * @param question natural-language question; must not be blank
@@ -97,11 +97,11 @@ public interface RagQueryService {
      * @param question natural-language question; must not be blank
      * @param context  full conversation context: optional rolling summary + recent verbatim turns
      * @param filter   retrieval filter; use {@link RagFilter#none()} to disable filtering
-     * @param userId   authenticated user ID for cost attribution; {@code null} for anonymous calls
+     * @param userUuid authenticated user ID for cost attribution; {@code null} for anonymous calls
      * @return the LLM answer together with the source chunks used as context
      */
-    default RagAnswer query(String question, ConversationContext context, RagFilter filter, Integer userId) {
-        return query(question, context, filter, userId, null);
+    default RagAnswer query(String question, ConversationContext context, RagFilter filter, String userUuid) {
+        return query(question, context, filter, userUuid, null);
     }
 
     /**
@@ -117,13 +117,13 @@ public interface RagQueryService {
      * @param question  natural-language question; must not be blank
      * @param context   full conversation context: optional rolling summary + recent verbatim turns
      * @param filter    retrieval filter; use {@link RagFilter#none()} to disable filtering
-     * @param userId    authenticated user ID for cost attribution; {@code null} for anonymous calls
+     * @param userUuid  authenticated user's Keycloak subject id for cost attribution; {@code null} for anonymous calls
      * @param chatModel id of the chat model profile to generate with; {@code null} uses the
      *                  server's configured default. An id not matching any configured profile
      *                  throws {@code BusinessException} with {@code AiErrorCode.AI_MODEL_UNSUPPORTED}.
      * @return the LLM answer together with the source chunks used as context
      */
-    RagAnswer query(String question, ConversationContext context, RagFilter filter, Integer userId, String chatModel);
+    RagAnswer query(String question, ConversationContext context, RagFilter filter, String userUuid, String chatModel);
 
     // -------------------------------------------------------------------------
     // Streaming
@@ -169,7 +169,7 @@ public interface RagQueryService {
      * narrow the retrieval candidate set.
      *
      * <p>Delegates to {@link #queryStream(String, ConversationContext, RagFilter, Integer, RagStreamHandler)}
-     * with {@code userId = null}. Use the five-argument overload when the caller has an authenticated
+     * with {@code userUuid = null}. Use the five-argument overload when the caller has an authenticated
      * user ID to attribute cost and usage to.
      *
      * @param question natural-language question; must not be blank
@@ -192,11 +192,11 @@ public interface RagQueryService {
      * @param question natural-language question; must not be blank
      * @param context  full conversation context: optional rolling summary + recent verbatim turns
      * @param filter   retrieval filter; use {@link RagFilter#none()} to disable filtering
-     * @param userId   authenticated user ID for cost attribution; {@code null} for anonymous calls
+     * @param userUuid authenticated user ID for cost attribution; {@code null} for anonymous calls
      * @param handler  callbacks to receive sources, tokens, completion, and errors
      */
-    default void queryStream(String question, ConversationContext context, RagFilter filter, Integer userId, RagStreamHandler handler) {
-        queryStream(question, context, filter, userId, null, handler);
+    default void queryStream(String question, ConversationContext context, RagFilter filter, String userUuid, RagStreamHandler handler) {
+        queryStream(question, context, filter, userUuid, null, handler);
     }
 
     /**
@@ -213,11 +213,11 @@ public interface RagQueryService {
      * @param question  natural-language question; must not be blank
      * @param context   full conversation context: optional rolling summary + recent verbatim turns
      * @param filter    retrieval filter; use {@link RagFilter#none()} to disable filtering
-     * @param userId    authenticated user ID for cost attribution; {@code null} for anonymous calls
+     * @param userUuid  authenticated user's Keycloak subject id for cost attribution; {@code null} for anonymous calls
      * @param chatModel id of the chat model profile to generate with; {@code null} uses the
      *                  server's configured default. An id not matching any configured profile
      *                  throws {@code BusinessException} with {@code AiErrorCode.AI_MODEL_UNSUPPORTED}.
      * @param handler   callbacks to receive sources, tokens, completion, and errors
      */
-    void queryStream(String question, ConversationContext context, RagFilter filter, Integer userId, String chatModel, RagStreamHandler handler);
+    void queryStream(String question, ConversationContext context, RagFilter filter, String userUuid, String chatModel, RagStreamHandler handler);
 }

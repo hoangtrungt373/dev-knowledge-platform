@@ -1,9 +1,10 @@
-package com.ttg.devknowledgeplatform.security;
+package com.ttg.devknowledgeplatform.ai.security;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -12,23 +13,31 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfigurationSource;
 
 /**
- * Every REST request is authenticated as an OAuth2 resource server — Keycloak issues and owns the
- * whole login/registration/token lifecycle now, this app only ever verifies a bearer token against
- * Keycloak's JWKS ({@code spring.security.oauth2.resourceserver.jwt.issuer-uri}, resolved
- * automatically by Spring Boot's auto-config, no manual {@code JwtDecoder} bean needed here).
- * {@link KeycloakJwtAuthenticationConverter} both derives {@code GrantedAuthority}s from the
- * token's realm roles and JIT-provisions/refreshes the local {@code User} row — see its own
- * Javadoc.
+ * This service's own security filter chain — independent of {@code gateway}'s, since once
+ * extracted this app runs on its own port and must guard its own endpoints regardless of whether
+ * {@code gateway} is proxying to it (mirrors {@code identity-service}'s/{@code ecommerce-service}'s/
+ * {@code task-service}'s/{@code content-service}'s {@code SecurityConfig}). Keycloak is the
+ * identity provider — this service is a pure OAuth2 resource server, verifying bearer tokens
+ * against Keycloak's JWKS ({@code spring.security.oauth2.resourceserver.jwt.issuer-uri}); it
+ * never issues tokens or handles a login flow.
  *
- * <p>No {@code @EnableMethodSecurity} here anymore — this app's only {@code @PreAuthorize}
- * consumer was {@code ai-service}'s {@code IngestionApi}, which now declares its own
- * {@code @EnableMethodSecurity} in its own standalone {@code SecurityConfig}. The
- * {@code /api/v1/admin/**} path rule below is kept even though this app has zero REST controllers
- * of its own today — harmless if unmatched, and ready if a future embedded module ever needs it
- * again.
+ * <p>{@code @EnableMethodSecurity} is required here (not just the path-based
+ * {@code /api/v1/admin/**} rule below) because {@code IngestionApi} carries a class-level
+ * {@code @PreAuthorize("hasRole('ADMIN')")} — {@code gateway}'s own copy of this annotation no
+ * longer applies once this module is a separate Spring context.
+ *
+ * <p>Only two endpoint classes, unlike {@code content-service}'s three-way split — this module has
+ * no public/unauthenticated surface and no server-to-server internal API of its own:
+ * <ul>
+ *   <li>{@code /actuator/**} — permits all.</li>
+ *   <li>{@code /api/v1/admin/**} — requires {@code ROLE_ADMIN} (indexing/embedding-index/
+ *       pipeline-metrics admin endpoints).</li>
+ * </ul>
+ * Everything else (the chat endpoints) requires authentication.
  */
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -41,13 +50,8 @@ public class SecurityConfig {
         http
             .authorizeHttpRequests(authz -> authz
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-
-                // Spring Actuator
                 .requestMatchers("/actuator/**").permitAll()
-
-                // Admin-only management (currently unmatched — see class Javadoc)
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-
                 .anyRequest().authenticated()
             )
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
@@ -60,9 +64,6 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            )
-            .headers(headers -> headers
-                .frameOptions(frameOptions -> frameOptions.disable())
             );
 
         return http.build();

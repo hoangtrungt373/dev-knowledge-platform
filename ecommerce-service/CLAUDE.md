@@ -229,12 +229,15 @@ compose file (this module still has no base-profile `spring.datasource` block an
   `gateway` proxy layer is built) or, for anything genuinely async, the Outbox/Inbox pattern
   discussed for Epic 4's webhooks — never a compile-time dependency again.
 - **Epic 5's originally-planned `ecommerce-service` → `ai-service` dependency needs rethinking**
-  now that this module is standalone: `ai-service` still only runs inside the monolith, so a plain
-  Maven dependency (the original plan, see `docs/user-stories/05-reviews-recommendations.md`)
-  isn't available the way `ai-service` → `content-service` is — that pattern only works between
-  modules that are *both* still inside the same deployable. When Epic 5 is actually built, decide
-  then whether it needs a real network call (through `gateway`, once proxying exists) instead.
-  Don't add the dependency as originally planned without revisiting this.
+  now that both modules are standalone: `ai-service` is a separate deployable now too (its own `ai`
+  schema, own port `8086` — see root `CLAUDE.md`), so a plain Maven dependency (the original plan,
+  see `docs/user-stories/05-reviews-recommendations.md`) was never available and is even less
+  relevant now — that pattern only ever worked between modules that were *both* still inside the
+  same deployable, which stopped being true for `ai-service` once it was extracted. When Epic 5 is
+  actually built, it will need a real network call — likely through `gateway` once a general-purpose
+  proxy layer exists, or the same `ContentServiceClient`-style `RestClient` pattern `ai-service`
+  itself already uses to reach `content-service` — never a `pom.xml` entry. Don't add the dependency
+  as originally planned without revisiting this.
 - **Table names no longer risk colliding with anything** — this module has its own `ecommerce`
   schema now, not the monolith's shared `product` schema. `ProductCategory`/`PRODUCT_CATEGORY`'s
   name was originally chosen to avoid colliding with `content-service`'s `Category`/`CATEGORY`

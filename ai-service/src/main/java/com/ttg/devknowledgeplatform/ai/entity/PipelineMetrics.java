@@ -35,7 +35,7 @@ import java.time.Instant;
  * values instead of guessing.
  */
 @Entity
-@Table(name = "PIPELINE_METRICS", schema = "product")
+@Table(name = "PIPELINE_METRICS")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -45,7 +45,7 @@ public class PipelineMetrics {
     @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "pipeline_metrics_seq")
     @SequenceGenerator(
             name = "pipeline_metrics_seq",
-            sequenceName = "product.PIPELINE_METRICS_SEQ",
+            sequenceName = "PIPELINE_METRICS_SEQ",
             allocationSize = 50)
     @Column(name = "PIPELINE_METRICS_ID")
     private Integer id;
@@ -177,13 +177,13 @@ public class PipelineMetrics {
     // =========================================================================
 
     /**
-     * ID of the authenticated user who triggered this pipeline execution.
-     * {@code NULL} for anonymous calls or internal non-HTTP invocations.
+     * Keycloak subject id ({@code sub} claim) of the authenticated user who triggered this
+     * pipeline execution. {@code NULL} for anonymous calls or internal non-HTTP invocations.
      * Intentionally not a foreign key — this is an analytics table; user deletion
      * must not cascade into historical cost records.
      */
-    @Column(name = "USER_ID")
-    private Integer userId;
+    @Column(name = "USER_UUID", length = 36)
+    private String userUuid;
 
     // =========================================================================
     // Chat model attribution

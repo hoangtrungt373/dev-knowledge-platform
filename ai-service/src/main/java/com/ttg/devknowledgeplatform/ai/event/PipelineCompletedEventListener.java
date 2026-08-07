@@ -137,7 +137,7 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
         metrics.setEstimatedCostUsd(computeEstimatedCost(ctx));
 
         // Feature 3: User attribution
-        metrics.setUserId(ctx.getUserId());
+        metrics.setUserUuid(ctx.getUserUuid());
 
         // Chat model attribution — id of the profile actually resolved for this request.
         metrics.setChatModel(ctx.getResolvedChatModel());
@@ -146,8 +146,8 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
         //       doHandle() currently does mapping, cost computation, persistence, and alerting —
         //       each is a distinct responsibility that will grow independently.
         repository.save(metrics);
-        log.debug("Pipeline metrics recorded [traceId={} userId={} totalMs={} estimatedCost={}]",
-                ctx.getTraceId(), ctx.getUserId(), ctx.elapsedMs(), metrics.getEstimatedCostUsd());
+        log.debug("Pipeline metrics recorded [traceId={} userUuid={} totalMs={} estimatedCost={}]",
+                ctx.getTraceId(), ctx.getUserUuid(), ctx.elapsedMs(), metrics.getEstimatedCostUsd());
 
         checkThresholds(metrics, ctx);
     }
@@ -174,13 +174,13 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
                 && metrics.getTotalPipelineMs() != null
                 && metrics.getTotalPipelineMs() > monitoring.getSlowRequestThresholdMs()) {
             log.warn("SLOW_REQUEST traceId={} totalPipelineMs={} thresholdMs={} llmGenerationMs={}"
-                            + " contextualizationMs={} userId={} estimatedCostUsd={}",
+                            + " contextualizationMs={} userUuid={} estimatedCostUsd={}",
                     ctx.getTraceId(),
                     metrics.getTotalPipelineMs(),
                     monitoring.getSlowRequestThresholdMs(),
                     metrics.getLlmGenerationMs(),
                     metrics.getContextualizationMs(),
-                    ctx.getUserId(),
+                    ctx.getUserUuid(),
                     metrics.getEstimatedCostUsd());
         }
 
@@ -189,7 +189,7 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
                 && metrics.getEstimatedCostUsd().compareTo(monitoring.getHighCostThresholdUsd()) > 0) {
             log.warn("HIGH_COST traceId={} estimatedCostUsd={} thresholdUsd={}"
                             + " generationInputTokens={} generationOutputTokens={}"
-                            + " contextualizationInputTokens={} contextualizationOutputTokens={} userId={}",
+                            + " contextualizationInputTokens={} contextualizationOutputTokens={} userUuid={}",
                     ctx.getTraceId(),
                     metrics.getEstimatedCostUsd(),
                     monitoring.getHighCostThresholdUsd(),
@@ -197,7 +197,7 @@ public class PipelineCompletedEventListener extends AsyncEventHandler<PipelineCo
                     metrics.getGenerationOutputTokens(),
                     metrics.getContextualizationInputTokens(),
                     metrics.getContextualizationOutputTokens(),
-                    ctx.getUserId());
+                    ctx.getUserUuid());
         }
     }
 

@@ -16,11 +16,6 @@ spring:
         format_sql: false
         highlight_sql: true
 
-  # Redis — only password differs from base defaults
-  data:
-    redis:
-      password: password
-
 # Logging
 logging:
   level:

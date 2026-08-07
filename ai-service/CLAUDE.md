@@ -9,6 +9,51 @@ RAG pipeline: embedding, vector search, LLM generation (LangChain4j). Package ro
 `docs/PROJECT_STRUCTURE.md`'s `## ai-service` section — this file covers conventions and config,
 not a restated file listing.
 
+**Now a standalone Spring Boot application, not part of the monolith** — the sixth and final module
+pulled out (following the `ecommerce-service`/`identity-service`/`task-service`/`social-service`/
+`content-service` precedent — see the `project-microservices-extraction-plan` memory for the full
+history of all six). `gateway` has **zero** embedded feature modules remaining after this — this was
+the last one. Concretely: its own `AiServiceApplication` entry point
+(`@ConfigurationPropertiesScan` + `@EnableAsync`), its own `ai` Postgres schema (same `dev-premier`
+database, not a separate instance — per-service-per-schema, see root `CLAUDE.md`'s Database
+Conventions), its own port (`8086`), and its own Liquibase changelog. This module already had no
+Maven dependency on `content-service` going into this extraction (see the Rules section below); the
+work here was giving it its own app shell/security/schema and severing `gateway`'s Maven dependency
+on it — not another HTTP rewrite. Its own `Dockerfile` and
+`dev-knowledge-platform-apps-docker-compose.yml`/`ai-service-liquibase.yml` wiring are in place now
+(port `8086`); `gateway`-side HTTP proxying for end-user traffic to this service is not built yet,
+same as every other standalone service in this reactor.
+
+- `AiServiceApplication` — `@SpringBootApplication` + `@ConfigurationPropertiesScan` (required here
+  — this module no longer rides on `gateway`'s scan) + `@EnableAsync` (drives
+  `PipelineCompletedEventListener`'s `@EventHandler` dispatch and the SSE/MVC async support this
+  module's own `ChatMvcConfig` configures). **No `@EntityScan`/`@EnableJpaRepositories`** — this
+  module doesn't touch `common.entity.User`/`common.repository.UserRepository` at all, same shape as
+  `content-service`'s/`task-service`'s/`ecommerce-service`'s application classes. Default scanning
+  already covers this module's own `entity`/`repository` packages.
+- `security/` — this app's own filter chain, independent of `gateway`'s, since it now runs on its
+  own port and must guard its own endpoints regardless of whether `gateway` is proxying to it
+  (mirrors `content-service`'s/`task-service`'s/`ecommerce-service`'s `security/` exactly).
+  `SecurityConfig` — `@EnableWebSecurity` + `@EnableMethodSecurity` (this module's own copy now
+  declares it, not `gateway`'s — needed here because `IngestionApi` is the only thing in the whole
+  reactor with a `@PreAuthorize("hasRole('ADMIN')")` method); rules: `/actuator/**` permits all,
+  `/api/v1/admin/**` requires `ROLE_ADMIN`, everything else requires authentication.
+  `KeycloakRealmRoleConverter` maps `realm_access.roles` to `ROLE_*` authorities, duplicated from
+  every other module's converter of the same name (no Maven dependency to share it through).
+  `KeycloakJwtAuthenticationConverter` builds the `CustomOAuth2User` principal directly from the
+  verified JWT's claims (`sub` → `userUuid`) — no local `User` row at all, mirroring
+  `content-service`'s/`task-service`'s converter rather than `gateway`'s/`identity-service`'s (see
+  the Rules section below for why `ChatSession`/`PipelineMetrics` don't need one either).
+  `CurrentUserResolver` reads the authenticated `CustomOAuth2User` principal's UUID straight off the
+  principal — no database lookup. `CorsConfig`, `JsonAuthenticationEntryPoint` round out the package,
+  same shape as every other standalone service's `security/`.
+- `config/web/CurrentUserIdArgumentResolver` (`@Component`, resolves
+  `common.annotation.CurrentUserId String`-annotated controller parameters via
+  `security.CurrentUserResolver`) — duplicated from `content-service`'s/`task-service`'s class of the
+  same name; no STOMP transport here, so no message-argument-resolver counterpart is needed.
+  Registered via the existing `ChatMvcConfig`'s `addArgumentResolvers` (alongside its pre-existing
+  `addInterceptors` registration of `ChatRateLimitInterceptor` — see the Config classes table below).
+
 `exception/AiErrorCode` — `AI_*` codes (`AI_SERVICE_UNAVAILABLE`/`AI_EMBEDDING_FAILED`/
 `AI_MODEL_UNSUPPORTED`), implements `common`'s `ErrorCode` interface, same pattern as
 `content-service`'s `ContentErrorCode`. `exception/ChatErrorCode` — `CHAT_*` codes owned by
@@ -56,9 +101,9 @@ The self-contained chat-session feature also moved in full: `service/ChatSession
 `repository/ChatSessionRepository`/`ChatMessageRepository`, `exception/ChatErrorCode`,
 `dto/chat/{ChatRequest,ChatResponse,ChatSessionHistoryDto,ChatSessionSummaryDto}`,
 `config/chat/ChatSessionProperties` (`app.chat.session.*` — session TTL and rolling-summarisation
-tuning; picked up automatically by `@ConfigurationPropertiesScan` on the main application class in
-`gateway`, same as every other `@ConfigurationProperties` bean in this module). It had no consumers
-outside the chat feature, so the move was pure relocation with no API surface change.
+tuning; picked up automatically by `@ConfigurationPropertiesScan` on this module's own
+`AiServiceApplication`, same as every other `@ConfigurationProperties` bean in this module). It had
+no consumers outside the chat feature, so the move was pure relocation with no API surface change.
 
 A later audit of every class in `common` (grepping real imports across the whole reactor, not
 Javadoc mentions) found several more that had drifted there without ever gaining a second real
@@ -77,8 +122,10 @@ relocation, no logic change; `common`'s `GlobalExceptionHandler`/`ErrorResponse`
 `config/sse/SseStreamTemplate` + `SseEmitterWriter` — the reusable SSE-endpoint helper `ChatController`
 streams through, moved here too since it only exists to serve this module's own controllers.
 `SseStreamTemplate.SSE_TIMEOUT_MS` is now the single source of truth for the 60s SSE/async timeout;
-`gateway`'s `WebMvcConfig.configureAsyncSupport` reads it from here (the reference works in this
-direction only — `gateway` already depends on `ai-service`, never the reverse).
+this module's own `config/web/ChatMvcConfig.configureAsyncSupport` reads it locally now — no
+cross-module reference at all anymore. (This used to read "`gateway`'s `WebMvcConfig` reads it from
+here" — `gateway`'s `WebMvcConfig` was deleted outright once this module went standalone; there is
+no other consumer of this constant left to reference.)
 
 `config/chat/{ChatRateLimiter,RateLimitProperties}` (`app.ai.rate-limit`) and
 `config/web/{ChatRateLimitInterceptor,ChatMvcConfig}` moved in from `gateway` too, alongside
@@ -125,10 +172,12 @@ No single flat `app.ai.embedding` block — settings are split by concern:
 
 `RateLimitProperties` (`app.ai.rate-limit`) lives in `config/chat/` alongside `ChatRateLimiter` —
 moved in from `gateway` once it became clear rate limiting only ever protected this module's own
-chat endpoint. `ChatMvcConfig` (`config/web/`) registers `ChatRateLimitInterceptor` for
-`/api/v1/chat/**` via its own `WebMvcConfigurer` bean — Spring composes every `WebMvcConfigurer` in
-the context automatically, so this module doesn't need `gateway`'s `WebMvcConfig` to register
-interceptors on its behalf.
+chat endpoint. `ChatMvcConfig` (`config/web/`) registers both `ChatRateLimitInterceptor` for
+`/api/v1/chat/**` (`addInterceptors`) and this module's own `CurrentUserIdArgumentResolver`
+(`addArgumentResolvers`, added during this module's standalone extraction — see the top of this
+file) — Spring composes every `WebMvcConfigurer` in the context automatically, so this module
+doesn't need any `gateway`-hosted `WebMvcConfig` to register either on its behalf; `gateway` has no
+`WebMvcConfig` of its own left at all now that it has zero embedded feature modules.
 
 ```yaml
 app:
@@ -159,13 +208,15 @@ beans, one per `chat-models.profiles` entry; `ChatModelResolver` picks the entry
 
 ### Async
 
-`sseStreamExecutor` (configured in `gateway`, 10 core / 50 max / queue 100) feeds SSE streaming and MVC
-async dispatch; `@EventHandler`-annotated listeners (e.g. `PipelineCompletedEventListener`) run on
-the separate `asyncEventExecutor` pool instead — now configured in `infra` itself (its own
-`AsyncEventThreadPoolConfig`), see `infra/CLAUDE.md`. Don't assume both event dispatch and SSE
-streaming share one pool; they're deliberately separate bulkheads. `sseStreamExecutor`'s bean
-still lives in `gateway` (`ThreadPoolConfig`) even though `ChatController`/`SseStreamTemplate` now
-live here — it's injected by type/qualifier, no package coupling either way.
+`sseStreamExecutor` (`config/thread/ThreadPoolConfig`/`ThreadPoolProperties`, `app.threads.sse-executor.*`,
+10 core / 50 max / queue 100) feeds SSE streaming and MVC async dispatch; `@EventHandler`-annotated
+listeners (e.g. `PipelineCompletedEventListener`) run on the separate `asyncEventExecutor` pool
+instead — configured in `infra` itself (its own `AsyncEventThreadPoolConfig`), see `infra/CLAUDE.md`.
+Don't assume both event dispatch and SSE streaming share one pool; they're deliberately separate
+bulkheads. `sseStreamExecutor`'s bean was moved here **verbatim** from `gateway`'s now-deleted
+`config/thread/ThreadPoolConfig`/`ThreadPoolProperties` as part of this module's standalone
+extraction — `ChatController`/`SseStreamTemplate` already lived here, so the executor they run on now
+does too; no behavioral change, injected by type/qualifier the same way it always was.
 
 ## Rules specific to this module
 
@@ -183,16 +234,19 @@ live here — it's injected by type/qualifier, no package coupling either way.
   `EmbeddingIndexServiceImpl` now read/write content-item data exclusively through
   `service/ContentServiceClient` (a `RestClient` call to `content-service`'s
   `/internal/content-items/**` API, configured via `config/ContentServiceClientProperties`/
-  `app.content-service.*` — `base-url` points at this same process today and will change to that
-  module's own host:port once it's actually extracted; the shared `X-Internal-Api-Key` header must
+  `app.content-service.*` — `base-url` points at `content-service`'s own genuinely separate
+  host:port (`http://localhost:8085` locally, `http://content-service:8085` in the apps compose file)
+  now that both modules are standalone processes; the shared `X-Internal-Api-Key` header must
   match `content-service`'s own `app.internal-api.key`). `dto/client/ContentItemDto` is this
   module's own duplicated copy of that API's response shape — same "duplicate, don't share
   cross-service DTOs" convention every `KeycloakJwtAuthenticationConverter` duplicate in this
-  codebase already follows. **Never add a dependency on `gateway`, `social-service`, or
+  codebase already follows. **Never add a Maven dependency on `gateway`, `social-service`, or
   `content-service`** here — any future need for `content-service` data must go through
-  `ContentServiceClient`/a new internal-API endpoint, never a resurrected Maven dependency. This is
-  why `SseStreamTemplate` owns its own `SSE_TIMEOUT_MS` constant instead of reading `gateway`'s
-  `WebMvcConfig` — the reference must only ever point from `gateway` inward.
+  `ContentServiceClient`/a new internal-API endpoint, never a resurrected Maven dependency; a real
+  cross-service call always means HTTP now that every module in this reactor is (or, for `gateway`,
+  never was) a standalone deployable. This is also why `SseStreamTemplate` owns its own
+  `SSE_TIMEOUT_MS` constant, read locally by this module's own `ChatMvcConfig` — there is no
+  `gateway`-hosted `WebMvcConfig` left anywhere in this reactor to read it from anymore.
 - **`SearchDocument` was deleted, not converted** — an audit while doing the above found it had
   zero consumers anywhere in the reactor (no repository, no service, no controller) and mapped to a
   `SEARCH_DOCUMENT` table that no Liquibase changeset ever created; with `hibernate.ddl-auto:
@@ -201,23 +255,68 @@ live here — it's injected by type/qualifier, no package coupling either way.
   rather than given the same `contentItemId` treatment as `ContentEmbedding`.
 - Since the REST layer moved in (see above), this module also declares
   `spring-boot-starter-web` (`@RestController`/`ResponseEntity`/`SseEmitter`/`MediaType`),
-  `spring-boot-starter-validation` (`@Valid` on `ChatRequest`), `spring-boot-starter-security`
-  (method-security annotations only — `@PreAuthorize("hasRole('ADMIN')")` on `IngestionApi`;
-  `@EnableMethodSecurity` itself is still declared once, in `gateway`'s `SecurityConfig`, and applies
-  across the whole Spring context regardless of which module the annotated method lives in),
-  `spring-boot-starter-data-redis` + `bucket4j-redis` (`ChatRateLimiter`'s per-user buckets), and
-  `spring-boot-starter-oauth2-client` (`optional=true`, type support only — `ChatRateLimitInterceptor`
-  reads `common.dto.CustomOAuth2User` off the `SecurityContext`).
+  `spring-boot-starter-validation` (`@Valid` on `ChatRequest`), `spring-boot-starter-oauth2-resource-server`
+  (this module's own JWT verification, now that it's standalone), `spring-boot-starter-security`
+  (`@PreAuthorize("hasRole('ADMIN')")` on `IngestionApi` plus this module's own filter chain — its own
+  `security/SecurityConfig` now declares `@EnableWebSecurity` **and** `@EnableMethodSecurity` itself;
+  this used to be declared once in `gateway`'s `SecurityConfig` and apply reactor-wide regardless of
+  which module the annotated method lived in — that stopped being possible the moment this module
+  became a separate deployable, and `IngestionApi` is the only `@PreAuthorize`-annotated method left
+  in the whole reactor now that `gateway` has no controllers of its own), `spring-boot-starter-data-redis`
+  + `bucket4j-redis` (`ChatRateLimiter`'s per-user buckets, `config/RedisConfig`'s
+  `bucket4jRedisConnection` bean — see the dead-code finding below), and `spring-boot-starter-oauth2-client`
+  (a real runtime dependency now, not `optional=true` — needed for `CustomOAuth2User`'s `OAuth2User`
+  supertype and `ChatRateLimitInterceptor`'s read of it off the `SecurityContext`).
+- **`config/RedisConfig` carries only the `bucket4jRedisConnection` bean, not a full
+  `@EnableCaching`/`RedisCacheManager` setup — because that other half was dead code, not because it
+  didn't fit here.** While extracting this module, a reactor-wide grep for
+  `@Cacheable`/`@CacheEvict`/`@CachePut` came back with **zero real usages anywhere in the whole
+  codebase**. `gateway`'s old `RedisCacheConfig` declared `@EnableCaching` plus a `cacheManager`/
+  `baseRedisCacheConfiguration` bean pair (backed by `infra`'s `CacheTtlProperties`/`CacheNames`) that
+  had been wired up and shipped but never actually consumed by a single Spring-managed cache
+  annotation — the same class of finding as `SearchDocument` (see above): a scaffold that looked
+  load-bearing but wasn't. Rather than move dead beans into this module's own `config/`, they were
+  deleted outright, along with `infra.CacheTtlProperties`/`CacheNames` (now fully orphaned once
+  `RedisCacheConfig` was gone). Only the one bean this module's own `ChatRateLimiter` actually needs
+  (`bucket4jRedisConnection`, a raw Lettuce `StatefulRedisConnection` for Bucket4j's binary bucket
+  state) moved here, into its own `RedisConfig`. If a real `@Cacheable` use case shows up later, add
+  `@EnableCaching`/a `RedisCacheManager` back here from scratch rather than assuming the deleted
+  classes are worth resurrecting as-is.
 - **New pgvector-typed fields must use `FloatArrayToVectorConverter` + `@JdbcType(PgVectorJdbcType.class)`
   together** — `@JdbcTypeCode(SqlTypes.OTHER)` does *not* work as a substitute for this
   Hibernate 6 + PostgreSQL combination (resolves to the wrong `JdbcType` and fails on write). See
   `ContentEmbedding.embedding`'s Javadoc for the full explanation if this needs revisiting.
-- **Content+AI indexing orchestration belongs here, not `gateway`, whenever it only needs
-  `content-service` + `ai-service`.** The previous rule (keep it in `gateway` because that's "the only
-  module allowed to depend on two feature modules") no longer applies to this specific pairing —
-  `ai-service` already depends on `content-service` in its own right (see above), so it's the more
-  specific owner. Only escalate new orchestration to `gateway` if it genuinely needs a *third* module
-  (e.g. `social-service`) that `ai-service` must never depend on.
+- **`ChatSession.userId: Integer` → `userUuid: String`, `PipelineMetrics.userId: Integer` →
+  `userUuid: String`, claims-based, mirroring `task-service`'s `ownerUuid`/`content-service`'s
+  `authorUuid`.** Confirmed via an explicit user-facing `AskUserQuestion` before applying it (the
+  claims-based option was recommended and chosen) — a chat session or a pipeline-metrics row only
+  ever needs "is this the caller's own session/row," never another user's profile data, so there's no
+  reason to justify a persisted `User` copy just for this module. Every method that took/returned
+  `Integer userId` in the chat+pipeline-metrics feature was renamed to `String userUuid` throughout:
+  `ChatSessionRepository`, `ChatSessionService`/`Impl`, `RagQueryService`/`Impl`,
+  `RagPipelineContext`, `PipelineCompletedEventListener`, `ChatApi`/`ChatController`. The columns
+  renamed the same way (`USER_ID` → `USER_UUID`) in `DKP-0032` (see below) — no FK to any `USER`
+  table either before or after, since these are append-only/session rows that must survive a user's
+  deletion from whichever app JIT-provisioned them.
+- **Two native-SQL schema literals needed fixing on top of the usual `@Table(schema=...)` sweep**,
+  since these don't go through Hibernate's schema resolution at all: `ContentEmbeddingRepository`'s
+  three native queries (`product.content_embedding` → `ai.content_embedding`) and
+  `PipelineMetricsRepository`'s native aggregate query (`product.PIPELINE_METRICS` →
+  `ai.PIPELINE_METRICS`). A plain `@Table(schema=...)` removal (done here too, on `ChatSession`/
+  `PipelineMetrics`/`ChatMessage`/`SysParam` — `ContentEmbedding` never had one) only fixes
+  Hibernate-generated SQL; a hand-written native query with a hardcoded schema prefix silently keeps
+  pointing at the old schema regardless, and this module has both kinds. Grep for `product\.` /
+  `"product"` across `repository/` whenever a future native query is added here.
+- **Content+AI indexing orchestration belongs here, not `gateway`.** The old rule ("only `gateway`
+  can depend on two feature modules, so cross-module orchestration lives there") stopped applying to
+  this specific pairing back when `ai-service` still had a real Maven dependency on `content-service`
+  — this module was always the more specific owner able to see both without `gateway`'s help. That
+  Maven dependency is gone now (see above; the two talk over HTTP only), and `gateway` itself has no
+  embedded feature modules left to orchestrate between at all — but the orchestration still belongs
+  here regardless, as this module's own indexing pipeline reaching out to a sibling service, not a
+  `gateway` concern reborn. A genuinely new orchestration need spanning two *standalone* services with
+  no dependency relationship between them would be the one case worth revisiting this for, and would
+  need a real HTTP call either way, not a resurrected Maven dependency.
 - Every RAG-affecting threshold (similarity, top-k, guard thresholds) should be a
   `@ConfigurationProperties` field with a sensible default, not a hardcoded constant — that's the
   established pattern for every existing stage.

@@ -8,30 +8,35 @@ dev-knowledge-platform/
 │                        the @CurrentUserId annotation; depends on Spring Data JPA (for @Entity), validation,
 │                        web, security (all as annotation/type support, not full autoconfiguration)
 ├── infra/            — shared Spring infrastructure: event base classes, composed annotations, MDC utilities,
-│                        SlugService, StorageService (MinIO), Redis cache TTL config
-├── ai-service/       — RAG pipeline (embedding, vector search, LLM generation via LangChain4j), the RAG-chat
-│                        REST feature, and the content-indexing orchestration layer (own REST layer too)
+│                        SlugService, StorageService (MinIO)
 ├── gateway/          — security/JWT-filter wiring, Liquibase migrations, Spring Boot entry
-│                        point. Holds **zero REST controllers of its own** (renamed from `api` once the last
-│                        one moved out — see `docs/CHANGELOG.md`)
+│                        point. Holds **zero REST controllers of its own and zero embedded feature
+│                        modules** (renamed from `api` once the last controller moved out — see
+│                        `docs/CHANGELOG.md`)
 └── gui/              — React 18 + TypeScript + MUI frontend (Vite)
 ```
 
-`content-service/`, `ecommerce-service/`, `identity-service/`, `task-service/`, and
-`social-service/` are deliberately **not** in the tree above: all five are standalone Spring Boot
+`content-service/`, `ecommerce-service/`, `identity-service/`, `task-service/`, `social-service/`,
+and `ai-service/` are deliberately **not** in the tree above: all six are standalone Spring Boot
 applications, not part of this dependency graph at all (own schema, own JWT verification, own
 port; `gateway` has no Maven dependency on any of them, each extracted one at a time as a
 microservices-study exercise — see their own `## content-service`/`## ecommerce-service`/
-`## identity-service`/`## task-service`/`## social-service` sections further down and root
-`CLAUDE.md`). All five still compile against `common`+`infra` as ordinary library dependencies.
+`## identity-service`/`## task-service`/`## social-service`/`## ai-service` sections further down
+and root `CLAUDE.md`). All six still compile against `common`+`infra` as ordinary library
+dependencies. `ai-service` was the sixth and final extraction — `gateway` now has **zero** embedded
+feature modules left, closing out the microservices-extraction-plan project (see root `CLAUDE.md`'s
+Long-term direction section). `infra`'s Redis cache TTL config (`CacheTtlProperties`/`CacheNames`)
+was deleted outright during `ai-service`'s extraction, not moved — see that module's own section
+further down for the dead-code finding.
 
 `ai-service` depends only on `common`+`infra` now — **not** `common` ← `infra` ← `content-service`
-← `ai-service` as this file used to describe. It used to carry a single, real, one-directional
-Maven dependency on `content-service` (`ContentEmbedding`'s `@ManyToOne` FK to `ContentItem`,
-`ContentIngestionService.ingest(...)` taking a live `ContentItem` parameter, and
-`PublicContentApi`/`PublicContentController` fronting `content-service`'s own services) — all three
-were removed as part of `content-service`'s own standalone-service extraction (see that module's
-own section further down): `ContentEmbedding` now carries a plain `contentItemId` column instead of
+← `ai-service` as this file used to describe, nor `gateway` → `ai-service` as it described more
+recently. It used to carry a single, real, one-directional Maven dependency on `content-service`
+(`ContentEmbedding`'s `@ManyToOne` FK to `ContentItem`, `ContentIngestionService.ingest(...)` taking
+a live `ContentItem` parameter, and `PublicContentApi`/`PublicContentController` fronting
+`content-service`'s own services) — all three were removed as part of `content-service`'s own
+standalone-service extraction, well before `ai-service`'s own extraction (see that module's own
+section further down): `ContentEmbedding` now carries a plain `contentItemId` column instead of
 a JPA association, `ai-service`'s indexing pipeline calls a `ContentServiceClient` (HTTP, against
 `content-service`'s own `/internal/content-items/**` API) instead, and
 `PublicContentApi`/`PublicContentController` moved back into `content-service` outright.
@@ -40,11 +45,12 @@ its own one-directional dependency on `identity-service` (`UserApi`'s `search`/`
 and `task-service` used to be a fourth parallel sibling with its own one-directional dependency on
 `content-service` — all removed once the target module became a standalone service and could no
 longer be reached in-process, before each was itself extracted in turn (see below). `gateway`
-depends only on `ai-service` now (its one remaining embedded feature module); the "only module
-allowed to depend on more than one feature module, reserved for orchestration with no dependency
-relationship possible between the two" rule is currently moot in practice — there's only one
-embedded feature module left, and no orchestration endpoint needing two modules exists — which is
-why `gateway` has no REST layer of its own today. `gui` is independent of the whole Java reactor.
+depends only on `common`+`infra` now — **zero embedded feature modules remain**, `ai-service` having
+been the last one. The "only module allowed to depend on more than one feature module, reserved for
+orchestration with no dependency relationship possible between the two" rule is now doubly moot in
+practice — there are zero embedded feature modules left for `gateway` to depend on more than one of
+— which is why `gateway` has no REST layer of its own today. `gui` is independent of the whole Java
+reactor.
 
 `ai-service` owns its own full vertical slice — entities/services *and* REST controllers, DTOs,
 MapStruct mappers — rather than the earlier shape where `api` (now `gateway`) centralized every
@@ -52,9 +58,9 @@ controller/DTO/mapper regardless of which module owned the underlying entity. Th
 shape kept these modules transport-agnostic; the vertical-slice shape trades that away
 deliberately, in favor of each module being closer to an independently-deployable unit ahead of an
 eventual microservices split (see `docs/CHANGELOG.md`'s `[Unreleased]` entries for the full
-rationale and what moved). `content-service`, `identity-service`, `task-service`, and
-`social-service` still own their own full vertical slice too — they just do so as standalone apps
-now rather than embedded modules (see their own sections further down).
+rationale and what moved). `content-service`, `identity-service`, `task-service`, `social-service`,
+and now `ai-service` itself all own their own full vertical slice too — they just do so as
+standalone apps now rather than embedded modules (see their own sections further down).
 
 ---
 
@@ -132,16 +138,17 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
 │   ├── storage/{StorageConfig,StorageProperties}.java — MinioClient bean + app.storage.* properties;
 │   │                                    moved here from gateway (named api at the time) alongside
 │   │                                    StorageService below
-│   ├── cache/{CacheNames,CacheTtlProperties}.java — Redis cache-name constants + app.cache.* TTL
-│   │                                    binding, read by `gateway`'s `RedisCacheConfig`. Originally
-│   │                                    moved here because `identity-service`'s (now-deleted)
-│   │                                    `StateTokenServiceImpl` needed it too — see the Keycloak
-│   │                                    migration entry in `docs/CHANGELOG.md`
+│   (no cache/ package anymore — CacheNames/CacheTtlProperties were deleted outright, not moved,
+│    during ai-service's standalone extraction: they backed gateway's old RedisCacheConfig, and a
+│    reactor-wide grep for @Cacheable/@CacheEvict/@CachePut found zero real usages anywhere in the
+│    codebase — see ai-service/CLAUDE.md's Rules section for the full dead-code finding)
 │   └── thread/{AsyncEventThreadPoolConfig,AsyncEventThreadPoolProperties}.java — the
 │                                        asyncEventExecutor bean (app.threads.async-event.*); moved
 │                                        here from gateway since this module's own event/ framework
-│                                        (below) is what actually owns this pool's purpose. gateway's
-│                                        sseStreamExecutor (a separate bulkhead) stays there.
+│                                        (below) is what actually owns this pool's purpose. The
+│                                        sseStreamExecutor pool (a separate bulkhead) no longer lives
+│                                        in gateway either — it moved to ai-service's own
+│                                        config/thread/ once that module went standalone.
 └── service/
     ├── SlugService.java              — toSlug(String), generateUniqueSlug(...) (two overloads: create vs
     │                                    update-excluding-self); lives here (not content-service) because it's a
@@ -598,8 +605,45 @@ as `ecommerce-service`/`identity-service`/`task-service`.
 
 ## ai-service
 
+RAG pipeline (embedding, vector search, LLM generation via LangChain4j), the RAG-chat REST feature,
+and the content-indexing orchestration layer. **Now a standalone Spring Boot application, not part
+of the monolith** — the sixth and final module pulled out, following the
+`ecommerce-service`/`identity-service`/`task-service`/`social-service`/`content-service` precedent
+(see the `project-microservices-extraction-plan` memory for the full history of all six). `gateway`
+has **zero** embedded feature modules remaining after this extraction. Concretely: its own
+`AiServiceApplication` entry point (`@SpringBootApplication` + `@ConfigurationPropertiesScan` +
+`@EnableAsync`, no `@EntityScan`/`@EnableJpaRepositories` — this module never touches
+`common.entity.User`), its own `ai` Postgres schema (same `dev-premier` database, its own
+`hibernate.default_schema: ai`), its own port (`8086`), and its own Liquibase changelog
+(`database/sql/ai-service.xml` + `DKP-0032`, a fresh snapshot of `CONTENT_EMBEDDING`/`CHAT_SESSION`/
+`CHAT_MESSAGE`/`SYS_PARAM`/`PIPELINE_METRICS`, not a replay of `gateway`'s incremental history — same
+convention every other standalone service's changelog already follows). Unlike `content-service`'s
+extraction, this one needed no HTTP rewrite of its own — `ai-service` already had zero Maven
+dependency on `content-service` going into this extraction (severed during *that* module's own
+extraction, not this one); the work here was giving `ai-service` its own app shell/security/schema
+and severing `gateway`'s Maven dependency on `ai-service`, plus relocating the runtime
+infrastructure `ai-service`'s own controllers/services actually use (`sseStreamExecutor`, the
+Bucket4j Redis connection) out of `gateway`. Its own `Dockerfile` and
+`dev-knowledge-platform-apps-docker-compose.yml`/`ai-service-liquibase.yml` wiring are in place now
+(port `8086`); `gateway`-side HTTP proxying for end-user traffic to this service is not built yet,
+same as every other standalone service in this reactor.
+
 ```
 ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
+├── AiServiceApplication.java  — @SpringBootApplication + @ConfigurationPropertiesScan (required —
+│                                 this module no longer rides on gateway's scan) + @EnableAsync;
+│                                 no @EntityScan/@EnableJpaRepositories (no common.entity.User usage)
+├── security/                  — this app's own filter chain (mirrors content-service's/
+│   │                             task-service's exactly): SecurityConfig (@EnableWebSecurity +
+│   │                             @EnableMethodSecurity — needed here since IngestionApi is the only
+│   │                             @PreAuthorize("hasRole('ADMIN')") method left in the whole reactor;
+│   │                             rules: /actuator/** permitAll, /api/v1/admin/** hasRole(ADMIN),
+│   │                             everything else authenticated), KeycloakRealmRoleConverter,
+│   │                             KeycloakJwtAuthenticationConverter (builds CustomOAuth2User
+│   │                             straight from JWT claims — sub → userUuid, no DB read/write at
+│   │                             all, mirrors content-service's/task-service's converter, not
+│   │                             gateway's/identity-service's), CurrentUserResolver, CorsConfig,
+│   │                             JsonAuthenticationEntryPoint
 ├── api/                       — REST layer, moved in from `gateway` (named `api` at the time —
 │   │                             content+AI orchestration and the self-contained chat feature are
 │   │                             both owned here now — see ai-service/CLAUDE.md for why the old
@@ -618,8 +662,9 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ├── config/
 │   ├── sse/
 │   │   ├── SseStreamTemplate.java  — reusable SSE-endpoint helper; owns SSE_TIMEOUT_MS (60_000L) —
-│   │   │                             gateway's WebMvcConfig.configureAsyncSupport reads this constant
-│   │   │                             (not the other way round: ai-service must never depend on gateway)
+│   │   │                             this module's own config/web/ChatMvcConfig.configureAsyncSupport
+│   │   │                             reads this constant locally now (gateway's WebMvcConfig, the old
+│   │   │                             reader, was deleted outright once this module went standalone)
 │   │   └── SseEmitterWriter.java   — guards every SSE write: disconnect check, IOException handling, double-complete guard
 │   ├── chat/
 │   │   ├── ChatSessionProperties.java — @ConfigurationProperties at app.chat.session.*; ttlHours,
@@ -631,13 +676,44 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   │   └── RateLimitProperties.java    — @ConfigurationProperties at app.ai.rate-limit; requestsPerMinute
 │   │                                     (10), requestsPerHour (100), bucketExpiration (PT2H)
 │   ├── web/
-│   │   ├── ChatRateLimitInterceptor.java — HandlerInterceptor; consumes one ChatRateLimiter token
-│   │   │                                    per POST /api/v1/chat/** request
-│   │   └── ChatMvcConfig.java             — this module's own WebMvcConfigurer bean, registers
-│   │                                        ChatRateLimitInterceptor — Spring composes every
-│   │                                        WebMvcConfigurer in the context automatically, so this
-│   │                                        module doesn't need gateway's WebMvcConfig to register
-│   │                                        interceptors on its behalf
+│   │   ├── ChatRateLimitInterceptor.java     — HandlerInterceptor; consumes one ChatRateLimiter token
+│   │   │                                        per POST /api/v1/chat/** request
+│   │   ├── CurrentUserIdArgumentResolver.java — @Component, resolves common.annotation.CurrentUserId
+│   │   │                                        String-annotated controller parameters via
+│   │   │                                        security.CurrentUserResolver; duplicated from
+│   │   │                                        content-service's/task-service's class of the same
+│   │   │                                        name, added here during this module's standalone
+│   │   │                                        extraction (no STOMP transport here, so no
+│   │   │                                        message-argument-resolver counterpart needed)
+│   │   └── ChatMvcConfig.java                 — this module's own WebMvcConfigurer bean, registers
+│   │                                            ChatRateLimitInterceptor (addInterceptors) AND
+│   │                                            CurrentUserIdArgumentResolver (addArgumentResolvers)
+│   │                                            — Spring composes every WebMvcConfigurer in the
+│   │                                            context automatically, so this module doesn't need
+│   │                                            any gateway-hosted WebMvcConfig to register either
+│   │                                            on its behalf (gateway has none left at all)
+│   ├── thread/
+│   │   ├── ThreadPoolProperties.java — @ConfigurationProperties at app.threads.*; sseExecutor:
+│   │   │                                corePoolSize (10), maxPoolSize (50), queueCapacity (100),
+│   │   │                                awaitTerminationSeconds (30); moved here **verbatim** from
+│   │   │                                gateway's now-deleted config/thread/ThreadPoolProperties
+│   │   └── ThreadPoolConfig.java      — Factory Method: creates sseStreamExecutor (SSE/MVC async
+│   │                                     dispatch), registered with ExecutorServiceMetrics
+│   │                                     (Micrometer Decorator); moved here **verbatim** from
+│   │                                     gateway's now-deleted config/thread/ThreadPoolConfig — no
+│   │                                     behavioral change, ChatController/SseStreamTemplate already
+│   │                                     lived here
+│   ├── RedisConfig.java       — this module's own Redis wiring, moved in from gateway's
+│   │                             RedisCacheConfig. Only the bucket4jRedisConnection bean
+│   │                             (StatefulRedisConnection<String,byte[]> for ChatRateLimiter's
+│   │                             binary bucket state) made the move — RedisCacheConfig's other two
+│   │                             beans (cacheManager, baseRedisCacheConfiguration — the
+│   │                             @EnableCaching machinery) were found to have zero
+│   │                             @Cacheable/@CacheEvict/@CachePut consumers anywhere in the reactor
+│   │                             during this extraction, so they were deleted outright rather than
+│   │                             moved (see the dead-code bullet in ai-service/CLAUDE.md's Rules
+│   │                             section) — infra's CacheTtlProperties/CacheNames, which backed
+│   │                             those two beans, were deleted in the same pass, now fully orphaned
 │   ├── AiServiceConfig.java   — builds Map<String,ChatLanguageModel> + Map<String,StreamingChatLanguageModel>,
 │   │                             one entry per ChatModelsConfig.ChatModelProfile (OpenAI or Anthropic builder
 │   │                             depending on provider), keyed by profile id; injects OkHttpProperties for timeout
@@ -728,8 +804,8 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── ContentEmbedding.java         — embedding vector (1536-dim), chunkText, sourceType,
 │   │                                    chunkIndex, modelName, tokenCount, contentItemId (plain
 │   │                                    column, not a @ManyToOne FK — ContentItem lives in
-│   │                                    content-service's own database once that module is
-│   │                                    extracted; see root CLAUDE.md's Long-term direction),
+│   │                                    content-service's own database, a genuinely separate
+│   │                                    process/schema now; see root CLAUDE.md's Long-term direction),
 │   │                                    metadata (JSONB: categoryId, categoryName, tagIds, tagNames)
 │   ├── PipelineMetrics.java          — append-only analytics entity (no AbstractEntity); columns: traceId, createdAt,
 │   │                                    abortedAt, candidateCount, afterScoringCount, selectedCount,
@@ -737,9 +813,14 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   │                                    latency: contextualizationMs, embeddingMs, retrievalMs, llmGenerationMs, totalPipelineMs;
 │   │                                    tokens: contextualizationInputTokens, contextualizationOutputTokens, embeddingTokens,
 │   │                                    qualityEmbeddingTokens, generationInputTokens, generationOutputTokens, estimatedCostUsd;
-│   │                                    attribution: userId (no FK — analytics rows must survive user deletion),
+│   │                                    attribution: userUuid (plain String column, no FK — claims-based, mirroring
+│   │                                    task-service's ownerUuid/content-service's authorUuid; renamed from userId:
+│   │                                    Integer during this module's standalone extraction, USER_ID → USER_UUID in
+│   │                                    DKP-0032 — analytics rows must survive user deletion regardless),
 │   │                                    chatModel (id of the resolved chat model profile; NULL pre-DKP-0012 rows)
-│   ├── ChatSession.java              — userId, title, lastActivityAt, summary (TEXT); parent of ChatMessage rows;
+│   ├── ChatSession.java              — userUuid (plain String column, renamed from userId: Integer during this
+│   │                                    module's standalone extraction, same claims-based reasoning as PipelineMetrics
+│   │                                    above), title, lastActivityAt, summary (TEXT); parent of ChatMessage rows;
 │   │                                    moved in from common — its repository (below) already lived here
 │   ├── ChatMessage.java              — role (ChatMessageRole), content, turnIndex; child of ChatSession; moved in
 │   │                                    from common alongside ChatSession
@@ -756,7 +837,7 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   │                                    trace: traceId (UUID), spans (List<StageSpan>), elapsedMs();
 │   │                                    cost/latency: llmGenerationMs, contextualizationInput/OutputTokens,
 │   │                                    embeddingTokens, qualityEmbeddingTokens, generationInput/OutputTokens;
-│   │                                    attribution: userId (nullable)
+│   │                                    attribution: userUuid (nullable String, renamed from userId: Integer)
 │   ├── RagPipelineStage.java         — @FunctionalInterface: process(ctx) + default execute(ctx) (Template Method: times process + records span)
 │   ├── RagPipelineRunner.java        — assembles ordered stages, stops on abort; emits PIPELINE_TRACE log after every run
 │   ├── VectorUtils.java              — package-private: dotProduct, toVectorString
@@ -784,11 +865,22 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   │                                       (backs EmbeddingIndexServiceImpl's indexed filter, see below),
 │   │                                       findStatsByContentItemIds(List<Integer>) → List<EmbeddingStatsProjection>
 │   │                                       (JPQL: COUNT/SUM/MAX grouped by content item ID),
-│   │                                       computeGlobalCentroid(), computeCentroidBySourceType(String)
+│   │                                       computeGlobalCentroid(), computeCentroidBySourceType(String) —
+│   │                                       its 3 native queries' hardcoded product.content_embedding
+│   │                                       table prefix was fixed to ai.content_embedding during this
+│   │                                       module's standalone extraction (a plain @Table(schema=...)
+│   │                                       removal doesn't touch a hand-written native query's own
+│   │                                       schema-qualified table name)
 │   ├── PipelineMetricsRepository.java    — JpaRepository<PipelineMetrics, Integer>; append-only analytics writes;
-│   │                                        fetchSummary(Instant) — native query using percentile_cont WITHIN GROUP
-│   ├── ChatSessionRepository.java        — findByIdAndUserId (ownership check), findSessionSummariesByUserId
-│   │                                        (JPQL "new" projection into ChatSessionSummaryDto, COUNT(m) join)
+│   │                                        fetchSummary(Instant) — native query using percentile_cont WITHIN GROUP;
+│   │                                        its hardcoded product.PIPELINE_METRICS table prefix was fixed to
+│   │                                        ai.PIPELINE_METRICS during this module's standalone extraction, same
+│   │                                        reasoning as ContentEmbeddingRepository above
+│   ├── ChatSessionRepository.java        — findByIdAndUserUuid (ownership check, renamed from
+│   │                                        findByIdAndUserId during this module's standalone
+│   │                                        extraction), findSessionSummariesByUserUuid (renamed from
+│   │                                        findSessionSummariesByUserId; JPQL "new" projection into
+│   │                                        ChatSessionSummaryDto, COUNT(m) join)
 │   ├── ChatMessageRepository.java        — findByChatSession_IdOrderByTurnIndexAsc/Desc, findMaxTurnIndexBySessionId
 │   └── SysParamRepository.java           — JpaRepository<SysParam, Integer>; findByName(ParamKey); moved in
 │                                            from common — audit found zero real consumers outside this module
@@ -816,7 +908,8 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
     ├── ConversationTopicGuardService.java       — pre-pipeline topic shift guard: embeds question + history fingerprint; strips recent turns on shift
     ├── PipelineMetricsSummaryService.java       — interface: getSummary(MetricsPeriod); returns PipelineMetricsSummary
     ├── RagQueryService.java                     — interface: query() + queryStream();
-    │                                               primary overloads accept ConversationContext + RagFilter + userId + chatModel
+    │                                               primary overloads accept ConversationContext + RagFilter + userUuid + chatModel
+    │                                               (renamed from userId: Integer during this module's standalone extraction)
     ├── RagStreamHandler.java                    — SSE callback interface
     ├── ChatSessionService.java                  — interface: getOrCreateSessionId, getRecentTurns, getConversationContext,
     │                                               addTurn, listSessions, getHistory (session lifecycle + rolling summarisation)
@@ -1287,47 +1380,32 @@ for the rules this module follows.
 
 Renamed from `api` once its last REST controller (`UserApi.search`/`getPublicProfile`) moved to
 `social-service` (see `docs/CHANGELOG.md`) — this module holds **zero REST controllers of its own**
-today. Still the Spring Boot entry point and, nominally, the one module allowed to depend on more
-than one feature module — though that's moot in practice now, since `content-service`'s own
-extraction left `ai-service` as the only embedded feature module remaining (it depends on just
-`ai-service` now).
+today. Still the Spring Boot entry point and, nominally, "the one module allowed to depend on more
+than one feature module" — but that's now **doubly** moot: `ai-service`'s own extraction removed the
+last embedded feature module, so `gateway` depends on nothing but `common`+`infra` and has **zero**
+embedded feature modules left to depend on more than one of. This closes out the
+microservices-extraction-plan project — see root `CLAUDE.md`'s Long-term direction section.
 
 ```
 gateway/src/main/java/com/ttg/devknowledgeplatform/
-├── config/                           — chat-specific rate limiting (ChatRateLimiter/RateLimitProperties/
-│   │                                    ChatRateLimitInterceptor) and the asyncEventExecutor bean have
-│   │                                    both since moved out — to ai-service and infra respectively,
-│   │                                    each the module that actually owns that concern's purpose
-│   ├── JacksonConfig.java             — shared ObjectMapper customization
-│   ├── cache/RedisCacheConfig.java    — @EnableCaching; base RedisCacheConfiguration + per-cache TTL
-│   │                                    RedisCacheManager (reads infra's CacheTtlProperties); dedicated
-│   │                                    Bucket4j Redis connection (also used by ai-service's
-│   │                                    ChatRateLimiter, injected there by type — no import needed)
-│   ├── thread/
-│   │   ├── ThreadPoolProperties.java — @ConfigurationProperties at app.threads.*; nested SseExecutor
-│   │   │                               only now: corePoolSize (10), maxPoolSize (50), queueCapacity (100),
-│   │   │                               awaitTerminationSeconds (30); env-var overrides. The
-│   │   │                               AsyncEventExecutor nested class moved to infra's own
-│   │   │                               AsyncEventThreadPoolProperties (app.threads.async-event.*)
-│   │   └── ThreadPoolConfig.java     — Factory Method: creates only sseStreamExecutor (SSE/MVC async
-│   │                                   dispatch) now; registered with ExecutorServiceMetrics (Micrometer
-│   │                                   Decorator); sizing from ThreadPoolProperties. asyncEventExecutor
-│   │                                   moved to infra's own AsyncEventThreadPoolConfig
-│   └── web/
-│       ├── WebMvcConfig.java         — @EnableAsync; wires sseStreamExecutor into configureAsyncSupport
-│       │                               (timeout read from ai-service's SseStreamTemplate.SSE_TIMEOUT_MS —
-│       │                               not duplicated here, see that class) only — @Async dispatch uses
-│       │                               asyncEventExecutor via an explicit qualifier on @EventHandler.
-│       │                               Registers no interceptors of its own anymore — ai-service's own
-│       │                               ChatMvcConfig registers the chat rate-limit interceptor via its
-│       │                               own composed WebMvcConfigurer bean instead (Spring merges every
-│       │                               WebMvcConfigurer bean in the context automatically)
-│       └── CurrentUserIdArgumentResolver.java — Spring MVC HandlerMethodArgumentResolver for
-│                                       @CurrentUserId (common.annotation), reads common.dto.CustomOAuth2User
-│                                       from the SecurityContext. No
-│                                       CurrentUserIdMessageArgumentResolver here anymore — that
-│                                       STOMP-side counterpart moved to social-service alongside
-│                                       WebSocketConfig once that module was extracted
+├── config/
+│   └── JacksonConfig.java             — shared ObjectMapper customization; the only class left under
+│                                         config/ — chat-specific rate limiting
+│                                         (ChatRateLimiter/RateLimitProperties/ChatRateLimitInterceptor),
+│                                         the sseStreamExecutor pool (config/thread/), the SSE/
+│                                         @CurrentUserId MVC wiring (config/web/), and the Bucket4j
+│                                         Redis connection (config/cache/RedisCacheConfig) have all
+│                                         since moved out — to ai-service, the only module left with
+│                                         an SSE endpoint, a chat rate limit to enforce, or a REST
+│                                         controller to resolve @CurrentUserId for. RedisCacheConfig's
+│                                         other two beans (cacheManager, baseRedisCacheConfiguration —
+│                                         the @EnableCaching machinery) did NOT move anywhere: a
+│                                         reactor-wide grep for @Cacheable/@CacheEvict/@CachePut
+│                                         during ai-service's extraction found zero real usages
+│                                         anywhere in the codebase, so they were deleted outright as
+│                                         dead code instead, along with infra's
+│                                         CacheTtlProperties/CacheNames (now fully orphaned) — see
+│                                         ai-service/CLAUDE.md's Rules section for the full finding.
 ├── database/
 │   └── sql/                          — Liquibase changelogs (master: dev-knowledge-platform.xml)
 ├── (no event/ package — every listener moved into the module that owns the event it reacts to:
@@ -1389,15 +1467,17 @@ Everything that used to live flat here — every feature's REST controllers, DTO
 mappers, including the one composed `UserApi.search`/`getPublicProfile` endpoint (moved to
 `social-service`, which used to reach into `identity-service` for the base lookup before both
 modules became standalone — it resolves the base lookup itself now, against its own entity) —
-moved into the owning feature module (`content-service`, `ai-service`, `social-service`/
-`identity-service` before their later extractions); see those modules' sections and
-`docs/CHANGELOG.md`'s `[Unreleased]` entries for the full move and its rationale. Chat-specific rate
-limiting (`ChatRateLimiter`/`RateLimitProperties`/`ChatRateLimitInterceptor`) and the
-`asyncEventExecutor` thread pool moved out too, to `ai-service` and `infra` respectively — see those
-modules' sections. What's left here is transport/security edge infra (`SecurityConfig`, JWT filter,
-the `sseStreamExecutor` pool — **no STOMP wiring anymore**, see above), Liquibase migrations for
-every remaining embedded module's tables, and the seeding orchestrator (`DataSeedingRunner`, now
-narrowed to just this app's own concerns).
+moved into the owning module, each now standalone (`content-service`, `ai-service`, `social-service`,
+`identity-service`); see those modules' sections and `docs/CHANGELOG.md`'s `[Unreleased]` entries for
+the full move and its rationale. Chat-specific rate limiting
+(`ChatRateLimiter`/`RateLimitProperties`/`ChatRateLimitInterceptor`), the `sseStreamExecutor` pool,
+the Bucket4j Redis connection, and the SSE/`@CurrentUserId` MVC wiring all moved out too, to
+`ai-service` — the last module with any of those runtime concerns left to serve — and the
+`asyncEventExecutor` thread pool moved to `infra` in an earlier extraction; see those modules'
+sections. What's left here is transport/security edge infra (`SecurityConfig`, JWT filter — **no
+STOMP wiring, no SSE/thread-pool config, and no cache config anymore**, see above), Liquibase
+migrations for `product.USER` plus every now-departed module's frozen historical tables, and the
+seeding orchestrator (`DataSeedingRunner`, now narrowed to just this app's own concerns).
 
 **This module currently has no test suite of its own** — its only tests
 (`ws/AbstractStompIntegrationTest.java`/`ws/DmMessagingStompIntegrationTest.java`, plus
@@ -1490,11 +1570,15 @@ expected over time, and are modelled as data, not schema:
 
 ## Database
 
-- Schema: `product`
+- Schema: `product` — now holds only `USER` (plus the frozen, orphaned historical tables below); no
+  feature-module table maps to a live entity in `gateway`'s Spring context anymore, now that
+  `ai-service` has its own `ai` schema too.
 - Sequences: one per table (`TABLE_NAME_SEQ`)
 - Audit columns on every entity via `AbstractEntity`
-- pgvector HNSW index on `content_embedding.embedding` (cosine distance, `vector_cosine_ops`)
-- `SYS_PARAM` — general-purpose key-value table; stores corpus centroid vectors and future AI/config parameters
+- pgvector HNSW index on `ai.content_embedding.embedding` (cosine distance, `vector_cosine_ops`) —
+  lives in `ai-service`'s own `ai` schema now, not `product`
+- `SYS_PARAM` — general-purpose key-value table; stores corpus centroid vectors and future AI/config
+  parameters — also relocated to `ai-service`'s own `ai` schema (see below)
 - **Historical, orphaned:** `CATEGORY` / `TAG` / `CONTENT_ITEM` / `CONTENT_ITEM_TAG` /
   `QUESTION_ANSWER` / `ARTICLE` (`DKP-0001`-`0004`/`0009`/`0013`/`0014`/`0018`) used to back
   `content-service`'s entities of the same names while that module was still embedded. All
@@ -1514,34 +1598,45 @@ expected over time, and are modelled as data, not schema:
   `product.USER`, and no `SEED_ID` on the pair tables for either — see that module's `CLAUDE.md` for
   why (a pair's identity has no editable-field equivalent to `NAME`/`EMAIL` that could invalidate a
   pair-based idempotency check).
+- **Historical, orphaned:** `CONTENT_EMBEDDING` / `CHAT_SESSION` / `CHAT_MESSAGE` / `SYS_PARAM` /
+  `PIPELINE_METRICS` (`DKP-0005`/`DKP-0006`/`DKP-0007`/`DKP-0008`/`DKP-0010`/`DKP-0011`/`DKP-0012`)
+  used to back `ai-service`'s entities of the same names while that module was still embedded — the
+  last module to leave this list, closing out `gateway`'s embedded-feature-module history entirely.
+  All changesets are untouched (frozen, already-run history) but now describe tables `gateway`'s own
+  Spring context no longer maps any entity to — `ai-service` migrates a fresh snapshot of this same
+  shape into its own `ai` schema instead (`DKP-0032` in that module's own tree), with
+  `CHAT_SESSION.USER_UUID`/`PIPELINE_METRICS.USER_UUID` (plain Keycloak-subject-id columns)
+  replacing `USER_ID` entirely — see `ai-service/CLAUDE.md`.
 - `USER.SEED_ID` (DKP-0016, nullable, unique index) — same idempotent-seeding pattern the old
   `DKP-0013` used for `CATEGORY`/`TAG`/`CONTENT_ITEM` (now `content-service`'s own `DKP-0031`); sole
   idempotency key for `UserSeeder`'s (`gateway`) 20 sample login-able accounts.
-- Migrations: `gateway/src/main/java/com/ttg/devknowledgeplatform/database/sql/` (Liquibase config
-  lives in `gateway` for every remaining *embedded* module's tables — only `ai-service`'s now.
-  `content-service`'s and `social-service`'s tables are **not** — each of those two modules migrates
-  its own schema from its own changelog tree now, see above)
+- Migrations: `gateway/src/main/java/com/ttg/devknowledgeplatform/database/sql/` — Liquibase config
+  in `gateway` now covers only `product.USER` plus every departed module's frozen historical
+  changesets; there are **no remaining embedded feature modules** for it to migrate live tables for.
+  `content-service`'s, `social-service`'s, and `ai-service`'s tables are **not** here — each
+  standalone service migrates its own schema from its own changelog tree now, see above.
   - Naming: `YYYY/VERSION/YYYYMMDDHHMI__VERSION__TICKET__description.sql`
 
 ---
 
 ## Deployment
 
-Six independently-runnable Spring Boot processes exist today — `gateway` (the monolith),
-`ecommerce-service`, `identity-service`, `task-service`, `social-service`, and `content-service`
-(the latter five standalone microservices-study extractions) — each with its own `Dockerfile`
-(multi-stage: `maven:3.9.9-eclipse-temurin-21` build stage running `mvn -pl <module> -am package`
-against the full reactor, `eclipse-temurin:21-jre-jammy` runtime stage). All six Dockerfiles use the
-**repo root** as their build context, since the Maven reactor build needs sibling-module sources
-(`docker build -f gateway/Dockerfile .`, not `docker build gateway/`). `gateway`'s `Dockerfile` only
-`COPY`s the sources of modules it actually depends on (`common`/`infra`/`ai-service`) plus every
-module's `pom.xml` (needed for Maven to parse the reactor's full `<modules>` list even for modules
-it won't build) — it does not copy `identity-service`, `ecommerce-service`, `task-service`,
-`social-service`, or `content-service` sources.
+Seven independently-runnable Spring Boot processes exist today — `gateway` (now a bare
+JWT-verification + Liquibase + `UserSeeder` shell with zero embedded feature modules),
+`ecommerce-service`, `identity-service`, `task-service`, `social-service`, `content-service`, and
+`ai-service` (the latter six standalone microservices-study extractions, `ai-service` the sixth and
+final) — each with its own `Dockerfile` (multi-stage: `maven:3.9.9-eclipse-temurin-21` build stage
+running `mvn -pl <module> -am package` against the full reactor, `eclipse-temurin:21-jre-jammy`
+runtime stage). All seven Dockerfiles use the **repo root** as their build context, since the Maven
+reactor build needs sibling-module sources (`docker build -f gateway/Dockerfile .`, not
+`docker build gateway/`). `gateway`'s `Dockerfile` only `COPY`s the sources of modules it actually
+depends on (`common`/`infra`) plus every module's `pom.xml` (needed for Maven to parse the reactor's
+full `<modules>` list even for modules it won't build) — it does not copy `identity-service`,
+`ecommerce-service`, `task-service`, `social-service`, `content-service`, or `ai-service` sources.
 
-`dev-knowledge-platform-apps-docker-compose.yml` (repo root) brings up all six app containers plus
+`dev-knowledge-platform-apps-docker-compose.yml` (repo root) brings up all seven app containers plus
 one-shot Liquibase migration runners (`dkp-liquibase`, `ecommerce-liquibase`, `identity-liquibase`,
-`task-liquibase`, `social-liquibase`, `content-liquibase`) ahead of them via
+`task-liquibase`, `social-liquibase`, `content-liquibase`, `ai-liquibase`) ahead of them via
 `depends_on: condition: service_completed_successfully`. It has no infra containers of its own — it
 must be run combined with `dev-knowledge-platform-docker-compose.yml` in one command, since that's
 what puts every container in a single Compose project/network so service-name DNS
@@ -1553,25 +1648,35 @@ docker compose -f dev-knowledge-platform-docker-compose.yml \
                 up -d --build
 ```
 
-`ecommerce-service`, `identity-service`, `task-service`, `social-service`, and `content-service`
-share the same `dev-premier` Postgres database as `gateway`, each in its own schema
-(`ecommerce`/`identity`/`task`/`social`/`content` vs. `gateway`'s `product`) —
+`ecommerce-service`, `identity-service`, `task-service`, `social-service`, `content-service`, and
+`ai-service` share the same `dev-premier` Postgres database as `gateway`, each in its own schema
+(`ecommerce`/`identity`/`task`/`social`/`content`/`ai` vs. `gateway`'s `product`) —
 per-service-per-schema, not per-service-per-database (see root `CLAUDE.md`'s Database Conventions
 and the `project-microservices-extraction-plan` memory for why). Each service also has its own
 standalone `*-liquibase.yml` compose file at the repo root for migrating its own schema outside the
 combined apps-compose flow (`ecommerce-service-liquibase.yml`, `identity-service-liquibase.yml`,
-`task-service-liquibase.yml`, `social-service-liquibase.yml`, `content-service-liquibase.yml`).
-`social-service` additionally needs a real MinIO connection at runtime (`app.storage.*`, for avatar/
-attachment presigned URLs via `infra`'s `StorageService`) — the only one of the five standalone
-extractions so far with that requirement, since none of the others ever mapped avatar/attachment
-data. `gateway`'s own container is the one with a genuine inter-service runtime dependency on
-another standalone service today: `CONTENT_SERVICE_BASE_URL`/`INTERNAL_API_KEY` point its embedded
-`ai-service`'s `ContentServiceClient` at `content-service`'s Compose service name
-(`http://content-service:8085`) instead of the same-process loopback it used before extraction.
+`task-service-liquibase.yml`, `social-service-liquibase.yml`, `content-service-liquibase.yml`,
+`ai-service-liquibase.yml`). `social-service` additionally needs a real MinIO connection at runtime
+(`app.storage.*`, for avatar/attachment presigned URLs via `infra`'s `StorageService`) — the only one
+of the six standalone extractions with that requirement, since none of the others ever mapped
+avatar/attachment data. `ai-service`'s own container is the one with a genuine inter-service runtime
+dependency on another standalone service today: `CONTENT_SERVICE_BASE_URL`/`INTERNAL_API_KEY` point
+its `ContentServiceClient` at `content-service`'s Compose service name
+(`http://content-service:8085`) — this used to be `gateway`'s container that carried these env vars,
+back when `ai-service` was still embedded there; they moved to `ai-service`'s own container block
+alongside `OPENAI_API_KEY`, `REDIS_HOST`/`REDIS_PASSWORD`, and an `ANTHROPIC_API_KEY` (optional) once
+it went standalone. `gateway`'s own container was simplified in the same step — it no longer needs
+any of those env vars or a `redis`/`content-service` `depends_on`, just
+`SPRING_PROFILES_ACTIVE`/`KEYCLOAK_ISSUER_URI`/`FRONTEND_URL`, depending only on
+`dkp-liquibase`+`minio`.
 
 `common`, `infra`, and the root `pom.xml` needed no changes for any of this — they already function
 as this repo's shared-foundation modules (proven by `ecommerce-service` already depending on
 `common`+`infra` as ordinary library jars, with zero Maven dependency on `gateway`, before
-`identity-service`, `task-service`, `social-service`, and `content-service` followed the same
-pattern). Kafka/RabbitMQ messaging and a `kubernetes/` directory are not part of this yet — see
+`identity-service`, `task-service`, `social-service`, `content-service`, and `ai-service` followed
+the same pattern). `infra` did lose two classes as a direct result of `ai-service`'s extraction,
+though: `CacheTtlProperties`/`CacheNames` were deleted as dead code once `gateway`'s
+`RedisCacheConfig` (their only consumer) was found to have zero real `@Cacheable` usages anywhere in
+the reactor and was deleted rather than moved — see `ai-service/CLAUDE.md`'s Rules section for the
+full finding. Kafka/RabbitMQ messaging and a `kubernetes/` directory are not part of this yet — see
 `docs/CHANGELOG.md`'s `[Unreleased]` entry for current scope.
