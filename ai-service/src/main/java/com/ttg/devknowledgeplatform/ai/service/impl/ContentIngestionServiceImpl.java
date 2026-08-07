@@ -7,7 +7,7 @@ import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;
 import com.ttg.devknowledgeplatform.ai.service.ContentIngestionService;
 import com.ttg.devknowledgeplatform.ai.service.EmbeddingService;
 import com.ttg.devknowledgeplatform.ai.service.TextChunkingService;
-import com.ttg.devknowledgeplatform.content.entity.ContentItem;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -36,11 +36,10 @@ public class ContentIngestionServiceImpl implements ContentIngestionService {
     private final ModelConfig model;
 
     @Override
-    public void ingest(ContentItem contentItem, String fullText, ContentEmbeddingMetadata metadata) {
-        Integer contentItemId = contentItem.getId();
-        log.info("Ingesting content item id={} type={}", contentItemId, contentItem.getType());
+    public void ingest(Integer contentItemId, ContentType sourceType, String fullText, ContentEmbeddingMetadata metadata) {
+        log.info("Ingesting content item id={} type={}", contentItemId, sourceType);
 
-        repository.deleteByContentItem_IdAndModelName(contentItemId, model.getModel());
+        repository.deleteByContentItemIdAndModelName(contentItemId, model.getModel());
 
         List<String> chunks = chunkingService.chunk(fullText);
         if (chunks.isEmpty()) {
@@ -54,8 +53,8 @@ public class ContentIngestionServiceImpl implements ContentIngestionService {
         for (int i = 0; i < chunks.size(); i++) {
             String chunk = chunks.get(i);
             ContentEmbedding ce = new ContentEmbedding();
-            ce.setContentItem(contentItem);
-            ce.setSourceType(contentItem.getType());
+            ce.setContentItemId(contentItemId);
+            ce.setSourceType(sourceType);
             ce.setChunkIndex(i);
             ce.setChunkText(chunk);
             ce.setEmbedding(embeddings.get(i));
@@ -73,7 +72,7 @@ public class ContentIngestionServiceImpl implements ContentIngestionService {
 
     @Override
     public void deleteEmbeddings(Integer contentItemId) {
-        repository.deleteByContentItem_Id(contentItemId);
+        repository.deleteByContentItemId(contentItemId);
         log.info("Deleted all embeddings for content item id={}", contentItemId);
     }
 }

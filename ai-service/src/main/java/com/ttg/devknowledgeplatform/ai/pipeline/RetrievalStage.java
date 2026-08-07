@@ -13,8 +13,7 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Pipeline stage that fetches candidate chunks from the pgvector index and loads their
- * full content via an eager JOIN FETCH.
+ * Pipeline stage that fetches candidate chunks from the pgvector index and loads their full rows.
  *
  * <p>Two repository calls are issued:
  * <ol>
@@ -23,8 +22,10 @@ import java.util.List;
  *       {@link MmrStage} enough diverse material. Oversampling compensates for two independent
  *       reasons candidates are discarded: active filter strategies in {@link ScoringStage} and
  *       MMR's natural diversity penalty de-prioritising redundant chunks.</li>
- *   <li>{@code findAllByIdWithContentItem} — loads the matching rows with their parent
- *       {@code ContentItem} in one query to avoid N+1 selects.</li>
+ *   <li>{@code findAllById} — loads the matching rows in one query to avoid N+1 selects. No eager
+ *       join is needed here anymore — {@code ContentEmbedding} carries a plain {@code contentItemId}
+ *       column, not a lazy {@code ContentItem} association, since that entity now lives in a
+ *       different service's database.</li>
  * </ol>
  *
  * <p>Aborts the pipeline with {@link RagPipelineContext#NO_CONTEXT_ANSWER} if no IDs are returned
@@ -57,7 +58,7 @@ public class RetrievalStage implements RagPipelineStage {
             return;
         }
 
-        List<ContentEmbedding> chunks = contentEmbeddingRepository.findAllByIdWithContentItem(ids);
+        List<ContentEmbedding> chunks = contentEmbeddingRepository.findAllById(ids);
         ctx.setCandidates(chunks);
     }
 }

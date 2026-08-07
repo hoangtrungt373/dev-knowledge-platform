@@ -1,20 +1,14 @@
 package com.ttg.devknowledgeplatform.ai.service.impl;
 
 import com.ttg.devknowledgeplatform.ai.dto.ContentEmbeddingMetadata;
-import com.ttg.devknowledgeplatform.ai.service.ContentIngestionService;
-import com.ttg.devknowledgeplatform.content.entity.Article;
-import com.ttg.devknowledgeplatform.content.entity.Category;
-import com.ttg.devknowledgeplatform.content.entity.ContentItem;
-import com.ttg.devknowledgeplatform.content.entity.QuestionAnswer;
-import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.content.enums.ContentType;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
-import com.ttg.devknowledgeplatform.content.repository.ArticleRepository;
-import com.ttg.devknowledgeplatform.content.repository.ContentItemRepository;
-import com.ttg.devknowledgeplatform.content.repository.QuestionAnswerRepository;
+import com.ttg.devknowledgeplatform.ai.dto.client.ContentItemDto;
 import com.ttg.devknowledgeplatform.ai.service.ContentIndexingService;
+import com.ttg.devknowledgeplatform.ai.service.ContentIngestionService;
+import com.ttg.devknowledgeplatform.ai.service.ContentServiceClient;
 import com.ttg.devknowledgeplatform.ai.service.IndexingQualityService;
 import com.ttg.devknowledgeplatform.ai.service.QualityVerdict;
+import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -26,6 +20,16 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
 
+/**
+ * Implementation of {@link ContentIndexingService}.
+ *
+ * <p>Reads/writes content-item data exclusively through {@link ContentServiceClient} (an HTTP
+ * call to {@code content-service}'s internal indexing API) rather than injecting that module's
+ * repositories directly — see root {@code CLAUDE.md}'s Long-term direction section for why.
+ * {@link ContentItemDto} already carries every field this class needs (category/tag names, and the
+ * flattened question/article subtype fields), so — unlike the pre-HTTP version — there is no
+ * separate fetch for {@code QuestionAnswer}/{@code Article}.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -34,24 +38,21 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
 
     private static final String SYSTEM_PRINCIPAL = "system";
 
-    private final ContentItemRepository contentItemRepository;
-    private final QuestionAnswerRepository questionAnswerRepository;
-    private final ArticleRepository articleRepository;
+    private final ContentServiceClient contentServiceClient;
     private final ContentIngestionService contentIngestionService;
     private final IndexingQualityService indexingQualityService;
 
     @Override
     public void index(Integer contentItemId) {
         ensureSecurityContext();
-        ContentItem contentItem = contentItemRepository.findById(contentItemId)
-                .orElseThrow(() -> new ResourceNotFoundException(ContentItem.class.getName(), String.valueOf(contentItemId)));
+        ContentItemDto contentItem = contentServiceClient.getById(contentItemId);
         ingestContentItem(contentItem);
     }
 
     @Override
     public void indexAll() {
         ensureSecurityContext();
-        List<ContentItem> published = contentItemRepository.findByStatus(ContentStatus.PUBLISHED);
+        List<ContentItemDto> published = contentServiceClient.listByStatus(ContentStatus.PUBLISHED);
         log.info("Bulk indexing {} published content items", published.size());
         published.forEach(this::ingestContentItem);
     }
@@ -67,7 +68,7 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
         contentIngestionService.deleteEmbeddings(contentItemId);
     }
 
-    private void ingestContentItem(ContentItem contentItem) {
+    private void ingestContentItem(ContentItemDto contentItem) {
         ContentType type = contentItem.getType();
         switch (type) {
             case QUESTION_ANSWER -> ingestQuestionAnswer(contentItem);
@@ -79,8 +80,9 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
 
     /**
      * Runs the quality check against the embeddings just stored by {@code ContentIngestionService}
-     * and persists the raw score onto the {@code ContentItem}. A {@code null} score means the
-     * check was skipped (cold-start — no corpus centroid available yet).
+     * and persists the raw score onto {@code content-service}'s {@code ContentItem} row via
+     * {@link ContentServiceClient#updateQualityScore}. A {@code null} score means the check was
+     * skipped (cold-start — no corpus centroid available yet).
      *
      * <p>The score is stored for admin visibility regardless of whether it is below the threshold.
      * Admins can query {@code WHERE quality_score < :threshold} to review flagged documents.
@@ -109,19 +111,17 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
      * {@code DELETE /api/v1/admin/indexing/content?maxQualityScore=:threshold} that bulk-removes
      * embeddings for flagged documents after human review. Additionally, consider calling
      * {@code contentIngestionService.deleteEmbeddings(contentItem.getId())} here when
-     * {@code verdict.lowQuality()} is {@code true} — both calls share the same {@code @Transactional}
-     * boundary in {@link ContentIndexingServiceImpl}, so the write-then-delete produces no net
-     * commit for bad documents.
+     * {@code verdict.lowQuality()} is {@code true}.
      */
-    private void assessAndRecordQuality(ContentItem contentItem) {
+    private void assessAndRecordQuality(ContentItemDto contentItem) {
         QualityVerdict verdict = indexingQualityService.assess(contentItem.getId(), contentItem.getType());
 
         if (verdict.wasSkipped()) {
             return;
         }
 
-        contentItem.setQualityScore(BigDecimal.valueOf(verdict.score()).setScale(4, RoundingMode.HALF_UP));
-        contentItemRepository.save(contentItem);
+        BigDecimal score = BigDecimal.valueOf(verdict.score()).setScale(4, RoundingMode.HALF_UP);
+        contentServiceClient.updateQualityScore(contentItem.getId(), score);
 
         if (verdict.lowQuality()) {
             log.warn("Content item id={} title='{}' flagged as low quality (score={})",
@@ -129,25 +129,17 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
         }
     }
 
-    private void ingestQuestionAnswer(ContentItem contentItem) {
-        QuestionAnswer qa = questionAnswerRepository
-                .findByContentItem_Id(contentItem.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("QuestionAnswer for ContentItem",
-                        String.valueOf(contentItem.getId())));
-
-        String difficulty = qa.getDifficulty() != null ? qa.getDifficulty().name() : null;
-        ContentEmbeddingMetadata metadata = buildMetadata(contentItem, difficulty, qa.getIsCommon());
-        contentIngestionService.ingest(contentItem, buildQuestionAnswerText(contentItem, qa), metadata);
+    private void ingestQuestionAnswer(ContentItemDto contentItem) {
+        String difficulty = contentItem.getDifficulty() != null ? contentItem.getDifficulty().name() : null;
+        ContentEmbeddingMetadata metadata = buildMetadata(contentItem, difficulty, contentItem.getIsCommon());
+        contentIngestionService.ingest(
+                contentItem.getId(), contentItem.getType(), buildQuestionAnswerText(contentItem), metadata);
     }
 
-    private void ingestArticle(ContentItem contentItem) {
-        Article article = articleRepository
-                .findByContentItem_Id(contentItem.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Article for ContentItem",
-                        String.valueOf(contentItem.getId())));
-
+    private void ingestArticle(ContentItemDto contentItem) {
         ContentEmbeddingMetadata metadata = buildMetadata(contentItem, null, null);
-        contentIngestionService.ingest(contentItem, buildArticleText(contentItem, article), metadata);
+        contentIngestionService.ingest(
+                contentItem.getId(), contentItem.getType(), buildArticleText(contentItem), metadata);
     }
 
     /**
@@ -159,52 +151,39 @@ public class ContentIndexingServiceImpl implements ContentIndexingService {
      * questions, articles, and blog posts, and will be omitted from the JSON
      * by {@link com.fasterxml.jackson.annotation.JsonInclude.Include#NON_NULL}.
      */
-    private ContentEmbeddingMetadata buildMetadata(ContentItem contentItem,
+    private ContentEmbeddingMetadata buildMetadata(ContentItemDto contentItem,
                                                    String difficulty, Boolean isCommon) {
-        Category category = contentItem.getCategory();
-
-        List<Integer> tagIds = null;
-        List<String> tagNames = null;
-        if (contentItem.getContentItemTags() != null && !contentItem.getContentItemTags().isEmpty()) {
-            tagIds = contentItem.getContentItemTags().stream()
-                    .map(cit -> cit.getTag().getId())
-                    .toList();
-            tagNames = contentItem.getContentItemTags().stream()
-                    .map(cit -> cit.getTag().getName())
-                    .toList();
-        }
-
         return new ContentEmbeddingMetadata(
                 contentItem.getType().name(),
                 contentItem.getStatus().name(),
                 contentItem.getTitle(),
-                category != null ? category.getId() : null,
-                category != null ? category.getName() : null,
-                tagIds,
-                tagNames,
+                contentItem.getCategoryId(),
+                contentItem.getCategoryName(),
+                contentItem.getTagIds(),
+                contentItem.getTagNames(),
                 difficulty,
                 isCommon
         );
     }
 
-    private String buildQuestionAnswerText(ContentItem contentItem, QuestionAnswer qa) {
+    private String buildQuestionAnswerText(ContentItemDto contentItem) {
         StringBuilder sb = new StringBuilder();
         sb.append(contentItem.getTitle()).append("\n\n");
-        sb.append(qa.getQuestionBody());
-        if (qa.getShortAnswer() != null && !qa.getShortAnswer().isBlank()) {
-            sb.append("\n\nShort Answer:\n").append(qa.getShortAnswer());
+        sb.append(contentItem.getQuestionBody());
+        if (contentItem.getShortAnswer() != null && !contentItem.getShortAnswer().isBlank()) {
+            sb.append("\n\nShort Answer:\n").append(contentItem.getShortAnswer());
         }
-        if (qa.getDetailedAnswer() != null && !qa.getDetailedAnswer().isBlank()) {
-            sb.append("\n\nDetailed Answer:\n").append(qa.getDetailedAnswer());
+        if (contentItem.getDetailedAnswer() != null && !contentItem.getDetailedAnswer().isBlank()) {
+            sb.append("\n\nDetailed Answer:\n").append(contentItem.getDetailedAnswer());
         }
         return sb.toString();
     }
 
-    private String buildArticleText(ContentItem contentItem, Article article) {
+    private String buildArticleText(ContentItemDto contentItem) {
         StringBuilder sb = new StringBuilder();
         sb.append(contentItem.getTitle()).append("\n\n");
-        if (article.getBody() != null && !article.getBody().isBlank()) {
-            sb.append(article.getBody());
+        if (contentItem.getBody() != null && !contentItem.getBody().isBlank()) {
+            sb.append(contentItem.getBody());
         }
         return sb.toString();
     }

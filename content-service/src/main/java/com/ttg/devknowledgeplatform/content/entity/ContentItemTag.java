@@ -21,7 +21,6 @@ import org.hibernate.annotations.BatchSize;
 @Entity
 @Table(
         name = "CONTENT_ITEM_TAG",
-        schema = "product",
         uniqueConstraints = @UniqueConstraint(name = "UK_CONTENT_ITEM_TAG_PAIR", columnNames = {"CONTENT_ITEM_ID", "TAG_ID"})
 )
 @AttributeOverride(name = "id", column = @Column(name = "CONTENT_ITEM_TAG_ID"))

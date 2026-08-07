@@ -9,53 +9,52 @@ dev-knowledge-platform/
 │                        web, security (all as annotation/type support, not full autoconfiguration)
 ├── infra/            — shared Spring infrastructure: event base classes, composed annotations, MDC utilities,
 │                        SlugService, StorageService (MinIO), Redis cache TTL config
-├── content-service/  — categories, tags, and content items (Q&A, articles) — the knowledge corpus surfaced by
-│                        the RAG pipeline; owns its own REST layer, mappers, and DTOs
 ├── ai-service/       — RAG pipeline (embedding, vector search, LLM generation via LangChain4j), the RAG-chat
-│                        REST feature, and the content+AI indexing orchestration layer (own REST layer too)
+│                        REST feature, and the content-indexing orchestration layer (own REST layer too)
 ├── gateway/          — security/JWT-filter wiring, Liquibase migrations, Spring Boot entry
 │                        point. Holds **zero REST controllers of its own** (renamed from `api` once the last
 │                        one moved out — see `docs/CHANGELOG.md`)
 └── gui/              — React 18 + TypeScript + MUI frontend (Vite)
 ```
 
-`ecommerce-service/`, `identity-service/`, `task-service/`, and `social-service/` are deliberately
-**not** in the tree above: all four are standalone Spring Boot applications, not part of this
-dependency graph at all (own schema, own JWT verification, own port; `gateway` has no Maven
-dependency on any of them, each extracted one at a time as a microservices-study exercise — see
-their own `## ecommerce-service`/`## identity-service`/`## task-service`/`## social-service`
-sections further down and root `CLAUDE.md`). All four still compile against `common`+`infra` as
-ordinary library dependencies.
+`content-service/`, `ecommerce-service/`, `identity-service/`, `task-service/`, and
+`social-service/` are deliberately **not** in the tree above: all five are standalone Spring Boot
+applications, not part of this dependency graph at all (own schema, own JWT verification, own
+port; `gateway` has no Maven dependency on any of them, each extracted one at a time as a
+microservices-study exercise — see their own `## content-service`/`## ecommerce-service`/
+`## identity-service`/`## task-service`/`## social-service` sections further down and root
+`CLAUDE.md`). All five still compile against `common`+`infra` as ordinary library dependencies.
 
-Dependency order: `common` ← `infra` ← `content-service` ← `ai-service`. `ai-service` is allowed a
-single, real, one-directional dependency on `content-service` — never the reverse. `social-service`
-used to be a parallel sibling depending only on `common`+`infra`, with its own one-directional
-dependency on `identity-service` (`UserApi`'s `search`/`getPublicProfile`), and `task-service` used
-to be a second parallel sibling with its own one-directional dependency on `content-service` — both
-removed once the target module became a standalone service and could no longer be reached
-in-process, before each was itself extracted in turn (see below). `gateway` depends on these two
-remaining feature modules (`content-service`, `ai-service`); it's the only module allowed to depend
-on more than one, reserved for orchestration that needs two feature modules with **no** dependency
-relationship possible between them in either direction — currently nothing qualifies, which is why
-`gateway` has no REST layer of its own today. `gui` is independent of the whole Java reactor.
+`ai-service` depends only on `common`+`infra` now — **not** `common` ← `infra` ← `content-service`
+← `ai-service` as this file used to describe. It used to carry a single, real, one-directional
+Maven dependency on `content-service` (`ContentEmbedding`'s `@ManyToOne` FK to `ContentItem`,
+`ContentIngestionService.ingest(...)` taking a live `ContentItem` parameter, and
+`PublicContentApi`/`PublicContentController` fronting `content-service`'s own services) — all three
+were removed as part of `content-service`'s own standalone-service extraction (see that module's
+own section further down): `ContentEmbedding` now carries a plain `contentItemId` column instead of
+a JPA association, `ai-service`'s indexing pipeline calls a `ContentServiceClient` (HTTP, against
+`content-service`'s own `/internal/content-items/**` API) instead, and
+`PublicContentApi`/`PublicContentController` moved back into `content-service` outright.
+`social-service` used to be a parallel sibling here too, depending only on `common`+`infra`, with
+its own one-directional dependency on `identity-service` (`UserApi`'s `search`/`getPublicProfile`),
+and `task-service` used to be a fourth parallel sibling with its own one-directional dependency on
+`content-service` — all removed once the target module became a standalone service and could no
+longer be reached in-process, before each was itself extracted in turn (see below). `gateway`
+depends only on `ai-service` now (its one remaining embedded feature module); the "only module
+allowed to depend on more than one feature module, reserved for orchestration with no dependency
+relationship possible between the two" rule is currently moot in practice — there's only one
+embedded feature module left, and no orchestration endpoint needing two modules exists — which is
+why `gateway` has no REST layer of its own today. `gui` is independent of the whole Java reactor.
 
-Each of `content-service`/`ai-service` owns its own full vertical slice — entities/services *and*
-REST controllers, DTOs, MapStruct mappers — rather than the earlier shape where `api` (now
-`gateway`) centralized every controller/DTO/mapper regardless of which module owned the underlying
-entity. That centralized shape kept these modules transport-agnostic; the vertical-slice shape
-trades that away deliberately, in favor of each module being closer to an independently-deployable
-unit ahead of an eventual microservices split (see `docs/CHANGELOG.md`'s `[Unreleased]` entries for
-the full rationale and what moved). `identity-service`, `task-service`, and `social-service` still
-own their own full vertical slice too — they just do so as standalone apps now rather than embedded
-modules (see their own sections further down).
-
-One real one-directional sibling dependency remains inside the monolith's dependency graph — a downstream
-module reaching into an upstream one for a genuine data/logic need, never the reverse:
-- `ai-service` → `content-service`: `ContentEmbedding` has a real `@ManyToOne` FK to `ContentItem`, and
-  `ContentIngestionService.ingest(...)` takes a `ContentItem` parameter. This is also why the content+AI
-  indexing orchestration layer (`IngestionApi`, `EmbeddingIndexApi`, `PublicContentApi`) lives in
-  `ai-service` rather than `gateway`: `ai-service` is the one module (besides `gateway`) that can already
-  see both `content-service` and itself.
+`ai-service` owns its own full vertical slice — entities/services *and* REST controllers, DTOs,
+MapStruct mappers — rather than the earlier shape where `api` (now `gateway`) centralized every
+controller/DTO/mapper regardless of which module owned the underlying entity. That centralized
+shape kept these modules transport-agnostic; the vertical-slice shape trades that away
+deliberately, in favor of each module being closer to an independently-deployable unit ahead of an
+eventual microservices split (see `docs/CHANGELOG.md`'s `[Unreleased]` entries for the full
+rationale and what moved). `content-service`, `identity-service`, `task-service`, and
+`social-service` still own their own full vertical slice too — they just do so as standalone apps
+now rather than embedded modules (see their own sections further down).
 
 ---
 
@@ -169,84 +168,163 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
 
 ## content-service
 
+**Standalone Spring Boot application** (own entry point, own `content` schema, own port `8085`) —
+see root `CLAUDE.md`'s Long-term direction section and the `project-microservices-extraction-plan`
+memory for the full 8-step extraction history (the hardest of the five microservices-study
+extractions so far, since `ai-service`'s coupling to it was real, deep, and bidirectional rather
+than a removable leftover).
+
 ```
 content-service/src/main/java/com/ttg/devknowledgeplatform/content/
+├── ContentServiceApplication.java — @SpringBootApplication + @ConfigurationPropertiesScan entry
+│                                     point; no @EntityScan/@EnableJpaRepositories — this module
+│                                     never touches common.entity.User/common.repository.UserRepository
+├── security/
+│   ├── SecurityConfig.java        — this module's own filter chain: /api/v1/public/** and
+│   │                                 /internal/** permitAll, /actuator/** permitAll,
+│   │                                 /api/v1/admin/** hasRole(ADMIN), everything else authenticated
+│   │                                 (mirrors gateway's old three-way rule set for these same paths)
+│   ├── KeycloakRealmRoleConverter.java — realm_access.roles → ROLE_* authorities; duplicated from
+│   │                                 gateway's/task-service's converter of the same name
+│   ├── KeycloakJwtAuthenticationConverter.java — builds CustomOAuth2User straight from JWT claims
+│   │                                 (sub → userUuid) — no DB read/write, mirrors ecommerce-service's/
+│   │                                 task-service's converter, not gateway's/identity-service's
+│   └── CurrentUserResolver.java   — reads the caller's UUID straight off the CustomOAuth2User
+│                                     principal, zero database access
+├── config/web/
+│   ├── CurrentUserIdArgumentResolver.java — resolves @CurrentUserId String-annotated controller
+│   │                                 parameters via security.CurrentUserResolver
+│   └── WebMvcConfig.java          — registers CurrentUserIdArgumentResolver
 ├── entity/
 │   ├── Category.java              — hierarchical; parent/children self-join; seedId (nullable) for CategorySeeder idempotency
 │   ├── Tag.java                   — status (TagStatus); seedId (nullable) for TagSeeder idempotency
 │   ├── ContentItem.java           — base content record (type, status, title, slug, category, viewCount,
-│   │                                 publishedAt, qualityScore); seedId (nullable) for QuestionAnswerSeeder idempotency
+│   │                                 publishedAt, qualityScore, authorUuid); seedId (nullable) for
+│   │                                 QuestionAnswerSeeder idempotency. authorUuid is a plain String
+│   │                                 column (the Keycloak JWT's sub claim), never a @ManyToOne User FK
+│   │                                 — see the "No local User copy" rule below
 │   ├── ContentItemTag.java        — join entity for content ↔ tag
 │   ├── QuestionAnswer.java        — general dev-knowledge Q&A, not only interview prep;
 │   │                                 difficulty/isCommon are nullable interview-specific metadata
 │   └── Article.java               — body text; backs both ContentType.ARTICLE and .BLOG_POST
+│   (none of these six entities hardcode @Table(schema="product") anymore — they resolve via this
+│   app's own hibernate.default_schema: content)
 ├── enums/
-│   ├── ContentStatus.java         — DRAFT, PUBLISHED, …
-│   ├── ContentType.java           — QUESTION_ANSWER, ARTICLE, BLOG_POST
-│   ├── TagStatus.java             — ACTIVE, INACTIVE
-│   └── QuestionDifficulty.java    — BEGINNER, INTERMEDIATE, ADVANCED
+│   └── TagStatus.java             — ACTIVE, INACTIVE (only enum still local to this module — no
+│                                     consumer outside it; ContentStatus/ContentType/QuestionDifficulty
+│                                     moved to common's enums/ package — see that module's CLAUDE.md)
 ├── event/
 │   └── ContentPublishedEvent.java — carries a ContentItem; currently has no publisher wired up (scaffold for a
 │                                     future auto-index-on-publish flow — today indexing is admin-triggered via
-│                                     ai-service's IngestionController); listened for by ai-service's ContentPublishedEventListener
+│                                     ai-service's IngestionController). ai-service used to carry a listener for
+│                                     this event (ContentPublishedEventListener) but it was deleted as dead code
+│                                     during this module's extraction — never fired (no publisher exists),
+│                                     and an in-process Spring event can't cross a service boundary anyway
 ├── repository/
 │   ├── CategoryRepository.java / TagRepository.java / ContentItemRepository.java / ContentItemTagRepository.java
 │   │   / QuestionAnswerRepository.java / ArticleRepository.java
 │   └── spec/
-│       └── CategorySpecification.java / TagSpecification.java / QuestionAnswerSpecification.java / ArticleSpecification.java
+│       └── CategorySpecification.java / TagSpecification.java / QuestionAnswerSpecification.java /
+│           ArticleSpecification.java / ContentItemSpecification.java (filters directly on ContentItem
+│           itself — distinct from the other three, which join through it; backs InternalContentService)
 ├── service/
 │   ├── CategoryService.java / TagService.java / QuestionAnswerService.java / ArticleService.java — return
 │   │   entities, not REST DTOs — this module's own Category/Tag/QuestionAnswer/ArticleMapper (below) do
 │   │   entity→response mapping (same split as social-service's FriendService → its own FriendMapper, and
-│   │   ai-service's RagQueryService → its own ChatResponse)
+│   │   ai-service's RagQueryService → its own ChatResponse). Article/QuestionAnswerService.create()
+│   │   take a String authorUuid, not an Integer authorId
 │   ├── CategoryTreeNode.java      — record (Category + resolved children) returned by CategoryService.listTree();
 │   │                                 this module's own CategoryMapper.toTreeNodeResponse() flattens it into CategoryTreeNodeResponse
 │   ├── QuestionAnswerCommands.java / ArticleCommands.java — Create/Update input records mirroring this
 │   │   module's own Create*Request/Update*Request field-for-field, without REST/validation annotations —
 │   │   the controllers below translate request DTOs into these before calling the service, keeping the
 │   │   service layer decoupled from the REST/JSON contract even though both now live in the same module
-│   ├── seed/                      — startup data seeding; format chosen per content shape (moved here from
-│   │   `gateway`, back when it was named `api`, since seeders write directly via repositories, the same
-│   │   as production service impls)
+│   ├── seed/                      — startup data seeding; format chosen per content shape
 │   │   ├── CategorySeeder.java        — data/csv/categories.csv; identity by seedId; extends infra's CsvSeeder
 │   │   ├── TagSeeder.java             — data/csv/tags.csv; identity by seedId; extends infra's CsvSeeder
-│   │   └── QuestionAnswerSeeder.java  — data/question-answers/*.md (YAML front matter + markdown body);
-│   │                                     does not extend CsvSeeder (one-file-per-record, different iteration shape)
+│   │   ├── QuestionAnswerSeeder.java  — data/question-answers/*.md (YAML front matter + markdown body);
+│   │   │                                 does not extend CsvSeeder (one-file-per-record, different iteration shape)
+│   │   └── DataSeedingRunner.java     — this module's own; orchestrates the three seeders above in
+│   │                                     dependency order, moved here from gateway's once that app
+│   │                                     could no longer import these classes across the module boundary
 │   └── impl/
 │       └── CategoryServiceImpl.java / TagServiceImpl.java / QuestionAnswerServiceImpl.java / ArticleServiceImpl.java
 ├── exception/
-│   └── ContentErrorCode.java      — CATEGORY_*/TAG_*/QA_*/ARTICLE_* codes, implements common's ErrorCode interface
+│   └── ContentErrorCode.java      — CATEGORY_*/TAG_*/QA_*/ARTICLE_*/CONTENT_ITEM_* codes, implements
+│                                     common's ErrorCode interface
 ├── api/                           — admin CRUD REST layer (moved in from `gateway`, named `api` at
 │                                     the time — see CHANGELOG)
-│   ├── CategoryApi.java / TagApi.java / ArticleApi.java / QuestionAnswerApi.java
-│   └── impl/                      — CategoryController / TagController / ArticleController / QuestionAnswerController
+│   ├── CategoryApi.java / TagApi.java / ArticleApi.java / QuestionAnswerApi.java — Article/
+│   │   QuestionAnswerApi.create() take @CurrentUserId String authorUuid, not
+│   │   @AuthenticationPrincipal CustomOAuth2User
+│   ├── PublicContentApi.java      — /api/v1/public/**, read-only published-content browsing;
+│   │                                 moved back here from ai-service — it only ever fronted this
+│   │                                 module's own services, never anything ai-service-specific
+│   ├── InternalContentApi.java    — /internal/content-items/**, server-to-server only (see below)
+│   └── impl/                      — CategoryController / TagController / ArticleController /
+│                                     QuestionAnswerController / PublicContentController /
+│                                     InternalContentController
 ├── mapper/                        — MapStruct: CategoryMapper / TagMapper / ArticleMapper / QuestionAnswerMapper
-│                                     (entity ↔ dto/*); `ArticleMapper`/`QuestionAnswerMapper` are also used
-│                                     directly by `ai-service`'s `PublicContentController` (already-allowed
-│                                     dependency direction — `ai-service` → `content-service`)
-└── dto/                           — flat (not nested under dto/content/): CategoryResponse/CreateCategoryRequest/
-                                      UpdateCategoryRequest, CategoryTreeNodeResponse, TagResponse/CreateTagRequest/
-                                      UpdateTagRequest, ArticleResponse/CreateArticleRequest/UpdateArticleRequest,
-                                      QuestionAnswerResponse/CreateQuestionAnswerRequest/UpdateQuestionAnswerRequest
+│                                     (entity ↔ dto/*); ArticleMapper/QuestionAnswerMapper are used by this
+│                                     module's own PublicContentController above
+│                                     InternalContentItemMapper — ContentItem + QuestionAnswer/Article → dto/internal
+├── dto/
+│   ├── (flat, not nested under dto/content/): CategoryResponse/CreateCategoryRequest/
+│   │   UpdateCategoryRequest, CategoryTreeNodeResponse, TagResponse/CreateTagRequest/
+│   │   UpdateTagRequest, ArticleResponse/CreateArticleRequest/UpdateArticleRequest,
+│   │   QuestionAnswerResponse/CreateQuestionAnswerRequest/UpdateQuestionAnswerRequest
+│   └── internal/                  — InternalContentItemResponse (flattened ContentItem +
+│       QuestionAnswer/Article, incl. categoryName/tagNames) / UpdateQualityScoreRequest
+└── config/
+    ├── InternalApiProperties.java — app.internal-api.key (shared secret for /internal/**)
+    └── security/InternalApiKeyFilter.java — rejects any /internal/** request missing/mismatching
+        the X-Internal-Api-Key header; this module's own SecurityConfig (above) marks /internal/**
+        permitAll so this filter (not Spring Security) is what actually enforces it
+
+content-service/src/main/java/com/ttg/devknowledgeplatform/content/database/
+└── sql/
+    ├── content-service.xml            — this module's own master changelog; includeAll over
+    │                                     2026/0.0.1/, same shape as task-service's/social-service's
+    │                                     own changelog trees. Applied via the standalone
+    │                                     content-service-liquibase.yml compose file at the repo
+    │                                     root (spring.liquibase.enabled stays false on app boot,
+    │                                     same convention as every other standalone service)
+    └── 2026/0.0.1/
+        └── DKP-0031__add_content_service_tables.sql — fresh snapshot of CATEGORY/TAG/CONTENT_ITEM/
+            CONTENT_ITEM_TAG/QUESTION_ANSWER/ARTICLE into a new `content` schema (not a replay of
+            gateway's incremental DKP-0001..0018 history); AUTHOR_UUID (VARCHAR(36)) replaces
+            gateway's plain AUTHOR_ID INTEGER outright — edited in place before this changeset ever
+            ran against a real database, mirroring task-service's own ownerId→ownerUuid correction
+
+content-service/
+├── Dockerfile                     — multi-stage build, port 8085, mirrors task-service's exactly
+└── src/main/resources/
+    ├── application.yml            — server.port 8085, hibernate.default_schema: content,
+    │                                 app.internal-api.key, app.seed.enabled
+    └── data/
+        ├── csv/categories.csv, csv/tags.csv — moved here from gateway's own resources
+        └── question-answers/*.md  — 100 files, moved here from gateway's own resources
 ```
 
 The indexing/RAG orchestration layer (`ContentIndexingService`, `IndexingQualityService`,
-`EmbeddingIndexService`, `IngestionApi`/`Controller`, `PublicContentApi`/`Controller`) and the read-only
-public content-browsing endpoints now live in `ai-service` — see that module's section. It genuinely needs
-both `content-service` and `ai-service`, and since `ai-service` already depends on `content-service` for
-`ContentItem`, it lives there rather than needing `gateway`. `ContentPublishedEventListener` moved to
-`ai-service` too (co-located with its own `PipelineCompletedEvent`/`Listener`), since it just calls that
-module's own `ContentIndexingService` — no `gateway`-specific dependency ever justified keeping it there.
+`EmbeddingIndexService`, `IngestionApi`/`Controller`) lives in `ai-service` — see that module's section.
+It used to also host `PublicContentApi`/`Controller` (the read-only public content-browsing endpoints)
+and `ContentPublishedEventListener`, back when `ai-service` depended on `content-service` for `ContentItem`
+and it was the one module (besides `gateway`) that could already see both. Both moved/were deleted as part
+of `content-service`'s own standalone-service extraction: `PublicContentApi`/`Controller` moved
+back here (see `api/` above), and `ContentPublishedEventListener` was deleted outright as dead code (its
+event never had a publisher). The indexing orchestration itself stays in `ai-service` — it's that module's
+own pipeline, now reaching this module over HTTP (`ContentServiceClient` → `InternalContentApi`) instead of
+a live JPA entity.
 
-`ArticleController`/`QuestionAnswerController` resolve the authenticated principal's author id via `common`'s
-`UserRepository.findByEmail(...)` directly, not `identity-service`'s `UserService` — `content-service` must
-never depend on `identity-service`, and `UserRepository` living in `common` exists specifically so any module
-can resolve a `User` by identifier without depending on the module that owns auth-flow business logic.
-
-`DataSeedingRunner` (`gateway`) still runs the seeders above in order (category → tag → questionAnswer);
-the actual seed data files (`data/csv/*.csv`, `data/question-answers/*.md`) stay under
-`gateway/src/main/resources/` unchanged — only the Java seeder classes moved, following the same precedent
-as Liquibase migrations (see Database section below).
+**No local `User` copy** — `ArticleApi`/`QuestionAnswerApi`'s `create()` endpoints take
+`@CurrentUserId String authorUuid` directly, resolved by this module's own
+`config.web.CurrentUserIdArgumentResolver`/`security.CurrentUserResolver` with zero database access.
+This replaced an earlier design where `ArticleController`/`QuestionAnswerController` resolved the
+author via `common`'s `UserRepository.findByEmail(...).map(User::getId)` — reverted once this
+module was extracted, since that lookup only ever needed "who is the caller," and `authorId`/
+`authorUuid` is write-once at creation, never read back or joined through anywhere in this module
+(see the `project-microservices-extraction-plan` memory's "Option C" discussion).
 
 Why the service layer was redesigned rather than just relocated: `CategoryService`/`TagService`/
 `QuestionAnswerService`/`ArticleService` used to accept and return `gateway`'s own REST DTOs directly
@@ -530,15 +608,13 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── IngestionApi.java      — /api/v1/admin/indexing: index(), indexAll(), deleteIndex(), refreshCorpus(); class-level @PreAuthorize("hasRole('ADMIN')")
 │   ├── EmbeddingIndexApi.java — /api/v1/admin/embeddings: list() — paged, filterable content+embedding-stats view
 │   ├── PipelineMetricsApi.java — /api/v1/admin/pipeline-metrics: getSummary(MetricsPeriod)
-│   ├── PublicContentApi.java  — /api/v1/public: listQuestionAnswers/getQuestionAnswerBySlug/listArticles/getArticleBySlug
-│   │                             (read-only, unauthenticated; fronts content-service's ArticleService/QuestionAnswerService
-│   │                             via content-service's own ArticleMapper/QuestionAnswerMapper + content.dto.* DTOs)
 │   └── impl/
 │       ├── ChatController.java            — orchestrates RagQueryService + ChatSessionService + SseStreamTemplate
 │       ├── IngestionController.java       — delegates to ContentIndexingService + CorpusStatisticsService
 │       ├── EmbeddingIndexController.java  — delegates to EmbeddingIndexService
-│       ├── PipelineMetricsController.java — delegates to PipelineMetricsSummaryService
-│       └── PublicContentController.java   — delegates to ArticleService/QuestionAnswerService; increments view count
+│       └── PipelineMetricsController.java — delegates to PipelineMetricsSummaryService
+│   (PublicContentApi/PublicContentController used to live here — moved back to content-service in
+│   that module's extraction step 5; see content-service's own api/ section above)
 ├── config/
 │   ├── sse/
 │   │   ├── SseStreamTemplate.java  — reusable SSE-endpoint helper; owns SSE_TIMEOUT_MS (60_000L) —
@@ -592,7 +668,10 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   │                             fields: contextSummaryLabel, contextFollowUpLabel, historySummaryLabel,
 │   │                             historySummaryAck, compressionPreviousSummaryLabel, compressionTurnsLabel
 │   ├── LoadedPrompts.java     — record holding 6 prompt strings loaded from classpath at startup
-│   └── PromptsLoader.java     — @Configuration that reads prompts/*.txt and produces LoadedPrompts bean
+│   ├── PromptsLoader.java     — @Configuration that reads prompts/*.txt and produces LoadedPrompts bean
+│   └── ContentServiceClientProperties.java — @ConfigurationProperties at app.content-service.*;
+│                                 fields: baseUrl, internalApiKey (must match content-service's own
+│                                 app.internal-api.key) — consumed by ContentServiceClientImpl
 ├── converter/
 │   ├── FloatArrayToVectorConverter.java  — JPA AttributeConverter for pgvector column type;
 │   │                                        any field using it also needs @JdbcType(PgVectorJdbcType.class)
@@ -621,6 +700,11 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── admin/
 │   │   └── EmbeddingIndexItemResponse.java — @Builder DTO: contentItemId, title, contentType, contentStatus,
 │   │                                          qualityScore, chunkCount, totalTokens, modelName, lastIndexedAt, indexed
+│   ├── client/
+│   │   └── ContentItemDto.java             — this module's own deserialized copy of content-service's
+│   │                                          InternalContentItemResponse JSON shape (duplicated, not shared —
+│   │                                          same convention as every KeycloakJwtAuthenticationConverter
+│   │                                          duplicate in this codebase); returned by ContentServiceClient
 │   └── chat/
 │       ├── ChatRequest.java              — record: question, sessionId, sourceTypes, categoryId, tags, chatModel
 │       ├── ChatResponse.java             — record: answer, List<RagSource>, sessionId; from(RagAnswer, sessionId)
@@ -633,17 +717,19 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   └── ParamKey.java          — typed keys for SYS_PARAM.NAME; renaming a constant requires a DB migration;
 │                                includes PROMPT_INJECTION_PROTOTYPE_EMBEDDINGS (fingerprinted vector-list cache
 │                                for PromptGuardStage below); moved in from common alongside SysParam/SysParamService
-├── event/
+├── event/                                     — ContentPublishedEventListener used to live here (moved in
+│                                                 from gateway) but was deleted as dead code in content-service's
+│                                                 extraction step 5 — its event never had a publisher wired up
 │   ├── PipelineCompletedEvent.java         — record event published by RagQueryServiceImpl after each pipeline execution;
 │   │                                        carries RagPipelineContext + AnswerQualityVerdict
-│   ├── PipelineCompletedEventListener.java — extends AsyncEventHandler<PipelineCompletedEvent>; @Transactional;
-│   │                                        maps event → PipelineMetrics entity; resolveTraceId() binds MDC for logging
-│   └── ContentPublishedEventListener.java — moved in from gateway; listens for content-service's
-│                                            ContentPublishedEvent, calls this module's own ContentIndexingService.index(...)
-│                                            (this event's definition stays in content-service, since it's published from there)
+│   └── PipelineCompletedEventListener.java — extends AsyncEventHandler<PipelineCompletedEvent>; @Transactional;
+│                                            maps event → PipelineMetrics entity; resolveTraceId() binds MDC for logging
 ├── entity/
 │   ├── ContentEmbedding.java         — embedding vector (1536-dim), chunkText, sourceType,
-│   │                                    chunkIndex, modelName, tokenCount,
+│   │                                    chunkIndex, modelName, tokenCount, contentItemId (plain
+│   │                                    column, not a @ManyToOne FK — ContentItem lives in
+│   │                                    content-service's own database once that module is
+│   │                                    extracted; see root CLAUDE.md's Long-term direction),
 │   │                                    metadata (JSONB: categoryId, categoryName, tagIds, tagNames)
 │   ├── PipelineMetrics.java          — append-only analytics entity (no AbstractEntity); columns: traceId, createdAt,
 │   │                                    abortedAt, candidateCount, afterScoringCount, selectedCount,
@@ -692,7 +778,10 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 ├── filter/                           — dynamic post-retrieval filter package
 │   └── RagFilter.java                — Java 21 record: sourceTypes, tags, categoryId
 ├── repository/
-│   ├── ContentEmbeddingRepository.java   — findTopSimilarIds (pgvector <=>), findAllByIdWithContentItem,
+│   ├── ContentEmbeddingRepository.java   — findTopSimilarIds (pgvector <=>), findAllById (plain
+│   │                                       JpaRepository method now — no eager join needed since
+│   │                                       contentItemId is a plain column), findDistinctContentItemIds
+│   │                                       (backs EmbeddingIndexServiceImpl's indexed filter, see below),
 │   │                                       findStatsByContentItemIds(List<Integer>) → List<EmbeddingStatsProjection>
 │   │                                       (JPQL: COUNT/SUM/MAX grouped by content item ID),
 │   │                                       computeGlobalCentroid(), computeCentroidBySourceType(String)
@@ -704,7 +793,15 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   └── SysParamRepository.java           — JpaRepository<SysParam, Integer>; findByName(ParamKey); moved in
 │                                            from common — audit found zero real consumers outside this module
 └── service/
-    ├── ContentIngestionService.java             — chunks text + stores embeddings
+    ├── ContentIngestionService.java             — chunks text + stores embeddings; ingest() takes
+    │                                               Integer contentItemId, ContentType sourceType
+    │                                               (not a live ContentItem — see entity/ above)
+    ├── ContentServiceClient.java                 — interface: getById/listByStatus/list/updateQualityScore
+    │                                               against content-service's /internal/content-items/**
+    │                                               API; replaces the direct ContentItemRepository/
+    │                                               QuestionAnswerRepository/ArticleRepository injections
+    │                                               ContentIndexingServiceImpl/EmbeddingIndexServiceImpl
+    │                                               used before the content-service extraction's step 4
     ├── SysParamService.java                     — interface: getValue(ParamKey), upsert(ParamKey, String);
     │                                               string-in/string-out, no opinion on value encoding; moved in
     │                                               from common — its only two callers (CorpusStatisticsServiceImpl,
@@ -742,12 +839,19 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
         │                                                → publishEvent(PipelineCompletedEvent)
         ├── ChatSessionServiceImpl.java                — lazy session-expiry enforcement (24h TTL); addTurn() safe from
         │                                                background threads; rolling summarisation via ChatSessionProperties triggers
-        ├── ContentIndexingServiceImpl.java            — resolves QuestionAnswer/Article text → ContentIngestionService.ingest();
-        │                                                also runs IndexingQualityService and persists ContentItem.qualityScore
+        ├── ContentServiceClientImpl.java               — RestClient-backed; base-url + shared
+        │                                                 X-Internal-Api-Key from ContentServiceClientProperties
+        ├── ContentIndexingServiceImpl.java            — resolves question/article text from ContentServiceClient's
+        │                                                flattened ContentItemDto → ContentIngestionService.ingest();
+        │                                                also runs IndexingQualityService and persists the quality
+        │                                                score back via ContentServiceClient.updateQualityScore
         ├── IndexingQualityServiceImpl.java             — mean cosine similarity of chunk embeddings vs corpus centroid
         │                                                (CorpusStatisticsService), compared against IndexingConfig threshold
-        ├── EmbeddingIndexServiceImpl.java              — two-query pattern: paged Specification query + batch stats query;
-        │                                                 `indexed` filter uses a Criteria EXISTS subquery on ContentEmbedding
+        ├── EmbeddingIndexServiceImpl.java              — two-query pattern: ContentServiceClient.list() (HTTP) +
+        │                                                 batch stats query; `indexed` filter reads this module's own
+        │                                                 embedded-id set first (findDistinctContentItemIds), then
+        │                                                 passes it as ids=/excludeIds= to content-service's query
+        │                                                 (a cross-service EXISTS join is no longer possible)
         ├── CorpusStatisticsServiceImpl.java            — moved in from `gateway` (was left behind when the rest of the
         │                                                  indexing/RAG orchestration layer moved here — pure oversight, it
         │                                                  had zero gateway-specific dependencies even before this move);
@@ -1183,10 +1287,10 @@ for the rules this module follows.
 
 Renamed from `api` once its last REST controller (`UserApi.search`/`getPublicProfile`) moved to
 `social-service` (see `docs/CHANGELOG.md`) — this module holds **zero REST controllers of its own**
-today. Still the Spring Boot entry point and the one module allowed to depend on more than one
-feature module, reserved for orchestration that needs two feature modules with no dependency
-relationship possible between them in either direction (currently nothing qualifies — it depends on
-just `content-service`/`ai-service` now).
+today. Still the Spring Boot entry point and, nominally, the one module allowed to depend on more
+than one feature module — though that's moot in practice now, since `content-service`'s own
+extraction left `ai-service` as the only embedded feature module remaining (it depends on just
+`ai-service` now).
 
 ```
 gateway/src/main/java/com/ttg/devknowledgeplatform/
@@ -1227,9 +1331,11 @@ gateway/src/main/java/com/ttg/devknowledgeplatform/
 ├── database/
 │   └── sql/                          — Liquibase changelogs (master: dev-knowledge-platform.xml)
 ├── (no event/ package — every listener moved into the module that owns the event it reacts to:
-│    ContentPublishedEventListener → ai-service, FriendRequestSentEventListener/
-│    FriendRequestAcceptedEventListener → social-service, before that module's own later
-│    extraction; none ever had a gateway-specific dependency)
+│    FriendRequestSentEventListener/FriendRequestAcceptedEventListener → social-service, before
+│    that module's own later extraction; ContentPublishedEventListener also moved to ai-service on
+│    the same reasoning, then was later deleted outright as dead code during content-service's own
+│    extraction — its event never had a publisher wired up; none ever had a gateway-specific
+│    dependency)
 ├── security/                         — OAuth2-resource-server verification (edge concerns);
 │   │                                    Keycloak is the identity provider — this app never issues
 │   │                                    tokens, only verifies them; JIT-provisioning business logic
@@ -1389,8 +1495,14 @@ expected over time, and are modelled as data, not schema:
 - Audit columns on every entity via `AbstractEntity`
 - pgvector HNSW index on `content_embedding.embedding` (cosine distance, `vector_cosine_ops`)
 - `SYS_PARAM` — general-purpose key-value table; stores corpus centroid vectors and future AI/config parameters
-- `CATEGORY` / `TAG` / `CONTENT_ITEM` / `CONTENT_ITEM_TAG` / `QUESTION_ANSWER` / `ARTICLE` — backing
-  `content-service`'s entities of the same names (schema unchanged by the module extraction — see `CHANGELOG.md`)
+- **Historical, orphaned:** `CATEGORY` / `TAG` / `CONTENT_ITEM` / `CONTENT_ITEM_TAG` /
+  `QUESTION_ANSWER` / `ARTICLE` (`DKP-0001`-`0004`/`0009`/`0013`/`0014`/`0018`) used to back
+  `content-service`'s entities of the same names while that module was still embedded. All
+  changesets are untouched (frozen, already-run history) but now describe tables `gateway`'s own
+  Spring context no longer maps any entity to — `content-service` migrates a fresh snapshot of this
+  same shape into its own `content` schema instead (`DKP-0031` in that module's own tree), with
+  `AUTHOR_UUID` (a plain Keycloak-subject-id column) replacing `AUTHOR_ID` entirely — see that
+  module's `CLAUDE.md`.
 - **Historical, orphaned:** `FRIEND_REQUEST` / `FRIENDSHIP` / `USER_BLOCK` (`DKP-0015`) and
   `MESSAGE_GROUP` / `GROUP_MEMBER` / `CHANNEL` / `DM_THREAD` / `DM_MESSAGE` / `CHANNEL_MESSAGE`
   (`DKP-0019`) used to back `social-service`'s entities of the same names while that module was
@@ -1402,33 +1514,34 @@ expected over time, and are modelled as data, not schema:
   `product.USER`, and no `SEED_ID` on the pair tables for either — see that module's `CLAUDE.md` for
   why (a pair's identity has no editable-field equivalent to `NAME`/`EMAIL` that could invalidate a
   pair-based idempotency check).
-- `USER.SEED_ID` (DKP-0016, nullable, unique index) — same pattern as `DKP-0013`'s `CATEGORY`/`TAG`/
-  `CONTENT_ITEM`; sole idempotency key for `UserSeeder`'s (`gateway`) 20 sample login-able accounts.
+- `USER.SEED_ID` (DKP-0016, nullable, unique index) — same idempotent-seeding pattern the old
+  `DKP-0013` used for `CATEGORY`/`TAG`/`CONTENT_ITEM` (now `content-service`'s own `DKP-0031`); sole
+  idempotency key for `UserSeeder`'s (`gateway`) 20 sample login-able accounts.
 - Migrations: `gateway/src/main/java/com/ttg/devknowledgeplatform/database/sql/` (Liquibase config
-  lives in `gateway` for every remaining *embedded* module's tables — `ai-service`'s and
-  `content-service`'s tables are migrated from here too. `social-service`'s tables are **not** —
-  that module migrates its own `social` schema from its own changelog tree now, see above)
+  lives in `gateway` for every remaining *embedded* module's tables — only `ai-service`'s now.
+  `content-service`'s and `social-service`'s tables are **not** — each of those two modules migrates
+  its own schema from its own changelog tree now, see above)
   - Naming: `YYYY/VERSION/YYYYMMDDHHMI__VERSION__TICKET__description.sql`
 
 ---
 
 ## Deployment
 
-Five independently-runnable Spring Boot processes exist today — `gateway` (the monolith),
-`ecommerce-service`, `identity-service`, `task-service`, and `social-service` (the latter four
-standalone microservices-study extractions) — each with its own `Dockerfile` (multi-stage:
-`maven:3.9.9-eclipse-temurin-21` build stage running `mvn -pl <module> -am package` against the full
-reactor, `eclipse-temurin:21-jre-jammy` runtime stage). All five Dockerfiles use the **repo root**
-as their build context, since the Maven reactor build needs sibling-module sources
+Six independently-runnable Spring Boot processes exist today — `gateway` (the monolith),
+`ecommerce-service`, `identity-service`, `task-service`, `social-service`, and `content-service`
+(the latter five standalone microservices-study extractions) — each with its own `Dockerfile`
+(multi-stage: `maven:3.9.9-eclipse-temurin-21` build stage running `mvn -pl <module> -am package`
+against the full reactor, `eclipse-temurin:21-jre-jammy` runtime stage). All six Dockerfiles use the
+**repo root** as their build context, since the Maven reactor build needs sibling-module sources
 (`docker build -f gateway/Dockerfile .`, not `docker build gateway/`). `gateway`'s `Dockerfile` only
-`COPY`s the sources of modules it actually depends on (`common`/`infra`/`content-service`/
-`ai-service`) plus every module's `pom.xml` (needed for Maven to parse the reactor's full
-`<modules>` list even for modules it won't build) — it does not copy `identity-service`,
-`ecommerce-service`, `task-service`, or `social-service` sources.
+`COPY`s the sources of modules it actually depends on (`common`/`infra`/`ai-service`) plus every
+module's `pom.xml` (needed for Maven to parse the reactor's full `<modules>` list even for modules
+it won't build) — it does not copy `identity-service`, `ecommerce-service`, `task-service`,
+`social-service`, or `content-service` sources.
 
-`dev-knowledge-platform-apps-docker-compose.yml` (repo root) brings up all five app containers plus
+`dev-knowledge-platform-apps-docker-compose.yml` (repo root) brings up all six app containers plus
 one-shot Liquibase migration runners (`dkp-liquibase`, `ecommerce-liquibase`, `identity-liquibase`,
-`task-liquibase`, `social-liquibase`) ahead of them via
+`task-liquibase`, `social-liquibase`, `content-liquibase`) ahead of them via
 `depends_on: condition: service_completed_successfully`. It has no infra containers of its own — it
 must be run combined with `dev-knowledge-platform-docker-compose.yml` in one command, since that's
 what puts every container in a single Compose project/network so service-name DNS
@@ -1440,21 +1553,25 @@ docker compose -f dev-knowledge-platform-docker-compose.yml \
                 up -d --build
 ```
 
-`ecommerce-service`, `identity-service`, `task-service`, and `social-service` share the same
-`dev-premier` Postgres database as `gateway`, each in its own schema (`ecommerce`/`identity`/`task`/
-`social` vs. `gateway`'s `product`) — per-service-per-schema, not per-service-per-database (see root
-`CLAUDE.md`'s Database Conventions and the `project-microservices-extraction-plan` memory for why).
-Each service also has its own standalone `*-liquibase.yml` compose file at the repo root for
-migrating its own schema outside the combined apps-compose flow (`ecommerce-service-liquibase.yml`,
-`identity-service-liquibase.yml`, `task-service-liquibase.yml`, `social-service-liquibase.yml`).
+`ecommerce-service`, `identity-service`, `task-service`, `social-service`, and `content-service`
+share the same `dev-premier` Postgres database as `gateway`, each in its own schema
+(`ecommerce`/`identity`/`task`/`social`/`content` vs. `gateway`'s `product`) —
+per-service-per-schema, not per-service-per-database (see root `CLAUDE.md`'s Database Conventions
+and the `project-microservices-extraction-plan` memory for why). Each service also has its own
+standalone `*-liquibase.yml` compose file at the repo root for migrating its own schema outside the
+combined apps-compose flow (`ecommerce-service-liquibase.yml`, `identity-service-liquibase.yml`,
+`task-service-liquibase.yml`, `social-service-liquibase.yml`, `content-service-liquibase.yml`).
 `social-service` additionally needs a real MinIO connection at runtime (`app.storage.*`, for avatar/
-attachment presigned URLs via `infra`'s `StorageService`) — the only one of the four standalone
-extractions so far with that requirement, since none of the other three ever mapped avatar/
-attachment data.
+attachment presigned URLs via `infra`'s `StorageService`) — the only one of the five standalone
+extractions so far with that requirement, since none of the others ever mapped avatar/attachment
+data. `gateway`'s own container is the one with a genuine inter-service runtime dependency on
+another standalone service today: `CONTENT_SERVICE_BASE_URL`/`INTERNAL_API_KEY` point its embedded
+`ai-service`'s `ContentServiceClient` at `content-service`'s Compose service name
+(`http://content-service:8085`) instead of the same-process loopback it used before extraction.
 
 `common`, `infra`, and the root `pom.xml` needed no changes for any of this — they already function
 as this repo's shared-foundation modules (proven by `ecommerce-service` already depending on
 `common`+`infra` as ordinary library jars, with zero Maven dependency on `gateway`, before
-`identity-service`, `task-service`, and `social-service` followed the same pattern).
-Kafka/RabbitMQ messaging and a `kubernetes/` directory are not part of this yet — see
+`identity-service`, `task-service`, `social-service`, and `content-service` followed the same
+pattern). Kafka/RabbitMQ messaging and a `kubernetes/` directory are not part of this yet — see
 `docs/CHANGELOG.md`'s `[Unreleased]` entry for current scope.

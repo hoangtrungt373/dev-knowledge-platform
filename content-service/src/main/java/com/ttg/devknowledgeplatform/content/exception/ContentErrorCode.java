@@ -39,7 +39,11 @@ public enum ContentErrorCode implements ErrorCode {
     // Article Errors (ARTICLE_*)
     ARTICLE_NOT_FOUND("ARTICLE_001", "Article not found: {0}", HttpStatus.NOT_FOUND),
     ARTICLE_SLUG_CONFLICT("ARTICLE_002", "Unable to generate a unique slug for article ''{0}''", HttpStatus.CONFLICT),
-    ARTICLE_TYPE_INVALID("ARTICLE_003", "Article type must be ARTICLE or BLOG_POST, got: {0}", HttpStatus.BAD_REQUEST);
+    ARTICLE_TYPE_INVALID("ARTICLE_003", "Article type must be ARTICLE or BLOG_POST, got: {0}", HttpStatus.BAD_REQUEST),
+
+    // Content Item Errors (CONTENT_ITEM_*) — the generic base entity, not owned by either the
+    // article or question-answer subtype (used by the internal indexing API's own lookups)
+    CONTENT_ITEM_NOT_FOUND("CONTENT_ITEM_001", "Content item not found: {0}", HttpStatus.NOT_FOUND);
 
     private final String code;
     private final String message;

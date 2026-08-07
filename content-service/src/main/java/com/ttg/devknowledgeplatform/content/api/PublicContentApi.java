@@ -1,7 +1,7 @@
-package com.ttg.devknowledgeplatform.ai.api;
+package com.ttg.devknowledgeplatform.content.api;
 
-import com.ttg.devknowledgeplatform.content.enums.ContentType;
-import com.ttg.devknowledgeplatform.content.enums.QuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
+import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.content.dto.ArticleResponse;
 import com.ttg.devknowledgeplatform.content.dto.QuestionAnswerResponse;
@@ -16,7 +16,12 @@ import org.springframework.web.bind.annotation.RequestParam;
  *
  * <p>Exposes read-only, unauthenticated endpoints for browsing published articles and
  * question-and-answer content. The implementation
- * ({@link com.ttg.devknowledgeplatform.ai.api.impl.PublicContentController}) carries no HTTP annotations.
+ * ({@link com.ttg.devknowledgeplatform.content.api.impl.PublicContentController}) carries no HTTP annotations.
+ *
+ * <p>Moved here from {@code ai-service} as step 5 of the content-service extraction (see root
+ * {@code CLAUDE.md}'s Long-term direction section) — it only ever fronted this module's own
+ * {@code ArticleService}/{@code QuestionAnswerService}, never anything ai-service-specific, so it
+ * belongs with the rest of this module's own REST surface.
  */
 @RequestMapping("/api/v1/public")
 public interface PublicContentApi {

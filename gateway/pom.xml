@@ -27,10 +27,6 @@
         </dependency>
         <dependency>
             <groupId>com.ttg</groupId>
-            <artifactId>content-service</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.ttg</groupId>
             <artifactId>ai-service</artifactId>
         </dependency>
 
@@ -73,7 +69,22 @@
              in this reactor and social-service now owns that whole transport on its own port.
              gateway will reach social-service over HTTP once the proxy layer is built — not done
              yet. Do not re-add this as a Maven dependency; that would put its beans back on this
-             app's classpath and cause both apps to run them at once. -->
+             app's classpath and cause both apps to run them at once.
+
+             No content-service dependency either: it's a standalone Spring Boot app now (its own
+             `content` schema, own JWT verification, own port 8085), not wired into this Spring
+             context. Unlike task-service/social-service, ai-service (still embedded here) had a
+             real one-directional dependency on content-service (ContentEmbedding's FK,
+             ContentIngestionService.ingest(...) taking a live ContentItem) — that was rewritten to
+             a real HTTP call (ai-service's ContentServiceClient, app.content-service.* below) before
+             this Maven dependency could be safely removed, unlike the other four extractions where
+             the dependency was purely a pom.xml edit from day one. PublicContentApi/
+             PublicContentController also moved back into content-service in the same extraction —
+             they used to live here only because this app could see both content-service and
+             ai-service, which stopped being a real constraint once ai-service already depended on
+             content-service directly. gateway will reach content-service over HTTP once the proxy
+             layer is built — not done yet. Do not re-add this as a Maven dependency; that would put
+             its beans back on this app's classpath and cause both apps to run them at once. -->
 
         <!-- Spring Web -->
         <dependency>

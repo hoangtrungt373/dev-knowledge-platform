@@ -103,7 +103,7 @@ public class RetrievedContentGuardStage implements RagPipelineStage {
                 infectedCount++;
                 log.warn("RetrievedContentGuardStage: injection pattern found in retrieved chunk — "
                                 + "contentItemId={} chunkIndex={} embeddingId={} — chunk excluded from MMR pool",
-                        sc.chunk().getContentItem().getId(),
+                        sc.chunk().getContentItemId(),
                         sc.chunk().getChunkIndex(),
                         sc.chunk().getId());
             } else {

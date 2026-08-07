@@ -26,26 +26,31 @@ This module now owns its own REST controllers, not just the pipeline behind them
   (`/api/v1/admin/embeddings`).
 - `api/PipelineMetricsApi` + `api/impl/PipelineMetricsController` — admin cost/latency monitoring
   (`/api/v1/admin/pipeline-metrics`).
-- `api/PublicContentApi` + `api/impl/PublicContentController` — read-only published-content
-  browsing (`/api/v1/public/**`); fronts `content-service`'s `ArticleService`/
-  `QuestionAnswerService` via `content-service`'s own `ArticleMapper`/`QuestionAnswerMapper` and
-  `content.dto.*` DTOs.
+**`api/PublicContentApi`/`api/impl/PublicContentController` used to live here** (read-only
+published-content browsing, `/api/v1/public/**`), fronting `content-service`'s own
+`ArticleService`/`QuestionAnswerService` directly. Moved back into `content-service` as step 5 of
+that module's extraction (see root `CLAUDE.md`'s Long-term direction section) — it never actually
+needed anything ai-service-specific, so keeping it here was drift left over from before
+`content-service` owned its own REST layer at all. This move (plus step 4's HTTP rewrite of the
+indexing pipeline, below) eliminated this module's Maven dependency on `content-service` entirely.
 
 The content+AI indexing orchestration layer moved alongside its controllers:
 `service/ContentIndexingService`/`Impl`, `service/IndexingQualityService`/`Impl`,
-`service/QualityVerdict`, `service/EmbeddingIndexService`/`Impl`, `dto/admin/EmbeddingIndexItemResponse`,
-and — moved later, in a follow-up pass that had been missed the first time — `event/ContentPublishedEventListener`
-(listens for `content-service`'s `ContentPublishedEvent`, calls this module's own
-`ContentIndexingService.index(...)`; co-located with `PipelineCompletedEvent`/`Listener` in this
-module's own `event/` package, same convention).
-**Why this is no longer an `gateway`-only concern:** the old rule ("only `gateway` can depend on two
-feature modules, so cross-module orchestration lives there") was a tiebreaker for orchestration that
-genuinely needed both `content-service` and `ai-service` from a module that couldn't otherwise see
-both. But `ai-service` *already* depends on `content-service` (see the Rules section below — real FK
-coupling via `ContentEmbedding`/`ContentItem`), so for this specific orchestration the tiebreaker
-never applied: `ai-service` was always the more specific module able to see both without `gateway`'s
-help. Leaving it in `gateway` was drift, not a real constraint — content-service extraction and this
-move fixed it in one pass.
+`service/QualityVerdict`, `service/EmbeddingIndexService`/`Impl`, `dto/admin/EmbeddingIndexItemResponse`.
+**`event/ContentPublishedEventListener` used to live here too** (listened for `content-service`'s
+`ContentPublishedEvent`, called this module's own `ContentIndexingService.index(...)`) but was
+deleted as dead code in the same pass that moved `PublicContentApi` back — the event it listened
+for has never had a publisher wired up, and an in-process Spring event couldn't cross a service
+boundary once `content-service` is actually standalone anyway.
+**Why the indexing orchestration itself is no longer a `gateway`-only concern:** the old rule
+("only `gateway` can depend on two feature modules, so cross-module orchestration lives there") was
+a tiebreaker for orchestration that genuinely needed both `content-service` and `ai-service` from a
+module that couldn't otherwise see both. Back when `ai-service` still depended on `content-service`
+(real FK coupling via `ContentEmbedding`/`ContentItem`), the tiebreaker never applied: `ai-service`
+was always the more specific module able to see both without `gateway`'s help. Leaving it in
+`gateway` was drift, not a real constraint. That FK coupling is gone now (see the Rules section
+below), but the orchestration stays here regardless — it's `ai-service`'s own indexing pipeline,
+just reaching `content-service` over HTTP instead of a live entity.
 
 The self-contained chat-session feature also moved in full: `service/ChatSessionService`/`Impl`,
 `repository/ChatSessionRepository`/`ChatMessageRepository`, `exception/ChatErrorCode`,
@@ -164,12 +169,36 @@ live here — it's injected by type/qualifier, no package coupling either way.
 
 ## Rules specific to this module
 
-- **Depends on `common` + `infra` + `content-service`.** The `content-service` dependency exists
-  specifically because `ContentEmbedding` has a real `@ManyToOne` FK to `ContentItem`, and
-  `ContentIngestionService.ingest(...)` takes `ContentItem` as a parameter — never remove that
-  dependency without also removing those two usages. **Never add a dependency on `gateway` or
-  `social-service`** here. This is why `SseStreamTemplate` owns its own `SSE_TIMEOUT_MS` constant
-  instead of reading `gateway`'s `WebMvcConfig` — the reference must only ever point from `gateway` inward.
+- **No longer depends on `content-service` at all — just `common` + `infra` now.** As of the
+  content-service extraction's steps 4 and 5 (see root `CLAUDE.md`'s Long-term direction section
+  and `content-service/CLAUDE.md`), `ContentEmbedding` carries a plain `contentItemId` column (not
+  a `@ManyToOne` FK), `ContentIngestionService.ingest(...)` takes
+  `Integer contentItemId, ContentType sourceType` instead of a live `ContentItem`, and
+  `PublicContentApi`/`PublicContentController` moved back into `content-service` outright (they
+  only ever fronted that module's own `ArticleService`/`QuestionAnswerService`, never anything
+  ai-service-specific). `event/ContentPublishedEventListener` was deleted as dead code in the same
+  pass — the event it listened for (`content-service`'s `ContentPublishedEvent`) has never had a
+  publisher wired up, and an in-process Spring event couldn't have crossed a service boundary once
+  `content-service` is actually standalone anyway. `ContentIndexingServiceImpl`/
+  `EmbeddingIndexServiceImpl` now read/write content-item data exclusively through
+  `service/ContentServiceClient` (a `RestClient` call to `content-service`'s
+  `/internal/content-items/**` API, configured via `config/ContentServiceClientProperties`/
+  `app.content-service.*` — `base-url` points at this same process today and will change to that
+  module's own host:port once it's actually extracted; the shared `X-Internal-Api-Key` header must
+  match `content-service`'s own `app.internal-api.key`). `dto/client/ContentItemDto` is this
+  module's own duplicated copy of that API's response shape — same "duplicate, don't share
+  cross-service DTOs" convention every `KeycloakJwtAuthenticationConverter` duplicate in this
+  codebase already follows. **Never add a dependency on `gateway`, `social-service`, or
+  `content-service`** here — any future need for `content-service` data must go through
+  `ContentServiceClient`/a new internal-API endpoint, never a resurrected Maven dependency. This is
+  why `SseStreamTemplate` owns its own `SSE_TIMEOUT_MS` constant instead of reading `gateway`'s
+  `WebMvcConfig` — the reference must only ever point from `gateway` inward.
+- **`SearchDocument` was deleted, not converted** — an audit while doing the above found it had
+  zero consumers anywhere in the reactor (no repository, no service, no controller) and mapped to a
+  `SEARCH_DOCUMENT` table that no Liquibase changeset ever created; with `hibernate.ddl-auto:
+  validate` active, this entity would have failed application startup the moment anything forced
+  Hibernate to validate it. Dead code from a scaffold that was never wired up — removed outright
+  rather than given the same `contentItemId` treatment as `ContentEmbedding`.
 - Since the REST layer moved in (see above), this module also declares
   `spring-boot-starter-web` (`@RestController`/`ResponseEntity`/`SseEmitter`/`MediaType`),
   `spring-boot-starter-validation` (`@Valid` on `ChatRequest`), `spring-boot-starter-security`

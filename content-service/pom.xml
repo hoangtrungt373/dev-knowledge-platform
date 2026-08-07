@@ -56,17 +56,89 @@
             <artifactId>mapstruct</artifactId>
         </dependency>
 
-        <!-- ArticleApi/QuestionAnswerApi's create() endpoints take @AuthenticationPrincipal
-             CustomOAuth2User (which implements OAuth2User) — type-only usage (annotation +
-             parameter type), same "optional, annotation/type support only" reasoning common
-             applies to this exact same starter for the same class. The actual security filter
-             chain/autoconfiguration stays in api's SecurityConfig. -->
+        <!-- Bean validation — @Valid/@NotBlank/@NotNull on request DTOs (CreateArticleRequest,
+             etc.) and UpdateQualityScoreRequest. Not inherited transitively anymore now that this
+             module is a standalone app (it used to arrive via gateway's own dependency on
+             ai-service, which declares this starter). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- Spring Security — this module's own filter chain now that it's a standalone app
+             (see security/SecurityConfig), same reasoning as task-service's/ecommerce-service's
+             pom.xml. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- OAuth2 Resource Server — Keycloak is the identity provider; this service only ever
+             verifies bearer tokens against Keycloak's JWKS (issuer-uri auto-discovery), never
+             issues them. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+
+        <!-- OAuth2 Client — KeycloakJwtAuthenticationConverter/CurrentUserResolver build/read a
+             common.dto.CustomOAuth2User (implements OAuth2User) as this app's own Authentication
+             principal, genuinely at runtime now (not just @AuthenticationPrincipal type support,
+             which is why this is no longer <optional>true</optional> — same change task-service's
+             pom.xml made for the same reason). -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-oauth2-client</artifactId>
-            <optional>true</optional>
+        </dependency>
+
+        <!-- PostgreSQL — this module's own datasource connection now that it's a standalone app
+             with its own schema (`content`), not sharing gateway's connection. -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Actuator — health/info/metrics endpoints, same as gateway/task-service/social-service,
+             now that this module is independently deployable. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
     </dependencies>
+
+    <build>
+        <!-- Include the Liquibase changelog XML/SQL bundled under src/main/java so they end up on
+             the runtime classpath — same shape as identity-service's/task-service's pom.xml.
+             This module's own changelog is run via a standalone content-service-liquibase.yml
+             docker-compose file (spring.liquibase.enabled stays false here too), not on app boot. -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>src/main/java</directory>
+                <includes>
+                    <include>**/*.xml</include>
+                    <include>**/*.sql</include>
+                </includes>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

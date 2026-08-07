@@ -1,15 +1,14 @@
 package com.ttg.devknowledgeplatform.content.api;
 
-import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.content.enums.ContentType;
-import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
+import com.ttg.devknowledgeplatform.common.annotation.CurrentUserId;
+import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.content.dto.ArticleResponse;
 import com.ttg.devknowledgeplatform.content.dto.CreateArticleRequest;
 import com.ttg.devknowledgeplatform.content.dto.UpdateArticleRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,15 +29,15 @@ import org.springframework.web.bind.annotation.RequestParam;
 public interface ArticleApi {
 
     /**
-     * Creates a new article owned by the authenticated principal.
+     * Creates a new article owned by the authenticated caller.
      *
-     * @param principal the authenticated OAuth2 user; used to resolve the author
-     * @param request   validated creation payload
+     * @param authorUuid the authenticated caller's Keycloak subject id
+     * @param request    validated creation payload
      * @return {@code 201} with the created article
      */
     @PostMapping
     ResponseEntity<ArticleResponse> create(
-            @AuthenticationPrincipal CustomOAuth2User principal,
+            @CurrentUserId String authorUuid,
             @Valid @RequestBody CreateArticleRequest request);
 
     /**

@@ -1,14 +1,11 @@
 package com.ttg.devknowledgeplatform.content.api.impl;
 
 import com.ttg.devknowledgeplatform.content.api.ArticleApi;
-import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.common.repository.UserRepository;
 import com.ttg.devknowledgeplatform.content.entity.Article;
-import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.content.enums.ContentType;
+import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import com.ttg.devknowledgeplatform.content.service.ArticleCommands;
 import com.ttg.devknowledgeplatform.content.service.ArticleService;
-import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.content.dto.ArticleResponse;
 import com.ttg.devknowledgeplatform.content.dto.CreateArticleRequest;
@@ -38,15 +35,13 @@ public class ArticleController implements ArticleApi {
 
     private final ArticleService articleService;
     private final ArticleMapper articleMapper;
-    private final UserRepository userRepository;
 
     @Override
-    public ResponseEntity<ArticleResponse> create(CustomOAuth2User principal, CreateArticleRequest request) {
-        Integer authorId = resolveAuthorId(principal);
+    public ResponseEntity<ArticleResponse> create(String authorUuid, CreateArticleRequest request) {
         ArticleCommands.Create command = new ArticleCommands.Create(
                 request.getTitle(), request.getType(), request.getBody(),
                 request.getStatus(), request.getCategoryId(), request.getTagIds());
-        Article created = articleService.create(command, authorId);
+        Article created = articleService.create(command, authorUuid);
         return ResponseEntity.status(HttpStatus.CREATED).body(articleMapper.toResponse(created));
     }
 
@@ -78,11 +73,6 @@ public class ArticleController implements ArticleApi {
         Page<ArticleResponse> responses = articleService.list(pageable, type, status, q)
                 .map(articleMapper::toResponse);
         return ResponseEntity.ok(PagedResponse.from(responses));
-    }
-
-    private Integer resolveAuthorId(CustomOAuth2User principal) {
-        if (principal == null) return null;
-        return userRepository.findByEmail(principal.getEmail()).map(User::getId).orElse(null);
     }
 
     private Sort buildSort(String sortBy, String sortDir) {

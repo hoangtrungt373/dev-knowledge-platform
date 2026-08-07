@@ -11,7 +11,7 @@ import java.util.List;
 
 public interface ContentEmbeddingRepository extends JpaRepository<ContentEmbedding, Integer> {
 
-    List<ContentEmbedding> findByContentItem_Id(Integer contentItemId);
+    List<ContentEmbedding> findByContentItemId(Integer contentItemId);
 
     /**
      * Returns the IDs of the top-K most similar embeddings using pgvector cosine distance.
@@ -25,20 +25,22 @@ public interface ContentEmbeddingRepository extends JpaRepository<ContentEmbeddi
             """, nativeQuery = true)
     List<Integer> findTopSimilarIds(@Param("embedding") String embedding, @Param("limit") int limit);
 
-    /** Loads embeddings with their content item eagerly to avoid lazy-init issues. */
-    @Query("SELECT ce FROM ContentEmbedding ce JOIN FETCH ce.contentItem WHERE ce.id IN :ids")
-    List<ContentEmbedding> findAllByIdWithContentItem(@Param("ids") List<Integer> ids);
-
-    boolean existsByContentItem_IdAndModelName(Integer contentItemId, String modelName);
-
     @Modifying
-    @Query("DELETE FROM ContentEmbedding ce WHERE ce.contentItem.id = :contentItemId AND ce.modelName = :modelName")
-    void deleteByContentItem_IdAndModelName(@Param("contentItemId") Integer contentItemId,
+    @Query("DELETE FROM ContentEmbedding ce WHERE ce.contentItemId = :contentItemId AND ce.modelName = :modelName")
+    void deleteByContentItemIdAndModelName(@Param("contentItemId") Integer contentItemId,
                                             @Param("modelName") String modelName);
 
-    @Modifying
-    @Query("DELETE FROM ContentEmbedding ce WHERE ce.contentItem.id = :contentItemId")
-    void deleteByContentItem_Id(@Param("contentItemId") Integer contentItemId);
+    void deleteByContentItemId(Integer contentItemId);
+
+    /**
+     * Returns the distinct set of content item ids that have at least one embedding row —
+     * {@code EmbeddingIndexServiceImpl}'s only way to know which ids are "indexed" now that
+     * {@code ContentItem} lives in a different service's database (a cross-service {@code EXISTS}
+     * join is no longer possible; this id set is intersected/excluded against a page fetched from
+     * {@code content-service}'s internal API instead).
+     */
+    @Query("SELECT DISTINCT ce.contentItemId FROM ContentEmbedding ce")
+    List<Integer> findDistinctContentItemIds();
 
     /**
      * Aggregates embedding statistics grouped by content item ID.
@@ -53,14 +55,14 @@ public interface ContentEmbeddingRepository extends JpaRepository<ContentEmbeddi
      * @return one projection per content item that has at least one embedding
      */
     @Query("""
-            SELECT ce.contentItem.id AS contentItemId,
+            SELECT ce.contentItemId AS contentItemId,
                    COUNT(ce.id) AS chunkCount,
                    COALESCE(SUM(ce.tokenCount), 0) AS totalTokens,
                    MAX(ce.modelName) AS modelName,
                    MAX(ce.dteLastModification) AS lastIndexedAt
             FROM ContentEmbedding ce
-            WHERE ce.contentItem.id IN :ids
-            GROUP BY ce.contentItem.id
+            WHERE ce.contentItemId IN :ids
+            GROUP BY ce.contentItemId
             """)
     List<EmbeddingStatsProjection> findStatsByContentItemIds(@Param("ids") List<Integer> ids);
 

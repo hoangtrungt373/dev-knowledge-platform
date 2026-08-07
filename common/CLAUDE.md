@@ -15,7 +15,13 @@ Documentation Protocol, etc. apply here too — this file only covers what's spe
 - `enums/` — `UserProvider`, `UserRole`, `UserStatus` — all three are field types on `User`, so they
   stay here even though only `identity-service`'s OAuth2 provisioning logic actively branches on
   `UserProvider`: moving it there would force `common` (the base of the dependency graph) to depend
-  on `identity-service`.
+  on `identity-service`. `ContentType`/`ContentStatus`/`QuestionDifficulty` moved here from
+  `content-service` as step 1 of that module's standalone-service extraction (see root `CLAUDE.md`'s
+  Long-term direction section) — `ai-service` uses all three on its own public REST contracts
+  (`ChatRequest.sourceTypes`, `RagFilter`, `PublicContentApi`) and internal indexing filters, not
+  just as `content-service`-internal plumbing, so a plain cross-service Java import would break once
+  `content-service` stops being a Maven dependency. `TagStatus` stayed behind in `content-service` —
+  confirmed via grep it has no consumer outside that module.
 - `exception/` — `ApiException`, `BusinessException`, `ResourceNotFoundException`,
   `GlobalExceptionHandler`, `ErrorCode` (interface), `CommonErrorCode` (implements `ErrorCode`),
   `RateLimitExceededException` — the last one looks single-consumer (`ai-service`'s

@@ -2,8 +2,8 @@ package com.ttg.devknowledgeplatform.content.service;
 
 import java.util.Set;
 
-import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.content.enums.QuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
 
 /**
  * Plain input records for {@link QuestionAnswerService}, mirroring {@code api}'s

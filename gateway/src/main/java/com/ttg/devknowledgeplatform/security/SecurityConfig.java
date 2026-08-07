@@ -37,9 +37,6 @@ public class SecurityConfig {
             .authorizeHttpRequests(authz -> authz
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // Public content browsing
-                .requestMatchers("/api/v1/public/**").permitAll()
-
                 // Spring Actuator
                 .requestMatchers("/actuator/**").permitAll()
 

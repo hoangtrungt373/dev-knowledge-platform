@@ -4,8 +4,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import com.ttg.devknowledgeplatform.content.entity.QuestionAnswer;
-import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.content.enums.QuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
 
 /**
  * Manages the lifecycle of question-and-answer content — general dev-knowledge Q&amp;A, not only
@@ -30,13 +30,13 @@ public interface QuestionAnswerService {
     /**
      * Creates a new question-and-answer content item.
      *
-     * @param command  title, body, answers, optional difficulty, category, tags, and optional initial status
-     * @param authorId the primary key of the authenticated author
+     * @param command    title, body, answers, optional difficulty, category, tags, and optional initial status
+     * @param authorUuid the authenticated author's Keycloak subject id
      * @return the created question
      * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException if the specified category or any tag does not exist
      * @throws com.ttg.devknowledgeplatform.common.exception.ApiException if any tag ID is inactive
      */
-    QuestionAnswer create(QuestionAnswerCommands.Create command, Integer authorId);
+    QuestionAnswer create(QuestionAnswerCommands.Create command, String authorUuid);
 
     /**
      * Updates an existing question-and-answer content item.

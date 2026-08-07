@@ -4,17 +4,13 @@ import com.ttg.devknowledgeplatform.ai.converter.FloatArrayToVectorConverter;
 import com.ttg.devknowledgeplatform.ai.converter.PgVectorJdbcType;
 import com.ttg.devknowledgeplatform.ai.dto.ContentEmbeddingMetadata;
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
-import com.ttg.devknowledgeplatform.content.entity.ContentItem;
-import com.ttg.devknowledgeplatform.content.enums.ContentType;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
@@ -25,11 +21,20 @@ import lombok.ToString;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+/**
+ * A chunk-level embedding row.
+ *
+ * <p>{@code contentItemId} is a plain column, not a {@code @ManyToOne} FK — {@code ContentItem}
+ * lives in {@code content-service}'s own database once that module is extracted into a standalone
+ * service (see root {@code CLAUDE.md}'s Long-term direction section), so a live JPA association
+ * across a service boundary isn't possible. {@code ContentIngestionServiceImpl} receives the id
+ * from {@code ai-service}'s {@code ContentServiceClient} (an HTTP call) rather than a live entity.
+ */
 @Entity
 @Table(
         name = "CONTENT_EMBEDDING",
         // A content item can have chunk sets from more than one embedding model at once
-        // (ContentIngestionServiceImpl deletes by contentItem + model before re-ingesting), so
+        // (ContentIngestionServiceImpl deletes by contentItemId + model before re-ingesting), so
         // MODEL_NAME is part of the natural key here, not just CONTENT_ITEM_ID + CHUNK_INDEX.
         uniqueConstraints = @UniqueConstraint(
                 name = "UK_CONTENT_EMBEDDING_ITEM_MODEL_CHUNK",
@@ -40,16 +45,15 @@ import org.hibernate.type.SqlTypes;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(callSuper = true, exclude = {"contentItem"})
-@ToString(exclude = {"contentItem", "embedding"})
+@EqualsAndHashCode(callSuper = true)
+@ToString(exclude = {"embedding"})
 public class ContentEmbedding extends AbstractEntity {
 
     /** Dimension produced by OpenAI text-embedding-3-small. Change here and in the migration if switching models. */
     public static final int EMBEDDING_DIMENSIONS = 1536;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "CONTENT_ITEM_ID", nullable = false)
-    private ContentItem contentItem;
+    @Column(name = "CONTENT_ITEM_ID", nullable = false)
+    private Integer contentItemId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "SOURCE_TYPE", length = 50, nullable = false)

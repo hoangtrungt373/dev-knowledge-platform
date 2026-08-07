@@ -1,14 +1,11 @@
 package com.ttg.devknowledgeplatform.content.api.impl;
 
 import com.ttg.devknowledgeplatform.content.api.QuestionAnswerApi;
-import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.common.repository.UserRepository;
 import com.ttg.devknowledgeplatform.content.entity.QuestionAnswer;
-import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.content.enums.QuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
 import com.ttg.devknowledgeplatform.content.service.QuestionAnswerCommands;
 import com.ttg.devknowledgeplatform.content.service.QuestionAnswerService;
-import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.content.dto.CreateQuestionAnswerRequest;
 import com.ttg.devknowledgeplatform.content.dto.QuestionAnswerResponse;
@@ -38,17 +35,15 @@ public class QuestionAnswerController implements QuestionAnswerApi {
 
     private final QuestionAnswerService questionAnswerService;
     private final QuestionAnswerMapper questionAnswerMapper;
-    private final UserRepository userRepository;
 
     @Override
     public ResponseEntity<QuestionAnswerResponse> create(
-            CustomOAuth2User principal, CreateQuestionAnswerRequest request) {
-        Integer authorId = resolveAuthorId(principal);
+            String authorUuid, CreateQuestionAnswerRequest request) {
         QuestionAnswerCommands.Create command = new QuestionAnswerCommands.Create(
                 request.getTitle(), request.getDifficulty(), request.getQuestionBody(),
                 request.getShortAnswer(), request.getDetailedAnswer(), request.getIsCommon(),
                 request.getStatus(), request.getCategoryId(), request.getTagIds());
-        QuestionAnswer created = questionAnswerService.create(command, authorId);
+        QuestionAnswer created = questionAnswerService.create(command, authorUuid);
         return ResponseEntity.status(HttpStatus.CREATED).body(questionAnswerMapper.toResponse(created));
     }
 
@@ -82,11 +77,6 @@ public class QuestionAnswerController implements QuestionAnswerApi {
                 questionAnswerService.list(pageable, difficulty, status, isCommon, q)
                         .map(questionAnswerMapper::toResponse);
         return ResponseEntity.ok(PagedResponse.from(responses));
-    }
-
-    private Integer resolveAuthorId(CustomOAuth2User principal) {
-        if (principal == null) return null;
-        return userRepository.findByEmail(principal.getEmail()).map(User::getId).orElse(null);
     }
 
     private Sort buildSort(String sortBy, String sortDir) {

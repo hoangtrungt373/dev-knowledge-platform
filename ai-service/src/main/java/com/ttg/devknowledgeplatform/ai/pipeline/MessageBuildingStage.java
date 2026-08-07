@@ -7,7 +7,7 @@ import com.ttg.devknowledgeplatform.ai.dto.RagPipelineContext;
 import com.ttg.devknowledgeplatform.ai.dto.RagSource;
 import com.ttg.devknowledgeplatform.ai.dto.ScoredChunk;
 import com.ttg.devknowledgeplatform.ai.enums.ChatMessageRole;
-import com.ttg.devknowledgeplatform.content.enums.ContentType;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import com.ttg.devknowledgeplatform.ai.dto.ConversationContext;
 import com.ttg.devknowledgeplatform.ai.dto.ConversationTurn;
 import dev.langchain4j.data.message.AiMessage;
@@ -43,7 +43,7 @@ import java.util.stream.IntStream;
  * </ul>
  *
  * <p>The system prompt prefix is resolved from {@link RagPipelineContext#getFilter()}: when the
- * filter targets exactly one {@link com.ttg.devknowledgeplatform.content.enums.ContentType} a
+ * filter targets exactly one {@link com.ttg.devknowledgeplatform.common.enums.ContentType} a
  * domain-specific prompt is used; mixed or unfiltered queries fall back to the default prompt.
  *
  * <p><strong>Reads:</strong> {@link RagPipelineContext#getSelectedChunks()},
@@ -72,9 +72,9 @@ public class MessageBuildingStage implements RagPipelineStage {
     private List<RagSource> buildSources(List<ScoredChunk> selected) {
         return selected.stream()
                 .map(sc -> new RagSource(
-                        sc.chunk().getContentItem().getId(),
+                        sc.chunk().getContentItemId(),
                         sc.chunk().getSourceType().name(),
-                        sc.chunk().getContentItem().getTitle(),
+                        sc.chunk().getMetadata().title(),
                         sc.chunk().getChunkText(),
                         sc.score()))
                 .toList();

@@ -25,10 +25,13 @@ import static java.math.BigDecimal.ZERO;
  * for {@link PipelineCompletedEvent}.
  *
  * <p>Co-located with {@link PipelineCompletedEvent} in the {@code ai.event} package so that
- * the event and its primary consumer are navigable together — the same grouping used by
- * {@link ContentPublishedEventListener} in this same package (its event, {@code ContentPublishedEvent},
- * is defined in {@code content-service} instead, since it's published from there — only this
- * module's own {@code PipelineCompletedEvent} has both halves local).
+ * the event and its primary consumer are navigable together. This module used to also host
+ * {@code ContentPublishedEventListener} here on the same convention (its event,
+ * {@code ContentPublishedEvent}, is defined in {@code content-service} instead, since it's
+ * published from there) — that listener was deleted as dead code during the content-service
+ * extraction's step 5 (the event it listened for has never had a publisher wired up; see
+ * {@code content-service/CLAUDE.md}), leaving this module's own {@code PipelineCompletedEvent} as
+ * the only event/listener pair local to this package.
  *
  * <p>Async dispatch, MDC trace propagation, timing, and exception safety are all
  * provided by {@link AsyncEventHandler}; this class only contains the one-line {@code @EventHandler}

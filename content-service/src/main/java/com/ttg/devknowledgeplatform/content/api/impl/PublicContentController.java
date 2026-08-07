@@ -1,9 +1,9 @@
-package com.ttg.devknowledgeplatform.ai.api.impl;
+package com.ttg.devknowledgeplatform.content.api.impl;
 
-import com.ttg.devknowledgeplatform.ai.api.PublicContentApi;
-import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.content.enums.ContentType;
-import com.ttg.devknowledgeplatform.content.enums.QuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
+import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
+import com.ttg.devknowledgeplatform.content.api.PublicContentApi;
 import com.ttg.devknowledgeplatform.content.service.ArticleService;
 import com.ttg.devknowledgeplatform.content.service.QuestionAnswerService;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;

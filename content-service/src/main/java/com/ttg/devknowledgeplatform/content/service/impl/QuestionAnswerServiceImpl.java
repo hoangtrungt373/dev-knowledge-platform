@@ -8,9 +8,9 @@ import com.ttg.devknowledgeplatform.content.entity.ContentItem;
 import com.ttg.devknowledgeplatform.content.entity.ContentItemTag;
 import com.ttg.devknowledgeplatform.content.entity.QuestionAnswer;
 import com.ttg.devknowledgeplatform.content.entity.Tag;
-import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.content.enums.ContentType;
-import com.ttg.devknowledgeplatform.content.enums.QuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
+import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
 import com.ttg.devknowledgeplatform.content.enums.TagStatus;
 import com.ttg.devknowledgeplatform.content.exception.ContentErrorCode;
 import com.ttg.devknowledgeplatform.content.repository.CategoryRepository;
@@ -49,7 +49,7 @@ public class QuestionAnswerServiceImpl implements QuestionAnswerService {
     private final TagRepository tagRepository;
 
     @Override
-    public QuestionAnswer create(QuestionAnswerCommands.Create command, Integer authorId) {
+    public QuestionAnswer create(QuestionAnswerCommands.Create command, String authorUuid) {
         Category category = resolveCategory(command.categoryId());
         String slug = slugService.generateUniqueSlug(command.title(), contentItemRepository::existsBySlug, ContentErrorCode.QUESTION_ANSWER_SLUG_CONFLICT);
 
@@ -59,7 +59,7 @@ public class QuestionAnswerServiceImpl implements QuestionAnswerService {
         contentItem.setSlug(slug);
         contentItem.setStatus(command.status() != null ? command.status() : ContentStatus.DRAFT);
         contentItem.setCategory(category);
-        contentItem.setAuthorId(authorId);
+        contentItem.setAuthorUuid(authorUuid);
         contentItem.setViewCount(0);
         if (ContentStatus.PUBLISHED.equals(contentItem.getStatus())) {
             contentItem.setPublishedAt(Instant.now());

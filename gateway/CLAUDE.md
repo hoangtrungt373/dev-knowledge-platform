@@ -4,19 +4,26 @@ Module-local guidance for `gateway` (formerly named `api` — renamed once its R
 finished moving out into the feature modules, see `docs/CHANGELOG.md`). Read alongside the root
 `CLAUDE.md`. This is the module every other embedded module gets wired up through — Spring Boot
 entry point, security/JWT-filter wiring, Liquibase migrations — so it depends on `common`, `infra`,
-`content-service`, and `ai-service`.
-**No Maven dependency on `identity-service`, `ecommerce-service`, `task-service`, or
-`social-service`** — all four are standalone Spring Boot applications now (see root `CLAUDE.md`);
-this app JIT-provisions its own local `User` copy directly instead of calling any of them in-process
-(see `security/` below). Removing `task-service`'s and `social-service`'s dependencies needed no
-rewritten call site, unlike `identity-service` — `gateway` never called into either module's Java
-classes in-process to begin with (`ProjectApi`/`TaskApi`, `FriendApi`/`GroupApi`/`DmApi`/`UserApi`
-were already those modules' own REST layers, just riding on this app's Spring context via the Maven
-dependency), so removing them was mostly `pom.xml` edits — `social-service`'s removal additionally
-required deleting this app's own `WebSocketConfig`/`StompAuthChannelInterceptor`/
-`CurrentUserIdMessageArgumentResolver` outright, since chat was the only STOMP use case in this
-reactor and `social-service` now owns that whole transport on its own port (`8084`) — **this app has
-no WebSocket/STOMP transport of its own anymore.**
+and `ai-service` (its one remaining embedded feature module).
+**No Maven dependency on `identity-service`, `ecommerce-service`, `task-service`, `social-service`,
+or `content-service`** — all five are standalone Spring Boot applications now (see root
+`CLAUDE.md`); this app JIT-provisions its own local `User` copy directly instead of calling any of
+them in-process (see `security/` below). Removing `task-service`'s and `social-service`'s
+dependencies needed no rewritten call site, unlike `identity-service` — `gateway` never called into
+either module's Java classes in-process to begin with (`ProjectApi`/`TaskApi`,
+`FriendApi`/`GroupApi`/`DmApi`/`UserApi` were already those modules' own REST layers, just riding on
+this app's Spring context via the Maven dependency), so removing them was mostly `pom.xml` edits —
+`social-service`'s removal additionally required deleting this app's own `WebSocketConfig`/
+`StompAuthChannelInterceptor`/`CurrentUserIdMessageArgumentResolver` outright, since chat was the
+only STOMP use case in this reactor and `social-service` now owns that whole transport on its own
+port (`8084`) — **this app has no WebSocket/STOMP transport of its own anymore.**
+`content-service`'s removal was the odd one out: unlike the other four, `ai-service` (still
+embedded here) had a real one-directional Maven dependency on `content-service` (a JPA FK, a live
+entity parameter, and `PublicContentApi`/`PublicContentController`), so removing it required a real
+HTTP rewrite (`ai-service`'s `ContentServiceClient`) before the `pom.xml` edit was safe, plus moving
+`PublicContentApi`/`PublicContentController` back into `content-service` and narrowing this app's
+own `DataSeedingRunner` to `UserSeeder` only (see that class's Javadoc and
+`content-service/CLAUDE.md`).
 
 Every feature's REST controllers, DTOs, and MapStruct mappers now live in the feature module that
 owns the underlying entities/services (`content-service`, `ai-service`, `social-service`/
@@ -71,30 +78,36 @@ standalone services.
   when reasoning about thread pool exhaustion — they're deliberately separate bulkheads in
   separate modules now.
 - **No `event/` package here anymore** — every listener moved into the module that owns the event
-  it reacts to (`ContentPublishedEventListener` → `ai-service`, since it calls that module's own
-  `ContentIndexingService`; `FriendRequestSentEventListener`/`FriendRequestAcceptedEventListener` →
+  it reacts to (`FriendRequestSentEventListener`/`FriendRequestAcceptedEventListener` →
   `social-service`, alongside the events themselves, before that module's own later extraction).
-  Same "does this genuinely need to be at the entry-point module" question already applied to
-  `config/`; none of the three ever had a `gateway`-specific dependency.
-- `service/seed/{DataSeedingRunner,UserSeeder}` — `DataSeedingRunner` orchestrates every seeder
-  this app still owns, in dependency order (category → tag → question-answer → user); `CategorySeeder`/
-  `TagSeeder`/`QuestionAnswerSeeder` live in `content-service` (the feature module owning what they
-  seed), but `UserSeeder` lives right here — relocated from `identity-service` once that module
-  became a standalone service and could no longer be imported across the module boundary.
-  `UserSeeder` still only writes via `common`'s `UserRepository` directly, same as before the move.
-  **No longer seeds the friend graph/blocks/DM conversations** — `FriendGraphSeeder`/
-  `UserBlockSeeder`/`DmThreadSeeder` moved fully into `social-service`'s own seeding orchestration
-  (its own `service.seed.DataSeedingRunner`, plus its own copy of the demo-user CSV — see that
-  module's `CLAUDE.md`) once that module was extracted with no Maven dependency from this one. The
-  seed data files this app still owns (`data/csv/categories.csv`/`tags.csv`/`users.csv`,
-  `data/question-answers/*.md`) stay under this module's own `src/main/resources/`; `data/csv/
-  friend-requests.csv`/`user-blocks.csv` were deleted from here (moved to `social-service`'s own
-  resources, since this app no longer reads them).
-- `database/sql/` — Liquibase changelogs for this module's own tables plus every *embedded* feature
-  module's — `content-service`'s and this app's own `product.USER` are migrated from here (see root
-  `CLAUDE.md`'s Database Conventions). `identity-service`'s, `ecommerce-service`'s,
-  `task-service`'s, and `social-service`'s tables are **not** here — each standalone service
-  migrates its own schema from its own changelog tree now (see their `CLAUDE.md`s). Several
+  `ContentPublishedEventListener` also moved to `ai-service` at the same time as those two, on the
+  same reasoning — but was later deleted outright as dead code during `content-service`'s own
+  extraction (step 5): the event it listened for never had a publisher wired up, and an in-process
+  Spring event can't cross a service boundary once `content-service` and `ai-service` are separate
+  deployables anyway. Same "does this genuinely need to be at the entry-point module" question
+  already applied to `config/`; none of these ever had a `gateway`-specific dependency.
+- `service/seed/{DataSeedingRunner,UserSeeder}` — `DataSeedingRunner` now only orchestrates
+  `UserSeeder`. `CategorySeeder`/`TagSeeder`/`QuestionAnswerSeeder` used to be injected here too,
+  but moved fully into `content-service`'s own seeding orchestration (its own
+  `service.seed.DataSeedingRunner`) once that module was extracted with no Maven dependency from
+  this one — this app can no longer import those classes at all. `UserSeeder` lives right here —
+  relocated from `identity-service` once that module became a standalone service and could no
+  longer be imported across the module boundary. `UserSeeder` still only writes via `common`'s
+  `UserRepository` directly, same as before the move. **No longer seeds the friend graph/blocks/DM
+  conversations either** — `FriendGraphSeeder`/`UserBlockSeeder`/`DmThreadSeeder` moved fully into
+  `social-service`'s own seeding orchestration (its own `service.seed.DataSeedingRunner`, plus its
+  own copy of the demo-user CSV — see that module's `CLAUDE.md`) once that module was extracted
+  with no Maven dependency from this one. The seed data files this app still owns
+  (`data/csv/users.csv`) stay under this module's own `src/main/resources/`; `data/csv/
+  categories.csv`/`tags.csv`, `data/question-answers/*.md`, `data/csv/friend-requests.csv`/
+  `user-blocks.csv` were all deleted from here (moved to `content-service`'s/`social-service`'s own
+  resources respectively, since this app no longer reads any of them).
+- `database/sql/` — Liquibase changelogs for this module's own tables plus `ai-service`'s (this
+  app's remaining *embedded* feature module) — this app's own `product.USER` is also migrated from
+  here (see root `CLAUDE.md`'s Database Conventions). `identity-service`'s, `ecommerce-service`'s,
+  `task-service`'s, `social-service`'s, and `content-service`'s tables are **not** here — each
+  standalone service migrates its own schema from its own changelog tree now (see their
+  `CLAUDE.md`s). Several
   changesets are still physically present in this tree as already-run history — frozen, not
   deleted, per this repo's never-edit-an-executed-changeset convention — but now describe tables no
   entity in this app's Spring context maps to anymore: `DKP-0020`/`DKP-0021`/`DKP-0022` (the old
@@ -106,11 +119,16 @@ standalone services.
   `social.PROFILE` + friend-graph/chat snapshot instead, `DKP-0029`/`DKP-0030` in that module's own
   tree, with every FK repointed at `social.PROFILE` instead of `product.USER`, since that module
   persists its own lean entity now rather than reusing `common.entity.User` — see
-  `social-service/CLAUDE.md`). New embedded feature modules don't get their own changelog folder; a
-  module extracted into a standalone service does.
+  `social-service/CLAUDE.md`) and `DKP-0001`-`0004`/`0009`/`0013`/`0014`/`0018` (the old
+  `product.CATEGORY`/`TAG`/`CONTENT_ITEM`/`CONTENT_ITEM_TAG`/`QUESTION_ANSWER`/`ARTICLE`,
+  `AUTHOR_ID` a plain unindexed-by-FK column — `content-service` migrates its own fresh snapshot of
+  the same final shape instead, `DKP-0031` in that module's own tree, with `AUTHOR_UUID` (a plain
+  Keycloak-subject-id column) replacing `AUTHOR_ID` entirely — see `content-service/CLAUDE.md`).
+  New embedded feature modules don't get their own changelog folder; a module extracted into a
+  standalone service does.
 - `Dockerfile` (repo root as build context) — multi-stage build producing this module's runtime
   image. `COPY`s only the sources of modules it actually still depends on (`common`/`infra`/
-  `content-service`/`ai-service`) — every other module's `pom.xml` alone, needed only for Maven to
+  `ai-service`) — every other module's `pom.xml` alone, needed only for Maven to
   parse the reactor's full `<modules>` list. Relies entirely on `application-docker.yml`'s existing
   env-var defaults (`DB_HOST`/`REDIS_HOST`/`MINIO_ENDPOINT` already default to the infra compose's
   service names); the new `dev-knowledge-platform-apps-docker-compose.yml` at the repo root only
@@ -147,7 +165,13 @@ Two real patterns — do not reference `UserUtils.getCurrentUser()`, it doesn't 
 - **This is the only module allowed to depend on more than one feature module — but that no longer
   means REST endpoints live here.** A new REST endpoint's controller/DTO/mapper belongs in whichever
   single feature module owns the entities it fronts, even if that means one feature module taking a
-  one-directional dependency on a sibling (see `ai-service` → `content-service`). `social-service` →
+  one-directional dependency on a sibling. `ai-service` → `content-service` used to be the standing
+  example of this shape (real FK coupling via `ContentEmbedding`/`ContentItem`), but it was removed
+  during `content-service`'s own extraction — `ai-service`'s indexing pipeline now calls
+  `content-service`'s internal API over HTTP instead, so the two are parallel siblings with no
+  Maven dependency relationship at all (see root `CLAUDE.md`'s Module Structure section). This
+  module (`gateway`) is the only one now positioned to depend on both, if a future orchestration
+  endpoint genuinely needs to — none exists yet. `social-service` →
   `identity-service` used to be a second example of this shape; it was removed once
   `identity-service` was extracted into a standalone service (see that module's `CLAUDE.md`) — a
   standalone service can never be the target of an in-process sibling dependency like this, only a

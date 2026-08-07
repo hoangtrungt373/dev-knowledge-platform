@@ -20,7 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "CATEGORY", schema = "product")
+@Table(name = "CATEGORY")
 @AttributeOverride(name = "id", column = @Column(name = "CATEGORY_ID"))
 @Data
 @NoArgsConstructor

@@ -2,8 +2,8 @@ package com.ttg.devknowledgeplatform.content.entity;
 
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
 
-import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.content.enums.ContentType;
+import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -28,7 +28,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 @Entity
-@Table(name = "CONTENT_ITEM", schema = "product")
+@Table(name = "CONTENT_ITEM")
 @AttributeOverride(name = "id", column = @Column(name = "CONTENT_ITEM_ID"))
 @Data
 @NoArgsConstructor
@@ -57,8 +57,15 @@ public class ContentItem extends AbstractEntity {
     @Column(name = "SEED_ID", length = 100)
     private String seedId;
 
-    @Column(name = "AUTHOR_ID")
-    private Integer authorId;
+    // The Keycloak JWT's `sub` claim of the authenticated principal that created this content
+    // item — a plain column, never a foreign key onto a local User table. This module resolves
+    // "who is the caller" straight from the verified JWT via KeycloakJwtAuthenticationConverter (no
+    // persistence, mirrors task-service's/ecommerce-service's converter) rather than JIT-provisioning
+    // its own User copy: nothing ever reads this column back or joins through it (see
+    // ArticleController/QuestionAnswerController — it's write-once at creation), so there is no
+    // "display another user's profile" need to justify a persisted local User row.
+    @Column(name = "AUTHOR_UUID", length = 36)
+    private String authorUuid;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "CATEGORY_ID")

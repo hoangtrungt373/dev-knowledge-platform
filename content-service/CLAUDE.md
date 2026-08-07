@@ -7,24 +7,79 @@ Module-local guidance for `content-service`. Read alongside the root `CLAUDE.md`
 Categories, tags, and content items (Q&A, articles) — the knowledge corpus surfaced by the RAG
 pipeline. Package root: `com.ttg.devknowledgeplatform.content.*`.
 
-- `entity/` — `Category`, `Tag`, `ContentItem`, `ContentItemTag`, `QuestionAnswer`, `Article`.
-- `enums/` — `ContentType`, `ContentStatus`, `TagStatus`, `QuestionDifficulty`.
+**Now a standalone Spring Boot application, not part of the monolith** — the sixth module pulled
+out (fifth of the microservices-study extractions with a full plan, following the
+`ecommerce-service`/`identity-service`/`task-service`/`social-service` precedent), and the hardest
+so far: `ai-service`'s coupling to it was real, deep, and bidirectional (direct repository
+injection, a real `ContentEmbedding`→`ContentItem` FK, a write-back on
+`ContentItem.qualityScore`), not a removable leftover. See the
+`project-microservices-extraction-plan` memory for the full 9-step extraction history. Concretely:
+its own `ContentServiceApplication` entry point, its own `content` Postgres schema (same
+`dev-premier` database, not a separate instance — per-service-per-schema, see root `CLAUDE.md`'s
+Database Conventions), its own port (`8085`), and its own Liquibase changelog. `ai-service`'s
+Maven dependency on this module was removed once its indexing pipeline switched to calling this
+module's own `/internal/content-items/**` API over HTTP instead of injecting repositories
+directly, and `PublicContentApi`/`PublicContentController` moved back here from `ai-service`
+outright — see `ai-service/CLAUDE.md`. Its own `Dockerfile` and
+`dev-knowledge-platform-apps-docker-compose.yml`/`content-service-liquibase.yml` wiring are in
+place now (port `8085`); `gateway`-side HTTP proxying for end-user traffic to this service is not
+built yet — `ai-service`'s own `ContentServiceClient` (server-to-server, against
+`/internal/content-items/**`) is the one real inter-service call that exists today.
+
+- `ContentServiceApplication` — `@SpringBootApplication` + `@ConfigurationPropertiesScan` entry
+  point (the scan is required here — this module no longer rides on `gateway`'s). **No
+  `@EntityScan`/`@EnableJpaRepositories`** — this module doesn't touch `common.entity.User`/
+  `common.repository.UserRepository` at all (see the "No local `User` copy" rule below). Default
+  scanning already covers this module's own `entity`/`repository` packages.
+- `security/` — this app's own filter chain, independent of `gateway`'s, since it now runs on its
+  own port and must guard its own endpoints regardless of whether `gateway` is proxying to it
+  (mirrors `identity-service`'s/`ecommerce-service`'s/`task-service`'s `security/`).
+  `SecurityConfig` mirrors the three-way rule set `gateway`'s own `SecurityConfig` used to apply to
+  these same paths before extraction: `/api/v1/public/**` permits all (read-only published-content
+  browsing), `/internal/**` permits all too (see `InternalApiKeyFilter` below — it, not Spring
+  Security, is what actually enforces that path), `/actuator/**` permits all, `/api/v1/admin/**`
+  requires `ROLE_ADMIN`, everything else requires authentication. `KeycloakRealmRoleConverter` maps
+  `realm_access.roles` to `ROLE_*` authorities, duplicated from `gateway`'s/`task-service`'s/
+  `identity-service`'s/`ecommerce-service`'s converter of the same name (no Maven dependency to
+  share it through). `KeycloakJwtAuthenticationConverter` builds the `CustomOAuth2User` principal
+  directly from the verified JWT's claims — no local `User` row at all, mirroring
+  `ecommerce-service`'s/`task-service`'s converter rather than `gateway`'s/`identity-service`'s
+  (see the "No local `User` copy" rule below). `CurrentUserResolver` reads the authenticated
+  `CustomOAuth2User` principal's UUID straight off the principal — no database lookup.
+  `config/security/InternalApiKeyFilter` + `config/InternalApiProperties` are a separate,
+  server-to-server concern (see below), not part of this end-user JWT chain.
+- `config/web/` — `WebMvcConfig` (registers `CurrentUserIdArgumentResolver`) and
+  `CurrentUserIdArgumentResolver` (resolves `common.annotation.CurrentUserId String`-annotated
+  controller parameters via `security.CurrentUserResolver`) — duplicated from `gateway`'s/
+  `task-service`'s classes of the same name; no STOMP transport here, so no message-argument-resolver
+  counterpart is needed.
+- `entity/` — `Category`, `Tag`, `ContentItem`, `ContentItemTag`, `QuestionAnswer`, `Article`. None
+  of these hardcode `@Table(schema = "product")` anymore — same bug class as `common.entity.User`'s
+  incident (an explicit `@Table(schema=...)` always wins over `hibernate.default_schema`) — so they
+  resolve via this app's own `hibernate.default_schema: content`. `ContentItem.authorUuid` is a
+  plain `String` column (the Keycloak JWT's `sub` claim), never a `@ManyToOne` FK onto a `User` row
+  — see the "No local `User` copy" rule below.
+- `enums/` — `TagStatus` (only enum still local to this module — no consumer outside it;
+  `ContentType`/`ContentStatus`/`QuestionDifficulty` moved to `common`'s `enums/` package, since
+  `ai-service` uses all three on its own public REST contracts, not just as plumbing here).
 - `repository/` (+ `repository/spec/`) — Spring Data repositories and `Specification`s for the
   entities above.
 - `service/` — `CategoryService`, `TagService`, `QuestionAnswerService`, `ArticleService` (+
   `impl/`), `CategoryTreeNode`, `QuestionAnswerCommands`, `ArticleCommands`, `service/seed/`
   (`CategorySeeder`, `TagSeeder`, `QuestionAnswerSeeder` — extend `infra`'s `CsvSeeder<T>` Template
-  Method where the row shape fits; it moved out of this module once `social-service` needed it
-  too, since the two can't depend on each other).
+  Method where the row shape fits; `DataSeedingRunner` — this module's own, orchestrating those
+  three seeders in dependency order, moved here from `gateway`'s once that app could no longer
+  inject them).
 - `api/` (interfaces, HTTP annotations) + `api/impl/` (controllers, no HTTP annotations) —
   `CategoryApi`/`TagApi`/`ArticleApi`/`QuestionAnswerApi` (admin CRUD), moved in from `gateway`
   (named `api` at the time) so the REST layer for this module's own entities lives alongside them.
-  `ai-service`'s `PublicContentApi`/`PublicContentController` (read-only published-content browsing)
-  moved to `ai-service` instead, not here — it also spans the content+AI indexing orchestration
-  concern, outside this module's own CRUD surface (though it does still reach into this module's
-  `ArticleMapper`/`QuestionAnswerMapper`/`content.dto.*`, an already-allowed dependency direction).
-  `ArticleController`/`QuestionAnswerController` resolve the authenticated principal's `User` via
-  `common`'s `UserRepository` directly (not `identity-service`'s `UserService`) — see Rules below.
+  `PublicContentApi`/`PublicContentController` (`/api/v1/public/**`, read-only published-content
+  browsing) moved back here from `ai-service` — it only ever fronted this module's own
+  `ArticleService`/`QuestionAnswerService`/`ArticleMapper`/`QuestionAnswerMapper`/
+  `ContentItemRepository`, never anything ai-service-specific, so keeping it in `ai-service` was
+  drift left over from before this module owned its own REST layer at all. `ArticleController`/
+  `QuestionAnswerController` take `@CurrentUserId String authorUuid` directly (not
+  `@AuthenticationPrincipal CustomOAuth2User`) — see the "No local `User` copy" rule below.
 - `mapper/` — MapStruct mappers, moved in alongside `api/`: `CategoryMapper`, `TagMapper`,
   `ArticleMapper`, `QuestionAnswerMapper` (entity ↔ `dto/` below).
 - `dto/` — REST request/response DTOs for this module's entities: `CategoryResponse`,
@@ -33,22 +88,63 @@ pipeline. Package root: `com.ttg.devknowledgeplatform.content.*`.
   `UpdateArticleRequest`, `QuestionAnswerResponse`, `CreateQuestionAnswerRequest`,
   `UpdateQuestionAnswerRequest`.
 - `event/ContentPublishedEvent` — definition only; no publisher wired up yet (scaffold for a
-  future auto-index-on-publish flow). Listened for by `ai-service`'s `ContentPublishedEventListener`
-  (moved there from `gateway`, since it just calls that module's own `ContentIndexingService` —
-  this module can't host the listener itself, since it must never depend on `ai-service`).
-- `exception/ContentErrorCode` — `CATEGORY_*`/`TAG_*`/`QA_*`/`ARTICLE_*` codes, implements
-  `common`'s `ErrorCode` interface.
+  future auto-index-on-publish flow). `ai-service` used to carry a listener for it
+  (`ContentPublishedEventListener`, moved there from `gateway`), but it was deleted as dead code
+  during this module's extraction — it had never fired (no publisher exists) and an in-process
+  Spring event can't cross a service boundary now that `ai-service` and this module are separate
+  deployables. If auto-index-on-publish is ever built, it will need a real mechanism that works
+  across services (e.g. `ai-service` polling/webhook, or a message broker), not a resurrected
+  in-process listener.
+- `exception/ContentErrorCode` — `CATEGORY_*`/`TAG_*`/`QA_*`/`ARTICLE_*`/`CONTENT_ITEM_*` codes,
+  implements `common`'s `ErrorCode` interface.
+- `api/InternalContentApi` + `api/impl/InternalContentController` (`/internal/content-items/**`) +
+  `service/InternalContentService`/`Impl` + `mapper/InternalContentItemMapper` +
+  `dto/internal/{InternalContentItemResponse,UpdateQualityScoreRequest}` +
+  `repository/spec/ContentItemSpecification` — the server-to-server indexing API `ai-service` calls
+  over HTTP. `ai-service`'s `ContentIndexingServiceImpl`/`EmbeddingIndexServiceImpl` call this API
+  via their own `ContentServiceClient`/`ContentItemDto` instead of injecting this module's
+  repositories directly — see `ai-service/CLAUDE.md`. `InternalContentItemResponse` is deliberately
+  a different shape from `ArticleResponse`/`QuestionAnswerResponse` (this module's own admin REST
+  DTOs): it flattens `ContentItem` + whichever of `QuestionAnswer`/`Article` applies into one
+  object, and carries `categoryName`/`tagNames` (not just ids) because `ai-service`'s
+  `ContentEmbeddingMetadata` needs the human-readable names and can no longer dereference
+  `Category`/`Tag` itself over a live JPA association.
+  `config/InternalApiProperties` (`app.internal-api.key`) + `config/security/InternalApiKeyFilter`
+  gate every `/internal/**` request behind a shared-secret header (`X-Internal-Api-Key`) instead of
+  an end-user JWT, since `ai-service` has no end-user principal to attach to a server-to-server
+  indexing call — see that filter's Javadoc for the alternative considered (OAuth2 client-credentials
+  against Keycloak) and why it was deferred. This module's own `SecurityConfig` marks `/internal/**`
+  `permitAll()` so Spring Security's own filter chain lets the request through unauthenticated
+  before `InternalApiKeyFilter` enforces the key.
 
 Full detail: `docs/PROJECT_STRUCTURE.md`'s `## content-service` section;
-`docs/CHANGELOG.md`'s "Extracted Category/Tag/ContentItem/QuestionAnswer/Article..." entry for the
-extraction history and the reasoning behind every decision below.
+`docs/CHANGELOG.md`'s `[Unreleased]` entries for the extraction history and the reasoning behind
+every decision below.
 
 ## Rules specific to this module
 
-- **Depends only on `common` + `infra`. Never add a dependency on `gateway`, `ai-service`, or
-  `social-service`** — `ai-service` already depends on *this* module (for `ContentItem`), so a
-  dependency back onto `ai-service` would be circular; a dependency on `gateway` would be circular by
-  definition (every module `gateway` wires up must not depend back on `gateway`).
+- **Standalone app now — this module is not part of the monolith's Maven/Spring graph.** It
+  compiles against `common`+`infra` as ordinary library dependencies (shared-kernel style, no
+  runtime call) but has **no Maven dependency on any other feature module, and `gateway`/`ai-service`
+  have none on it.** Never re-add a `gateway`/`ai-service` → `content-service` Maven dependency —
+  that would put this module's beans back on that app's classpath and cause both apps to run them
+  simultaneously (see root `CLAUDE.md`'s note on the `SecurityConfig`-conflict risk this caused
+  mid-extraction). Cross-service communication happens over HTTP (`ai-service`'s
+  `ContentServiceClient` against this module's `InternalContentApi`) or, for `gateway`, once a
+  proxy layer is built — never a compile-time dependency again.
+- **No local `User` copy — `ContentItem.authorUuid` is a plain column, never a `@ManyToOne User`
+  foreign key.** An earlier revision of this module resolved the authenticated author via
+  `common`'s `UserRepository.findByEmail(...).map(User::getId)`, stamping a plain `Integer
+  authorId` — reverted once this module was extracted, since that lookup only ever needs "who is
+  the caller," never another user's profile data, and `authorId`/`authorUuid` is write-once at
+  creation, never read back or joined through anywhere in this module.
+  `KeycloakJwtAuthenticationConverter` builds `CustomOAuth2User` straight from the verified JWT's
+  claims (`sub` → `userUuid`), same as `ecommerce-service`'s/`task-service`'s converter, and
+  `security.CurrentUserResolver`/`config.web.CurrentUserIdArgumentResolver` read that UUID directly
+  with zero database access — see the `project-microservices-extraction-plan` memory's "Option C"
+  discussion (written for `ecommerce-service`, equally applicable here). If a future feature needs
+  to *display* another user's profile info (e.g. an author byline), reach for an event-driven
+  read-model projection ("Option B") rather than resurrecting a persisted `User` copy.
 - **Services (`CategoryService`/`TagService`/`ArticleService`/`QuestionAnswerService`) still return
   entities, `Page<Entity>`, or a command/record type — never this module's own `dto/` classes.**
   Keep the service layer decoupled from the REST/JSON contract even though both now live in the
@@ -56,25 +152,33 @@ extraction history and the reasoning behind every decision below.
   accept or return. Use a command/record type (see `QuestionAnswerCommands`/`ArticleCommands`) for
   multi-field service inputs instead of threading a `Create*Request`/`Update*Request` down into the
   service layer.
-- **REST controllers, DTOs, and mappers DO live here now** (`api/`, `api/impl/`, `mapper/`, `dto/`)
-  — moved in from `gateway` so this module owns its own HTTP surface. They must still only reach
-  `common`/`infra` types plus this module's own `entity`/`service`/`enums` — never a `gateway` or
-  `identity-service` class. `ArticleController`/`QuestionAnswerController` need "the authenticated
-  user's id" to stamp an author on create; they get it via `common`'s `UserRepository.findByEmail(...)`
-  directly rather than `identity-service`'s `UserService.findByEmail(...)` (this module must never
-  depend on `identity-service`), since `common` exposes `UserRepository` for exactly this reason.
-  `@AuthenticationPrincipal CustomOAuth2User` needs `spring-boot-starter-oauth2-client` on the
-  compile classpath (`optional=true`, type support only, same reasoning `common`'s pom documents
-  for that dependency) — the actual security filter chain stays in `gateway`'s `SecurityConfig`.
-- **Seeders live here, not `gateway`** — they persist directly via repositories, same as production
-  service impls, so they belong with the rest of the domain logic. The actual seed data files
-  (`data/csv/*.csv`, `data/question-answers/*.md`) stay under `gateway/src/main/resources/` — only the
-  seeder *classes* live here. `gateway`'s `DataSeedingRunner` just injects and calls them in order.
-- **Liquibase migrations for this module's tables still live under `gateway`'s changelog tree**
-  (`gateway/.../database/sql/`) — new feature modules don't get their own changelog folder in this
-  repo; don't create one.
+- **REST controllers, DTOs, and mappers live here** (`api/`, `api/impl/`, `mapper/`, `dto/`) — this
+  module owns its full HTTP surface. They must still only reach `common`/`infra` types plus this
+  module's own `entity`/`service`/`enums` — never a `gateway`, `ai-service`, or `identity-service`
+  class.
+- **Seeders and their data files both live here now** — the CSV/Markdown seed files
+  (`data/csv/categories.csv`, `data/csv/tags.csv`, `data/question-answers/*.md`) moved from
+  `gateway/src/main/resources/` into this module's own `src/main/resources/` alongside the seeder
+  classes, since `gateway`'s classpath no longer includes this module's jar. `gateway`'s own
+  `DataSeedingRunner` was narrowed to `UserSeeder` only as a result.
+- **Liquibase migrations for this module's tables live in this module's own changelog tree now**
+  (`database/sql/content-service.xml` + `2026/0.0.1/DKP-0031__add_content_service_tables.sql`), the
+  opposite of every embedded feature module (which still migrate via `gateway`'s changelog tree per
+  root `CLAUDE.md`'s Database Conventions). It's a fresh snapshot of the final table shape in the
+  new `content` schema, not a replay of `gateway`'s incremental history — same convention
+  `task-service`'s `DKP-0028` and `social-service`'s `DKP-0029`/`DKP-0030` already followed.
+  `DKP-0031` also carries `AUTHOR_UUID` directly (not `AUTHOR_ID`) since it was edited in place
+  before ever running against a real database, mirroring `task-service`'s own
+  `ownerId`→`ownerUuid` correction. Applied via a standalone `content-service-liquibase.yml`
+  docker-compose file (`docker-compose -f content-service-liquibase.yml up`) — not yet run against
+  a real database in this session, same unverified-at-runtime caveat every standalone extraction in
+  this repo has carried at this stage. Don't move future migrations back under `gateway`'s tree;
+  this module owns its own schema lifecycle now.
 - **`CategoryService.validateParentAssignment`-style invariants belong here, not `gateway`** — any
   business rule about these entities (uniqueness, cycle detection, in-use guards before delete)
-  goes in this module's service impl, never in the `gateway` controller.
-- If a new operation genuinely needs both this module and `ai-service` (e.g. triggering
-  re-indexing), that orchestration goes in `gateway` — it's the only module allowed to depend on both.
+  goes in this module's service impl, never in a `gateway` controller (which no longer exists for
+  this module's entities anyway).
+- If a new operation genuinely needs both this module and `ai-service`, that orchestration goes in
+  `gateway` (the only module that could depend on both, once a proxy layer exists) or is built as a
+  real HTTP call from whichever side initiates it — never a resurrected Maven dependency between
+  the two feature modules themselves.

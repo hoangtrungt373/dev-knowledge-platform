@@ -1,7 +1,7 @@
 package com.ttg.devknowledgeplatform.content.repository;
 
 import com.ttg.devknowledgeplatform.content.entity.ContentItem;
-import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;

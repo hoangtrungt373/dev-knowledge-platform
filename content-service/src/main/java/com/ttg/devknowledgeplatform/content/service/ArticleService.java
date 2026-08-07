@@ -4,8 +4,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import com.ttg.devknowledgeplatform.content.entity.Article;
-import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.content.enums.ContentType;
+import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
 
 /**
  * Manages the lifecycle of articles and blog posts.
@@ -28,13 +28,13 @@ public interface ArticleService {
     /**
      * Creates a new article or blog post.
      *
-     * @param command  title, body, type, category, tags, and optional initial status
-     * @param authorId the primary key of the authenticated author
+     * @param command    title, body, type, category, tags, and optional initial status
+     * @param authorUuid the authenticated author's Keycloak subject id
      * @return the created article
      * @throws com.ttg.devknowledgeplatform.common.exception.ApiException if {@code type} is not ARTICLE or BLOG_POST
      * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException if the specified category or any tag does not exist
      */
-    Article create(ArticleCommands.Create command, Integer authorId);
+    Article create(ArticleCommands.Create command, String authorUuid);
 
     /**
      * Updates an existing article.

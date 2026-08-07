@@ -1,6 +1,6 @@
 package com.ttg.devknowledgeplatform.ai.dto.chat;
 
-import com.ttg.devknowledgeplatform.content.enums.ContentType;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 

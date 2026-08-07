@@ -23,7 +23,7 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 
 @Entity
-@Table(name = "TAG", schema = "product")
+@Table(name = "TAG")
 @AttributeOverride(name = "id", column = @Column(name = "TAG_ID"))
 @Data
 @NoArgsConstructor

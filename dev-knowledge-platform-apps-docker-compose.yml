@@ -1,6 +1,6 @@
-# App containers for the five independently-runnable Spring Boot processes in this repo today
-# (gateway, ecommerce-service, identity-service, task-service, social-service), plus their
-# one-shot Liquibase migrations.
+# App containers for the six independently-runnable Spring Boot processes in this repo today
+# (gateway, ecommerce-service, identity-service, task-service, social-service, content-service),
+# plus their one-shot Liquibase migrations.
 #
 # This file MUST be run combined with dev-knowledge-platform-docker-compose.yml in the same
 # command — that's what puts every container in one Compose project/network so service-name DNS
@@ -12,6 +12,8 @@
 #
 # Required env vars on the host (no in-file defaults, since these are secrets/environment-specific):
 #   OPENAI_API_KEY, FRONTEND_URL (optional, defaults to http://localhost:3000)
+#   INTERNAL_API_KEY (optional — defaults to the same dev-only placeholder both gateway's
+#   ai-service and content-service fall back to; override in production)
 
 services:
 
@@ -104,6 +106,23 @@ services:
       postgres:
         condition: service_healthy
 
+  content-liquibase:
+    image: liquibase/liquibase:4.29
+    entrypoint: ["liquibase"]
+    command:
+      - --search-path=/changelog
+      - --changelog-file=content-service.xml
+      - --url=jdbc:postgresql://postgres:5432/dev-premier
+      - --username=postgres
+      - --password=password
+      - --driver=org.postgresql.Driver
+      - update
+    volumes:
+      - ./content-service/src/main/java/com/ttg/devknowledgeplatform/content/database/sql:/changelog:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   gateway:
     build:
       context: .
@@ -115,6 +134,10 @@ services:
       KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/dev-knowledge-platform
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be set on the host}
+      # ai-service's ContentServiceClient reaches content-service by its Compose service name now
+      # that it's a separate container, not a same-process loopback — see content-service/CLAUDE.md.
+      CONTENT_SERVICE_BASE_URL: http://content-service:8085
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-api-key-change-me}
     ports:
       - "8080:8080"
     depends_on:
@@ -124,6 +147,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      content-service:
+        condition: service_started
 
   ecommerce-service:
     build:
@@ -201,3 +226,25 @@ services:
         condition: service_completed_successfully
       minio:
         condition: service_healthy
+
+  content-service:
+    build:
+      context: .
+      dockerfile: content-service/Dockerfile
+    container_name: dev-premier-content-service
+    restart: on-failure
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/dev-premier
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/dev-knowledge-platform
+      # Must match gateway's own INTERNAL_API_KEY above — both read the same host env var so the
+      # shared secret stays in sync without duplicating it in two places.
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-api-key-change-me}
+      APP_SEED_ENABLED: "true"
+    ports:
+      - "8085:8085"
+    depends_on:
+      content-liquibase:
+        condition: service_completed_successfully

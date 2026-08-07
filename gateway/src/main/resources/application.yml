@@ -235,6 +235,15 @@ app:
   seed:
     enabled: ${APP_SEED_ENABLED:false}
 
+  # ai-service's HTTP client to content-service's now-standalone internal indexing API
+  # (ContentServiceClient). content-service runs as its own process now (port 8085 locally,
+  # content-service:8085 in docker-compose) — see content-service/CLAUDE.md and ai-service/CLAUDE.md.
+  # internal-api-key must match content-service's own app.internal-api.key (both read the same
+  # INTERNAL_API_KEY env var).
+  content-service:
+    base-url: ${CONTENT_SERVICE_BASE_URL:http://localhost:8085}
+    internal-api-key: ${INTERNAL_API_KEY:dev-internal-api-key-change-me}
+
 # Logging
 logging:
   pattern:

@@ -1,0 +1,59 @@
+spring:
+  application:
+    name: content-service
+
+  # OAuth2/OIDC — Keycloak is the identity provider; this service only ever verifies bearer
+  # tokens against Keycloak's JWKS, same realm as gateway/task-service/etc.
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/dev-knowledge-platform}
+
+  # Liquibase — disabled by default, same convention as every other standalone service: migrations
+  # are applied via the standalone content-service-liquibase.yml docker-compose file, not on app boot.
+  liquibase:
+    enabled: false
+    change-log: classpath:com/ttg/devknowledgeplatform/content/database/sql/content-service.xml
+
+  # JPA — this module's own schema (`content`), separate from the monolith's `product` schema.
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_schema: content
+
+# Server — 8085, the next free port after social-service's 8084 (this app runs alongside gateway,
+# not instead of it, until gateway's HTTP proxy to this service is built).
+server:
+  port: ${SERVER_PORT:8085}
+
+# Application
+app:
+  # Shared secret gating this module's own /internal/** indexing API (InternalApiKeyFilter).
+  # ai-service's ContentServiceClient (in gateway's application.yml, app.content-service.*) must be
+  # configured with the same value.
+  internal-api:
+    key: ${INTERNAL_API_KEY:dev-internal-api-key-change-me}
+
+  # CSV/Markdown startup data seeding (DataSeedingRunner) — off by default, enabled per profile
+  seed:
+    enabled: ${APP_SEED_ENABLED:false}
+
+# Logging
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Management
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized

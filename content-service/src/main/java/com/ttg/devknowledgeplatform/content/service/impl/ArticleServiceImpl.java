@@ -8,8 +8,8 @@ import com.ttg.devknowledgeplatform.content.entity.Category;
 import com.ttg.devknowledgeplatform.content.entity.ContentItem;
 import com.ttg.devknowledgeplatform.content.entity.ContentItemTag;
 import com.ttg.devknowledgeplatform.content.entity.Tag;
-import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.content.enums.ContentType;
+import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import com.ttg.devknowledgeplatform.content.enums.TagStatus;
 import com.ttg.devknowledgeplatform.content.exception.ContentErrorCode;
 import com.ttg.devknowledgeplatform.content.repository.ArticleRepository;
@@ -47,7 +47,7 @@ public class ArticleServiceImpl implements ArticleService {
     private final SlugService slugService;
 
     @Override
-    public Article create(ArticleCommands.Create command, Integer authorId) {
+    public Article create(ArticleCommands.Create command, String authorUuid) {
         validateArticleType(command.type());
 
         Category category = resolveCategory(command.categoryId());
@@ -60,7 +60,7 @@ public class ArticleServiceImpl implements ArticleService {
         contentItem.setSlug(slug);
         contentItem.setStatus(status);
         contentItem.setCategory(category);
-        contentItem.setAuthorId(authorId);
+        contentItem.setAuthorUuid(authorUuid);
         contentItem.setViewCount(0);
         if (ContentStatus.PUBLISHED.equals(status)) {
             contentItem.setPublishedAt(Instant.now());

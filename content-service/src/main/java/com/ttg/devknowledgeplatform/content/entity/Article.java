@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 
 @Entity
-@Table(name = "ARTICLE", schema = "product")
+@Table(name = "ARTICLE")
 @AttributeOverride(name = "id", column = @Column(name = "ARTICLE_ID"))
 @Data
 @NoArgsConstructor

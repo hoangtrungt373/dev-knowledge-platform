@@ -2,8 +2,8 @@ package com.ttg.devknowledgeplatform.content.repository.spec;
 
 import com.ttg.devknowledgeplatform.content.entity.Article;
 import com.ttg.devknowledgeplatform.content.entity.ContentItem;
-import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.content.enums.ContentType;
+import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import jakarta.persistence.criteria.Fetch;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;

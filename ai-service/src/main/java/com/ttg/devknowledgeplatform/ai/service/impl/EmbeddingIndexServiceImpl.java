@@ -1,22 +1,15 @@
 package com.ttg.devknowledgeplatform.ai.service.impl;
 
 import com.ttg.devknowledgeplatform.ai.dto.EmbeddingStatsProjection;
-import com.ttg.devknowledgeplatform.ai.entity.ContentEmbedding;
-import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;
-import com.ttg.devknowledgeplatform.content.entity.ContentItem;
-import com.ttg.devknowledgeplatform.content.enums.ContentStatus;
-import com.ttg.devknowledgeplatform.content.enums.ContentType;
-import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.ai.dto.admin.EmbeddingIndexItemResponse;
-import com.ttg.devknowledgeplatform.content.repository.ContentItemRepository;
+import com.ttg.devknowledgeplatform.ai.dto.client.ContentItemDto;
+import com.ttg.devknowledgeplatform.ai.repository.ContentEmbeddingRepository;
+import com.ttg.devknowledgeplatform.ai.service.ContentServiceClient;
 import com.ttg.devknowledgeplatform.ai.service.EmbeddingIndexService;
-import jakarta.persistence.criteria.Root;
-import jakarta.persistence.criteria.Subquery;
+import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
+import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.common.enums.ContentType;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,24 +21,29 @@ import java.util.stream.Collectors;
 /**
  * Implementation of {@link EmbeddingIndexService}.
  *
- * <p>Uses a two-query pattern:
+ * <p>Uses a two-query pattern, same shape as before {@code content-service} was targeted for
+ * standalone-service extraction, but the first query now goes over HTTP instead of a local JPA
+ * {@code Specification}:
  * <ol>
- *   <li>A paginated JPA Specification query fetches the {@code ContentItem} page.</li>
- *   <li>A single batch JPQL aggregate query fetches embedding stats for all IDs on that page.</li>
+ *   <li>{@link ContentServiceClient#list} fetches the paginated {@code ContentItem} page.</li>
+ *   <li>A single batch JPQL aggregate query fetches embedding stats for all IDs on that page,
+ *       from this module's own {@code ContentEmbeddingRepository}.</li>
  * </ol>
- * This avoids N+1 queries while keeping the embedding aggregate logic in the
- * {@code ai-service} module where it belongs.
  *
- * <p>The {@code indexed} filter uses a JPA Criteria {@code EXISTS} subquery
- * on {@code ContentEmbedding} rather than a join, so the pagination count query
- * remains accurate and unaffected by the one-to-many relationship.
+ * <p>The {@code indexed} filter can no longer be a cross-service {@code EXISTS} join now that
+ * {@code ContentEmbedding} and {@code ContentItem} live in different services' databases. Instead,
+ * this class first reads the full set of embedded content item ids from its own database
+ * ({@link ContentEmbeddingRepository#findDistinctContentItemIds()} — cheap, one column, no joins),
+ * then asks {@code content-service} to intersect (({@code indexed=true}) or exclude
+ * ({@code indexed=false})) that id set as part of its own paginated query, so pagination stays
+ * correct without an in-memory scan over every matching row.
  */
 @Service
 @RequiredArgsConstructor
 @Transactional(rollbackFor = Throwable.class)
 public class EmbeddingIndexServiceImpl implements EmbeddingIndexService {
 
-    private final ContentItemRepository contentItemRepository;
+    private final ContentServiceClient contentServiceClient;
     private final ContentEmbeddingRepository contentEmbeddingRepository;
 
     @Override
@@ -53,50 +51,41 @@ public class EmbeddingIndexServiceImpl implements EmbeddingIndexService {
     public PagedResponse<EmbeddingIndexItemResponse> list(
             int page, int size, String q, String contentType, String contentStatus, Boolean indexed) {
 
-        Specification<ContentItem> spec = buildSpec(q, contentType, contentStatus, indexed);
-        Page<ContentItem> ciPage = contentItemRepository.findAll(spec,
-                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id")));
+        ContentType type = (contentType != null && !contentType.isBlank()) ? ContentType.valueOf(contentType) : null;
+        ContentStatus status = (contentStatus != null && !contentStatus.isBlank()) ? ContentStatus.valueOf(contentStatus) : null;
 
-        List<Integer> ids = ciPage.getContent().stream().map(ContentItem::getId).toList();
-        Map<Integer, EmbeddingStatsProjection> statsMap = ids.isEmpty() ? Map.of()
-                : contentEmbeddingRepository.findStatsByContentItemIds(ids).stream()
+        List<Integer> ids = null;
+        List<Integer> excludeIds = null;
+        if (indexed != null) {
+            List<Integer> embeddedIds = contentEmbeddingRepository.findDistinctContentItemIds();
+            if (indexed) {
+                ids = embeddedIds;
+            } else {
+                excludeIds = embeddedIds;
+            }
+        }
+
+        PagedResponse<ContentItemDto> ciPage = contentServiceClient.list(page, size, q, type, status, ids, excludeIds);
+
+        List<Integer> pageIds = ciPage.getContent().stream().map(ContentItemDto::getId).toList();
+        Map<Integer, EmbeddingStatsProjection> statsMap = pageIds.isEmpty() ? Map.of()
+                : contentEmbeddingRepository.findStatsByContentItemIds(pageIds).stream()
                         .collect(Collectors.toMap(EmbeddingStatsProjection::getContentItemId, Function.identity()));
 
-        return PagedResponse.from(ciPage.map(ci -> toResponse(ci, statsMap.get(ci.getId()))));
+        List<EmbeddingIndexItemResponse> content = ciPage.getContent().stream()
+                .map(ci -> toResponse(ci, statsMap.get(ci.getId())))
+                .toList();
+
+        return PagedResponse.<EmbeddingIndexItemResponse>builder()
+                .content(content)
+                .totalElements(ciPage.getTotalElements())
+                .totalPages(ciPage.getTotalPages())
+                .number(ciPage.getNumber())
+                .size(ciPage.getSize())
+                .build();
     }
 
-    private Specification<ContentItem> buildSpec(
-            String q, String contentType, String contentStatus, Boolean indexed) {
-
-        Specification<ContentItem> spec = Specification.where(null);
-
-        if (q != null && !q.isBlank()) {
-            String pattern = "%" + q.toLowerCase() + "%";
-            spec = spec.and((root, query, cb) ->
-                    cb.like(cb.lower(root.get("title")), pattern));
-        }
-        if (contentType != null && !contentType.isBlank()) {
-            ContentType type = ContentType.valueOf(contentType);
-            spec = spec.and((root, query, cb) -> cb.equal(root.get("type"), type));
-        }
-        if (contentStatus != null && !contentStatus.isBlank()) {
-            ContentStatus status = ContentStatus.valueOf(contentStatus);
-            spec = spec.and((root, query, cb) -> cb.equal(root.get("status"), status));
-        }
-        if (indexed != null) {
-            spec = spec.and((root, query, cb) -> {
-                // EXISTS subquery: checks whether any ContentEmbedding row references this ContentItem.
-                // Avoids inflating the row count that a JOIN would cause with the one-to-many relation.
-                Subquery<ContentEmbedding> sub = query.subquery(ContentEmbedding.class);
-                Root<ContentEmbedding> ceRoot = sub.from(ContentEmbedding.class);
-                sub.select(ceRoot).where(cb.equal(ceRoot.get("contentItem"), root));
-                return indexed ? cb.exists(sub) : cb.not(cb.exists(sub));
-            });
-        }
-        return spec;
-    }
-
-    private EmbeddingIndexItemResponse toResponse(ContentItem ci, EmbeddingStatsProjection stats) {
+    private EmbeddingIndexItemResponse toResponse(ContentItemDto ci, EmbeddingStatsProjection stats) {
         return EmbeddingIndexItemResponse.builder()
                 .contentItemId(ci.getId())
                 .title(ci.getTitle())

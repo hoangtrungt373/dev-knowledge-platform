@@ -2,7 +2,7 @@ package com.ttg.devknowledgeplatform.content.entity;
 
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
 
-import com.ttg.devknowledgeplatform.content.enums.QuestionDifficulty;
+import com.ttg.devknowledgeplatform.common.enums.QuestionDifficulty;
 
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
@@ -28,7 +28,7 @@ import lombok.ToString;
  * wouldn't mean anything.
  */
 @Entity
-@Table(name = "QUESTION_ANSWER", schema = "product")
+@Table(name = "QUESTION_ANSWER")
 @AttributeOverride(name = "id", column = @Column(name = "QUESTION_ANSWER_ID"))
 @Data
 @NoArgsConstructor
