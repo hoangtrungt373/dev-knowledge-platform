@@ -26,7 +26,7 @@ directory you're actually working in, layered on top of this one. **Read the rel
 | `ecommerce-service` | Study-project e-commerce vertical slice: catalog, cart/checkout, orders/inventory, payments, reviews/recommendations. **Standalone Spring Boot app, own schema** — not a Maven dependency of `gateway` (see below) | [`ecommerce-service/CLAUDE.md`](ecommerce-service/CLAUDE.md) |
 | `task-service` | Personal task/project management. **Standalone Spring Boot app, own `task` schema, own port (8083)** — not a Maven dependency of `gateway` (see below) | [`task-service/CLAUDE.md`](task-service/CLAUDE.md) |
 | `social-service` | Friend graph + chat (groups/channels, DMs), incl. its own WebSocket/STOMP transport. **Standalone Spring Boot app, own `social` schema, own port (8084)** — not a Maven dependency of `gateway` (see below) | [`social-service/CLAUDE.md`](social-service/CLAUDE.md) |
-| `gateway` | Security/JWT-filter wiring, Spring Boot entry point. **Zero embedded feature modules, zero REST controllers, zero Liquibase story of its own** — a future cross-module REST orchestration endpoint is the only thing that would still land here | [`gateway/CLAUDE.md`](gateway/CLAUDE.md) |
+| `gateway` | Security/JWT-filter wiring, HTTP routing to all six standalone services (Spring Cloud Gateway Server MVC), Spring Boot entry point. **Zero embedded feature modules, zero REST controllers, zero Liquibase story of its own** — a future cross-module REST orchestration endpoint is the only thing that would still land here | [`gateway/CLAUDE.md`](gateway/CLAUDE.md) |
 | `gui` | React 18 + TypeScript + MUI frontend (Vite) | [`gui/CLAUDE.md`](gui/CLAUDE.md) |
 
 `gateway` now depends only on `common`+`infra` — **zero embedded feature modules remain.** This file
@@ -65,9 +65,13 @@ longer depends on any of them in Maven at all; all seven run as separate process
 (`gateway` 8080, `ecommerce-service` 8081, `identity-service` 8082, `task-service` 8083,
 `social-service` 8084, `content-service` 8085, `ai-service` 8086), each with its own Dockerfile and
 `dev-knowledge-platform-apps-docker-compose.yml` entry now. `ai-service`'s own `ContentServiceClient`
-HTTP call to `content-service` is the one real inter-service call that exists today; a
-general-purpose `gateway`-side HTTP proxy to any of the six for end-user traffic is not built yet
-(see each module's own `CLAUDE.md`). **`identity-service` is now the sole deployable that persists a
+HTTP call to `content-service` is one real inter-service call that exists today; `gateway` itself now
+proxies external client traffic to all six over HTTP too, via Spring Cloud Gateway Server MVC
+(`gateway/routing/GatewayRoutesConfig` — see that module's `CLAUDE.md` and root `CLAUDE.md`'s
+Architecture section for the full routing table). Routing is the only piece of "single entry point"
+built so far — CORS consolidation, rate limiting, and the other cross-cutting concerns discussed
+when this work started are still individual per-service today, not yet centralized at the edge.
+**`identity-service` is now the sole deployable that persists a
 `User` row at all** — its own `User` entity, moved there outright from `common` once `gateway`
 dropped its own local copy (see `docs/CHANGELOG.md`'s `[Unreleased]` entry) — into `identity.USER`.
 `gateway` used to JIT-provision an independent local copy of the same shape into `product.USER`
@@ -119,20 +123,23 @@ verification, own Dockerfile/compose wiring), following the
 microservices-extraction-plan project: every module originally identified as a standalone-service
 candidate has now been extracted, and there is no scheduled next candidate — this is a natural
 stopping point for this microservices-study exercise, not a pause partway through one. `gateway` is
-now purely JWT verification (claims-based, no persisted row of any kind — see the Security section
-below); `product` schema itself holds zero live tables (every one of the 23 tables it ever held,
-including its own last holdout `USER`, was dropped outright once nothing mapped any of them anymore
-— see `docs/CHANGELOG.md`'s `[Unreleased]` entry and the Database Conventions section below).
-`gateway` has **no Liquibase story left at all** — its whole changelog tree (every already-run
-historical changeset, plus the one-off drop changeset that retired `product`'s last 23 tables) was
-deleted outright once nothing in it was needed anymore, and the one genuinely-still-needed thing it
-used to bootstrap (the `keycloak` Postgres schema) moved to `docker/postgres/init.sql` instead — see
-the Database Conventions section below. A future
-**big new feature area** still gets its own module per the rule immediately below, and a future
-general-purpose `gateway`-side HTTP proxy for end-user traffic to any of the six standalone services
-remains unbuilt and undecided — but there is no more embedded-module extraction work left to
-schedule. See `docs/CHANGELOG.md`'s `[Unreleased]` entry for the Docker/compose scaffolding already
-in place for all seven services (`gateway`, `ecommerce-service`, `identity-service`, `task-service`,
+now JWT verification (claims-based, no persisted row of any kind — see the Security section below)
+plus routing: it proxies external client requests for all six standalone services over HTTP, via
+Spring Cloud Gateway Server MVC (`routing/GatewayRoutesConfig` — see `gateway/CLAUDE.md`). `product`
+schema itself holds zero live tables (every one of the 23 tables it ever held, including its own
+last holdout `USER`, was dropped outright once nothing mapped any of them anymore — see
+`docs/CHANGELOG.md`'s `[Unreleased]` entry and the Database Conventions section below). `gateway`
+has **no Liquibase story left at all** — its whole changelog tree (every already-run historical
+changeset, plus the one-off drop changeset that retired `product`'s last 23 tables) was deleted
+outright once nothing in it was needed anymore, and the one genuinely-still-needed thing it used to
+bootstrap (the `keycloak` Postgres schema) moved to `docker/postgres/init.sql` instead — see the
+Database Conventions section below. A future **big new feature area** still gets its own module per
+the rule immediately below — that's unrelated to the routing work above, since routing forwards to
+an existing standalone service's own REST layer rather than adding a new one. Cross-cutting
+edge concerns beyond routing itself (CORS consolidation, rate limiting, timeouts, retry, circuit
+breaker) remain individually per-service today, not yet centralized at `gateway`. See
+`docs/CHANGELOG.md`'s `[Unreleased]` entry for the Docker/compose scaffolding already in place for
+all seven services (`gateway`, `ecommerce-service`, `identity-service`, `task-service`,
 `social-service`, `content-service`, `ai-service`).
 
 When proposing a new **big feature area** (broad scope, likely to grow), default to a dedicated
@@ -200,6 +207,41 @@ Before starting any task:
 After completing a task, update those files if your changes affected modules, packages, entities, endpoints, DB schema, dependencies, security rules, or GUI pages. Use the `[Unreleased]` section in CHANGELOG; format follows [Keep a Changelog](https://keepachangelog.com/). If the change altered a module's local conventions or constraints, update that module's `CLAUDE.md` too — don't let it drift out of sync the way this file itself had (see git history around 2026-07-06 for examples of the drift this caused: a JWT provider class rename, a `UserUtils.getCurrentUser()` method that never existed, a removed `npm test` script — all went undocumented until caught during an unrelated task).
 
 ## Architecture
+
+### Routing
+
+`gateway` is the single entry point for external clients — every request the GUI makes goes to
+`gateway` (port `8080`), which proxies it to whichever standalone service owns that path, via
+Spring Cloud Gateway Server MVC (`gateway/routing/GatewayRoutesConfig`, one `RouterFunction` bean
+per backend service). Paths are forwarded unchanged — no prefix stripping/rewriting — since every
+backend already expects exactly the path it was called with from before this gateway existed.
+
+Routing is resource-specific, not top-level-prefix-based, because three prefixes are shared by more
+than one service and only disambiguate one segment deeper:
+
+| Prefix | Owner(s) | Disambiguated by |
+|---|---|---|
+| `/api/v1/users/**` | `identity-service` (own profile) **and** `social-service` (other users) | `identity-service` owns `/me/**`; `social-service` owns `/public/**` and `/search` |
+| `/api/v1/public/**` | `content-service` **and** `ecommerce-service` | `content-service` owns `/question-answers/**`/`/articles/**`; `ecommerce-service` owns `/products/**` |
+| `/api/v1/admin/**` | `ecommerce-service`, `content-service`, **and** `ai-service` | each one's own resource segment never collides with another's (`/products/**` vs `/articles/**` vs `/embeddings/**`, etc.) |
+
+Every other path maps to exactly one service by its own resource prefix — `/api/v1/auth/**` →
+`identity-service`, `/api/v1/projects/**`/`/api/v1/tasks/**` → `task-service`,
+`/api/v1/dms/**`/`/friends/**`/`/groups/**`/`/channels/**` → `social-service`, `/api/v1/chat/**` →
+`ai-service`. See `GatewayRoutesConfig`'s own Javadoc for the complete, current table — this section
+is a summary, not the source of truth; re-derive it from the actual `@RequestMapping`s (via a
+reactor-wide grep) rather than trusting either copy if a service's routes ever change.
+
+**Not routed here on purpose:** `content-service`'s `/internal/content-items/**` — service-to-service
+traffic (`ai-service` calls it directly on `content-service`'s own port, gated by a shared
+`X-Internal-Api-Key` header, not a JWT), never meant for external clients.
+
+**Backend base URLs** are configured per-service (`app.services.*`, `GatewayServicesProperties`) —
+`localhost:<port>` by default (running each service directly on the host), overridden in
+`application-docker.yml` to each service's Compose DNS name. Only routing exists today — CORS
+consolidation, rate limiting, timeouts, retry, and circuit breaker are still individually per-service,
+not yet centralized at `gateway`; load balancing and service discovery are deliberately not built,
+since there is exactly one instance of each service at a fixed address in this deployment.
 
 ### Request Flow
 

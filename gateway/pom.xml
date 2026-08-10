@@ -100,6 +100,17 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- Spring Cloud Gateway (Server MVC — servlet/blocking variant, not the original WebFlux
+             one, to match every other module's servlet stack). This is what actually proxies
+             requests to the six standalone services now that this app is becoming their single
+             entry point — see routing/GatewayRoutesConfig. Artifact is spring-cloud-starter-gateway-mvc
+             (not -server-webmvc — that longer name is from a later rename in a newer Spring Cloud
+             release train than this reactor's 2023.0.3/Gateway 4.1.x pairing supports). -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-gateway-mvc</artifactId>
+        </dependency>
+
         <!-- Spring Boot Security -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -59,6 +59,17 @@ app:
     bucket: ${MINIO_BUCKET:user-avatars}
     presigned-url-expiry-minutes: ${MINIO_PRESIGNED_EXPIRY:60}
 
+  # Base URLs of the six standalone services routing/GatewayRoutesConfig proxies to — defaults to
+  # each service running directly on the host machine (e.g. `mvn spring-boot:run` per module);
+  # overridden in application-docker.yml to each one's Compose DNS name.
+  services:
+    ecommerce-service-base-url: ${ECOMMERCE_SERVICE_BASE_URL:http://localhost:8081}
+    identity-service-base-url: ${IDENTITY_SERVICE_BASE_URL:http://localhost:8082}
+    task-service-base-url: ${TASK_SERVICE_BASE_URL:http://localhost:8083}
+    social-service-base-url: ${SOCIAL_SERVICE_BASE_URL:http://localhost:8084}
+    content-service-base-url: ${CONTENT_SERVICE_BASE_URL:http://localhost:8085}
+    ai-service-base-url: ${AI_SERVICE_BASE_URL:http://localhost:8086}
+
 # Logging
 logging:
   pattern:

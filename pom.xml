@@ -42,6 +42,7 @@
         <minio.version>8.5.10</minio.version>
         <bucket4j.version>8.10.1</bucket4j.version>
         <commons-csv.version>1.11.0</commons-csv.version>
+        <spring-cloud.version>2023.0.3</spring-cloud.version>
     </properties>
 
     <dependencyManagement>
@@ -100,6 +101,19 @@
             <!-- No explicit testcontainers-bom import: spring-boot-dependencies (this reactor's
                  grandparent POM) already manages every org.testcontainers:* artifact at a version
                  tested against this Spring Boot release — redundant to pin our own. -->
+            <!-- Spring Cloud — only gateway uses this today (spring-cloud-starter-gateway-mvc,
+                 the servlet/blocking variant of Spring Cloud Gateway, not the original WebFlux one —
+                 chosen specifically to match every other module's servlet stack). Imported at the root
+                 anyway, same convention already established for langchain4j-bom above (ai-service's own
+                 sole consumer). 2023.0.3 (aka Leyton) is the release train compatible with this
+                 reactor's Spring Boot 3.2.5 parent. -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
 
             <!-- ==================== Third-Party ==================== -->
             <dependency>

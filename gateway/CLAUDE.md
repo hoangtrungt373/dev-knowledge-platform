@@ -4,7 +4,17 @@ Module-local guidance for `gateway` (formerly named `api` — renamed once its R
 finished moving out into the feature modules, see `docs/CHANGELOG.md`). Read alongside the root
 `CLAUDE.md`. This is the module every other embedded module used to get wired up through — Spring
 Boot entry point, security/JWT-filter wiring — but **it now depends on nothing but `common` and
-`infra`, and has no Liquibase migrations of its own left at all** (see `database/sql/` below). `ai-service` was the sixth and final embedded feature module (following
+`infra`, and has no Liquibase migrations of its own left at all** (see `database/sql/` below).
+
+**Now the single entry point for external clients — proxies HTTP traffic to all six standalone
+services** via Spring Cloud Gateway Server MVC (see `routing/` below and root `CLAUDE.md`'s
+Architecture → Routing section for the full path table). This is new territory for this module,
+not another extraction: unlike everything else in this file's history (six Maven dependencies
+removed, one at a time), routing is the first thing this module has *gained* since it lost its
+last embedded feature module — a real network call to each standalone service's own REST layer,
+not a resurrected in-process dependency.
+
+`ai-service` was the sixth and final embedded feature module (following
 `identity-service`/`ecommerce-service`/`task-service`/`social-service`/`content-service` out the
 door); once its Maven dependency was dropped, `gateway` reached **zero embedded feature modules
 remaining** — see root `CLAUDE.md`'s Long-term direction section, which explicitly calls this a
@@ -71,10 +81,34 @@ both `identity-service` and `social-service` were extracted into standalone serv
 
 ## What lives here
 
-- `security/` — transport/security **edge** infra, and now the entirety of what this module does at
-  runtime — no Liquibase and no entity mapped to any table left (see below; the JDBC `datasource`
-  connection in `application*.yml` still exists only because `common`'s JPA starter dependency
-  needs one to autoconfigure against, even with zero entities to map). `SecurityConfig` (Keycloak is the identity provider — this app is a pure
+- **`routing/` — proxies external client traffic to all six standalone services.**
+  `GatewayRoutesConfig` — one `RouterFunction<ServerResponse>` `@Bean` per backend service, built
+  with Spring Cloud Gateway Server MVC's Java DSL (`GatewayRouterFunctions.route` +
+  `GatewayRequestPredicates.path` + `HandlerFunctions.http`). Paths are forwarded unchanged (no
+  prefix stripping) — see the class's own Javadoc for the complete, current routing table and why
+  three top-level prefixes (`/api/v1/users`, `/api/v1/public`, `/api/v1/admin`) need
+  resource-specific patterns rather than a blanket prefix match, since each is shared by more than
+  one service. `GatewayServicesProperties` (`app.services.*`) holds each service's base URL —
+  `localhost:<port>` by default, overridden in `application-docker.yml` to Compose DNS names, same
+  "one value changes, the routing code doesn't" convention `ai-service`'s own
+  `ContentServiceClientProperties` already established. `content-service`'s
+  `/internal/content-items/**` is deliberately not routed — service-to-service traffic, not for
+  external clients (see the class Javadoc). **Verified against real path-matching behavior, not
+  just a successful compile**: booted this app locally (Postgres was reachable, so a full context
+  load was possible) and sent live requests — `/api/v1/tasks` resolved to `task-service:8083`,
+  `/api/v1/users/me` (PUT) to `identity-service:8082`, `/api/v1/users/search` to
+  `social-service:8084` (confirming the `/api/v1/users/**` split resolves correctly and doesn't
+  fall through to the wrong service), and a genuinely unmapped path fell through to Spring's normal
+  no-handler behavior rather than being accidentally caught by any route — each observed via the
+  actual `ResourceAccessException`/target URL in the log when the (intentionally absent) backend
+  refused the connection, not just an HTTP status code. No load balancing or service discovery —
+  deliberately not built, since there is exactly one instance of each service at a fixed address.
+  Rate limiting, timeouts, retry, and circuit breaker are not built yet either — routing is the
+  first piece of "single entry point," not the whole thing.
+- `security/` — transport/security **edge** infra. No Liquibase and no entity mapped to any table
+  left (see below; the JDBC `datasource` connection in `application*.yml` still exists only because
+  `common`'s JPA starter dependency needs one to autoconfigure against, even with zero entities to
+  map). `SecurityConfig` (Keycloak is the identity provider — this app is a pure
   OAuth2 **resource server** now, `.oauth2ResourceServer(jwt -> ...)` verifying bearer tokens against
   Keycloak's JWKS via `spring.security.oauth2.resourceserver.jwt.issuer-uri`; no `.oauth2Login()`/
   custom filter anymore), `KeycloakRealmRoleConverter` (maps the token's `realm_access.roles` claim
@@ -217,10 +251,13 @@ either way; it doesn't exist (`common`'s `UserUtils` only has `getUserName()`/`i
   `identity-service` used to be a second example of this shape; it was removed once
   `identity-service` was extracted into a standalone service (see that module's `CLAUDE.md`) — a
   standalone service can never be the target of an in-process sibling dependency like this, only a
-  future network call through this module's (not-yet-built) proxy layer. A future orchestration
-  endpoint that genuinely needs two standalone services with **no** dependency relationship possible
-  between them in either direction is the one case that would still land here — none exists yet, and
-  it would need a real HTTP call to each service regardless, not a Maven dependency on either.
+  network call through this module's routing layer (`routing/GatewayRoutesConfig`, see above) — that
+  layer forwards a request to exactly one service by path, though, so it doesn't by itself solve a
+  *different* still-unbuilt case: a future orchestration endpoint that genuinely needs to call two
+  standalone services and combine their results, with no dependency relationship possible between
+  them in either direction. That's the one case that would still land here as a real controller of
+  its own — none exists yet, and it would need its own real HTTP calls to each service, not a Maven
+  dependency on either, nor a bare passthrough route like every other path this module forwards.
 - **Business logic (validation, uniqueness checks, cascades) belongs in the owning feature module's
   service, not in a controller** — but there are no controllers in this module anymore, so this
   mainly matters as guidance for whoever's tempted to add one here instead of in a feature module.

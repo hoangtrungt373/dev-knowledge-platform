@@ -1404,8 +1404,28 @@ last embedded feature module, so `gateway` depends on nothing but `common`+`infr
 embedded feature modules left to depend on more than one of. This closes out the
 microservices-extraction-plan project — see root `CLAUDE.md`'s Long-term direction section.
 
+**Now the single entry point for external clients** — proxies HTTP traffic to all six standalone
+services via Spring Cloud Gateway Server MVC (`routing/GatewayRoutesConfig`, below) — the first
+thing this module has gained since losing its last embedded feature module, not another extraction.
+
 ```
 gateway/src/main/java/com/ttg/devknowledgeplatform/
+├── routing/
+│   ├── GatewayRoutesConfig.java       — one RouterFunction<ServerResponse> @Bean per backend
+│   │                                    service (GatewayRouterFunctions.route +
+│   │                                    GatewayRequestPredicates.path + HandlerFunctions.http),
+│   │                                    23 routes total across the six services. Paths forwarded
+│   │                                    unchanged — no prefix stripping. Three top-level prefixes
+│   │                                    (/api/v1/users, /api/v1/public, /api/v1/admin) are shared
+│   │                                    by more than one service and need resource-specific
+│   │                                    patterns one segment deeper to disambiguate — see the
+│   │                                    class's own Javadoc for the full table and root
+│   │                                    CLAUDE.md's Architecture → Routing section for a summary.
+│   │                                    content-service's /internal/content-items/** is
+│   │                                    deliberately not routed (service-to-service only).
+│   └── GatewayServicesProperties.java — app.services.* — each service's base URL
+│                                         (localhost:<port> by default, overridden in
+│                                         application-docker.yml to Compose DNS names)
 ├── config/
 │   └── JacksonConfig.java             — shared ObjectMapper customization; the only class left under
 │                                         config/ — chat-specific rate limiting
@@ -1490,7 +1510,8 @@ the Bucket4j Redis connection, and the SSE/`@CurrentUserId` MVC wiring all moved
 `asyncEventExecutor` thread pool moved to `infra` in an earlier extraction; see those modules'
 sections. What's left here is transport/security edge infra (`SecurityConfig`, JWT filter — **no
 STOMP wiring, no SSE/thread-pool config, no cache config, and no local user persistence of any kind
-anymore**, see above) — full stop. **This app has no Liquibase migrations left at all**, not even
+anymore**, see above) plus the new `routing/` package proxying all six services' traffic (see the
+tree above). **This app has no Liquibase migrations left at all**, not even
 frozen ones — the whole changelog tree was deleted outright, see the Database section below.
 
 **This module currently has no test suite of its own** — its only tests
