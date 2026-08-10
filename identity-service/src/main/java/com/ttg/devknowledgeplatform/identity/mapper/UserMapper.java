@@ -6,7 +6,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
+import com.ttg.devknowledgeplatform.identity.entity.User;
 import com.ttg.devknowledgeplatform.identity.dto.UserInfoResponse;
 import com.ttg.devknowledgeplatform.infra.service.StorageService;
 

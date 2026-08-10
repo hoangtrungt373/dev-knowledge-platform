@@ -18,7 +18,7 @@ directory you're actually working in, layered on top of this one. **Read the rel
 
 | Module | Purpose | Details |
 |---|---|---|
-| `common` | Shared entities (`User`), enums, exceptions, base DTOs, `@CurrentUserId` | [`common/CLAUDE.md`](common/CLAUDE.md) |
+| `common` | Shared entities (`AbstractEntity`), enums, exceptions, base DTOs, `@CurrentUserId` | [`common/CLAUDE.md`](common/CLAUDE.md) |
 | `infra` | Shared Spring infra: async event framework, `SlugService`, `StorageService` (MinIO) | [`infra/CLAUDE.md`](infra/CLAUDE.md) |
 | `content-service` | Categories, tags, content items (Q&A, articles) — the RAG corpus; own REST/DTO/mapper layer. **Standalone Spring Boot app, own `content` schema, own port (8085)** — not a Maven dependency of `gateway` (see below) | [`content-service/CLAUDE.md`](content-service/CLAUDE.md) |
 | `ai-service` | RAG pipeline (embedding, vector search, LLM generation via LangChain4j), chat + content-indexing REST layer. **Standalone Spring Boot app, own `ai` schema, own port (8086)** — not a Maven dependency of `gateway` (see below) | [`ai-service/CLAUDE.md`](ai-service/CLAUDE.md) |
@@ -26,7 +26,7 @@ directory you're actually working in, layered on top of this one. **Read the rel
 | `ecommerce-service` | Study-project e-commerce vertical slice: catalog, cart/checkout, orders/inventory, payments, reviews/recommendations. **Standalone Spring Boot app, own schema** — not a Maven dependency of `gateway` (see below) | [`ecommerce-service/CLAUDE.md`](ecommerce-service/CLAUDE.md) |
 | `task-service` | Personal task/project management. **Standalone Spring Boot app, own `task` schema, own port (8083)** — not a Maven dependency of `gateway` (see below) | [`task-service/CLAUDE.md`](task-service/CLAUDE.md) |
 | `social-service` | Friend graph + chat (groups/channels, DMs), incl. its own WebSocket/STOMP transport. **Standalone Spring Boot app, own `social` schema, own port (8084)** — not a Maven dependency of `gateway` (see below) | [`social-service/CLAUDE.md`](social-service/CLAUDE.md) |
-| `gateway` | Security/JWT-filter wiring, Liquibase, Spring Boot entry point. **Zero embedded feature modules, zero REST controllers of its own** — a future cross-module REST orchestration endpoint is the only thing that would still land here | [`gateway/CLAUDE.md`](gateway/CLAUDE.md) |
+| `gateway` | Security/JWT-filter wiring, Spring Boot entry point. **Zero embedded feature modules, zero REST controllers, zero Liquibase story of its own** — a future cross-module REST orchestration endpoint is the only thing that would still land here | [`gateway/CLAUDE.md`](gateway/CLAUDE.md) |
 | `gui` | React 18 + TypeScript + MUI frontend (Vite) | [`gui/CLAUDE.md`](gui/CLAUDE.md) |
 
 `gateway` now depends only on `common`+`infra` — **zero embedded feature modules remain.** This file
@@ -67,24 +67,32 @@ longer depends on any of them in Maven at all; all seven run as separate process
 `dev-knowledge-platform-apps-docker-compose.yml` entry now. `ai-service`'s own `ContentServiceClient`
 HTTP call to `content-service` is the one real inter-service call that exists today; a
 general-purpose `gateway`-side HTTP proxy to any of the six for end-user traffic is not built yet
-(see each module's own `CLAUDE.md`). `gateway` and `identity-service` persist a `User` row today by reusing `common.entity.User` directly
-— each JIT-provisions its own independent local copy from the same Keycloak identity (via its own
-duplicated `KeycloakJwtAuthenticationConverter`, never a shared class) into its own schema's `USER`
-table (`product.USER`/`identity.USER`). `ecommerce-service` and `task-service` both deliberately do
-**not** persist any local copy at all, for two different concrete reasons that land on the same
-"Option C" shape (see the `project-microservices-extraction-plan` memory's "Option C" decision):
-`ecommerce-service` has no entity with a foreign key onto a user at all, so the only thing it ever
-needed from Keycloak was "who is the caller, and are they an admin"; `task-service`'s
-`Project`/`Task` entities *do* reference an owner, but only ever to answer "is this row's owner the
-caller" — a plain `ownerUuid` column compared against the verified JWT's own `sub` claim answers
-that with zero DB access. `content-service` landed on the exact same shape as `task-service` for
-the exact same reason: `ContentItem.authorUuid` is a plain column (not a foreign key), stamped
-once at creation and never read back or joined through anywhere in the module — see
+(see each module's own `CLAUDE.md`). **`identity-service` is now the sole deployable that persists a
+`User` row at all** — its own `User` entity, moved there outright from `common` once `gateway`
+dropped its own local copy (see `docs/CHANGELOG.md`'s `[Unreleased]` entry) — into `identity.USER`.
+`gateway` used to JIT-provision an independent local copy of the same shape into `product.USER`
+(`common.entity.User` back when it was a shared-kernel class both apps mapped), but that table —
+along with every other now-orphaned table `product` still held from the six embedded-module
+extractions — was dropped outright, since `gateway` never actually read that row back for anything
+(zero REST controllers of its own, and the authorization decision was always driven by the JWT's
+own claims, never the row — see the Security section below). `ecommerce-service` and `task-service`
+both deliberately do **not** persist any local copy at all, for two different concrete reasons that
+land on the same "Option C" shape (see the `project-microservices-extraction-plan` memory's
+"Option C" decision): `ecommerce-service` has no entity with a foreign key onto a user at all, so
+the only thing it ever needed from Keycloak was "who is the caller, and are they an admin";
+`task-service`'s `Project`/`Task` entities *do* reference an owner, but only ever to answer "is this
+row's owner the caller" — a plain `ownerUuid` column compared against the verified JWT's own `sub`
+claim answers that with zero DB access. `content-service` landed on the exact same shape as
+`task-service` for the exact same reason: `ContentItem.authorUuid` is a plain column (not a foreign
+key), stamped once at creation and never read back or joined through anywhere in the module — see
 `content-service/CLAUDE.md`. `ai-service` landed on that same shape too, for its own `ChatSession`/
 `PipelineMetrics` rows: `ChatSession.userUuid`/`PipelineMetrics.userUuid` are plain columns (not a
 `User` foreign key) compared against the caller's own JWT `sub` claim, since a chat session or a
 pipeline-metrics row only ever needs "is this the caller's own session," never another user's
-profile data — see `ai-service/CLAUDE.md`. `social-service` is a fourth, distinct shape: it
+profile data — see `ai-service/CLAUDE.md`. `gateway` is now a fifth module on this exact same
+"claims only, no persisted row" shape, for the simplest reason of all: it has no entity of its own
+left at all, not even one with a plain `ownerUuid`/`authorUuid`-style column, now that it has zero
+embedded feature modules. `social-service` is the one remaining distinct shape: it
 genuinely needs to search/list/join across *other* users' profile data (friend search, group
 membership, DM threads), which claims-based identity can't satisfy — but rather than reusing
 `common.entity.User` the way `gateway`/`identity-service` do, it persists its own **lean,
@@ -111,8 +119,15 @@ verification, own Dockerfile/compose wiring), following the
 microservices-extraction-plan project: every module originally identified as a standalone-service
 candidate has now been extracted, and there is no scheduled next candidate — this is a natural
 stopping point for this microservices-study exercise, not a pause partway through one. `gateway` is
-now purely JWT verification/JIT-provisioning of its own local `product.USER` row, Liquibase
-migrations for its own (mostly frozen/orphaned) tables, and `UserSeeder`. A future
+now purely JWT verification (claims-based, no persisted row of any kind — see the Security section
+below); `product` schema itself holds zero live tables (every one of the 23 tables it ever held,
+including its own last holdout `USER`, was dropped outright once nothing mapped any of them anymore
+— see `docs/CHANGELOG.md`'s `[Unreleased]` entry and the Database Conventions section below).
+`gateway` has **no Liquibase story left at all** — its whole changelog tree (every already-run
+historical changeset, plus the one-off drop changeset that retired `product`'s last 23 tables) was
+deleted outright once nothing in it was needed anymore, and the one genuinely-still-needed thing it
+used to bootstrap (the `keycloak` Postgres schema) moved to `docker/postgres/init.sql` instead — see
+the Database Conventions section below. A future
 **big new feature area** still gets its own module per the rule immediately below, and a future
 general-purpose `gateway`-side HTTP proxy for end-user traffic to any of the six standalone services
 remains unbuilt and undecided — but there is no more embedded-module extraction work left to
@@ -144,11 +159,18 @@ one-directional data need on an existing sibling, that sibling too) — rather t
 # Run a single test class
 ./mvnw -pl social-service -Dtest=FriendServiceImplTest test
 
-# Start infrastructure (PostgreSQL pgvector, Redis, MinIO, Mailpit, Keycloak)
+# Start infrastructure (PostgreSQL pgvector, Redis, MinIO, Mailpit, Keycloak) — also creates the
+# keycloak schema and pgvector/uuid-ossp extensions on first-ever run, via docker/postgres/init.sql
 docker-compose -f dev-knowledge-platform-docker-compose.yml up -d
 
-# Run Liquibase migrations
-docker-compose -f dev-knowledge-platform-liquibase.yml up
+# Run each standalone service's own Liquibase migrations (gateway has none of its own anymore —
+# see this file's Database Conventions section)
+docker-compose -f ecommerce-service-liquibase.yml up
+docker-compose -f identity-service-liquibase.yml up
+docker-compose -f task-service-liquibase.yml up
+docker-compose -f social-service-liquibase.yml up
+docker-compose -f content-service-liquibase.yml up
+docker-compose -f ai-service-liquibase.yml up
 
 # Build and run all seven independently-runnable Spring Boot processes — gateway +
 # ecommerce-service + identity-service + task-service + social-service + content-service +
@@ -211,46 +233,61 @@ step 5 rather than rewired, since an in-process Spring event can't cross a servi
 
 ### Security
 
-Keycloak is the identity provider (hosted login page, Authorization Code + PKCE; Google/Facebook brokered inside Keycloak itself). Every deployable (`gateway`, `ecommerce-service`, `identity-service`, `task-service`, `social-service`, `content-service`, `ai-service`) is a pure OAuth2 resource server — each only ever verifies bearer tokens against Keycloak's JWKS (`spring.security.oauth2.resourceserver.jwt.issuer-uri`, same realm), never issues them. Each has its own `KeycloakJwtAuthenticationConverter`, but they don't all do the same thing with it: `gateway` JIT-provisions/refreshes **its own local `User` row** from the token's claims into `product.USER` by inlining the find-or-create logic directly via `common`'s `UserRepository`; `identity-service` does the same JIT-provisioning into `identity.USER`, but its converter delegates to its own in-process `UserService.findOrCreateFromKeycloak` instead, since both live in the same standalone app. `social-service` also JIT-provisions/refreshes a local row, but a lean **module-local** `SocialProfile` entity into `social.PROFILE` — never `common.entity.User` — since it needs real search/list/join capability across users but has no auth-lifecycle concern to justify the full shared entity (see `social-service/CLAUDE.md`'s "No coupling to `common.entity.User`" rule). `ecommerce-service`, `task-service`, `content-service`, and `ai-service` all persist no caller-identity row at all — each converter builds the `CustomOAuth2User` principal straight from the JWT's claims (`sub` standing in for `userUuid`), for reasons landing on the same shape: `ecommerce-service` has no entity with a foreign key onto a user at all; `task-service`'s `Project`/`Task` and `content-service`'s `ContentItem` each reference an author/owner, but only via a plain `ownerUuid`/`authorUuid` column compared against (or stamped from) the JWT's own `sub` claim, never a `User` foreign key, since every check there only ever needs "is this row's owner/author the caller," never another user's profile data (see root `CLAUDE.md`'s dependency-order section, `ecommerce-service/CLAUDE.md`, `task-service/CLAUDE.md`'s "No local `User` copy" rule, and `content-service/CLAUDE.md`'s equivalent rule, for the "Option C" reasoning all three follow). `ai-service` is a fourth module on this same shape, with a wrinkle: unlike `ecommerce-service`, it *does* persist domain rows that reference the caller (`ChatSession`, `PipelineMetrics`), but only via a plain `userUuid` column compared against the JWT's own `sub` claim, never a `User` foreign key — same reasoning as `task-service`'s `ownerUuid`/`content-service`'s `authorUuid`, just applied to a chat session/analytics row instead of an owned task or authored article. `@CurrentUserId` resolves differently per deployable as a result: in `gateway`/`identity-service`/`social-service` it's `Integer`, that deployable's own local numeric PK (`social-service`'s own `SocialProfile.id`, not a `common.entity.User` PK); in `task-service`/`content-service`/`ai-service` it's `String`, the caller's Keycloak UUID read straight off the principal with no database lookup at all — there is no single cross-service `User` PK. Role-based access via `UserRole` enum, sourced from the token's `realm_access.roles` claim (`social-service` has no admin-gated endpoint, so it never branches on this; `content-service` and `ai-service` do, for their `/api/v1/admin/**` surfaces). This is a multi-phase migration in progress — see `docs/CHANGELOG.md`'s `[Unreleased]` entries for what's landed vs. still pending (the `gui` rework). Current-user resolution patterns: `gateway/CLAUDE.md`.
+Keycloak is the identity provider (hosted login page, Authorization Code + PKCE; Google/Facebook brokered inside Keycloak itself). Every deployable (`gateway`, `ecommerce-service`, `identity-service`, `task-service`, `social-service`, `content-service`, `ai-service`) is a pure OAuth2 resource server — each only ever verifies bearer tokens against Keycloak's JWKS (`spring.security.oauth2.resourceserver.jwt.issuer-uri`, same realm), never issues them. Each has its own `KeycloakJwtAuthenticationConverter`, but they don't all do the same thing with it: **`identity-service` is now the only deployable that JIT-provisions/refreshes a persisted user row at all** — its own `User` entity (moved out of `common`, see the dependency-order section above) into `identity.USER`, via its own in-process `UserService.findOrCreateFromKeycloak` (both live in the same standalone app, so no duplication is needed the way every other converter in this reactor has to). `social-service` also JIT-provisions/refreshes a local row, but a lean **module-local** `SocialProfile` entity into `social.PROFILE` — never `identity-service`'s `User` — since it needs real search/list/join capability across users but has no auth-lifecycle concern to justify a full shared entity, and can't reach `identity-service` in-process anyway now that both are standalone (see `social-service/CLAUDE.md`'s "No coupling to `common.entity.User`" rule — the name predates this move but the reasoning is unchanged). `gateway`, `ecommerce-service`, `task-service`, `content-service`, and `ai-service` all persist no caller-identity row at all — each converter builds the `CustomOAuth2User` principal straight from the JWT's claims (`sub` standing in for `userUuid`), for reasons landing on the same shape, though `gateway`'s is the simplest of the five: it has no entity of its own left at all (zero embedded feature modules), so there was never anything to key a plain `ownerUuid`/`authorUuid`-style column against in the first place, and the authorization decision (`ROLE_ADMIN` or not) was always read straight off the token's `realm_access.roles` claim, never a database row — see `docs/CHANGELOG.md`'s `[Unreleased]` entry for the JIT-provisioning it used to do into `product.USER` before that table was dropped outright. `ecommerce-service` has no entity with a foreign key onto a user at all; `task-service`'s `Project`/`Task` and `content-service`'s `ContentItem` each reference an author/owner, but only via a plain `ownerUuid`/`authorUuid` column compared against (or stamped from) the JWT's own `sub` claim, never a `User` foreign key, since every check there only ever needs "is this row's owner/author the caller," never another user's profile data (see `ecommerce-service/CLAUDE.md`, `task-service/CLAUDE.md`'s "No local `User` copy" rule, and `content-service/CLAUDE.md`'s equivalent rule, for the "Option C" reasoning all three follow). `ai-service` is on this same shape too, with a wrinkle: unlike `ecommerce-service`, it *does* persist domain rows that reference the caller (`ChatSession`, `PipelineMetrics`), but only via a plain `userUuid` column compared against the JWT's own `sub` claim, never a `User` foreign key — same reasoning as `task-service`'s `ownerUuid`/`content-service`'s `authorUuid`, just applied to a chat session/analytics row instead of an owned task or authored article. `@CurrentUserId` resolves differently per deployable as a result: in `identity-service`/`social-service` it's `Integer`, that deployable's own local numeric PK (`social-service`'s own `SocialProfile.id`, not `identity-service`'s `User` PK — the two are unrelated tables in unrelated schemas); in `task-service`/`content-service`/`ai-service` it's `String`, the caller's Keycloak UUID read straight off the principal with no database lookup at all; `gateway` has no `@CurrentUserId` consumer left at all (zero REST controllers) — there is no single cross-service `User` PK regardless. Role-based access via `UserRole` enum, sourced from the token's `realm_access.roles` claim (`social-service` has no admin-gated endpoint, so it never branches on this; `content-service` and `ai-service` do, for their `/api/v1/admin/**` surfaces). This is a multi-phase migration in progress — see `docs/CHANGELOG.md`'s `[Unreleased]` entries for what's landed vs. still pending (the `gui` rework). Current-user resolution patterns: `gateway/CLAUDE.md`.
 
 ## Database Conventions
 
-**Schema:** `gateway` retains only its own `USER` table (plus its now-frozen, orphaned historical
-tables — see the Liquibase bullet below) in the `product` schema, one shared Postgres database
-(`dev-premier`) — `product` no longer holds any *live* feature-module tables at all now that
-`ai-service` has its own schema too. Each standalone service that persists its own tables gets its
-own schema in that same database instead of its own database instance — `ecommerce-service` →
-`ecommerce`, `identity-service` → `identity`, `task-service` → `task`, `social-service` → `social`,
-`content-service` → `content`, `ai-service` → `ai` — per-service-per-schema, not
-per-service-per-database (see the `project-microservices-extraction-plan` memory for why).
-`content-service`'s own `application.yml` now sets `hibernate.default_schema: content` and its
-entities no longer hardcode `@Table(schema = "product")`, so its schema is live in code, and its own
+**Schema:** `gateway` retains **zero live tables** in the `product` schema, one shared Postgres
+database (`dev-premier`) — every one of the 23 tables `product` ever held (its own last holdout,
+`USER`, included) was dropped outright once nothing in this reactor mapped any of them anymore, see
+the Liquibase bullet below and `docs/CHANGELOG.md`'s `[Unreleased]` entry. The schema container
+itself is left in place (harmless, unused namespace) — only its tables were dropped. Each standalone
+service that persists its own tables gets its own schema in that same database instead of its own
+database instance — `ecommerce-service` → `ecommerce`, `identity-service` → `identity`,
+`task-service` → `task`, `social-service` → `social`, `content-service` → `content`, `ai-service` →
+`ai` — per-service-per-schema, not per-service-per-database (see the
+`project-microservices-extraction-plan` memory for why). `content-service`'s own `application.yml`
+now sets `hibernate.default_schema: content` and its entities no longer hardcode
+`@Table(schema = "product")`, so its schema is live in code, and its own
 `content-service-liquibase.yml` compose file now exists to create it — but neither has actually been
 run/booted against a real Postgres yet in this session, so treat `content.CATEGORY`/etc. as
 unverified-at-runtime the same way every other standalone service's schema was when it first landed;
-`ai-service`'s own `ai` schema carries the identical caveat. `gateway`'s own `product.CATEGORY`/
-`TAG`/`CONTENT_ITEM`/etc. and `product.CONTENT_EMBEDDING`/`CHAT_SESSION`/`CHAT_MESSAGE`/`SYS_PARAM`/
-`PIPELINE_METRICS` are now orphaned — `gateway`'s Spring context maps no entity to any of them
-anymore, now that it has zero embedded feature modules, same as `product.PROJECT`/`TASK` and the old
-friend-graph tables before them. `common.entity.User` is mapped only by the deployables that
-actually persist a `User` row via that shared entity (`gateway`, `identity-service` — not
-`ecommerce-service`/`task-service`/`social-service`/`content-service`/`ai-service`, see the Security
-section above; `social-service` persists its own unrelated `SocialProfile` entity instead), and its
-`@Table` deliberately does **not** hardcode a schema — each app's own `hibernate.default_schema`
-property resolves it to that app's own schema at runtime. Never hardcode a schema on a class shared
-across deployables; do that instead per-app via `hibernate.default_schema` (see
-`common.entity.User`'s Javadoc for the incident this rule comes
-from — a hardcoded schema there silently broke `ecommerce-service`'s isolation for months; the same
-bug class was caught and fixed pre-emptively in `task-service`'s, `social-service`'s, and
-`content-service`'s own entities, before any of them ever ran against a real database with the new
-schema live).
+`ai-service`'s own `ai` schema carries the identical caveat. `identity-service`'s own `User` entity
+(moved out of `common` — see the dependency-order section above) is the sole entity in this whole
+reactor mapped to a `USER` table today, into `identity.USER`; its `@Table` deliberately does **not**
+hardcode a schema — this app's own `hibernate.default_schema: identity` property resolves it at
+runtime, same convention every entity in this reactor follows now. Never hardcode a schema on a
+class shared across deployables (this doesn't apply to `User` anymore now that only one deployable
+maps it, but still applies to genuinely shared classes like `common.entity.AbstractEntity`); do that
+instead per-app via `hibernate.default_schema` (see `identity-service/User`'s Javadoc for the
+incident this rule comes from — a hardcoded schema on this same class, back when it lived in
+`common` and both `gateway` and `ecommerce-service` mapped it, silently broke `ecommerce-service`'s
+isolation for months; the same bug class was caught and fixed pre-emptively in `task-service`'s,
+`social-service`'s, and `content-service`'s own entities, before any of them ever ran against a real
+database with the new schema live).
 
 **Sequences:** each table has its own sequence (`TABLE_NAME_SEQ`).
 
 **Audit columns** on all entities: `usrCreation`, `dteCreation`, `usrLastModification`, `dteLastModification`, `version`.
 
 **Migrations — Liquibase:**
-- `gateway`'s tables (the embedded monolith's, `product` schema): `gateway/src/main/java/com/ttg/devknowledgeplatform/database/sql/`, master changelog `dev-knowledge-platform.xml`. Its `CATEGORY`/`TAG`/`CONTENT_ITEM`/`CONTENT_ITEM_TAG`/`QUESTION_ANSWER`/`ARTICLE` changesets and its `CONTENT_EMBEDDING`/`CHAT_SESSION`/`CHAT_MESSAGE`/`SYS_PARAM`/`PIPELINE_METRICS` changesets (`DKP-0005`, `DKP-0006`, `DKP-0007`, `DKP-0008`, `DKP-0010`, `DKP-0011`, `DKP-0012`) are now all frozen, already-run history, same status as the old `PROJECT`/`TASK`/friend-graph changesets before them — `gateway`'s Spring context maps no entity to any of these tables anymore, now that `content-service` and `ai-service` are both standalone services with their own schemas/changelogs (below). Don't add new `content-service`/`ai-service` schema changes here anymore.
+- **`gateway` has no Liquibase changelog at all anymore.** Its whole tree
+  (`gateway/src/main/java/com/ttg/devknowledgeplatform/database/sql/`, master changelog
+  `dev-knowledge-platform.xml`) was deleted outright — every changeset that ever created a
+  `product` table (`USER`, `CATEGORY`/`TAG`/`CONTENT_ITEM`/etc., the old friend-graph/chat tables,
+  `PROJECT`/`TASK`) plus the final `DKP-0033` changeset that dropped all 23 of those tables in one
+  statement (naming every one, `CASCADE` for the FKs between them). Nothing in this reactor needs
+  any of that history anymore: every table it ever described either moved to a standalone service's
+  own fresh-snapshot changelog (below) or was dropped outright with nothing replacing it (`USER`
+  itself, now solely `identity-service`'s `identity.USER`). `liquibase-core` was removed from
+  `gateway/pom.xml` alongside the deletion — this app no longer has any Liquibase dependency,
+  config, or classpath-resources wiring at all. The one genuinely-still-needed thing the old tree
+  used to bootstrap — the `keycloak` Postgres schema itself, since Keycloak's own internal
+  migration assumes it already exists — moved to `docker/postgres/init.sql` instead (`CREATE SCHEMA
+  IF NOT EXISTS keycloak`), which already runs automatically before Postgres reports healthy, which
+  every service's `depends_on` already waits on. Don't add a new changelog tree back here; any
+  future `gateway`-owned table (should one ever exist again) would start fresh, same as any other
+  module's first migration.
 - Each standalone service migrates its own schema from its own changelog tree instead
   (`ecommerce-service/.../database/sql/ecommerce-service.xml`,
   `identity-service/.../database/sql/identity-service.xml`,

@@ -9,9 +9,9 @@ dev-knowledge-platform/
 │                        web, security (all as annotation/type support, not full autoconfiguration)
 ├── infra/            — shared Spring infrastructure: event base classes, composed annotations, MDC utilities,
 │                        SlugService, StorageService (MinIO)
-├── gateway/          — security/JWT-filter wiring, Liquibase migrations, Spring Boot entry
-│                        point. Holds **zero REST controllers of its own and zero embedded feature
-│                        modules** (renamed from `api` once the last controller moved out — see
+├── gateway/          — security/JWT-filter wiring, Spring Boot entry point. Holds **zero REST
+│                        controllers, zero embedded feature modules, and zero Liquibase migrations
+│                        of its own** (renamed from `api` once the last controller moved out — see
 │                        `docs/CHANGELOG.md`)
 └── gui/              — React 18 + TypeScript + MUI frontend (Vite)
 ```
@@ -69,30 +69,11 @@ standalone apps now rather than embedded modules (see their own sections further
 ```
 common/src/main/java/com/ttg/devknowledgeplatform/common/
 ├── entity/
-│   ├── AbstractEntity.java           — audit columns (usrCreation, dteCreation, version, …)
-│   └── User.java                     — userUuid, email, username, password, firstName, lastName, profilePicture,
-│                                        provider (UserProvider), role (UserRole), providerId, emailVerified, status
-│                                        (UserStatus, presence), enabled, seedId (String, nullable, DB SEED_ID,
-│                                        DKP-0016 — sole idempotency key for UserSeeder, now in `gateway`); referenced
-│                                        by FK from social-service's FriendRequest/Friendship/UserBlock entities
-│                                        (which live there, not here — see social-service section below). `@Table`
-│                                        deliberately does NOT hardcode a schema — see this class's own Javadoc:
-│                                        every standalone deployable (`gateway`, `ecommerce-service`,
-│                                        `identity-service`) maps this same class into its own schema via its own
-│                                        `hibernate.default_schema`, each with its own independently
-│                                        JIT-provisioned copy of a given Keycloak identity
-├── enums/
-│   ├── UserProvider.java
-│   ├── UserRole.java
-│   └── UserStatus.java
-├── repository/
-│   └── UserRepository.java           — JpaRepository<User, Integer> + JpaSpecificationExecutor<User>; moved here
-│                                        from gateway/repository (named api/repository at the time) so
-│                                        content-service/social-service (neither of which can depend on
-│                                        gateway) can reach it directly — this also retired social-service's
-│                                        own SocialUserRepository, a near-duplicate that existed only because
-│                                        this repository used to live in gateway; findBySeedId(String) added
-│                                        for UserSeeder (now in `gateway`) idempotency
+│   └── AbstractEntity.java           — audit columns (usrCreation, dteCreation, version, …); the sole entity left
+│                                        here — User (+ UserRepository + UserProvider/UserRole/UserStatus) moved
+│                                        out to `identity-service` once `gateway` dropped its own local User copy
+│                                        and `identity-service` became the sole remaining consumer (see that
+│                                        module's section below and `docs/CHANGELOG.md`)
 └── exception/
     ├── ApiException.java
     ├── BusinessException.java
@@ -117,7 +98,12 @@ Category/Tag/ContentItem/ContentItemTag/QuestionAnswer/Article entities and thei
 (+ `ChatMessageRole`), `ChatProvider`, `SysParam`/`ParamKey`/`SysParamRepository`/`SysParamService`(`Impl`),
 and `ConversationContext`/`ConversationTurn` used to live here too — an audit found zero real
 consumers outside `ai-service` for any of them (some Javadoc cross-references had implied otherwise),
-so they moved there — see that module's section below and `CHANGELOG.md`.
+so they moved there — see that module's section below and `CHANGELOG.md`. `User`/`UserRepository`/
+`UserProvider`/`UserRole`/`UserStatus` used to live here too, mapped by both `gateway` (into its own
+`product.USER`) and `identity-service` (into `identity.USER`) as a shared-kernel class — moved to
+`identity-service` outright once `gateway` retired its own local copy entirely (no REST controllers
+ever read it back — see `gateway`'s section below) and `identity-service` became the sole consumer.
+`common` no longer maps any `User`-shaped entity to anything.
 
 ---
 
@@ -1127,15 +1113,20 @@ Keycloak now owns login/registration/password/OTP/OAuth2-brokering entirely (see
 standalone Spring Boot application, not part of the monolith** — see the
 `project-microservices-extraction-plan` memory for the full extraction history.
 
-**Extraction (done):** own `IdentityServiceApplication` entry point (`@EntityScan`/
-`@EnableJpaRepositories` pointed at `common.entity`/`common.repository`, since this module owns no
-entities/repositories of its own and default Spring Boot scanning wouldn't otherwise reach
-`common`'s), own `identity` Postgres schema (separate from the monolith's `product` schema), own
-JWT verification (`security/` — verifies tokens issued by Keycloak, never issues its own), own port
-(`8082`), own Liquibase changelog + `identity-service-liquibase.yml` docker-compose file. `gateway`
-no longer has a Maven dependency on this module, and vice versa was never true. **Not yet built:**
-the `gateway`-side HTTP proxy to this service — until that exists, it's only reachable directly on
-its own port, same limitation `ecommerce-service` has.
+**Extraction (done):** own `IdentityServiceApplication` entry point, own `identity` Postgres schema
+(separate from the monolith's `product` schema), own JWT verification (`security/` — verifies
+tokens issued by Keycloak, never issues its own), own port (`8082`), own Liquibase changelog +
+`identity-service-liquibase.yml` docker-compose file. `gateway` no longer has a Maven dependency on
+this module, and vice versa was never true. **Not yet built:** the `gateway`-side HTTP proxy to
+this service — until that exists, it's only reachable directly on its own port, same limitation
+`ecommerce-service` has.
+
+**Now also the sole owner of `User`/`UserRepository`/`UserProvider`/`UserRole`/`UserStatus`** — all
+five moved here outright from `common` once `gateway` retired its own local `User` copy entirely
+(see `gateway`'s section below and `docs/CHANGELOG.md`). `IdentityServiceApplication` dropped its
+`@EntityScan`/`@EnableJpaRepositories` overrides as a direct result — default Spring Boot component
+scanning now covers this module's own `entity`/`repository` packages without help, since they're no
+longer off in `common`.
 
 ```
 identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
@@ -1143,9 +1134,34 @@ identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
 │                                        (not the shared root gateway's main class uses) keeps
 │                                        content-service/social-service/ai-service/task-service out
 │                                        of this app's component scan (no Maven dependency on any of
-│                                        them anyway); @EntityScan/@EnableJpaRepositories widen JPA
-│                                        scanning to also cover common.entity/common.repository,
-│                                        which default scanning wouldn't reach on its own
+│                                        them anyway). No @EntityScan/@EnableJpaRepositories anymore
+│                                        — used to widen JPA scanning to reach common.entity/
+│                                        common.repository when User/UserRepository lived there;
+│                                        default scanning already covers this app's own entity/
+│                                        repository packages now that both moved here
+├── entity/
+│   └── User.java                      — userUuid, email, username, password, firstName, lastName,
+│                                        profilePicture, provider (UserProvider), role (UserRole),
+│                                        providerId, emailVerified, status (UserStatus, presence),
+│                                        enabled, seedId (unused today — this module needs no seed
+│                                        data of its own), keycloakSubjectId. The sole system-of-
+│                                        record for user identity in this reactor now — moved here
+│                                        from `common` outright, not re-exported. `@Table`
+│                                        deliberately still carries no hardcoded schema — this app's
+│                                        own `hibernate.default_schema: identity` resolves it to
+│                                        `identity.USER` at runtime, same convention every entity in
+│                                        this reactor follows
+├── enums/
+│   ├── UserProvider.java
+│   ├── UserRole.java
+│   └── UserStatus.java
+├── repository/
+│   └── UserRepository.java            — JpaRepository<User, Integer> + JpaSpecificationExecutor<User>;
+│                                        moved here from `common` alongside `User`. The
+│                                        JpaSpecificationExecutor capability has no real consumer
+│                                        today (it used to back social-service's dynamic user search
+│                                        before that module moved to its own SocialProfile/
+│                                        SocialProfileRepository) — kept rather than silently dropped
 ├── api/
 │   ├── AuthApi.java                   — GET /api/v1/auth/user ONLY (renamed from OAuth2Api once
 │   │                                     every other endpoint on it was deleted — Keycloak's own
@@ -1188,22 +1204,24 @@ identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
 `security/service/RefreshTokenBlacklistService`(`Impl`), `service/{OtpService,EmailService}`(`Impl`),
 every `dto/auth/*` type, `dto/RegisterRequest`,
 `dto/{OAuth2UserInfo,GoogleOAuth2UserInfo,FacebookOAuth2UserInfo,OAuth2UserInfoFactory}`, and (as
-part of this extraction) `service/seed/UserSeeder` — relocated to `gateway`, not deleted: it only
-ever wrote via `common`'s `UserRepository` directly, no other dependency on this module, and
-`gateway` still needs to seed its own `product.USER` for the modules still embedded there. This
-module needs no seed data of its own — a seeded demo account has no matching Keycloak identity, so
-this module's own `identity.USER` table only ever fills via JIT-provisioning on a real login. The
-Keycloak-migration pom cleanup (JJWT, Redis-for-blacklist, mail-for-OTP — all left over from before
-those classes were deleted) happened alongside this extraction too.
+part of this extraction) `service/seed/UserSeeder` — relocated to `gateway` at the time, since it
+only ever wrote via `common`'s `UserRepository` directly and `gateway` still needed to seed its own
+`product.USER` for the modules still embedded there. `UserSeeder` was later deleted outright in
+`gateway` too, once `product.USER` itself was dropped (see `gateway`'s section below) — it has no
+home anywhere in this reactor anymore. This module needs no seed data of its own — a seeded demo
+account has no matching Keycloak identity, so this module's own `identity.USER` table only ever
+fills via JIT-provisioning on a real login. The Keycloak-migration pom cleanup (JJWT,
+Redis-for-blacklist, mail-for-OTP — all left over from before those classes were deleted) happened
+alongside this extraction too.
 
-`gateway`'s own `KeycloakJwtAuthenticationConverter` no longer calls into this module's
-`UserService.findOrCreateFromKeycloak` across a module boundary — that stopped being possible once
-this module became a standalone service with no Maven dependency from either. It now inlines the
-same find-or-create logic directly via `common`'s `UserRepository`, JIT-provisioning its own local
-`User` copy into `product.USER`. `ecommerce-service`'s converter takes a different path entirely —
-it persists nothing at all, building its principal straight from the JWT's claims (see its own
-section below for why). There is no single canonical `User` row shared across deployables; see root
-`CLAUDE.md`'s Security section.
+`gateway`'s own `KeycloakJwtAuthenticationConverter` used to inline this same find-or-create logic
+directly via `common`'s `UserRepository`, JIT-provisioning its own local `User` copy into
+`product.USER`, once calling into this module's `UserService.findOrCreateFromKeycloak` across a
+module boundary stopped being possible. It has since dropped that entirely — `gateway` now builds
+its principal straight from the JWT's claims, same shape as `ecommerce-service`'s/`task-service`'s/
+`content-service`'s/`ai-service`'s converters, since nothing in `gateway` ever read that row back
+(zero REST controllers). **This module (`identity-service`) is now the sole deployable in the whole
+reactor that persists a `User` row at all** — see root `CLAUDE.md`'s Security section.
 
 **Compiles cleanly** (full reactor; needs `JAVA_HOME` pointed at a JDK 21 install) but hasn't been
 run against a real Postgres yet — same unverified-at-runtime caveat as `ecommerce-service`.
@@ -1406,62 +1424,58 @@ gateway/src/main/java/com/ttg/devknowledgeplatform/
 │                                         dead code instead, along with infra's
 │                                         CacheTtlProperties/CacheNames (now fully orphaned) — see
 │                                         ai-service/CLAUDE.md's Rules section for the full finding.
-├── database/
-│   └── sql/                          — Liquibase changelogs (master: dev-knowledge-platform.xml)
+├── (no database/ package anymore — this app's whole Liquibase changelog tree was deleted outright
+│    once its last live table, product.USER, was dropped and every other table in it was already
+│    orphaned history from the six embedded-module extractions; see the Database section below.
+│    liquibase-core was removed from pom.xml alongside it, and the keycloak-schema bootstrap that
+│    tree used to own (DKP-0024) moved to the repo root's docker/postgres/init.sql instead)
 ├── (no event/ package — every listener moved into the module that owns the event it reacts to:
 │    FriendRequestSentEventListener/FriendRequestAcceptedEventListener → social-service, before
 │    that module's own later extraction; ContentPublishedEventListener also moved to ai-service on
 │    the same reasoning, then was later deleted outright as dead code during content-service's own
 │    extraction — its event never had a publisher wired up; none ever had a gateway-specific
 │    dependency)
-├── security/                         — OAuth2-resource-server verification (edge concerns);
-│   │                                    Keycloak is the identity provider — this app never issues
-│   │                                    tokens, only verifies them; JIT-provisioning business logic
-│   │                                    (finding/creating this app's own local User row) lives
-│   │                                    right here now — see below. No WebSocket/STOMP transport
-│   │                                    here anymore — see below
+├── security/                         — OAuth2-resource-server verification (edge concerns); Keycloak
+│   │                                    is the identity provider — this app never issues tokens,
+│   │                                    only verifies them. No WebSocket/STOMP transport here
+│   │                                    anymore — see below. **No caller-identity persistence of
+│   │                                    any kind anymore either** — see the converter's own entry
 │   ├── SecurityConfig.java           — .oauth2ResourceServer(jwt -> ...) verifying bearer tokens
 │   │                                    against Keycloak's JWKS (spring.security.oauth2.
 │   │                                    resourceserver.jwt.issuer-uri); no .oauth2Login() anymore
 │   ├── KeycloakRealmRoleConverter.java — Converter<Jwt, Collection<GrantedAuthority>>; maps the
 │   │                                    token's realm_access.roles claim to ROLE_* authorities —
 │   │                                    Spring's default converter only reads a flat scope claim
-│   ├── KeycloakJwtAuthenticationConverter.java — Converter<Jwt, AbstractAuthenticationToken>; JIT-
-│   │                                    provisions/refreshes this app's own product.USER row
-│   │                                    directly via common's UserRepository (find by
-│   │                                    keycloakSubjectId, fallback email, write only if changed) —
-│   │                                    inlined here rather than delegating to identity-service's
-│   │                                    UserService, which is a standalone service now and can't be
-│   │                                    called in-process (deliberately duplicated — note
-│   │                                    ecommerce-service's own converter of this name does NOT
-│   │                                    persist anything at all; this app's `Friendship`/etc.
-│   │                                    FKs genuinely needed a real local User row, ecommerce-service's
-│   │                                    entities don't). Builds the same CustomOAuth2User principal
-│   │                                    shape every remaining call site expects. Rejects a refresh
-│   │                                    token presented as a bearer token via its typ claim.
-│   │                                    **No longer shared with a STOMP CONNECT path** — this app
-│   │                                    has no WebSocket/STOMP transport of its own anymore
-│   └── CorsConfig.java / JsonAuthenticationEntryPoint.java / CurrentUserResolver.java
-│       (**No `WebSocketConfig`/`StompAuthChannelInterceptor` here anymore** — both relocated to
+│   ├── KeycloakJwtAuthenticationConverter.java — Converter<Jwt, AbstractAuthenticationToken>;
+│   │                                    builds CustomOAuth2User straight from the token's claims
+│   │                                    now (jwt.getSubject() standing in for userUuid) — no
+│   │                                    database read or write at all. Used to JIT-provision/
+│   │                                    refresh this app's own product.USER row directly via
+│   │                                    common's UserRepository; retired outright once it became
+│   │                                    clear nothing in this app ever read that row back (zero
+│   │                                    REST controllers, and the authorization decision was
+│   │                                    always driven by the token's own claims, never the row).
+│   │                                    Mirrors ecommerce-service's/task-service's/
+│   │                                    content-service's/ai-service's converters now instead of
+│   │                                    identity-service's (the one deployable that still persists
+│   │                                    a row, into identity.USER — see that module's section)
+│   └── CorsConfig.java / JsonAuthenticationEntryPoint.java
+│       (**No `CurrentUserResolver` here anymore** — it read the JIT-provisioned row back to
+│       resolve an Integer PK, but its only two callers had already moved to other modules in
+│       earlier extractions, leaving zero real callers — confirmed via grep before deleting.
+│       **No `WebSocketConfig`/`StompAuthChannelInterceptor` here either** — both relocated to
 │       `social-service`'s own `security/` package once that module became a standalone app owning
 │       the whole WebSocket/STOMP transport for chat; this app never had a second use for it)
-└── service/
-    └── seed/
-        ├── UserSeeder.java               — same package as DataSeedingRunner now (relocated from
-        │                                    identity-service once that module became a standalone
-        │                                    service — see its own section); writes directly via
-        │                                    common's UserRepository, no logic change from the move
-        └── DataSeedingRunner.java        — ApplicationRunner, @ConditionalOnProperty(app.seed.enabled);
-                                             runs seeders in order: category → tag → questionAnswer →
-                                             user. CategorySeeder/TagSeeder/QuestionAnswerSeeder live
-                                             in content-service/service/seed/, UserSeeder right here
-                                             now. **No longer seeds the friend graph/blocks/DM
-                                             conversations** — FriendGraphSeeder/UserBlockSeeder/
-                                             DmThreadSeeder moved fully into social-service's own
-                                             seeding orchestration (its own DataSeedingRunner) once
-                                             that module was extracted with no Maven dependency from
-                                             this one
 ```
+
+**No `service/` package here anymore.** `service/seed/{UserSeeder,DataSeedingRunner}` — this app's
+last seeder — was deleted outright once `product.USER` itself was dropped: `UserSeeder` had nothing
+left to seed, `DataSeedingRunner` had nothing left to orchestrate. `gateway/src/main/resources/data/`
+is gone in its entirety alongside them — `data/csv/users.csv` (the seeder's own input) and
+`data/init-admin-user.sql` (a standalone script that inserted directly into `product.USER`, never
+wired into `DataSeedingRunner` or any other mechanism) both had nowhere left to write to.
+`categories.csv`/`tags.csv`/`question-answers/*.md` had already moved to `content-service`'s own
+resources in an earlier extraction.
 
 Everything that used to live flat here — every feature's REST controllers, DTOs, and MapStruct
 mappers, including the one composed `UserApi.search`/`getPublicProfile` endpoint (moved to
@@ -1475,9 +1489,9 @@ the Bucket4j Redis connection, and the SSE/`@CurrentUserId` MVC wiring all moved
 `ai-service` — the last module with any of those runtime concerns left to serve — and the
 `asyncEventExecutor` thread pool moved to `infra` in an earlier extraction; see those modules'
 sections. What's left here is transport/security edge infra (`SecurityConfig`, JWT filter — **no
-STOMP wiring, no SSE/thread-pool config, and no cache config anymore**, see above), Liquibase
-migrations for `product.USER` plus every now-departed module's frozen historical tables, and the
-seeding orchestrator (`DataSeedingRunner`, now narrowed to just this app's own concerns).
+STOMP wiring, no SSE/thread-pool config, no cache config, and no local user persistence of any kind
+anymore**, see above) — full stop. **This app has no Liquibase migrations left at all**, not even
+frozen ones — the whole changelog tree was deleted outright, see the Database section below.
 
 **This module currently has no test suite of its own** — its only tests
 (`ws/AbstractStompIntegrationTest.java`/`ws/DmMessagingStompIntegrationTest.java`, plus
@@ -1485,36 +1499,6 @@ seeding orchestrator (`DataSeedingRunner`, now narrowed to just this app's own c
 full once that module got its own `@SpringBootApplication` to boot them against (see that module's
 own section) — they existed here only because `WebSocketConfig`/`StompAuthChannelInterceptor` and
 `social-service`'s `DmMessagingController` used to get wired together exclusively in this app.
-
-`gateway/src/main/resources/data/` (separate resources tree, not nested under the Java sources above):
-
-```
-data/
-├── csv/                              — DataSeedingRunner input (see service/seed above); no
-│   │                                    slug column — CategorySeeder/TagSeeder always generate
-│   │                                    it via SlugService; identity AND cross-references are by
-│   │                                    id (→ seedId), never name/slug
-│   ├── categories.csv                    — id, name, parentId (parentId references another row's id)
-│   ├── tags.csv                           — id, name, status
-│   └── users.csv                          — id, email, username, firstName, lastName (UserSeeder, gateway —
-│                                             relocated here from identity-service once that module became a
-│                                             standalone service); 20 sample login-able accounts. **No longer
-│                                             followed by `friend-requests.csv`/`user-blocks.csv` here** —
-│                                             both moved to `social-service`'s own resources (a duplicated
-│                                             copy of this same `users.csv`, plus both CSVs) once that module
-│                                             was extracted and stopped reading this app's classpath
-├── question-answers/                 — one Markdown file per question; references Category/Tag
-│   │                                    by id (categoryId/tagIds), not name or slug — see
-│   │                                    docs/SEED_DATA_AUTHORING_GUIDE.md; 100 files (qa-*.md),
-│   │                                    spread across all 12 leaf categories; general dev-knowledge
-│   │                                    Q&A, not only interview prep
-└── init-admin-user.sql               — local-dev admin bootstrap; NOT run by DataSeedingRunner or
-                                         any other mechanism — apply manually against the local DB
-```
-
-Before writing new `question-answers/*.md` files, read `docs/SEED_DATA_AUTHORING_GUIDE.md` —
-schema, mechanical rules the seeder enforces, content quality criteria, and the RAG-chunking
-constraints that shape how sections should be written.
 
 ---
 
@@ -1570,51 +1554,73 @@ expected over time, and are modelled as data, not schema:
 
 ## Database
 
-- Schema: `product` — now holds only `USER` (plus the frozen, orphaned historical tables below); no
-  feature-module table maps to a live entity in `gateway`'s Spring context anymore, now that
-  `ai-service` has its own `ai` schema too.
+- Schema: `product` — now holds **zero live tables**. Every table it ever held (`USER` included,
+  its last holdout) was dropped outright by `DKP-0033` once nothing in this reactor mapped any of
+  them anymore; see below. The schema container itself is left in place, just empty.
 - Sequences: one per table (`TABLE_NAME_SEQ`)
 - Audit columns on every entity via `AbstractEntity`
 - pgvector HNSW index on `ai.content_embedding.embedding` (cosine distance, `vector_cosine_ops`) —
   lives in `ai-service`'s own `ai` schema now, not `product`
 - `SYS_PARAM` — general-purpose key-value table; stores corpus centroid vectors and future AI/config
   parameters — also relocated to `ai-service`'s own `ai` schema (see below)
-- **Historical, orphaned:** `CATEGORY` / `TAG` / `CONTENT_ITEM` / `CONTENT_ITEM_TAG` /
+- **Historical, dropped:** `CATEGORY` / `TAG` / `CONTENT_ITEM` / `CONTENT_ITEM_TAG` /
   `QUESTION_ANSWER` / `ARTICLE` (`DKP-0001`-`0004`/`0009`/`0013`/`0014`/`0018`) used to back
-  `content-service`'s entities of the same names while that module was still embedded. All
-  changesets are untouched (frozen, already-run history) but now describe tables `gateway`'s own
-  Spring context no longer maps any entity to — `content-service` migrates a fresh snapshot of this
-  same shape into its own `content` schema instead (`DKP-0031` in that module's own tree), with
-  `AUTHOR_UUID` (a plain Keycloak-subject-id column) replacing `AUTHOR_ID` entirely — see that
-  module's `CLAUDE.md`.
-- **Historical, orphaned:** `FRIEND_REQUEST` / `FRIENDSHIP` / `USER_BLOCK` (`DKP-0015`) and
+  `content-service`'s entities of the same names while that module was still embedded. Every
+  changeset that created them stays untouched (frozen, already-run history), but the tables
+  themselves no longer physically exist — `DKP-0033` dropped them alongside every other `product`
+  table (see below). `content-service` migrates a fresh snapshot of this same shape into its own
+  `content` schema instead (`DKP-0031` in that module's own tree), with `AUTHOR_UUID` (a plain
+  Keycloak-subject-id column) replacing `AUTHOR_ID` entirely — see that module's `CLAUDE.md`.
+- **Historical, dropped:** `FRIEND_REQUEST` / `FRIENDSHIP` / `USER_BLOCK` (`DKP-0015`) and
   `MESSAGE_GROUP` / `GROUP_MEMBER` / `CHANNEL` / `DM_THREAD` / `DM_MESSAGE` / `CHANNEL_MESSAGE`
   (`DKP-0019`) used to back `social-service`'s entities of the same names while that module was
-  still embedded. Both changesets are untouched (frozen, already-run history, per this repo's
-  never-edit-an-executed-changeset convention) but now describe tables `gateway`'s own Spring
-  context no longer maps any entity to — `social-service` migrates a fresh snapshot of this same
+  still embedded. Both changesets stay untouched (frozen, already-run history, per this repo's
+  never-edit-an-executed-changeset convention), but the tables themselves no longer physically
+  exist — `DKP-0033` dropped them too. `social-service` migrates a fresh snapshot of this same
   shape into its own `social` schema instead (`DKP-0029`/`DKP-0030` in that module's own tree),
   with every FK repointed at `social.PROFILE` (that module's own lean entity) instead of
   `product.USER`, and no `SEED_ID` on the pair tables for either — see that module's `CLAUDE.md` for
   why (a pair's identity has no editable-field equivalent to `NAME`/`EMAIL` that could invalidate a
   pair-based idempotency check).
-- **Historical, orphaned:** `CONTENT_EMBEDDING` / `CHAT_SESSION` / `CHAT_MESSAGE` / `SYS_PARAM` /
+- **Historical, dropped:** `CONTENT_EMBEDDING` / `CHAT_SESSION` / `CHAT_MESSAGE` / `SYS_PARAM` /
   `PIPELINE_METRICS` (`DKP-0005`/`DKP-0006`/`DKP-0007`/`DKP-0008`/`DKP-0010`/`DKP-0011`/`DKP-0012`)
   used to back `ai-service`'s entities of the same names while that module was still embedded — the
   last module to leave this list, closing out `gateway`'s embedded-feature-module history entirely.
-  All changesets are untouched (frozen, already-run history) but now describe tables `gateway`'s own
-  Spring context no longer maps any entity to — `ai-service` migrates a fresh snapshot of this same
-  shape into its own `ai` schema instead (`DKP-0032` in that module's own tree), with
+  All changesets stay untouched (frozen, already-run history), but the tables no longer physically
+  exist — `DKP-0033` dropped them too. `ai-service` migrates a fresh snapshot of this same shape
+  into its own `ai` schema instead (`DKP-0032` in that module's own tree), with
   `CHAT_SESSION.USER_UUID`/`PIPELINE_METRICS.USER_UUID` (plain Keycloak-subject-id columns)
   replacing `USER_ID` entirely — see `ai-service/CLAUDE.md`.
-- `USER.SEED_ID` (DKP-0016, nullable, unique index) — same idempotent-seeding pattern the old
-  `DKP-0013` used for `CATEGORY`/`TAG`/`CONTENT_ITEM` (now `content-service`'s own `DKP-0031`); sole
-  idempotency key for `UserSeeder`'s (`gateway`) 20 sample login-able accounts.
-- Migrations: `gateway/src/main/java/com/ttg/devknowledgeplatform/database/sql/` — Liquibase config
-  in `gateway` now covers only `product.USER` plus every departed module's frozen historical
-  changesets; there are **no remaining embedded feature modules** for it to migrate live tables for.
-  `content-service`'s, `social-service`'s, and `ai-service`'s tables are **not** here — each
-  standalone service migrates its own schema from its own changelog tree now, see above.
+- **Historical, dropped:** `PROJECT` / `TASK` (`DKP-0020`-`0022`) used to back `task-service`'s
+  entities of the same names while that module was still embedded — same treatment, `DKP-0033`
+  dropped them too. `task-service` migrates its own fresh snapshot instead (`DKP-0028` in that
+  module's own tree), with a plain `OWNER_UUID` column replacing the old `OWNER_ID` FK entirely.
+- **`USER` (`DKP-0002`, plus `DKP-0016`'s `SEED_ID`/`DKP-0017`'s index/`DKP-0025`'s
+  `KEYCLOAK_SUBJECT_ID`) — dropped too, the last of the 23 tables `product` ever held.** Unlike the
+  four bullets above, this wasn't an artifact of an earlier extraction — `gateway` mapped this one
+  directly, right up until `DKP-0033`. `identity-service`'s own `User` entity (moved there from
+  `common`, see that module's section and root `CLAUDE.md`'s Security section) is the sole entity in
+  this whole reactor mapped to a `USER` table today, into `identity.USER` — a fresh, independent
+  table, not a migration of `product.USER`'s actual rows.
+- **`DKP-0033`** — the changeset that dropped all 23 `product` tables above in a single statement
+  (naming every table, `CASCADE` for the FKs between them — safe here specifically because every
+  possible dependent is inside the same drop list, confirmed via a reactor-wide grep for
+  `REFERENCES product.`). Each table's sequence dropped automatically alongside it (`ALTER SEQUENCE
+  ... OWNED BY`, declared back in each table's own creating changeset) — no separate `DROP
+  SEQUENCE` needed. The `product` schema container itself is left in place, just empty.
+- **`gateway` has no Liquibase changelog tree left at all** — every changeset described above
+  (including `DKP-0033` itself) was deleted outright rather than left as frozen history, once
+  nothing in this reactor needed any of it anymore. `liquibase-core` was removed from
+  `gateway/pom.xml`, `spring.liquibase.*` removed from its `application*.yml` files, and the
+  `<build><resources>` block that used to expose changelog XML/SQL on the classpath removed too.
+  The one genuinely-still-needed thing this tree used to bootstrap — the `keycloak` Postgres schema
+  itself (`DKP-0024`; Keycloak's own internal migration assumes its schema already exists and fails
+  otherwise) — moved to the repo root's `docker/postgres/init.sql` instead (`CREATE SCHEMA IF NOT
+  EXISTS keycloak`), which already runs automatically before Postgres reports healthy, which every
+  service's `depends_on` already waits on. `content-service`'s, `social-service`'s,
+  `task-service`'s, `identity-service`'s, `ecommerce-service`'s, and `ai-service`'s tables were
+  never here — each standalone service migrates its own schema from its own changelog tree, see
+  above.
   - Naming: `YYYY/VERSION/YYYYMMDDHHMI__VERSION__TICKET__description.sql`
 
 ---
@@ -1622,7 +1628,8 @@ expected over time, and are modelled as data, not schema:
 ## Deployment
 
 Seven independently-runnable Spring Boot processes exist today — `gateway` (now a bare
-JWT-verification + Liquibase + `UserSeeder` shell with zero embedded feature modules),
+JWT-verification shell with zero embedded feature modules, zero local user persistence, and zero
+Liquibase migrations of its own),
 `ecommerce-service`, `identity-service`, `task-service`, `social-service`, `content-service`, and
 `ai-service` (the latter six standalone microservices-study extractions, `ai-service` the sixth and
 final) — each with its own `Dockerfile` (multi-stage: `maven:3.9.9-eclipse-temurin-21` build stage
@@ -1635,9 +1642,25 @@ full `<modules>` list even for modules it won't build) — it does not copy `ide
 `ecommerce-service`, `task-service`, `social-service`, `content-service`, or `ai-service` sources.
 
 `dev-knowledge-platform-apps-docker-compose.yml` (repo root) brings up all seven app containers plus
-one-shot Liquibase migration runners (`dkp-liquibase`, `ecommerce-liquibase`, `identity-liquibase`,
-`task-liquibase`, `social-liquibase`, `content-liquibase`, `ai-liquibase`) ahead of them via
-`depends_on: condition: service_completed_successfully`. It has no infra containers of its own — it
+**one consolidated `services-liquibase` container** that runs all six standalone services'
+migrations sequentially in a single `sh -c` loop (`ecommerce-service` → `identity-service` →
+`task-service` → `social-service` → `content-service` → `ai-service`, each its own
+`liquibase ... update` invocation against its own mounted changelog directory) — replaces what used
+to be six separate inline services (`ecommerce-liquibase`, `identity-liquibase`, `task-liquibase`,
+`social-liquibase`, `content-liquibase`, `ai-liquibase`), one container per service. Each of the six
+app containers' `depends_on` now points at this one `services-liquibase` service instead of its own
+dedicated runner. Sequential execution is a deliberate improvement over the old shape, not just a
+consolidation: all six changelogs share one Postgres instance and one Liquibase
+`DATABASECHANGELOG`/`DATABASECHANGELOGLOCK` tracking pair regardless of container count, so six
+containers starting in parallel (as they could before, since none of them depended on each other)
+could contend for that lock; one container running them one at a time never contends with itself.
+The six standalone single-service `*-liquibase.yml` files at the repo root (for running just one
+service's migration outside the combined apps-compose flow) are unaffected — this consolidation is
+scoped to the combined apps-compose file only. `gateway` has no migration runner of its own at all
+(neither the old `dkp-liquibase` nor a slot in the new consolidated loop), since it has no Liquibase
+changelog left to run; the one thing that runner used to do beyond `gateway`'s own concerns
+(bootstrapping the `keycloak` schema, `DKP-0024`) now happens in `docker/postgres/init.sql`
+instead. It has no infra containers of its own — it
 must be run combined with `dev-knowledge-platform-docker-compose.yml` in one command, since that's
 what puts every container in a single Compose project/network so service-name DNS
 (`postgres`/`redis`/`minio`/`keycloak`) resolves:
@@ -1650,9 +1673,10 @@ docker compose -f dev-knowledge-platform-docker-compose.yml \
 
 `ecommerce-service`, `identity-service`, `task-service`, `social-service`, `content-service`, and
 `ai-service` share the same `dev-premier` Postgres database as `gateway`, each in its own schema
-(`ecommerce`/`identity`/`task`/`social`/`content`/`ai` vs. `gateway`'s `product`) —
-per-service-per-schema, not per-service-per-database (see root `CLAUDE.md`'s Database Conventions
-and the `project-microservices-extraction-plan` memory for why). Each service also has its own
+(`ecommerce`/`identity`/`task`/`social`/`content`/`ai` vs. `gateway`'s `product`, which now holds no
+live tables at all — see the Database section above) — per-service-per-schema, not
+per-service-per-database (see root `CLAUDE.md`'s Database Conventions and the
+`project-microservices-extraction-plan` memory for why). Each service also has its own
 standalone `*-liquibase.yml` compose file at the repo root for migrating its own schema outside the
 combined apps-compose flow (`ecommerce-service-liquibase.yml`, `identity-service-liquibase.yml`,
 `task-service-liquibase.yml`, `social-service-liquibase.yml`, `content-service-liquibase.yml`,
@@ -1667,8 +1691,8 @@ back when `ai-service` was still embedded there; they moved to `ai-service`'s ow
 alongside `OPENAI_API_KEY`, `REDIS_HOST`/`REDIS_PASSWORD`, and an `ANTHROPIC_API_KEY` (optional) once
 it went standalone. `gateway`'s own container was simplified in the same step — it no longer needs
 any of those env vars or a `redis`/`content-service` `depends_on`, just
-`SPRING_PROFILES_ACTIVE`/`KEYCLOAK_ISSUER_URI`/`FRONTEND_URL`, depending only on
-`dkp-liquibase`+`minio`.
+`SPRING_PROFILES_ACTIVE`/`KEYCLOAK_ISSUER_URI`/`FRONTEND_URL`, depending only on `minio`'s
+healthcheck now that its own `dkp-liquibase` dependency is gone too.
 
 `common`, `infra`, and the root `pom.xml` needed no changes for any of this — they already function
 as this repo's shared-foundation modules (proven by `ecommerce-service` already depending on

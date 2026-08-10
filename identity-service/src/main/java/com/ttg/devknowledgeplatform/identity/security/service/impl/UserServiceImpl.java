@@ -7,14 +7,14 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.common.enums.UserRole;
-import com.ttg.devknowledgeplatform.common.enums.UserStatus;
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
-import com.ttg.devknowledgeplatform.common.repository.UserRepository;
+import com.ttg.devknowledgeplatform.identity.entity.User;
+import com.ttg.devknowledgeplatform.identity.enums.UserRole;
+import com.ttg.devknowledgeplatform.identity.enums.UserStatus;
+import com.ttg.devknowledgeplatform.identity.repository.UserRepository;
 import com.ttg.devknowledgeplatform.identity.security.service.KeycloakUserInfo;
 import com.ttg.devknowledgeplatform.identity.security.service.UserService;
 

@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.common.enums;
+package com.ttg.devknowledgeplatform.identity.enums;
 
 /**
  *

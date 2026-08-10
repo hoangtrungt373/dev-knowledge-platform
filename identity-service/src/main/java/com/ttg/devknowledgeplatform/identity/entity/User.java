@@ -1,8 +1,9 @@
-package com.ttg.devknowledgeplatform.common.entity;
+package com.ttg.devknowledgeplatform.identity.entity;
 
-import com.ttg.devknowledgeplatform.common.enums.UserProvider;
-import com.ttg.devknowledgeplatform.common.enums.UserRole;
-import com.ttg.devknowledgeplatform.common.enums.UserStatus;
+import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
+import com.ttg.devknowledgeplatform.identity.enums.UserProvider;
+import com.ttg.devknowledgeplatform.identity.enums.UserRole;
+import com.ttg.devknowledgeplatform.identity.enums.UserStatus;
 
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
@@ -21,18 +22,22 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 
 /**
+ * The sole system-of-record for user identity in this reactor — every other deployable resolves
+ * "who is the caller" straight from the verified JWT's own claims instead of a persisted row (see
+ * root {@code CLAUDE.md}'s Security section for the full per-module breakdown). Used to be a
+ * shared-kernel class in {@code common}, mapped by both {@code gateway} (into {@code product.USER})
+ * and this module (into {@code identity.USER}) — moved here outright once {@code gateway} dropped
+ * its own local copy (see {@code docs/CHANGELOG.md}), since this module became the only remaining
+ * consumer. This class's {@code @Table} still deliberately has no hardcoded schema — this app's own
+ * {@code hibernate.default_schema: identity} (in {@code application.yml}) resolves it to
+ * {@code identity.USER} at runtime, same convention every entity in this reactor follows now (see
+ * root {@code CLAUDE.md}'s Database Conventions).
+ *
  * @author ttg
  */
 @Entity
 @Table(
         name = "USER",
-        // No hardcoded schema here (unlike most entities in this reactor) — deliberately, since
-        // this class is shared as-is across every standalone deployable (gateway's monolith,
-        // ecommerce-service, identity-service), each with its own USER table in its own schema
-        // (product/ecommerce/identity respectively). Each app's own `hibernate.default_schema`
-        // property resolves the actual schema at runtime; a hardcoded schema here would silently
-        // force every deployable's User rows into the same physical table regardless of that
-        // per-app setting, defeating per-service-per-schema for the one entity every service needs.
         // PROVIDER_ID is nullable (LOCAL accounts have none); a unique constraint still works
         // here since Postgres treats every NULL as distinct from every other NULL.
         uniqueConstraints = @UniqueConstraint(name = "UK_USER_PROVIDER_PROVIDER_ID", columnNames = {"PROVIDER", "PROVIDER_ID"})
@@ -109,8 +114,10 @@ public class User extends AbstractEntity {
     @Builder.Default
     private Boolean enabled = true;
 
-    // Null for every real/admin-created row; set only by UserSeeder, purely to detect
-    // "already seeded" across re-runs without depending on EMAIL/USERNAME staying unchanged.
+    // Null for every real/admin-created row; set only by a seeder, purely to detect "already
+    // seeded" across re-runs without depending on EMAIL/USERNAME staying unchanged. This module
+    // needs no seed data of its own today (see this module's own CLAUDE.md) — kept because
+    // dropping the column would need its own migration for no functional gain.
     @Column(name = "SEED_ID", length = 100)
     private String seedId;
 

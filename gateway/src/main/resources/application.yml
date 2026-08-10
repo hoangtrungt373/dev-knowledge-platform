@@ -20,11 +20,6 @@ spring:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/dev-knowledge-platform}
 
-  # Liquibase — disabled by default, enabled per profile
-  liquibase:
-    enabled: false
-    change-log: classpath:com/ttg/devknowledgeplatform/database/sql/dev-knowledge-platform.xml
-
   # JPA
   jpa:
     hibernate:
@@ -63,10 +58,6 @@ app:
     secret-key: ${MINIO_SECRET_KEY:minioadmin}
     bucket: ${MINIO_BUCKET:user-avatars}
     presigned-url-expiry-minutes: ${MINIO_PRESIGNED_EXPIRY:60}
-
-  # CSV startup data seeding (DataSeedingRunner) — off by default, enabled per profile
-  seed:
-    enabled: ${APP_SEED_ENABLED:false}
 
 # Logging
 logging:

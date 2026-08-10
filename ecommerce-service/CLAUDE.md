@@ -90,9 +90,12 @@ extraction (an `ecommerce.USER` table, added when this module was thought to nee
 `User` copy) and was removed once that assumption turned out to be wrong — see
 `EcommerceServiceApplication`'s Javadoc above. Applied via the standalone
 `ecommerce-service-liquibase.yml` docker-compose file at the repo root
-(`docker-compose -f ecommerce-service-liquibase.yml up`), mirroring
-`dev-knowledge-platform-liquibase.yml`'s shape; the app itself still runs with
-`spring.liquibase.enabled: false`, same convention as `gateway`.
+(`docker-compose -f ecommerce-service-liquibase.yml up`), mirroring the same one-shot-runner shape
+every standalone service's own `*-liquibase.yml` file follows (`gateway`'s own
+`dev-knowledge-platform-liquibase.yml` used to be the template for this, back when `gateway` still
+had a Liquibase changelog of its own — that file and the changelog behind it were both deleted
+outright once `gateway` retired its own local `User` persistence entirely, see root `CLAUDE.md`'s
+Database Conventions section). The app itself still runs with `spring.liquibase.enabled: false`.
 
 The minimal admin vertical slice now built on top of those entities:
 

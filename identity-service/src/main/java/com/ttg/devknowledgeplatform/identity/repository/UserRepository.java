@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.common.repository;
+package com.ttg.devknowledgeplatform.identity.repository;
 
 import java.util.Optional;
 
@@ -9,16 +9,17 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.common.enums.UserProvider;
-import com.ttg.devknowledgeplatform.common.enums.UserStatus;
+import com.ttg.devknowledgeplatform.identity.entity.User;
+import com.ttg.devknowledgeplatform.identity.enums.UserProvider;
+import com.ttg.devknowledgeplatform.identity.enums.UserStatus;
 
 /**
- * Read/write access to {@link User}, shared across every module. Lives in {@code common} (not
- * {@code api}) so feature modules that can't depend on {@code api} — {@code content-service},
- * {@code social-service} — can reach it directly, the same reasoning behind {@code SysParamRepository}
- * living here. Extends {@link JpaSpecificationExecutor} for {@code social-service}'s dynamic user
- * search (see its {@code UserSpecification}).
+ * Read/write access to {@link User} — this module's own repository now that {@code gateway}
+ * dropped its local copy and this module became the sole consumer (moved here from {@code common},
+ * see {@code docs/CHANGELOG.md}). {@link JpaSpecificationExecutor} is unused today (it supported
+ * {@code social-service}'s dynamic user search before that module moved to its own
+ * {@code SocialProfile}/{@code SocialProfileRepository} — see that module's {@code CLAUDE.md});
+ * kept since removing it isn't a decision this move should make silently.
  */
 @Repository
 public interface UserRepository extends JpaRepository<User, Integer>, JpaSpecificationExecutor<User> {

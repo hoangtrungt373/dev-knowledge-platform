@@ -2,9 +2,9 @@ package com.ttg.devknowledgeplatform.identity.security.service;
 
 import java.util.Optional;
 
-import com.ttg.devknowledgeplatform.common.entity.User;
-import com.ttg.devknowledgeplatform.common.enums.UserStatus;
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
+import com.ttg.devknowledgeplatform.identity.entity.User;
+import com.ttg.devknowledgeplatform.identity.enums.UserStatus;
 
 /**
  * Manages the lifecycle of {@link User} accounts.

@@ -12,7 +12,7 @@
 
     <artifactId>gateway</artifactId>
     <name>Gateway</name>
-    <description>Spring Boot entry point, security/JWT/STOMP transport wiring, Liquibase migrations, and the one remaining cross-module REST orchestration endpoint</description>
+    <description>Spring Boot entry point, security/JWT wiring, and Liquibase migrations — zero embedded feature modules, zero REST controllers of its own</description>
 
     <dependencies>
 
@@ -147,33 +147,14 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Liquibase -->
-        <dependency>
-            <groupId>org.liquibase</groupId>
-            <artifactId>liquibase-core</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-pool2</artifactId>
-        </dependency>
-
-        <!-- MinIO — S3-compatible object storage -->
+        <!-- MinIO — S3-compatible object storage. This app has no code of its own that calls
+             StorageService, but infra's StorageServiceImpl/StorageConfig (@Service/@Configuration,
+             under com.ttg.devknowledgeplatform.infra.*) are component-scanned into this app's
+             Spring context regardless — MinioClient must stay on the classpath for that bean to
+             construct at startup. Do not remove without also excluding those beans. -->
         <dependency>
             <groupId>io.minio</groupId>
             <artifactId>minio</artifactId>
-        </dependency>
-
-        <!-- MapStruct -->
-        <dependency>
-            <groupId>org.mapstruct</groupId>
-            <artifactId>mapstruct</artifactId>
-        </dependency>
-
-        <!-- OpenAPI / Swagger UI -->
-        <dependency>
-            <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
         </dependency>
 
         <!-- Dev Tools -->
@@ -195,19 +176,6 @@
     </dependencies>
 
     <build>
-        <!-- Include XML and SQL files from src/main/java so Liquibase can find them on the classpath -->
-        <resources>
-            <resource>
-                <directory>src/main/resources</directory>
-            </resource>
-            <resource>
-                <directory>src/main/java</directory>
-                <includes>
-                    <include>**/*.xml</include>
-                    <include>**/*.sql</include>
-                </includes>
-            </resource>
-        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

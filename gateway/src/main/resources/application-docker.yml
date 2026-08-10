@@ -13,18 +13,12 @@ spring:
     password: ${DB_PASSWORD:password}
     driver-class-name: org.postgresql.Driver
 
-  # Liquibase — enabled in Docker
-  liquibase:
-    enabled: true
-
 # Application
 app:
   frontend:
     url: ${FRONTEND_URL}
   storage:
     endpoint: ${MINIO_ENDPOINT:http://minio:9000}
-  seed:
-    enabled: true
 
 # Logging
 logging:

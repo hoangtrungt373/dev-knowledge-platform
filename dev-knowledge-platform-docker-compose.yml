@@ -60,23 +60,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Identity provider — dev-only mode (start-dev), backed by the same Postgres instance as every
-  # other module (own `keycloak` schema, not a second database), same convention
-  # ecommerce-service's extraction established. Port 8180, not 8080, to stay clear of gateway's
-  # own port. Realm config is imported from a checked-in export on every boot (--import-realm)
-  # rather than clicked together by hand each time — see docker/keycloak/realm-export.json. Import
-  # only applies if the realm doesn't already exist in the `keycloak` schema; re-export the file
-  # after any hand-edit in the Admin Console, and note that a changed export won't reapply against
-  # an existing volume without `docker compose down -v` first.
-  #
-  # Schema note: `product`/`ecommerce` are each created by their owning module's own first
-  # Liquibase changeset. Keycloak's own Liquibase migration instead assumes its schema already
-  # exists and fails otherwise — bootstrapped here by gateway's own DKP-0024 changeset (run via
-  # `dev-knowledge-platform-liquibase.yml`), reusing that same mechanism rather than a bespoke
-  # docker-compose init service. Because Liquibase is a separate, manual step in this project's
-  # workflow, keycloak may fail to boot (schema doesn't exist yet) on a first-ever `up` before that
-  # migration has run — `restart: on-failure` below means it recovers automatically on its own next
-  # restart attempt once the schema exists, no manual restart needed.
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     container_name: dev-premier-keycloak

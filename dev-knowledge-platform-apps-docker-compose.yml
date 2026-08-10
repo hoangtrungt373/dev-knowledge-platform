@@ -1,143 +1,29 @@
-# App containers for the seven independently-runnable Spring Boot processes in this repo today
-# (gateway, ecommerce-service, identity-service, task-service, social-service, content-service,
-# ai-service), plus their one-shot Liquibase migrations. gateway now has zero embedded feature
-# modules of its own — it's a bare JWT-verification + Liquibase + UserSeeder shell (see root
-# CLAUDE.md's Long-term direction section).
-#
-# This file MUST be run combined with dev-knowledge-platform-docker-compose.yml in the same
-# command — that's what puts every container in one Compose project/network so service-name DNS
-# (postgres/redis/minio/keycloak) resolves. Running this file alone will fail.
-#
-#   docker compose -f dev-knowledge-platform-docker-compose.yml \
-#                   -f dev-knowledge-platform-apps-docker-compose.yml \
-#                   up -d --build
-#
-# Required env vars on the host (no in-file defaults, since these are secrets/environment-specific):
-#   OPENAI_API_KEY, FRONTEND_URL (optional, defaults to http://localhost:3000)
-#   INTERNAL_API_KEY (optional — defaults to the same dev-only placeholder both ai-service and
-#   content-service fall back to; override in production)
-
 services:
 
-  # One-shot migration runners — same image/changelog paths as the standalone
-  # dev-knowledge-platform-liquibase.yml / ecommerce-service-liquibase.yml files, but targeting
-  # `postgres` by service name instead of host.docker.internal, since this file always runs
-  # joined to the infra compose project.
-  dkp-liquibase:
+  services-liquibase:
     image: liquibase/liquibase:4.29
-    entrypoint: ["liquibase"]
+    entrypoint: ["sh", "-c"]
     command:
-      - --search-path=/changelog
-      - --changelog-file=dev-knowledge-platform.xml
-      - --url=jdbc:postgresql://postgres:5432/dev-premier
-      - --username=postgres
-      - --password=password
-      - --driver=org.postgresql.Driver
-      - update
+      - |
+        set -e
+        for svc in ecommerce-service identity-service task-service social-service content-service ai-service; do
+          echo "==> Running Liquibase for $$svc"
+          liquibase \
+            --search-path=/changelog/$$svc \
+            --changelog-file=$$svc.xml \
+            --url=jdbc:postgresql://postgres:5432/dev-premier \
+            --username=postgres \
+            --password=password \
+            --driver=org.postgresql.Driver \
+            update
+        done
     volumes:
-      - ./gateway/src/main/java/com/ttg/devknowledgeplatform/database/sql:/changelog:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  ecommerce-liquibase:
-    image: liquibase/liquibase:4.29
-    entrypoint: ["liquibase"]
-    command:
-      - --search-path=/changelog
-      - --changelog-file=ecommerce-service.xml
-      - --url=jdbc:postgresql://postgres:5432/dev-premier
-      - --username=postgres
-      - --password=password
-      - --driver=org.postgresql.Driver
-      - update
-    volumes:
-      - ./ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/database/sql:/changelog:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  identity-liquibase:
-    image: liquibase/liquibase:4.29
-    entrypoint: ["liquibase"]
-    command:
-      - --search-path=/changelog
-      - --changelog-file=identity-service.xml
-      - --url=jdbc:postgresql://postgres:5432/dev-premier
-      - --username=postgres
-      - --password=password
-      - --driver=org.postgresql.Driver
-      - update
-    volumes:
-      - ./identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/database/sql:/changelog:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  task-liquibase:
-    image: liquibase/liquibase:4.29
-    entrypoint: ["liquibase"]
-    command:
-      - --search-path=/changelog
-      - --changelog-file=task-service.xml
-      - --url=jdbc:postgresql://postgres:5432/dev-premier
-      - --username=postgres
-      - --password=password
-      - --driver=org.postgresql.Driver
-      - update
-    volumes:
-      - ./task-service/src/main/java/com/ttg/devknowledgeplatform/task/database/sql:/changelog:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  social-liquibase:
-    image: liquibase/liquibase:4.29
-    entrypoint: ["liquibase"]
-    command:
-      - --search-path=/changelog
-      - --changelog-file=social-service.xml
-      - --url=jdbc:postgresql://postgres:5432/dev-premier
-      - --username=postgres
-      - --password=password
-      - --driver=org.postgresql.Driver
-      - update
-    volumes:
-      - ./social-service/src/main/java/com/ttg/devknowledgeplatform/social/database/sql:/changelog:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  content-liquibase:
-    image: liquibase/liquibase:4.29
-    entrypoint: ["liquibase"]
-    command:
-      - --search-path=/changelog
-      - --changelog-file=content-service.xml
-      - --url=jdbc:postgresql://postgres:5432/dev-premier
-      - --username=postgres
-      - --password=password
-      - --driver=org.postgresql.Driver
-      - update
-    volumes:
-      - ./content-service/src/main/java/com/ttg/devknowledgeplatform/content/database/sql:/changelog:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  ai-liquibase:
-    image: liquibase/liquibase:4.29
-    entrypoint: ["liquibase"]
-    command:
-      - --search-path=/changelog
-      - --changelog-file=ai-service.xml
-      - --url=jdbc:postgresql://postgres:5432/dev-premier
-      - --username=postgres
-      - --password=password
-      - --driver=org.postgresql.Driver
-      - update
-    volumes:
-      - ./ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/database/sql:/changelog:ro
+      - ./ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/database/sql:/changelog/ecommerce-service:ro
+      - ./identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/database/sql:/changelog/identity-service:ro
+      - ./task-service/src/main/java/com/ttg/devknowledgeplatform/task/database/sql:/changelog/task-service:ro
+      - ./social-service/src/main/java/com/ttg/devknowledgeplatform/social/database/sql:/changelog/social-service:ro
+      - ./content-service/src/main/java/com/ttg/devknowledgeplatform/content/database/sql:/changelog/content-service:ro
+      - ./ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/database/sql:/changelog/ai-service:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -155,8 +41,6 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      dkp-liquibase:
-        condition: service_completed_successfully
       minio:
         condition: service_healthy
 
@@ -175,7 +59,7 @@ services:
     ports:
       - "8081:8081"
     depends_on:
-      ecommerce-liquibase:
+      services-liquibase:
         condition: service_completed_successfully
 
   identity-service:
@@ -193,7 +77,7 @@ services:
     ports:
       - "8082:8082"
     depends_on:
-      identity-liquibase:
+      services-liquibase:
         condition: service_completed_successfully
 
   task-service:
@@ -211,7 +95,7 @@ services:
     ports:
       - "8083:8083"
     depends_on:
-      task-liquibase:
+      services-liquibase:
         condition: service_completed_successfully
 
   social-service:
@@ -232,7 +116,7 @@ services:
     ports:
       - "8084:8084"
     depends_on:
-      social-liquibase:
+      services-liquibase:
         condition: service_completed_successfully
       minio:
         condition: service_healthy
@@ -256,7 +140,7 @@ services:
     ports:
       - "8085:8085"
     depends_on:
-      content-liquibase:
+      services-liquibase:
         condition: service_completed_successfully
 
   ai-service:
@@ -285,7 +169,7 @@ services:
     ports:
       - "8086:8086"
     depends_on:
-      ai-liquibase:
+      services-liquibase:
         condition: service_completed_successfully
       redis:
         condition: service_healthy

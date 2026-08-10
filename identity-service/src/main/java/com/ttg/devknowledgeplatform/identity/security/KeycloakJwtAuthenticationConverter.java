@@ -11,7 +11,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
-import com.ttg.devknowledgeplatform.common.entity.User;
+import com.ttg.devknowledgeplatform.identity.entity.User;
 import com.ttg.devknowledgeplatform.identity.security.service.KeycloakUserInfo;
 import com.ttg.devknowledgeplatform.identity.security.service.UserService;
 
