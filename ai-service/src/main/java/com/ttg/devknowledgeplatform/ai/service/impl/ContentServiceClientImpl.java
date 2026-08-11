@@ -31,6 +31,12 @@ public class ContentServiceClientImpl implements ContentServiceClient {
         this.restClient = builder
                 .baseUrl(properties.getBaseUrl())
                 .defaultHeader(API_KEY_HEADER, properties.getInternalApiKey())
+                // Stamps traceparent per-call from whatever's on the current thread's MDC right
+                // now — a defaultHeader() can't do this, since it would freeze whatever trace
+                // context existed when this singleton bean was constructed at startup, long
+                // before any real request's trace exists. See the interceptor's own Javadoc for
+                // the known async-pipeline gap.
+                .requestInterceptor(new TraceparentClientHttpRequestInterceptor())
                 .build();
     }
 

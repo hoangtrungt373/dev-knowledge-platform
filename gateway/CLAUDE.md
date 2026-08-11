@@ -103,8 +103,13 @@ both `identity-service` and `social-service` were extracted into standalone serv
     committing to stream its body — `RestClient.exchange()` scopes the response/body to one
     callback, which doesn't fit "decide the status now, stream the body later." Relays bytes with
     an explicit `flush()` after every read so the token-by-token streaming UX genuinely streams
-    rather than buffering. Forwards `Authorization`/`Content-Type`/`Accept` verbatim — `ai-service`
-    verifies the JWT itself regardless, same as every other proxied backend.
+    rather than buffering. Forwards `Authorization`/`Content-Type`/`Accept`/`traceparent` verbatim
+    (the last one optional, `required = false`) — `ai-service` verifies the JWT itself regardless,
+    same as every other proxied backend; `traceparent` carries whatever `infra`'s own
+    `tracing.TraceContextFilter` already rewrote it to by the time this method runs (see that
+    class's Javadoc) — this is the one route that needs an explicit forwarding parameter for it,
+    since the other 22 get it automatically from Gateway Server MVC's default full-header-forwarding
+    proxy behavior.
   - **`StreamingProxyAsyncConfig`** — the async-dispatch wiring `StreamingResponseBody` needs (per
     Spring's own recommendation, since the default is an unbounded per-request thread creator): a
     60-second timeout and a small dedicated `ThreadPoolTaskExecutor` (`streamRelayExecutor`). Named
@@ -126,7 +131,10 @@ both `identity-service` and `social-service` were extracted into standalone serv
     target or a silently-swallowed no-op.
   No load balancing or service discovery — deliberately not built, since there is exactly one
   instance of each service at a fixed address. Rate limiting, timeouts (beyond the one above),
-  retry, and circuit breaker are not built yet either.
+  retry, and circuit breaker are not built yet either — see `gateway/ROADMAP.md` for the backlog
+  and order. Correlation-id/structured-access-logging (that backlog's item #1) **is** built now —
+  see `infra/CLAUDE.md`'s `tracing/` entry; it lives in `infra`, not here, since all seven of this
+  reactor's apps need the same mechanism, not just this one.
 - `security/` — transport/security **edge** infra, **and, as of the CORS-consolidation pass, the
   sole CORS source of truth in this whole reactor — zero exceptions.** `CorsConfig` here is the
   only real CORS config left anywhere. `ai-service`'s own copy (the only other one that ever

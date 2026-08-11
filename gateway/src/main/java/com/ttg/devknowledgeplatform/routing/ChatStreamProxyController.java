@@ -48,6 +48,15 @@ import lombok.RequiredArgsConstructor;
  * {@code SecurityConfig} already requires authentication on this path before this method ever
  * runs, so the header is guaranteed present).
  *
+ * <p>{@code traceparent} is forwarded the same way, but is optional rather than required — unlike
+ * {@code GatewayRoutesConfig}'s 22 routes (which forward headers automatically, since Gateway
+ * Server MVC proxies the whole request), this hand-rolled proxy only forwards what it explicitly
+ * reads and re-sends. By the time this method runs, {@code infra}'s
+ * {@code tracing.TraceContextFilter} has already rewritten the inbound request's own
+ * {@code traceparent} header to carry this app's own span — see that class's Javadoc for why that
+ * rewrite is enough on its own for the other 22 routes, and why this one route needs an explicit
+ * parameter instead.
+ *
  * <p>See {@link StreamingProxyAsyncConfig} for the matching async-dispatch/timeout wiring this
  * class depends on.
  */
@@ -66,6 +75,8 @@ public class ChatStreamProxyController {
 
     private static final int RELAY_BUFFER_SIZE = 1024;
 
+    private static final String TRACEPARENT_HEADER = "traceparent";
+
     private final GatewayServicesProperties services;
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
@@ -74,16 +85,20 @@ public class ChatStreamProxyController {
             @RequestBody byte[] body,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
             @RequestHeader(HttpHeaders.CONTENT_TYPE) String contentType,
-            @RequestHeader(HttpHeaders.ACCEPT) String accept
+            @RequestHeader(HttpHeaders.ACCEPT) String accept,
+            @RequestHeader(value = TRACEPARENT_HEADER, required = false) String traceparent
     ) throws IOException, InterruptedException {
-        HttpRequest upstreamRequest = HttpRequest.newBuilder()
+        HttpRequest.Builder upstreamRequestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(services.getAiServiceBaseUrl() + "/api/v1/chat/stream"))
                 .timeout(UPSTREAM_TIMEOUT)
                 .header(HttpHeaders.AUTHORIZATION, authorization)
                 .header(HttpHeaders.CONTENT_TYPE, contentType)
                 .header(HttpHeaders.ACCEPT, accept)
-                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
-                .build();
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body));
+        if (traceparent != null) {
+            upstreamRequestBuilder.header(TRACEPARENT_HEADER, traceparent);
+        }
+        HttpRequest upstreamRequest = upstreamRequestBuilder.build();
 
         HttpResponse<InputStream> upstreamResponse =
                 httpClient.send(upstreamRequest, HttpResponse.BodyHandlers.ofInputStream());

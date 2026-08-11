@@ -112,7 +112,27 @@ ever read it back — see `gateway`'s section below) and `identity-service` beca
 ```
 infra/src/main/java/com/ttg/devknowledgeplatform/infra/
 ├── context/
-│   └── MdcKeys.java              — MDC key constants shared across modules (e.g. TRACE_ID = "traceId")
+│   └── MdcKeys.java              — MDC key constants shared across modules: TRACE_ID = "traceId",
+│                                    SPAN_ID = "spanId". Only visible in log output where a module's
+│                                    own logging.pattern.console renders %X{traceId}/%X{spanId} —
+│                                    see tracing/ below.
+├── tracing/
+│   ├── TraceContext.java         — record(traceId, spanId, sampled) implementing the W3C Trace
+│   │                                Context traceparent header shape (version-traceid-spanid-flags);
+│   │                                parse(String)/fresh()/withNewSpan()/toHeaderValue(); no Spring
+│   │                                dependency, pure parsing/formatting logic
+│   └── TraceContextFilter.java   — OncePerRequestFilter, @Component; binds a TraceContext to
+│                                    MDC for every inbound request, rewrites the request's own
+│                                    traceparent header to carry this app's own span (so Gateway
+│                                    Server MVC's default header-forwarding proxy behavior carries
+│                                    it downstream automatically — no GatewayRoutesConfig change
+│                                    needed), and logs one structured access-log line
+│                                    (method/path/status/latency) per request. Auto-registered in
+│                                    all seven of this reactor's Spring Boot apps via component
+│                                    scan — gateway ROADMAP.md item #1. Does not propagate across
+│                                    an @Async boundary (MDC is thread-local) — see ai-service's own
+│                                    TraceparentClientHttpRequestInterceptor and its CLAUDE.md for
+│                                    the one place this matters today.
 ├── event/
 │   ├── ApplicationEventHandler.java  — marker interface; Find Implementations = full event bus registry across modules
 │   ├── EventHandler.java             — composed @EventListener + @Async("asyncEventExecutor"); enforces async on
@@ -937,7 +957,15 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
         ├── ChatSessionServiceImpl.java                — lazy session-expiry enforcement (24h TTL); addTurn() safe from
         │                                                background threads; rolling summarisation via ChatSessionProperties triggers
         ├── ContentServiceClientImpl.java               — RestClient-backed; base-url + shared
-        │                                                 X-Internal-Api-Key from ContentServiceClientProperties
+        │                                                 X-Internal-Api-Key from ContentServiceClientProperties,
+        │                                                 plus TraceparentClientHttpRequestInterceptor
+        │                                                 registered via .requestInterceptor(...)
+        ├── TraceparentClientHttpRequestInterceptor.java — stamps traceparent per-call from the
+        │                                                 current thread's MDC (infra's TraceContext);
+        │                                                 falls back to a fresh, disconnected trace on
+        │                                                 the async indexing pipeline's own worker
+        │                                                 thread, where MDC doesn't propagate — known,
+        │                                                 documented gap, not solved here
         ├── ContentIndexingServiceImpl.java            — resolves question/article text from ContentServiceClient's
         │                                                flattened ContentItemDto → ContentIngestionService.ingest();
         │                                                also runs IndexingQualityService and persists the quality
@@ -1453,7 +1481,10 @@ gateway/src/main/java/com/ttg/devknowledgeplatform/
 │   │                                    available before committing to stream the body, which
 │   │                                    RestClient.exchange()'s callback-scoped API doesn't fit).
 │   │                                    Relays bytes with an explicit flush() after every read.
-│   │                                    Forwards Authorization/Content-Type/Accept verbatim.
+│   │                                    Forwards Authorization/Content-Type/Accept verbatim, plus
+│   │                                    traceparent (optional) — the one route needing an explicit
+│   │                                    forwarding parameter for it, since the other 22 get it
+│   │                                    automatically via Gateway MVC's default header-forwarding.
 │   ├── StreamingProxyAsyncConfig.java — async-dispatch wiring StreamingResponseBody needs (a
 │   │                                    60s timeout matching ai-service's own
 │   │                                    SseStreamTemplate.SSE_TIMEOUT_MS, plus a dedicated

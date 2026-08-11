@@ -257,7 +257,19 @@ does too; no behavioral change, injected by type/qualifier the same way it alway
   match `content-service`'s own `app.internal-api.key`). `dto/client/ContentItemDto` is this
   module's own duplicated copy of that API's response shape — same "duplicate, don't share
   cross-service DTOs" convention every `KeycloakJwtAuthenticationConverter` duplicate in this
-  codebase already follows. **Never add a Maven dependency on `gateway`, `social-service`, or
+  codebase already follows.
+  - **`service/impl/TraceparentClientHttpRequestInterceptor`** — registered on
+    `ContentServiceClientImpl`'s `RestClient.Builder` via `.requestInterceptor(...)`, stamps a
+    `traceparent` header on every outgoing call, derived from whatever `infra`'s
+    `tracing.TraceContextFilter` bound to this thread's MDC (`MdcKeys.TRACE_ID`/`SPAN_ID`) when
+    this app received whatever request led to this call. **Known, deliberate gap:** when this call
+    happens on the background thread driving this module's own async indexing pipeline (see the
+    "Async" note above), MDC is typically empty — `@Async`'s default executor doesn't copy the
+    triggering thread's MDC onto the worker thread — so the interceptor falls back to a fresh,
+    disconnected trace rather than one linked to whatever admin request kicked off indexing. Fixing
+    that means wiring an MDC-propagating `TaskDecorator` onto this module's own async executor — a
+    separate piece of work, not solved here; see the interceptor's own Javadoc.
+  **Never add a Maven dependency on `gateway`, `social-service`, or
   `content-service`** here — any future need for `content-service` data must go through
   `ContentServiceClient`/a new internal-API endpoint, never a resurrected Maven dependency; a real
   cross-service call always means HTTP now that every module in this reactor is (or, for `gateway`,

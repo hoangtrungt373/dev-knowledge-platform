@@ -26,7 +26,32 @@ Module-local guidance for `infra`. Read alongside the root `CLAUDE.md`.
   module became standalone (`gateway` has no SSE endpoint left to feed); `ai-service`'s own
   `SseStreamTemplate`/`ChatMvcConfig.configureAsyncSupport` reach it by `@Qualifier`/bean-name, same
   as before the move.
-- `context/MdcKeys` — MDC key constants (`TRACE_ID`), shared so no module hardcodes the string.
+- `context/MdcKeys` — MDC key constants (`TRACE_ID`, `SPAN_ID`), shared so no module hardcodes the
+  string. Only takes effect where a module's own `logging.pattern.console` actually renders
+  `%X{traceId}`/`%X{spanId}` — see `tracing/TraceContextFilter`'s Javadoc and the note below; an
+  MDC value a log pattern never references is silently invisible, which is exactly what had been
+  true for `TRACE_ID` here until the `tracing/` package below landed.
+- `tracing/{TraceContext,TraceContextFilter}` — distributed-request tracing via the
+  [W3C Trace Context](https://www.w3.org/TR/trace-context/) `traceparent` header, gateway
+  roadmap item #1 (see `gateway/ROADMAP.md`). `TraceContext` is a plain record (`traceId`, `spanId`,
+  `sampled`) with `parse`/`fresh`/`withNewSpan`/`toHeaderValue` — pure parsing/formatting logic, no
+  Spring dependency. `TraceContextFilter` (`OncePerRequestFilter`, `@Component`) binds a
+  `TraceContext` to `MdcKeys.TRACE_ID`/`SPAN_ID` for every inbound request, rewrites the request's
+  own `traceparent` header to carry this app's own span before handing it to the rest of the filter
+  chain (so Gateway Server MVC's default full-header-forwarding proxy behavior carries it
+  downstream with no change needed in `routing/GatewayRoutesConfig`), and logs one structured
+  access-log line (method/path/status/latency) per request. Auto-registered as a servlet filter in
+  **all seven** of this reactor's Spring Boot apps — a plain `@Component` implementing `Filter` is
+  picked up by Spring Boot for any app whose scan reaches it, which is every one of them now (see
+  the component-scan note below). See the class's own Javadoc for the full mechanics, including the
+  one real limitation: it does **not** propagate across an `@Async` boundary (MDC is thread-local
+  and `@Async`'s default executor doesn't copy it), which matters for `ai-service`'s background
+  indexing pipeline — see that module's `CLAUDE.md`.
+  - **`logging.pattern.console` had to be updated in all seven apps' own `application.yml`** to
+    add `[traceId=%X{traceId:-}, spanId=%X{spanId:-}]` to the pattern — this is a YAML property,
+    not a Java bean, so unlike everything else in this module it genuinely can't be centralized
+    through `infra`'s component scan; it has to be duplicated seven times, same as
+    `KeycloakRealmRoleConverter` already is for the same "no shared mechanism" reason.
 - `service/SlugService` (+ impl) — generic slug generation/uniqueness utility. Lives here (not
   `gateway`, not any feature module) specifically because feature modules that need it
   (`content-service`) can't depend on `gateway`, and it's generic enough that `common` (no Spring
