@@ -8,5 +8,5 @@
     <!-- This service's own changelog tree — separate from gateway's, following the
          extraction: ai-service migrates its own database now, nobody else's
          changelog runs against the `ai` schema and vice versa. -->
-    <includeAll path="2026/0.0.1" errorIfMissingOrEmpty="false" relativeToChangelogFile="true"/>
+    <includeAll path="2026/0.0.2" errorIfMissingOrEmpty="false" relativeToChangelogFile="true"/>
 </databaseChangeLog>

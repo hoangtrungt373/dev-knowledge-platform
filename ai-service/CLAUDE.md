@@ -24,11 +24,16 @@ on it — not another HTTP rewrite. Its own `Dockerfile` and
 (port `8086`); `gateway`-side HTTP proxying for end-user traffic to this service is not built yet,
 same as every other standalone service in this reactor.
 
-- `AiServiceApplication` — `@SpringBootApplication` + `@ConfigurationPropertiesScan` (required here
-  — this module no longer rides on `gateway`'s scan) + `@EnableAsync` (drives
-  `PipelineCompletedEventListener`'s `@EventHandler` dispatch and the SSE/MVC async support this
-  module's own `ChatMvcConfig` configures). **No `@EntityScan`/`@EnableJpaRepositories`** — this
-  module doesn't touch `common.entity.User`/`common.repository.UserRepository` at all, same shape as
+- `AiServiceApplication` — `@SpringBootApplication` + `@ComponentScan(basePackages = {"...ai",
+  "...infra"})` + `@ConfigurationPropertiesScan` (required here — this module no longer rides on
+  `gateway`'s scan) + `@EnableAsync` (drives `PipelineCompletedEventListener`'s `@EventHandler`
+  dispatch and the SSE/MVC async support this module's own `ChatMvcConfig` configures). The explicit
+  `@ComponentScan` was added reactor-wide once an audit found no standalone service actually reached
+  `infra`'s sibling package by default — here, `PipelineCompletedEventListener` extending `infra`'s
+  `AsyncEventHandler` needs `infra`'s own `AsyncEventThreadPoolConfig` bean to exist in this context;
+  see `infra/CLAUDE.md`'s `JacksonConfig` note for the full reactor-wide finding. **No
+  `@EntityScan`/`@EnableJpaRepositories`** — this module doesn't touch `common.entity.User`/
+  `common.repository.UserRepository` at all, same shape as
   `content-service`'s/`task-service`'s/`ecommerce-service`'s application classes. Default scanning
   already covers this module's own `entity`/`repository` packages.
 - `security/` — this app's own filter chain, independent of `gateway`'s, since it now runs on its
@@ -45,8 +50,20 @@ same as every other standalone service in this reactor.
   `content-service`'s/`task-service`'s converter rather than `gateway`'s/`identity-service`'s (see
   the Rules section below for why `ChatSession`/`PipelineMetrics` don't need one either).
   `CurrentUserResolver` reads the authenticated `CustomOAuth2User` principal's UUID straight off the
-  principal — no database lookup. `CorsConfig`, `JsonAuthenticationEntryPoint` round out the package,
-  same shape as every other standalone service's `security/`.
+  principal — no database lookup. `JsonAuthenticationEntryPoint` rounds out the package, same shape
+  as every other standalone service's `security/`. **No `CorsConfig` here anymore, and
+  `SecurityConfig` dropped its `.cors(...)` wiring entirely too** — this module's own `CorsConfig`
+  used to survive `gateway`'s first CORS-consolidation pass, narrowed to just
+  `/api/v1/chat/stream` (the SSE streaming chat response), since Spring Cloud Gateway Server MVC
+  can't safely proxy Server-Sent Events. Deleted outright once `gateway`'s own
+  `routing/ChatStreamProxyController` landed — a purpose-built streaming proxy that relays that
+  one path by hand instead, so the GUI never calls this module directly for anything anymore.
+  Every request this module receives now comes from another server (`gateway`, via a plain JDK
+  `HttpClient`), never a browser directly — CORS is a browser-enforced mechanism a
+  server-to-server call never triggers, so there's nothing left for a `CorsConfigurationSource`
+  bean to do here. See `gateway/CLAUDE.md`'s `routing/` bullet and root `CLAUDE.md`'s
+  Architecture → Routing section. Don't add a `CorsConfig` back here on the assumption some
+  endpoint still needs one — re-verify with a grep for real browser-origin callers first.
 - `config/web/CurrentUserIdArgumentResolver` (`@Component`, resolves
   `common.annotation.CurrentUserId String`-annotated controller parameters via
   `security.CurrentUserResolver`) — duplicated from `content-service`'s/`task-service`'s class of the

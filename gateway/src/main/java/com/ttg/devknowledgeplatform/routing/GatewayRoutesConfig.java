@@ -35,6 +35,18 @@ import lombok.RequiredArgsConstructor;
  * here</b> — it's service-to-service traffic ({@code ai-service} calls it directly on
  * {@code content-service}'s own port, gated by a shared {@code X-Internal-Api-Key} header, not a
  * JWT) and was never meant for external client traffic through this gateway.
+ *
+ * <p><b>{@code ai-service}'s {@code /api/v1/chat/stream} (the SSE streaming chat response) is
+ * deliberately not routed here either — but it's still proxied by this app, just not through
+ * this class.</b> Spring Cloud Gateway Server MVC's {@code http()} handler has documented problems
+ * proxying Server-Sent Events (connection leaks, broken chunked streaming — see the upstream
+ * project's issue tracker), so this one path is relayed by {@link ChatStreamProxyController}
+ * instead, a purpose-built streaming proxy using the JDK's own {@code HttpClient} rather than
+ * Gateway Server MVC's DSL. Only {@code /api/v1/chat/sessions/**} (plain REST — session
+ * listing/history) is routed through this class; {@code /stream} is the one path
+ * {@code ChatStreamProxyController} owns. The GUI never calls {@code ai-service} directly for
+ * anything anymore — see that class's own Javadoc for why, and why {@code ai-service}'s own
+ * {@code CorsConfig} was deleted outright (not just narrowed) once this landed.
  */
 @Configuration
 @RequiredArgsConstructor
@@ -101,12 +113,15 @@ public class GatewayRoutesConfig {
                 .build();
     }
 
-    /** Routes RAG chat and admin indexing/embeddings/pipeline-metrics to {@code ai-service}. */
+    /**
+     * Routes chat session listing/history and admin indexing/embeddings/pipeline-metrics to
+     * {@code ai-service}. Deliberately excludes {@code /api/v1/chat/stream} — see class Javadoc.
+     */
     @Bean
     public RouterFunction<ServerResponse> aiServiceRoutes() {
         String baseUrl = services.getAiServiceBaseUrl();
         return route("ai-service")
-                .route(path("/api/v1/chat/**"), http(baseUrl))
+                .route(path("/api/v1/chat/sessions/**"), http(baseUrl))
                 .route(path("/api/v1/admin/embeddings/**"), http(baseUrl))
                 .route(path("/api/v1/admin/indexing/**"), http(baseUrl))
                 .route(path("/api/v1/admin/pipeline-metrics/**"), http(baseUrl))

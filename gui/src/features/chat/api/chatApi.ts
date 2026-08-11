@@ -2,7 +2,14 @@ import { STORAGE_KEYS } from '@shared/constants/storage';
 import { httpClient } from '@shared/api/httpClient';
 import { ChatSessionSummary, SessionHistory, StreamCallbacks } from '../types';
 
-const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8081';
+// gateway (8080) — same origin as everything else now. /api/v1/chat/stream used to bypass
+// gateway and call ai-service directly (Spring Cloud Gateway Server MVC's RouterFunction routing
+// has real, documented problems proxying Server-Sent Events), but gateway now relays this one
+// endpoint by hand instead (routing/ChatStreamProxyController — a purpose-built streaming proxy,
+// not the usual RouterFunction DSL) — see that class's own Javadoc. This constant is redundant
+// with @shared/api/httpClient.ts's own BACKEND_BASE_URL (this file can't import that one directly,
+// it's a private module-level const there) but must stay in sync with it.
+const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
 
 type ShowError = (msg: string) => void;
 

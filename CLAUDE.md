@@ -142,6 +142,32 @@ breaker) remain individually per-service today, not yet centralized at `gateway`
 all seven services (`gateway`, `ecommerce-service`, `identity-service`, `task-service`,
 `social-service`, `content-service`, `ai-service`).
 
+**Post-extraction hardening: a reactor-wide component-scan gap, found while moving `gateway`'s
+`JacksonConfig` into `infra`.** None of the six standalone services' `@SpringBootApplication`
+classes widened their component scan to reach `infra`'s sibling package — Spring Boot's default
+`@ComponentScan` is rooted at the annotated class's own package and does not recurse into a
+sibling, and only `gateway` (whose main class sits at this reactor's root package) happened to pick
+up `infra` "for free." This had been silently breaking real, already-shipping code
+(`identity-service`'s/`social-service`'s injection of `infra.service.StorageService`,
+`ecommerce-service`'s/`content-service`'s injection of `infra.service.SlugService`,
+`social-service`'s/`ai-service`'s `@EventHandler` listeners needing `infra`'s
+`AsyncEventThreadPoolConfig` bean) — never caught until now because none of these six apps had ever
+actually been booted against a real environment in this codebase's history, a caveat this file and
+several modules' `CLAUDE.md`s have carried since each one's own extraction. `social-service` had a
+second, quieter bug on top: it was missing `@EnableAsync` entirely, which doesn't error the way a
+missing bean does — Spring just silently runs `@Async` methods synchronously instead — so its two
+friend-request event listeners had been dispatching on the calling thread instead of the dedicated
+pool the whole time. Fixed by adding an explicit `@ComponentScan(basePackages = {<own-package>,
+"com.ttg.devknowledgeplatform.infra"})` to all six services' entry-point classes (an explicit
+`@ComponentScan` replaces rather than adds to `@SpringBootApplication`'s implicit single-package
+scan, so each service's own package had to be listed too) plus `@EnableAsync` on `social-service`'s.
+`JacksonConfig` itself moved from `gateway`'s (nonexistent, since it has no REST controllers) own
+`config/` package into `infra`'s new `config/json/` once this fix made every service's scan reach
+it — see `infra/CLAUDE.md`'s `JacksonConfig` note, each service's own `CLAUDE.md`/entry-point
+Javadoc, and `docs/CHANGELOG.md`'s `[Unreleased]` entry for the full detail. Any *new* module added
+to this reactor needs the same explicit `@ComponentScan` the moment it uses any `infra` bean —
+don't assume default scanning reaches there.
+
 When proposing a new **big feature area** (broad scope, likely to grow), default to a dedicated
 Maven module mirroring this shape — owns its own entities/services *and* its own REST controllers/
 DTOs/mappers (a full vertical slice), depends only on `common`+`infra` (or, if it has a genuine
@@ -206,6 +232,8 @@ Before starting any task:
 
 After completing a task, update those files if your changes affected modules, packages, entities, endpoints, DB schema, dependencies, security rules, or GUI pages. Use the `[Unreleased]` section in CHANGELOG; format follows [Keep a Changelog](https://keepachangelog.com/). If the change altered a module's local conventions or constraints, update that module's `CLAUDE.md` too — don't let it drift out of sync the way this file itself had (see git history around 2026-07-06 for examples of the drift this caused: a JWT provider class rename, a `UserUtils.getCurrentUser()` method that never existed, a removed `npm test` script — all went undocumented until caught during an unrelated task).
 
+**`docs/CHANGELOG.md` was cut into a real `[0.0.2]` release on 2026-08-11 and archived to `docs/CHANGELOG-ARCHIVE.md`**, once the live file's single `[Unreleased]` section had grown past ~3700 lines without ever being cut into an actual version — see that file's own intro for the reasoning. `[0.0.1]` is the original monolith; `[0.0.2]` is everything accumulated since, up to and including the full microservices break-up — matching the Maven `<version>` on every module's own `pom.xml` (`0.0.2-SNAPSHOT` as of this cut). `docs/CHANGELOG.md` now starts with a fresh, empty `[Unreleased]`; every existing `CLAUDE.md` reference to "`docs/CHANGELOG.md`'s `[Unreleased]` entry" for something that landed before that date now resolves to `docs/CHANGELOG-ARCHIVE.md`'s `[0.0.2]` section instead — those references were not swept and rewritten one by one (a large, low-value mechanical pass), so don't be surprised to find one still pointing at "`[Unreleased]`" when the content actually lives in the archive's `[0.0.2]`. When a `CLAUDE.md` reference to CHANGELOG content turns out stale for this reason, fix it opportunistically the same way any other doc drift gets fixed — see the note above.
+
 ## Architecture
 
 ### Routing
@@ -227,21 +255,44 @@ than one service and only disambiguate one segment deeper:
 
 Every other path maps to exactly one service by its own resource prefix — `/api/v1/auth/**` →
 `identity-service`, `/api/v1/projects/**`/`/api/v1/tasks/**` → `task-service`,
-`/api/v1/dms/**`/`/friends/**`/`/groups/**`/`/channels/**` → `social-service`, `/api/v1/chat/**` →
-`ai-service`. See `GatewayRoutesConfig`'s own Javadoc for the complete, current table — this section
-is a summary, not the source of truth; re-derive it from the actual `@RequestMapping`s (via a
-reactor-wide grep) rather than trusting either copy if a service's routes ever change.
+`/api/v1/dms/**`/`/friends/**`/`/groups/**`/`/channels/**` → `social-service`,
+`/api/v1/chat/sessions/**` → `ai-service`. See `GatewayRoutesConfig`'s own Javadoc for the
+complete, current table — this section is a summary, not the source of truth; re-derive it from
+the actual `@RequestMapping`s (via a reactor-wide grep) rather than trusting either copy if a
+service's routes ever change.
 
-**Not routed here on purpose:** `content-service`'s `/internal/content-items/**` — service-to-service
-traffic (`ai-service` calls it directly on `content-service`'s own port, gated by a shared
-`X-Internal-Api-Key` header, not a JWT), never meant for external clients.
+**Not routed through `GatewayRoutesConfig` on purpose:**
+- `content-service`'s `/internal/content-items/**` — service-to-service traffic (`ai-service`
+  calls it directly on `content-service`'s own port, gated by a shared `X-Internal-Api-Key`
+  header, not a JWT), never meant for external clients.
+- `ai-service`'s `/api/v1/chat/stream` (the SSE streaming chat response) — **but this one is still
+  proxied by `gateway`, just not through `GatewayRoutesConfig`'s usual `RouterFunction` DSL.**
+  Spring Cloud Gateway Server MVC has real, documented problems proxying Server-Sent Events
+  (connection leaks, broken chunked streaming), so `routing/ChatStreamProxyController` relays this
+  one path by hand instead — a purpose-built streaming proxy using the JDK's own `HttpClient`
+  (chosen over Spring's `RestClient` specifically because it needs the upstream status code
+  available before committing to stream the body, which `RestClient.exchange()`'s callback-scoped
+  API doesn't fit). The GUI never calls `ai-service` directly for anything anymore as a result —
+  its `chatApi.streamChat` points back at `gateway`, same origin as everything else.
+  `listSessions`/`getSessionHistory` are unaffected either way — both are plain REST and go
+  through `gateway`'s normal `RouterFunction` routing via `/api/v1/chat/sessions/**` above.
+- The GUI's WebSocket/STOMP connection (`social-service`'s chat transport) — never routed at all;
+  Gateway Server MVC only proxies plain HTTP, not a protocol upgrade, and `ChatStreamProxyController`
+  is HTTP-only too. The GUI's `socket.ts` talks to `social-service`'s own origin directly,
+  independent of wherever the REST API points.
 
-**Backend base URLs** are configured per-service (`app.services.*`, `GatewayServicesProperties`) —
+**CORS is fully consolidated at `gateway` now — zero exceptions.** `gateway/security/CorsConfig`
+is the sole CORS source in this reactor; every other service's own copy (only `ai-service` ever had
+one) was deleted outright once `ChatStreamProxyController` landed, since nothing calls any backend
+service directly from a browser anymore, for any path. `ai-service`'s own `SecurityConfig` dropped
+its `.cors(...)` wiring entirely as a result — a server-to-server call (which is all it receives
+now) never triggers CORS in the first place. **Backend
+base URLs** are configured per-service (`app.services.*`, `GatewayServicesProperties`) —
 `localhost:<port>` by default (running each service directly on the host), overridden in
-`application-docker.yml` to each service's Compose DNS name. Only routing exists today — CORS
-consolidation, rate limiting, timeouts, retry, and circuit breaker are still individually per-service,
-not yet centralized at `gateway`; load balancing and service discovery are deliberately not built,
-since there is exactly one instance of each service at a fixed address in this deployment.
+`application-docker.yml` to each service's Compose DNS name. Rate limiting, timeouts, retry, and
+circuit breaker are still individually per-service, not yet centralized at `gateway`; load
+balancing and service discovery are deliberately not built, since there is exactly one instance of
+each service at a fixed address in this deployment.
 
 ### Request Flow
 
@@ -346,7 +397,13 @@ database with the new schema live).
   than a replay of `gateway`'s incremental `CONTENT_EMBEDDING`/`CHAT_SESSION`/etc. history, into the
   new `ai` schema) carries the same caveat via its own `ai-service-liquibase.yml`.
 - Naming: `YYYY/VERSION/YYYYMMDDHHMI__VERSION__TICKET__description.sql`
-  - Example: `2026/0.0.1/202606170001__0.0.1__DKP-0005__init_ai_tables.sql`
+  - Example: `2026/0.0.2/202608080001__0.0.2__DKP-0032__add_ai_service_tables.sql` — `ai-service`'s own
+    changelog, real and current. Every standalone service's changelog tree was renamed from a
+    `0.0.1` version segment to `0.0.2` on 2026-08-11, alongside the changelog's own retroactive cut
+    of `[0.0.2]` (see the note earlier in this file and `docs/CHANGELOG.md`'s intro) — `0.0.1` is the
+    monolith, `0.0.2` is everything since, including these six fresh-snapshot changelogs. None of
+    these changesets had been run against a real database at the time of the rename (see each
+    module's own `CLAUDE.md`), so the rename didn't risk a Liquibase checksum mismatch.
 
 ## Operational Rules
 
@@ -378,6 +435,16 @@ These rules govern how Claude must behave in this project. Follow them strictly 
 
 ### Changelog & structure docs
 - After any task that adds, removes, or renames a class / endpoint / DB table / dependency: update `docs/CHANGELOG.md` (under `[Unreleased]`) and `docs/PROJECT_STRUCTURE.md`.
+
+### Don't run a full build to verify
+- **Never run `./mvnw clean package`/`./mvnw clean install` (or any other full-reactor build) as a self-check after making changes.** This is a 9-module Maven reactor; a clean build is slow, and running it — especially more than once in the same task (e.g. once after code changes, again after a docs-only pass) — burns significant wall-clock time for little benefit.
+- Rely on reading the code carefully, IDE diagnostics if available, and targeted `-pl <module> -am` compiles only if there's a specific, concrete reason to suspect a compile error (e.g. a signature change with many call sites). The user builds and runs the project themselves when they're ready to.
+- If a task's own instructions explicitly ask for a build (e.g. "build and confirm this compiles"), that's an explicit request, not a self-imposed verification step — follow it.
+
+### Batch independent file edits
+- When a task touches multiple files that don't depend on each other's content (e.g. updating several modules' own `CLAUDE.md`, or `docs/PROJECT_STRUCTURE.md` alongside `docs/CHANGELOG.md`), read/edit them in parallel tool calls within the same message rather than one at a time in sequence. Each Read/Edit round trip has its own latency; doing ten of them back-to-back when none of them needs the previous one's result just stacks that latency for no benefit.
+- Only go sequential when there's a real dependency — e.g. an edit to file B needs to reference exact wording just added to file A, or a later edit's `old_string` depends on an earlier edit having already landed in the same file.
+- This applies most often to the documentation-update pass required by "Changelog & structure docs" above and to updating multiple modules' `CLAUDE.md` files after a cross-cutting change — exactly the kind of task that touches many independent files at once.
 
 ### Loop detection
 - If the same fix fails twice for the same root cause, stop, explain the situation, and ask for direction rather than attempting a third variation.

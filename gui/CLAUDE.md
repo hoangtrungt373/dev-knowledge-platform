@@ -457,9 +457,33 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     `TasksSidebar` filters
     the shared list to `ACTIVE` itself rather than being handed an already-filtered list, and calls
     `onProjectsChanged` (→ `TasksPage`'s `fetchProjects`) after create/edit/archive.
+- **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
+  `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
+  HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's
+  `api/*.ts`, and `@chat/api/chatApi.ts`'s `streamChat` (`gateway`'s own
+  `routing/ChatStreamProxyController` relays that one path by hand, since Spring Cloud Gateway
+  Server MVC's usual routing can't safely proxy Server-Sent Events — see that class's Javadoc).
+  Only `@messaging/api/socket.ts`'s STOMP connection still bypasses `gateway`, via its own
+  `VITE_SOCIAL_SERVICE_URL` (default `http://localhost:8084`, direct to `social-service`) — never
+  routed at all, since Gateway Server MVC (and `ChatStreamProxyController`) only handle plain HTTP,
+  not a WebSocket protocol upgrade. See `vite-env.d.ts`'s own comment and that file's own constant
+  for the full reasoning. A third constant, `VITE_AI_SERVICE_URL` (direct to `ai-service`), existed
+  briefly for `streamChat` before `ChatStreamProxyController` landed — removed once gateway could
+  safely relay that endpoint itself; don't reintroduce it. All backend-origin constants in this
+  codebase defaulted to `8081` (`ecommerce-service`'s port, a pre-extraction leftover) before any
+  of this — if you find code still hardcoding that port, it's stale, not intentional.
 - All backend calls go through `@shared/api/httpClient.ts` (auth headers, error normalization via
   `getUserFriendlyErrorMessage`/`getErrorDetails`) — don't call `fetch` directly from a
-  page/component.
+  page/component. **Known gap, not yet fixed**: `@auth/services/authService.ts`'s `startOAuth`
+  (`/api/v1/auth/oauth2/authorization/{provider}`) and `logout` (`POST /api/v1/auth/logout`), plus
+  `@auth/api/authApi.ts`'s `login` (`POST /api/v1/auth/login`) via `adminAuthService`, all call
+  endpoints `identity-service` no longer exposes — Keycloak owns the whole login/logout lifecycle
+  now, and `identity-service`'s own `AuthApi` only has `GET /api/v1/auth/user` left (see that
+  module's `CLAUDE.md`). These predate the Keycloak migration and were never updated; `logout`'s
+  fire-and-forget `.catch(() => {})` masks the failure so client-side logout still works, but
+  `startOAuth`/admin `login` would genuinely 404. Fixing the admin login flow to route through
+  Keycloak properly is a real, separate piece of work — out of scope for whatever you're doing if
+  you just landed here from a `CLAUDE.md` cross-reference; don't fix it as a drive-by.
 - Token storage keys live in `@shared/constants/storage.ts` (`STORAGE_KEYS`) — don't hardcode
   `localStorage` key strings elsewhere.
 - When the backend renames a field (e.g. the `userId` → `userUuid` rename in `CHANGELOG.md`), the

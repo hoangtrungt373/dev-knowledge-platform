@@ -1,5 +1,5 @@
 -- liquibase formatted sql
--- changeset ttg:202608070001__0.0.1__DKP-0028__add_task_management_tables logicalFilePath:TaskService
+-- changeset ttg:202608070001__0.0.2__DKP-0028__add_task_management_tables logicalFilePath:TaskService
 -- comment: Add task-service's own PROJECT/TASK tables in a new `task` schema
 --
 -- Ownership is a plain OWNER_UUID column (the Keycloak JWT's `sub` claim), not a foreign key to a

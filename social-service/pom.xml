@@ -7,7 +7,7 @@
     <parent>
         <groupId>com.ttg</groupId>
         <artifactId>dev-knowledge-platform</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>${revision}</version>
     </parent>
 
     <artifactId>social-service</artifactId>

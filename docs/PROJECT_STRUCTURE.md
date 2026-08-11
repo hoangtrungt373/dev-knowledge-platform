@@ -128,13 +128,23 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
 │    during ai-service's standalone extraction: they backed gateway's old RedisCacheConfig, and a
 │    reactor-wide grep for @Cacheable/@CacheEvict/@CachePut found zero real usages anywhere in the
 │    codebase — see ai-service/CLAUDE.md's Rules section for the full dead-code finding)
-│   └── thread/{AsyncEventThreadPoolConfig,AsyncEventThreadPoolProperties}.java — the
-│                                        asyncEventExecutor bean (app.threads.async-event.*); moved
-│                                        here from gateway since this module's own event/ framework
-│                                        (below) is what actually owns this pool's purpose. The
-│                                        sseStreamExecutor pool (a separate bulkhead) no longer lives
-│                                        in gateway either — it moved to ai-service's own
-│                                        config/thread/ once that module went standalone.
+│   ├── thread/{AsyncEventThreadPoolConfig,AsyncEventThreadPoolProperties}.java — the
+│   │                                    asyncEventExecutor bean (app.threads.async-event.*); moved
+│   │                                    here from gateway since this module's own event/ framework
+│   │                                    (below) is what actually owns this pool's purpose. The
+│   │                                    sseStreamExecutor pool (a separate bulkhead) no longer lives
+│   │                                    in gateway either — it moved to ai-service's own
+│   │                                    config/thread/ once that module went standalone.
+│   └── json/JacksonConfig.java       — shared ObjectMapper customization (JavaTimeModule,
+│                                        tolerant deserialization, ISO-8601 dates); moved here from
+│                                        gateway once every standalone service's own
+│                                        @SpringBootApplication was widened with an explicit
+│                                        @ComponentScan reaching this sibling package — before that,
+│                                        this bean only ever reached gateway's own (nonexistent)
+│                                        REST layer, while every one of the six standalone services
+│                                        silently fell back to Spring Boot's un-customized default
+│                                        ObjectMapper. See the gateway section's config/ note below
+│                                        for the full component-scan fix this move depended on.
 └── service/
     ├── SlugService.java              — toSlug(String), generateUniqueSlug(...) (two overloads: create vs
     │                                    update-excluding-self); lives here (not content-service) because it's a
@@ -154,7 +164,11 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
                                          independent siblings that can't depend on each other, so the shared
                                          template moved to infra, which both already depend on (same reasoning
                                          as SlugService above). Used by content-service's CategorySeeder/
-                                         TagSeeder, gateway's UserSeeder, and social-service's UserBlockSeeder.
+                                         TagSeeder and social-service's UserBlockSeeder — not by any
+                                         UserSeeder: gateway's own UserSeeder was deleted outright once
+                                         product.USER was dropped, and identity-service never needed one
+                                         (a seeded demo account has no matching Keycloak identity, so
+                                         identity.USER only ever fills via real JIT-provisioning).
 ```
 
 ---
@@ -277,12 +291,12 @@ content-service/src/main/java/com/ttg/devknowledgeplatform/content/
 content-service/src/main/java/com/ttg/devknowledgeplatform/content/database/
 └── sql/
     ├── content-service.xml            — this module's own master changelog; includeAll over
-    │                                     2026/0.0.1/, same shape as task-service's/social-service's
+    │                                     2026/0.0.2/, same shape as task-service's/social-service's
     │                                     own changelog trees. Applied via the standalone
     │                                     content-service-liquibase.yml compose file at the repo
     │                                     root (spring.liquibase.enabled stays false on app boot,
     │                                     same convention as every other standalone service)
-    └── 2026/0.0.1/
+    └── 2026/0.0.2/
         └── DKP-0031__add_content_service_tables.sql — fresh snapshot of CATEGORY/TAG/CONTENT_ITEM/
             CONTENT_ITEM_TAG/QUESTION_ANSWER/ARTICLE into a new `content` schema (not a replay of
             gateway's incremental DKP-0001..0018 history); AUTHOR_UUID (VARCHAR(36)) replaces
@@ -570,7 +584,7 @@ REST layer: this module's own `GroupApi`/`GroupController` and `DmApi`/`DmContro
 `MessageAttachmentRequest.objectKey` assumes the client already has a MinIO object key from
 somewhere else.
 
-**Liquibase:** own changelog tree (`database/sql/social-service.xml` + `2026/0.0.1/*.sql`), applied
+**Liquibase:** own changelog tree (`database/sql/social-service.xml` + `2026/0.0.2/*.sql`), applied
 via the standalone `social-service-liquibase.yml` docker-compose file. `DKP-0029` adds
 `social.PROFILE`; `DKP-0030` adds a fresh snapshot of the friend-graph + chat tables — the final
 shape `gateway`'s old `DKP-0015`/`DKP-0019` reached — with every FK repointed at `social.PROFILE`
@@ -628,8 +642,12 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   │                             KeycloakJwtAuthenticationConverter (builds CustomOAuth2User
 │   │                             straight from JWT claims — sub → userUuid, no DB read/write at
 │   │                             all, mirrors content-service's/task-service's converter, not
-│   │                             gateway's/identity-service's), CurrentUserResolver, CorsConfig,
-│   │                             JsonAuthenticationEntryPoint
+│   │                             gateway's/identity-service's), CurrentUserResolver,
+│   │                             JsonAuthenticationEntryPoint. No CorsConfig here anymore (used to
+│   │                             be narrowed to just /api/v1/chat/stream, then deleted outright
+│   │                             once gateway's own ChatStreamProxyController landed) — every
+│   │                             request this module receives now comes from another server, not
+│   │                             a browser, so SecurityConfig dropped its .cors(...) wiring too
 ├── api/                       — REST layer, moved in from `gateway` (named `api` at the time —
 │   │                             content+AI orchestration and the self-contained chat feature are
 │   │                             both owned here now — see ai-service/CLAUDE.md for why the old
@@ -1080,7 +1098,7 @@ this repo's frozen-changeset convention) but now describe an orphaned `product.P
 `product.TASK` pair `gateway`'s own Spring context no longer maps any entity to.
 
 **Now (post-extraction):** this module migrates its own `task` schema from its own changelog tree
-(`task-service/.../database/sql/task-service.xml` + `2026/0.0.1/*.sql`), applied via the standalone
+(`task-service/.../database/sql/task-service.xml` + `2026/0.0.2/*.sql`), applied via the standalone
 `task-service-liquibase.yml` docker-compose file at the repo root — the same pattern
 `ecommerce-service`/`identity-service` established. `DKP-0028` is the *only* migration in this
 tree — it adds `task.PROJECT`/`task.TASK` as a fresh snapshot of the *final* shape those tables
@@ -1376,7 +1394,7 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
                                      ProductSearchResponse
 ```
 
-Liquibase migration: `ecommerce-service/.../database/sql/2026/0.0.1/202608040001__0.0.1__DKP-0023__add_ecommerce_catalog_tables.sql`
+Liquibase migration: `ecommerce-service/.../database/sql/2026/0.0.2/202608040001__0.0.2__DKP-0023__add_ecommerce_catalog_tables.sql`
 under this module's **own** changelog tree now (not `gateway`'s) — `PRODUCT_CATEGORY`, `PRODUCT`,
 `PRODUCT_IMAGE`, `PRODUCT_VARIANT`, `PRODUCT_SEARCH_VIEW`, `OUTBOX_EVENT` (with its
 `STATUS`/`ATTEMPT_COUNT`/`LAST_ERROR` columns), plus `CREATE SCHEMA ecommerce`, the `pg_trgm`
@@ -1423,27 +1441,63 @@ gateway/src/main/java/com/ttg/devknowledgeplatform/
 │   │                                    CLAUDE.md's Architecture → Routing section for a summary.
 │   │                                    content-service's /internal/content-items/** is
 │   │                                    deliberately not routed (service-to-service only).
+│   │                                    ai-service's /api/v1/chat/stream isn't routed through
+│   │                                    this class either, but it IS still proxied by this app —
+│   │                                    see ChatStreamProxyController below.
+│   │                                    /api/v1/chat/sessions/** (plain REST) is routed normally.
+│   ├── ChatStreamProxyController.java — hand-rolled proxy for just /api/v1/chat/stream, bypassing
+│   │                                    Gateway Server MVC's RouterFunction DSL, which has real,
+│   │                                    documented problems proxying Server-Sent Events. Plain
+│   │                                    @RestController using the JDK's own HttpClient (not
+│   │                                    Spring's RestClient — needs the upstream status code
+│   │                                    available before committing to stream the body, which
+│   │                                    RestClient.exchange()'s callback-scoped API doesn't fit).
+│   │                                    Relays bytes with an explicit flush() after every read.
+│   │                                    Forwards Authorization/Content-Type/Accept verbatim.
+│   ├── StreamingProxyAsyncConfig.java — async-dispatch wiring StreamingResponseBody needs (a
+│   │                                    60s timeout matching ai-service's own
+│   │                                    SseStreamTemplate.SSE_TIMEOUT_MS, plus a dedicated
+│   │                                    bounded ThreadPoolTaskExecutor, streamRelayExecutor,
+│   │                                    rather than Spring MVC's default unbounded per-request
+│   │                                    thread creator). Named for the mechanism, not today's one
+│   │                                    caller — configureAsyncSupport's setTaskExecutor sets the
+│   │                                    one default for the whole app, so a future second
+│   │                                    streaming-proxy endpoint would use this same bean
+│   │                                    regardless of its name
 │   └── GatewayServicesProperties.java — app.services.* — each service's base URL
 │                                         (localhost:<port> by default, overridden in
 │                                         application-docker.yml to Compose DNS names)
-├── config/
-│   └── JacksonConfig.java             — shared ObjectMapper customization; the only class left under
-│                                         config/ — chat-specific rate limiting
-│                                         (ChatRateLimiter/RateLimitProperties/ChatRateLimitInterceptor),
-│                                         the sseStreamExecutor pool (config/thread/), the SSE/
-│                                         @CurrentUserId MVC wiring (config/web/), and the Bucket4j
-│                                         Redis connection (config/cache/RedisCacheConfig) have all
-│                                         since moved out — to ai-service, the only module left with
-│                                         an SSE endpoint, a chat rate limit to enforce, or a REST
-│                                         controller to resolve @CurrentUserId for. RedisCacheConfig's
-│                                         other two beans (cacheManager, baseRedisCacheConfiguration —
-│                                         the @EnableCaching machinery) did NOT move anywhere: a
-│                                         reactor-wide grep for @Cacheable/@CacheEvict/@CachePut
-│                                         during ai-service's extraction found zero real usages
-│                                         anywhere in the codebase, so they were deleted outright as
-│                                         dead code instead, along with infra's
-│                                         CacheTtlProperties/CacheNames (now fully orphaned) — see
-│                                         ai-service/CLAUDE.md's Rules section for the full finding.
+├── (no config/ package anymore — JacksonConfig, the last class left under it, moved to infra's own
+│    config/json/JacksonConfig.java once every standalone service's @SpringBootApplication was
+│    widened with an explicit @ComponentScan reaching infra's sibling package (see the note below
+│    and each service's own entry-point Javadoc) — living in infra now means all seven apps in this
+│    reactor pick up the shared ObjectMapper customization automatically, not just gateway's
+│    (nonexistent) one. Chat-specific rate limiting (ChatRateLimiter/RateLimitProperties/
+│    ChatRateLimitInterceptor), the sseStreamExecutor pool (config/thread/), the SSE/@CurrentUserId
+│    MVC wiring (config/web/), and the Bucket4j Redis connection (config/cache/RedisCacheConfig) had
+│    already moved out earlier — to ai-service, the only module left with an SSE endpoint, a chat
+│    rate limit to enforce, or a REST controller to resolve @CurrentUserId for.
+│    RedisCacheConfig's other two beans (cacheManager, baseRedisCacheConfiguration — the
+│    @EnableCaching machinery) did NOT move anywhere: a reactor-wide grep for
+│    @Cacheable/@CacheEvict/@CachePut during ai-service's extraction found zero real usages anywhere
+│    in the codebase, so they were deleted outright as dead code instead, along with infra's
+│    CacheTtlProperties/CacheNames (now fully orphaned) — see ai-service/CLAUDE.md's Rules section
+│    for the full finding.
+│
+│    Fixed alongside the JacksonConfig move: none of the six standalone services' entry-point
+│    classes actually widened their component scan to reach infra's sibling package before this —
+│    Spring Boot's default @ComponentScan is rooted at the @SpringBootApplication class's own
+│    package and does not recurse into a sibling like infra. This meant several already-shipping
+│    beans (identity-service's/social-service's StorageService injection,
+│    ecommerce-service's/content-service's SlugService injection, social-service's/ai-service's
+│    AsyncEventThreadPoolConfig-backed @EventHandler dispatch) would have failed to resolve at
+│    Spring context startup. social-service was additionally missing @EnableAsync entirely, which
+│    doesn't error — Spring silently runs @Async methods synchronously instead — so its two
+│    FriendRequest*EventListener classes had been dispatching on the calling thread instead of the
+│    dedicated asyncEventExecutor pool the whole time. All six entry-point classes now carry an
+│    explicit @ComponentScan(basePackages = {"<own-package>", "com.ttg.devknowledgeplatform.infra"})
+│    (see each service's own section below and its class-level Javadoc), and social-service gained
+│    @EnableAsync.
 ├── (no database/ package anymore — this app's whole Liquibase changelog tree was deleted outright
 │    once its last live table, product.USER, was dropped and every other table in it was already
 │    orphaned history from the six embedded-module extractions; see the Database section below.

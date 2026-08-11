@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.ai;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.scheduling.annotation.EnableAsync;
 
 /**
@@ -19,14 +20,27 @@ import org.springframework.scheduling.annotation.EnableAsync;
  * {@code content-service} was removed in an earlier step of that module's own extraction — see
  * {@code content-service/CLAUDE.md}).
  *
+ * <p><b>{@code @ComponentScan(basePackages = ...)}</b> explicitly re-adds
+ * {@code com.ttg.devknowledgeplatform.infra} — a sibling package, not a parent, so default
+ * scanning never reached it. This module's own {@code event/PipelineCompletedEventListener}
+ * extends {@code infra}'s {@code AsyncEventHandler}, which needs {@code infra}'s own
+ * {@code AsyncEventThreadPoolConfig} bean (the `asyncEventExecutor` its {@code @Async} dispatch
+ * runs on) to exist in this context — without this annotation that bean was never found, a real,
+ * previously-undetected gap across every standalone service in this reactor that uses an
+ * {@code infra} bean, caught and fixed reactor-wide in the same pass as this comment (see
+ * {@code docs/CHANGELOG.md}). Unlike {@code social-service}'s equivalent gap, this one never
+ * silently downgraded to synchronous dispatch — {@code @EnableAsync} was already correctly
+ * declared below, so the missing bean would have failed the app outright at startup instead. This
+ * module's own package must be listed explicitly too — an explicit {@code @ComponentScan}
+ * replaces the implicit single-package default {@code @SpringBootApplication} provides, rather
+ * than adding to it.
+ *
  * <p>No {@code @EntityScan}/{@code @EnableJpaRepositories} here — this module doesn't touch
  * {@code common.entity.User}/{@code common.repository.UserRepository} at all.
  * {@code security.KeycloakJwtAuthenticationConverter} builds its {@code CustomOAuth2User} principal
  * directly from the verified JWT's claims (no local {@code User} row persisted or read, mirroring
  * {@code task-service}'s/{@code content-service}'s converter) — {@code ChatSession.userUuid}/
- * {@code PipelineMetrics.userUuid} are plain columns, never a foreign key onto a user. Default
- * scanning already covers this module's own {@code entity}/{@code repository} packages, so nothing
- * needs widening.
+ * {@code PipelineMetrics.userUuid} are plain columns, never a foreign key onto a user.
  *
  * <p>{@code @EnableAsync} is declared here (moved from {@code gateway}'s own {@code WebMvcConfig},
  * which is being deleted — its only two responsibilities, the {@code sseStreamExecutor} bean wiring
@@ -42,6 +56,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
  * {@code @ConfigurationProperties} classes (config/*, config/chat/*, config/thread/*) still get bound.
  */
 @SpringBootApplication
+@ComponentScan(basePackages = {"com.ttg.devknowledgeplatform.ai", "com.ttg.devknowledgeplatform.infra"})
 @ConfigurationPropertiesScan
 @EnableAsync
 public class AiServiceApplication {

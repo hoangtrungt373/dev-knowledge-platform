@@ -20,7 +20,12 @@ module at all — nor does `social-service`, which used to be the one module all
 **`gateway`-side HTTP proxying to this service is not built yet** — until it is, this service is only
 reachable directly on its own port, same limitation `ecommerce-service` has.
 
-- `IdentityServiceApplication` — `@SpringBootApplication` entry point. **No `@EntityScan`/
+- `IdentityServiceApplication` — `@SpringBootApplication` + `@ComponentScan(basePackages =
+  {"...identity", "...infra"})` entry point. The explicit `@ComponentScan` was added reactor-wide
+  once an audit found no standalone service actually reached `infra`'s sibling package by default —
+  here, `UserController`/`UserMapper` inject `infra.service.StorageService` (avatar upload), which
+  would otherwise have failed to resolve at Spring context startup; see `infra/CLAUDE.md`'s
+  `JacksonConfig` note for the full reactor-wide finding. **No `@EntityScan`/
   `@EnableJpaRepositories` anymore** — `User`/`UserRepository` used to live in `common.entity`/
   `common.repository` (default JPA scanning, scoped to this class's own package tree, doesn't reach
   there, so both annotations used to widen the scan explicitly — a real bug this module hit and
@@ -130,7 +135,7 @@ standalone extraction too.
   entity added here should follow the same default-schema-per-app pattern as every other module in
   this reactor.
 - **Liquibase migrations for this module's own `USER` table live in this module's own changelog
-  tree now** (`database/sql/identity-service.xml` + `2026/0.0.1/*.sql`), applied via the standalone
+  tree now** (`database/sql/identity-service.xml` + `2026/0.0.2/*.sql`), applied via the standalone
   `identity-service-liquibase.yml` docker-compose file at the repo root — the opposite of every
   embedded feature module (which still migrate via `gateway`'s changelog tree per root `CLAUDE.md`'s
   Database Conventions). Don't move future migrations back under `gateway`'s tree; this module owns

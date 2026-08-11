@@ -93,19 +93,48 @@ both `identity-service` and `social-service` were extracted into standalone serv
   "one value changes, the routing code doesn't" convention `ai-service`'s own
   `ContentServiceClientProperties` already established. `content-service`'s
   `/internal/content-items/**` is deliberately not routed — service-to-service traffic, not for
-  external clients (see the class Javadoc). **Verified against real path-matching behavior, not
-  just a successful compile**: booted this app locally (Postgres was reachable, so a full context
-  load was possible) and sent live requests — `/api/v1/tasks` resolved to `task-service:8083`,
-  `/api/v1/users/me` (PUT) to `identity-service:8082`, `/api/v1/users/search` to
-  `social-service:8084` (confirming the `/api/v1/users/**` split resolves correctly and doesn't
-  fall through to the wrong service), and a genuinely unmapped path fell through to Spring's normal
-  no-handler behavior rather than being accidentally caught by any route — each observed via the
-  actual `ResourceAccessException`/target URL in the log when the (intentionally absent) backend
-  refused the connection, not just an HTTP status code. No load balancing or service discovery —
-  deliberately not built, since there is exactly one instance of each service at a fixed address.
-  Rate limiting, timeouts, retry, and circuit breaker are not built yet either — routing is the
-  first piece of "single entry point," not the whole thing.
-- `security/` — transport/security **edge** infra. No Liquibase and no entity mapped to any table
+  external clients (see the class Javadoc). **`ai-service`'s `/api/v1/chat/stream` is also not
+  routed through this class — but it's still proxied by this app.** Spring Cloud Gateway Server
+  MVC has real, documented problems proxying Server-Sent Events, so a second, purpose-built class
+  handles just this one path instead:
+  - **`ChatStreamProxyController`** — a plain `@RestController`, not the Gateway MVC DSL. Uses the
+    JDK's own `HttpClient` (not Spring's `RestClient`, unlike every other outbound call in this
+    reactor) specifically because it needs the upstream response's status code available *before*
+    committing to stream its body — `RestClient.exchange()` scopes the response/body to one
+    callback, which doesn't fit "decide the status now, stream the body later." Relays bytes with
+    an explicit `flush()` after every read so the token-by-token streaming UX genuinely streams
+    rather than buffering. Forwards `Authorization`/`Content-Type`/`Accept` verbatim — `ai-service`
+    verifies the JWT itself regardless, same as every other proxied backend.
+  - **`StreamingProxyAsyncConfig`** — the async-dispatch wiring `StreamingResponseBody` needs (per
+    Spring's own recommendation, since the default is an unbounded per-request thread creator): a
+    60-second timeout and a small dedicated `ThreadPoolTaskExecutor` (`streamRelayExecutor`). Named
+    for the mechanism, not today's one caller — `configureAsyncSupport`'s `setTaskExecutor` sets
+    the one default for this whole app, so a future second streaming-proxy endpoint would use this
+    same bean regardless of its name; a chat-specific name would have quietly gone stale the
+    moment that happened. The timeout must stay in sync with `ai-service`'s own
+    `SseStreamTemplate.SSE_TIMEOUT_MS` — see both classes' Javadoc.
+  - The GUI never calls `ai-service` directly for anything anymore as a result —
+    `chatApi.streamChat` points at `gateway` now, same origin as everything else.
+    `/api/v1/chat/sessions/**` (plain REST — session listing/history) was always routed normally
+    through `GatewayRoutesConfig`; only `/stream` itself needed this second mechanism.
+  - **Verified against real behavior, not just a successful compile**, same discipline as the
+    original 22 routes: booted this app locally (Postgres was reachable) and sent a request with a
+    non-`Bearer`-prefixed `Authorization` value (avoids triggering this app's own JWT validation
+    while still giving the controller a non-null header to forward) — confirmed via the logged
+    `java.net.ConnectException` at `ChatStreamProxyController.java`'s exact `httpClient.send()`
+    line that it correctly attempts to reach `ai-service`'s configured base URL, not some other
+    target or a silently-swallowed no-op.
+  No load balancing or service discovery — deliberately not built, since there is exactly one
+  instance of each service at a fixed address. Rate limiting, timeouts (beyond the one above),
+  retry, and circuit breaker are not built yet either.
+- `security/` — transport/security **edge** infra, **and, as of the CORS-consolidation pass, the
+  sole CORS source of truth in this whole reactor — zero exceptions.** `CorsConfig` here is the
+  only real CORS config left anywhere. `ai-service`'s own copy (the only other one that ever
+  existed; the other five services never had one) was deleted outright, not just narrowed, once
+  `ChatStreamProxyController` landed — nothing calls any backend service directly from a browser
+  anymore, for any path, so `ai-service`'s own `SecurityConfig` dropped its `.cors(...)` wiring
+  entirely too (a server-to-server call never triggers CORS in the first place). See
+  `routing/`'s own bullet above and `ai-service/CLAUDE.md`. No Liquibase and no entity mapped to any table
   left (see below; the JDBC `datasource` connection in `application*.yml` still exists only because
   `common`'s JPA starter dependency needs one to autoconfigure against, even with zero entities to
   map). `SecurityConfig` (Keycloak is the identity provider — this app is a pure
@@ -129,9 +158,16 @@ both `identity-service` and `social-service` were extracted into standalone serv
   both moved to `social-service`'s own `security/` package (same package name there) once that
   module became a standalone app owning the whole WebSocket/STOMP transport for chat; this app never
   had a second use for it.
-- **`config/` now holds only `JacksonConfig`** (shared `ObjectMapper` customization) — every other
-  class that used to live under `config/` was either relocated to `ai-service` (the module that
-  actually consumed it) or deleted outright as dead code once `ai-service` went standalone:
+- **No `config/` package here at all anymore.** `JacksonConfig` (shared `ObjectMapper`
+  customization) was the last class left under it — moved to `infra`'s own `config/json/` once
+  every standalone service's own `@SpringBootApplication` was widened with an explicit
+  `@ComponentScan` reaching `infra`'s sibling package (a reactor-wide gap found while verifying
+  this exact move would work — see `infra/CLAUDE.md`'s own `JacksonConfig` note for the full
+  story). Before that fix, this bean only ever applied to `gateway`'s own (nonexistent, since it
+  has no REST controllers) JSON serialization; living in `infra` now means all seven apps in this
+  reactor pick it up automatically instead of each needing its own copy. Every other class that
+  used to live under `config/` was either relocated to `ai-service` (the module that actually
+  consumed it) or deleted outright as dead code once `ai-service` went standalone:
   - **No `config/web/` here anymore.** `WebMvcConfig` (SSE async-request wiring) and
     `CurrentUserIdArgumentResolver` (resolved `common.annotation.CurrentUserId` for REST
     controllers) both moved to `ai-service`'s own `config/web/` — the only module in this reactor

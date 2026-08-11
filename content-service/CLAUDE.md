@@ -26,8 +26,13 @@ place now (port `8085`); `gateway`-side HTTP proxying for end-user traffic to th
 built yet — `ai-service`'s own `ContentServiceClient` (server-to-server, against
 `/internal/content-items/**`) is the one real inter-service call that exists today.
 
-- `ContentServiceApplication` — `@SpringBootApplication` + `@ConfigurationPropertiesScan` entry
-  point (the scan is required here — this module no longer rides on `gateway`'s). **No
+- `ContentServiceApplication` — `@SpringBootApplication` + `@ComponentScan(basePackages =
+  {"...content", "...infra"})` + `@ConfigurationPropertiesScan` entry point (the
+  `@ConfigurationPropertiesScan` is required here — this module no longer rides on `gateway`'s).
+  The explicit `@ComponentScan` was added reactor-wide once an audit found no standalone service
+  actually reached `infra`'s sibling package by default — here, this module injects
+  `infra.service.SlugService` and its seeders extend `infra.service.seed.CsvSeeder`; see
+  `infra/CLAUDE.md`'s `JacksonConfig` note for the full reactor-wide finding. **No
   `@EntityScan`/`@EnableJpaRepositories`** — this module doesn't touch `common.entity.User`/
   `common.repository.UserRepository` at all (see the "No local `User` copy" rule below). Default
   scanning already covers this module's own `entity`/`repository` packages.
@@ -162,7 +167,7 @@ every decision below.
   classes, since `gateway`'s classpath no longer includes this module's jar. `gateway`'s own
   `DataSeedingRunner` was narrowed to `UserSeeder` only as a result.
 - **Liquibase migrations for this module's tables live in this module's own changelog tree now**
-  (`database/sql/content-service.xml` + `2026/0.0.1/DKP-0031__add_content_service_tables.sql`), the
+  (`database/sql/content-service.xml` + `2026/0.0.2/DKP-0031__add_content_service_tables.sql`), the
   opposite of every embedded feature module (which still migrate via `gateway`'s changelog tree per
   root `CLAUDE.md`'s Database Conventions). It's a fresh snapshot of the final table shape in the
   new `content` schema, not a replay of `gateway`'s incremental history — same convention

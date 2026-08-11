@@ -1,5 +1,5 @@
 -- liquibase formatted sql
--- changeset ttg:202608070002__0.0.1__DKP-0030__add_friend_management_chat_tables logicalFilePath:SocialService
+-- changeset ttg:202608070002__0.0.2__DKP-0030__add_friend_management_chat_tables logicalFilePath:SocialService
 -- comment: Friend graph + chat (groups/channels/DMs) — fresh snapshot in the `social` schema
 --
 -- Fresh snapshot of gateway's product.FRIEND_REQUEST/FRIENDSHIP/USER_BLOCK/MESSAGE_GROUP/

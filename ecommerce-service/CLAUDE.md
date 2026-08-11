@@ -24,6 +24,14 @@ changelog/docker-compose file. `gateway` no longer has a Maven dependency on thi
 **`gateway`-side HTTP proxying to this service is not built yet** — until it is, this service is
 only reachable directly on its own port, not through `gateway`.
 
+**`EcommerceServiceApplication` carries an explicit `@ComponentScan(basePackages =
+{"...ecommerce", "...infra"})`**, added reactor-wide once an audit found no standalone service
+actually reached `infra`'s sibling package by default — here, `ProductServiceImpl`/
+`ProductCategoryServiceImpl` inject `infra.service.SlugService` (product/category slug generation),
+which would otherwise have had no bean definition available and failed at startup with an
+unsatisfied-dependency error; see `infra/CLAUDE.md`'s `JacksonConfig` note for the full
+reactor-wide finding.
+
 **No `@EntityScan`/`@EnableJpaRepositories` on `EcommerceServiceApplication`, and no dependency on
 `common.entity.User`/`common.repository.UserRepository` anywhere in this module** — this module
 doesn't persist a local `User` row at all (see `KeycloakJwtAuthenticationConverter`, below, and the
@@ -82,9 +90,9 @@ are gone — see `docs/CHANGELOG.md`'s Keycloak migration entries (Phase 3) for 
   short: `aggregateType`'s set barely grows, `eventType`'s grows with every future epic's business
   events, and a single Java field can only ever be backed by one enum type).
 
-Liquibase migration: `ecommerce-service/.../database/sql/2026/0.0.1/202608040001__0.0.1__DKP-0023__add_ecommerce_catalog_tables.sql`
+Liquibase migration: `ecommerce-service/.../database/sql/2026/0.0.2/202608040001__0.0.2__DKP-0023__add_ecommerce_catalog_tables.sql`
 under this module's **own** changelog tree (`database/sql/ecommerce-service.xml` +
-`2026/0.0.1/*.sql`) — no longer under `gateway`'s, now that this module migrates its own schema. A
+`2026/0.0.2/*.sql`) — no longer under `gateway`'s, now that this module migrates its own schema. A
 short-lived `DKP-0027__add_ecommerce_user_table.sql` existed briefly alongside `identity-service`'s
 extraction (an `ecommerce.USER` table, added when this module was thought to need a persisted
 `User` copy) and was removed once that assumption turned out to be wrong — see
@@ -279,7 +287,7 @@ compose file (this module still has no base-profile `spring.datasource` block an
   build the map via the handler's `Payload.toMap()`, never by hand, so the map's keys live in
   exactly one place.
 - **Liquibase migrations for this module's tables live in this module's own changelog tree now**
-  (`database/sql/ecommerce-service.xml` + `2026/0.0.1/*.sql`), applied via the standalone
+  (`database/sql/ecommerce-service.xml` + `2026/0.0.2/*.sql`), applied via the standalone
   `ecommerce-service-liquibase.yml` docker-compose file at the repo root — the opposite of every
   other feature module (which still migrate via `gateway`'s changelog tree per root `CLAUDE.md`'s
   Database Conventions). Don't move future migrations back under `gateway`'s tree; this module

@@ -1,7 +1,8 @@
 import { AuthTokens, OAuthProvider } from '../types';
 import { STORAGE_KEYS } from '@shared/constants/storage';
 
-const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8081';
+// gateway (8080) — see @shared/api/httpClient.ts's own comment on this same default.
+const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
 
 export interface AuthService {
   startOAuth(provider: OAuthProvider): void;

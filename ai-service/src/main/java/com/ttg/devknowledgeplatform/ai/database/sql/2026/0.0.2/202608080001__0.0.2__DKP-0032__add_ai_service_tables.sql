@@ -1,5 +1,5 @@
 -- liquibase formatted sql
--- changeset ttg:202608080001__0.0.1__DKP-0032__add_ai_service_tables logicalFilePath:AiService
+-- changeset ttg:202608080001__0.0.2__DKP-0032__add_ai_service_tables logicalFilePath:AiService
 -- comment: Add ai-service's own CONTENT_EMBEDDING/CHAT_SESSION/CHAT_MESSAGE/SYS_PARAM/PIPELINE_METRICS tables in a new `ai` schema
 --
 -- Table shape is a fresh snapshot of gateway's product.CONTENT_EMBEDDING/CHAT_SESSION/CHAT_MESSAGE/

@@ -47,6 +47,17 @@ names) — grepped for real consumers first (`gui`'s `@auth` feature reads those
 the *logged-in user's own* account dashboard via `identity-service`'s unrelated endpoint, never off
 a friend's public profile) and confirmed dropping them is safe.
 
+- `SocialServiceApplication` — `@SpringBootApplication` + `@ComponentScan(basePackages =
+  {"...social", "...infra"})` + `@EnableAsync`. Both were added/fixed in the same pass, once an
+  audit found no standalone service in this reactor actually reached `infra`'s sibling package by
+  default: this module injects `infra.service.StorageService` (`FriendMapper`/`MessagingMapper`
+  avatar/attachment presigned URLs) and its two `FriendRequest*EventListener`s extend `infra`'s
+  `AsyncEventHandler`, needing `infra`'s own `AsyncEventThreadPoolConfig` bean. `@EnableAsync` was
+  missing entirely before this fix — a quieter bug than a missing bean, since Spring doesn't error
+  on a missing `@EnableAsync`, it just silently runs `@Async` methods synchronously — so both
+  listeners had been dispatching on the calling thread instead of the dedicated
+  `asyncEventExecutor` pool the whole time. See `infra/CLAUDE.md`'s `JacksonConfig` note for the
+  full reactor-wide finding.
 - `api/` (+ `api/impl/`) — REST controllers and their interfaces, moved here from `gateway` (named
   `api` at the time): `FriendApi`/`FriendController`, `GroupApi`/`GroupController`,
   `DmApi`/`DmController`, plus the STOMP counterparts `GroupMessagingApi`/`GroupMessagingController`
@@ -216,7 +227,7 @@ a friend's public profile) and confirmed dropping them is safe.
   can return a user who has blocked the viewer must throw the same `USER_NOT_FOUND` used for a
   genuinely nonexistent user, never a distinguishable "blocked" error.
 - **Liquibase migrations for this module's tables live in this module's own changelog tree now**
-  (`database/sql/social-service.xml` + `2026/0.0.1/*.sql`), applied via the standalone
+  (`database/sql/social-service.xml` + `2026/0.0.2/*.sql`), applied via the standalone
   `social-service-liquibase.yml` docker-compose file at the repo root — the opposite of every
   embedded feature module (which still migrate via `gateway`'s changelog tree per root `CLAUDE.md`'s
   Database Conventions). `DKP-0029` adds this module's own `social.PROFILE` table; `DKP-0030` adds a

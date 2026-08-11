@@ -1,5 +1,5 @@
 -- liquibase formatted sql
--- changeset ttg:202608070001__0.0.1__DKP-0031__add_content_service_tables logicalFilePath:ContentService
+-- changeset ttg:202608070001__0.0.2__DKP-0031__add_content_service_tables logicalFilePath:ContentService
 -- comment: Add content-service's own CATEGORY/TAG/CONTENT_ITEM/CONTENT_ITEM_TAG/QUESTION_ANSWER/ARTICLE tables in a new `content` schema
 --
 -- Table shape is a fresh snapshot of gateway's product.CATEGORY/TAG/CONTENT_ITEM/CONTENT_ITEM_TAG/

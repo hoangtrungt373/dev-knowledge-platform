@@ -21,11 +21,17 @@ the Maven dependency, so dropping it was a pure `pom.xml` edit. **`gateway`-side
 this service is not built yet** — until it is, this service is only reachable directly on its own
 port, same limitation `ecommerce-service`/`identity-service` have.
 
-- `TaskServiceApplication` — `@SpringBootApplication` entry point. **No `@EntityScan`/
-  `@EnableJpaRepositories`** — this module doesn't touch `common.entity.User`/
-  `common.repository.UserRepository` at all (unlike `identity-service`, and *unlike an earlier
-  revision of this module itself* — see the "No local `User` copy" rule below). Default scanning
-  already covers this module's own `entity`/`repository` packages.
+- `TaskServiceApplication` — `@SpringBootApplication` + `@ComponentScan(basePackages =
+  {"...task", "...infra"})` entry point. This module doesn't actually inject any `infra` bean today
+  (confirmed via a reactor-wide grep) — the `@ComponentScan` is a no-op here, added purely for
+  consistency with the other five standalone services (all of which genuinely needed it once an
+  audit found none of the six reached `infra`'s sibling package by default — see `infra/CLAUDE.md`'s
+  `JacksonConfig` note) and to prevent this exact gap from resurfacing silently the moment this
+  module ever does add an `infra` dependency. **No `@EntityScan`/`@EnableJpaRepositories`** — this
+  module doesn't touch `common.entity.User`/`common.repository.UserRepository` at all (unlike
+  `identity-service`, and *unlike an earlier revision of this module itself* — see the "No local
+  `User` copy" rule below). Default scanning already covers this module's own `entity`/`repository`
+  packages.
 - `security/` — this app's own filter chain, independent of `gateway`'s, since it now runs on its
   own port and must guard its own endpoints regardless of whether `gateway` is proxying to it
   (mirrors `identity-service`'s/`ecommerce-service`'s `security/`). `SecurityConfig` requires
@@ -119,7 +125,7 @@ port, same limitation `ecommerce-service`/`identity-service` have.
   State-pattern class hierarchy, unless a transition needs to carry a real side effect (e.g.
   auto-stamping a completion timestamp) that a single guard method can no longer express cleanly.
 - **Liquibase migrations for this module's tables live in this module's own changelog tree now**
-  (`database/sql/task-service.xml` + `2026/0.0.1/*.sql`), applied via the standalone
+  (`database/sql/task-service.xml` + `2026/0.0.2/*.sql`), applied via the standalone
   `task-service-liquibase.yml` docker-compose file at the repo root — the opposite of every embedded
   feature module (which still migrate via `gateway`'s changelog tree per root `CLAUDE.md`'s Database
   Conventions). Don't move future migrations back under `gateway`'s tree; this module owns its own

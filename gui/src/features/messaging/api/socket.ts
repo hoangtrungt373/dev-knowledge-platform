@@ -1,8 +1,11 @@
 import { Client, IMessage, StompSubscription } from '@stomp/stompjs';
 
-const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8081';
+// social-service, direct — NOT gateway. GatewayRoutesConfig only proxies plain HTTP; WebSocket
+// upgrade requests were never routed through it, so this connection has always needed (and still
+// needs) social-service's own origin, independent of wherever the REST API/SSE chat stream point.
+const SOCIAL_SERVICE_BASE_URL = import.meta.env.VITE_SOCIAL_SERVICE_URL || 'http://localhost:8084';
 
-/** http(s):// → ws(s):// — same origin/port the REST API and SSE chat stream already use. */
+/** http(s):// → ws(s):// — social-service's own origin, per the constant above. */
 function toBrokerUrl(baseUrl: string): string {
   return baseUrl.replace(/^http/, 'ws') + '/ws';
 }
@@ -32,7 +35,7 @@ export class StompSocket {
     if (this.client?.active) return;
 
     const client = new Client({
-      brokerURL: toBrokerUrl(BACKEND_BASE_URL),
+      brokerURL: toBrokerUrl(SOCIAL_SERVICE_BASE_URL),
       reconnectDelay: 5000,
       beforeConnect: () => {
         const token = getToken();

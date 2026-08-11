@@ -1,5 +1,5 @@
 -- liquibase formatted sql
--- changeset ttg:202608070001__0.0.1__DKP-0029__add_social_profile_table logicalFilePath:SocialService
+-- changeset ttg:202608070001__0.0.2__DKP-0029__add_social_profile_table logicalFilePath:SocialService
 -- comment: Add social-service's own lean PROFILE table in a new `social` schema
 --
 -- social schema — this service's own, following extraction from the monolith's shared `product`

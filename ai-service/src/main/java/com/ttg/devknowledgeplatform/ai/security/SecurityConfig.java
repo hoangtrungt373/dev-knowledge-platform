@@ -10,7 +10,6 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.web.cors.CorsConfigurationSource;
 
 /**
  * This service's own security filter chain — independent of {@code gateway}'s, since once
@@ -34,6 +33,15 @@ import org.springframework.web.cors.CorsConfigurationSource;
  *       pipeline-metrics admin endpoints).</li>
  * </ul>
  * Everything else (the chat endpoints) requires authentication.
+ *
+ * <p><b>No {@code .cors(...)} wiring anymore</b> — this module's own {@code CorsConfig} was
+ * deleted outright (not just narrowed) once {@code gateway}'s {@code ChatStreamProxyController}
+ * started relaying {@code /api/v1/chat/stream} itself: every request this module receives now
+ * comes from another server (`gateway`, calling via a plain Java {@code HttpClient}), never
+ * directly from a browser, and CORS is a browser-enforced mechanism a server-to-server call never
+ * triggers in the first place. Don't add a {@code CorsConfigurationSource} bean back here on the
+ * assumption some endpoint still needs one — re-verify with a grep for real browser-origin callers
+ * first.
  */
 @Configuration
 @EnableWebSecurity
@@ -41,7 +49,6 @@ import org.springframework.web.cors.CorsConfigurationSource;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final CorsConfigurationSource corsConfigurationSource;
     private final KeycloakJwtAuthenticationConverter keycloakJwtAuthenticationConverter;
     private final JsonAuthenticationEntryPoint authenticationEntryPoint;
 
@@ -54,7 +61,6 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
-            .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(keycloakJwtAuthenticationConverter))
             )

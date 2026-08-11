@@ -7,7 +7,10 @@ import {
 } from '@shared/utils/errorHandler';
 import { STORAGE_KEYS } from '@shared/constants/storage';
 
-const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8081';
+// gateway (8080) — the single entry point for all six standalone services now that
+// GatewayRoutesConfig proxies to each by path. Was stuck at 8081 (ecommerce-service's own port,
+// a pre-extraction leftover) until this default was corrected.
+const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
 
 interface HttpClient {
   request<T>(endpoint: string, options?: RequestInit, showNotification?: (message: string) => void): Promise<T>;

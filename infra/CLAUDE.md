@@ -56,8 +56,12 @@ Module-local guidance for `infra`. Read alongside the root `CLAUDE.md`.
   skip-or-insert). Moved here from `content-service` once `social-service`'s `UserBlockSeeder`
   needed it too — `content-service` and `social-service` are independent siblings that can't
   depend on each other, so a utility needed by both belongs here, same reasoning as `SlugService`.
-  Used by `content-service`'s `CategorySeeder`/`TagSeeder`, `identity-service`'s `UserSeeder`, and
-  `social-service`'s `UserBlockSeeder`. A seeder whose per-row shape doesn't fit one-entity-per-row
+  Used by `content-service`'s `CategorySeeder`/`TagSeeder` and `social-service`'s `UserBlockSeeder`
+  — not by any `UserSeeder`: `gateway`'s own `UserSeeder` was deleted outright once `product.USER`
+  was dropped (see root `CLAUDE.md`'s Database Conventions section), and `identity-service` never
+  needed one — a seeded demo account has no matching Keycloak identity, so `identity.USER` only
+  ever fills via real JIT-provisioning on login (see `identity-service/CLAUDE.md`). A seeder whose
+  per-row shape doesn't fit one-entity-per-row
   (e.g. `content-service`'s `QuestionAnswerSeeder`, `social-service`'s `FriendGraphSeeder`/
   `DmThreadSeeder`, which each persist more than one entity per unit of work) implements its own
   `seed()` instead of extending this.
@@ -68,6 +72,35 @@ Module-local guidance for `infra`. Read alongside the root `CLAUDE.md`.
   hardcoded dependency order, since that order encodes real cross-entity requirements a
   Spring-bean-registration-order `List<Seeder>` loop wouldn't guarantee. See `Seeder`'s own Javadoc
   before "simplifying" `DataSeedingRunner` into such a loop.
+- `config/json/JacksonConfig` — shared `ObjectMapper` customization (`JavaTimeModule`, tolerant
+  deserialization, ISO-8601 dates instead of epoch-millis), moved here from `gateway`. Before this
+  move, this bean only ever applied to `gateway`'s own (nonexistent, since it has no REST
+  controllers) JSON serialization — every one of the six standalone services silently fell back to
+  Spring Boot's un-customized default `ObjectMapper` instead, since none of them had a copy of
+  their own. Fixed alongside a deeper, reactor-wide gap this move exposed: see the note below.
+
+**A reactor-wide component-scan gap, found while verifying this `JacksonConfig` move would actually
+work, applies to every bean in this module.** None of the six standalone services'
+`@SpringBootApplication` classes widened their component scan to reach this module's sibling
+package — Spring Boot's default `@ComponentScan` is rooted at the annotated class's own package and
+does not recurse into a sibling. This had been silently breaking real, already-shipping code:
+`identity-service`'s/`social-service`'s injection of `StorageService`,
+`ecommerce-service`'s/`content-service`'s injection of `SlugService`, and
+`social-service`'s/`ai-service`'s `@EventHandler` listeners needing `AsyncEventThreadPoolConfig`'s
+`asyncEventExecutor` bean would all have failed to resolve at Spring context startup — never caught
+until now because none of these six apps had ever actually been booted against a real environment
+in this codebase's history. `social-service` had a second, quieter bug on top: it was missing
+`@EnableAsync` entirely, which doesn't error the way a missing bean does — Spring just silently runs
+`@Async` methods synchronously instead — so its `FriendRequestSentEventListener`/
+`FriendRequestAcceptedEventListener` had been dispatching on the calling thread instead of this
+module's dedicated pool the whole time. Fixed by adding an explicit
+`@ComponentScan(basePackages = {"<own-package>", "com.ttg.devknowledgeplatform.infra"})` to all six
+services' entry-point classes (an explicit `@ComponentScan` replaces rather than adds to
+`@SpringBootApplication`'s implicit single-package scan, so each service's own package had to be
+listed too) plus `@EnableAsync` on `social-service`'s. See each service's own `CLAUDE.md`/entry-point
+Javadoc for the specific beans that motivated its fix, and `docs/CHANGELOG.md`'s `[Unreleased]`
+entry for the full list. Any *new* module added to this reactor needs the same explicit
+`@ComponentScan` the moment it uses any `infra` bean — don't assume default scanning reaches here.
 
 ## Rules specific to this module
 

@@ -31,7 +31,8 @@ export const adminAuthService: AdminAuthService = {
   // Fix 6 (admin): blacklist refresh token on backend before clearing
   logout(): void {
     const refreshToken = authService.getRefreshToken();
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8081';
+    // gateway (8080) — see @shared/api/httpClient.ts's own comment on this same default.
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
     if (refreshToken) {
       fetch(`${backendUrl}/api/v1/auth/logout`, {
         method: 'POST',

@@ -1,5 +1,5 @@
 -- liquibase formatted sql
--- changeset ttg:202608070001__0.0.1__DKP-0026__add_identity_user_table logicalFilePath:IdentityService
+-- changeset ttg:202608070001__0.0.2__DKP-0026__add_identity_user_table logicalFilePath:IdentityService
 -- comment: Add identity-service's own USER table in a new `identity` schema
 
 -- =============================================================================

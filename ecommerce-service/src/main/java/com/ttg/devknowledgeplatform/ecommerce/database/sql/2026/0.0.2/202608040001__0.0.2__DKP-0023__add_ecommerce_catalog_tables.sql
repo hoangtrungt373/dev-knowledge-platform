@@ -1,5 +1,5 @@
 -- liquibase formatted sql
--- changeset ttg:202608040001__0.0.1__DKP-0023__add_ecommerce_catalog_tables logicalFilePath:EcommerceService
+-- changeset ttg:202608040001__0.0.2__DKP-0023__add_ecommerce_catalog_tables logicalFilePath:EcommerceService
 -- comment: Add ecommerce-service catalog tables (Epic 1: Catalog & Search) — categories, products, variants, images, the CQRS search read model, and the shared transactional outbox
 
 -- =============================================================================
