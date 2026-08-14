@@ -11,6 +11,9 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 
+import com.ttg.devknowledgeplatform.infra.security.JsonAuthenticationEntryPoint;
+import com.ttg.devknowledgeplatform.infra.security.KeycloakJwtAuthenticationConverter;
+
 /**
  * This service's own security filter chain — independent of {@code gateway}'s, since once
  * extracted this app runs on its own port and must guard its own endpoints regardless of whether

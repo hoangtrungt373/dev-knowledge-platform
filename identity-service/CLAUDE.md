@@ -68,10 +68,17 @@ reachable directly on its own port, same limitation `ecommerce-service` has.
   own port and must guard its own endpoints regardless of whether `gateway` is proxying to it
   (mirrors `ecommerce-service`'s `security/` package). `SecurityConfig` requires authentication on
   everything except `/actuator/**` — unlike `content-service`/`ecommerce-service`, this module has
-  no public or admin-only surface. `KeycloakRealmRoleConverter` maps `realm_access.roles` to
-  `ROLE_*` authorities, duplicated from `gateway`'s/`ecommerce-service`'s converter of the same name
-  (no Maven dependency to share it through). `KeycloakJwtAuthenticationConverter` is the one
-  converter in the whole reactor that still *delegates* rather than inlining the JIT-provisioning
+  no public or admin-only surface. **No local `KeycloakRealmRoleConverter` anymore** — this module
+  uses `infra.security.KeycloakRealmRoleConverter` (the shared bean, see `infra/CLAUDE.md`) for
+  `realm_access.roles` → `ROLE_*` mapping, picked up via this module's existing `@ComponentScan`
+  reaching `infra`. `security/KeycloakJwtAuthenticationConverter` itself stays local, though — it's
+  one of only two converters in the reactor (`social-service`'s is the other) that still does real
+  divergent work beyond claims-only mapping: it JIT-provisions this module's own `User` row, so it
+  wasn't a candidate for `infra`'s shared claims-only converter the way `gateway`'s/
+  `ecommerce-service`'s/`task-service`'s/`content-service`'s/`ai-service`'s were. It *does* delegate
+  to `infra`'s shared `KeycloakRealmRoleConverter` for the role-mapping half, rather than
+  duplicating that too. It is still the one converter in the whole reactor that *delegates* to an
+  in-process service rather than inlining the JIT-provisioning
   logic: it calls this module's own in-process `service/UserService.findOrCreateFromKeycloak`
   directly, since both live in this same standalone app — no duplication needed here.
 - `security/service/UserService` (+ `impl/`) — narrowed to: `findOrCreateFromKeycloak`

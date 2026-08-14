@@ -36,18 +36,20 @@ port, same limitation `ecommerce-service`/`identity-service` have.
   own port and must guard its own endpoints regardless of whether `gateway` is proxying to it
   (mirrors `identity-service`'s/`ecommerce-service`'s `security/`). `SecurityConfig` requires
   authentication on every endpoint (`/api/v1/projects/**`, `/api/v1/tasks/**`) except
-  `/actuator/**` — single-user personal task tracker, no public or admin-only surface.
-  `KeycloakRealmRoleConverter` maps `realm_access.roles` to `ROLE_*` authorities, duplicated from
-  `gateway`'s/`identity-service`'s/`ecommerce-service`'s converter of the same name (no Maven
-  dependency to share it through). `KeycloakJwtAuthenticationConverter` builds the
+  `/actuator/**` — single-user personal task tracker, no public or admin-only surface. **No
+  `security/KeycloakRealmRoleConverter`/`KeycloakJwtAuthenticationConverter` classes of this
+  module's own anymore** — both moved to `infra.security` as shared beans (see `infra/CLAUDE.md`),
+  picked up via this module's existing `@ComponentScan` reaching `infra`.
+  `infra.security.KeycloakJwtAuthenticationConverter` builds the
   `CustomOAuth2User` principal directly from the verified JWT's claims — no local `User` row at
   all, mirroring `ecommerce-service`'s converter rather than `gateway`'s/`identity-service`'s (see
-  the "No local `User` copy" rule below). `CurrentUserResolver` reads the authenticated
-  `CustomOAuth2User` principal's UUID straight off the principal — no database lookup.
+  the "No local `User` copy" rule below). **No local `CurrentUserResolver` anymore** — this module
+  uses the shared `infra.security.CurrentUserResolver.resolveUserUuid(...)` instead (see
+  `infra/CLAUDE.md`), picked up via this module's existing `@ComponentScan` reaching `infra`.
 - `config/web/` — `WebMvcConfig` (registers `CurrentUserIdArgumentResolver`) and
   `CurrentUserIdArgumentResolver` (resolves `common.annotation.CurrentUserId String`-annotated
-  controller parameters via `security.CurrentUserResolver`) — duplicated from `gateway`'s classes
-  of the same name; no STOMP transport here, so no message-argument-resolver counterpart is needed.
+  controller parameters via `infra.security.CurrentUserResolver`, assigning the shared
+  `resolveUserUuid` result to this module's own `ownerUuid` vocabulary).
 - `entity/` — `Project` (name, description, `ownerUuid`, `status`), `Task` (`project` nullable —
   standalone tasks allowed, `ownerUuid`, title, description, `status`, `priority`, `dueDate`,
   `parentTask` nullable self-`@ManyToOne` + `subtasks` `@OneToMany` — subtask nesting capped at one
@@ -103,7 +105,7 @@ port, same limitation `ecommerce-service`/`identity-service` have.
   caller") and this module never needs to *display* another user's profile (username/avatar) — the
   two things that would actually justify a persisted copy. `KeycloakJwtAuthenticationConverter`
   builds `CustomOAuth2User` straight from the verified JWT's claims (`sub` → `userUuid`), same as
-  `ecommerce-service`'s converter, and `security.CurrentUserResolver`/
+  `ecommerce-service`'s converter, and `infra.security.CurrentUserResolver`/
   `config.web.CurrentUserIdArgumentResolver` read that UUID directly with zero database access —
   see the `project-microservices-extraction-plan` memory's "Option C" discussion (written for
   `ecommerce-service`, equally applicable here). If a future feature needs to show another user's

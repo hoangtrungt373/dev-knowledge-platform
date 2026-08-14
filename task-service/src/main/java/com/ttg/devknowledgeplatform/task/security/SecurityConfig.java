@@ -10,6 +10,8 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 
+import com.ttg.devknowledgeplatform.infra.security.KeycloakJwtAuthenticationConverter;
+
 /**
  * This service's own security filter chain — independent of {@code gateway}'s, since once
  * extracted this app runs on its own port and must guard its own endpoints regardless of whether
@@ -17,7 +19,8 @@ import org.springframework.security.web.SecurityFilterChain;
  * {@code SecurityConfig}). Keycloak is the identity provider — this service is a pure OAuth2
  * resource server, verifying bearer tokens against Keycloak's JWKS
  * ({@code spring.security.oauth2.resourceserver.jwt.issuer-uri}); it never issues tokens or
- * handles a login flow.
+ * handles a login flow. {@link KeycloakJwtAuthenticationConverter} is shared via {@code infra} now
+ * (see that class's own Javadoc), not a local copy.
  *
  * <p>Every endpoint this module owns (both {@code /api/v1/projects/**} and
  * {@code /api/v1/tasks/**}) requires authentication — this is a single-user personal task tracker

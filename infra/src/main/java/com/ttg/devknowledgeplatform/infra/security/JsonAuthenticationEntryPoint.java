@@ -1,4 +1,4 @@
-package com.ttg.devknowledgeplatform.security;
+package com.ttg.devknowledgeplatform.infra.security;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -25,6 +25,13 @@ import lombok.RequiredArgsConstructor;
  * page, which is inappropriate for a REST API. Registering this bean in
  * {@code SecurityConfig.exceptionHandling()} ensures all authentication failures produce
  * a machine-readable {@link com.ttg.devknowledgeplatform.common.dto.ErrorResponse} payload.
+ *
+ * <p>Shared here rather than duplicated per service — used by {@code gateway} and
+ * {@code ai-service} (the only two that wired an explicit {@code exceptionHandling()} entry point;
+ * every other service relies on Spring Security's own default `401` behavior for a resource
+ * server). Zero module-specific dependency, so any future service that wants this same
+ * machine-readable error body just needs to reference it in its own
+ * {@code SecurityConfig.exceptionHandling()} — no new class needed.
  */
 @Component
 @RequiredArgsConstructor

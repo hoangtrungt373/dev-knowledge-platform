@@ -11,14 +11,18 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfigurationSource;
 
+import com.ttg.devknowledgeplatform.infra.security.JsonAuthenticationEntryPoint;
+import com.ttg.devknowledgeplatform.infra.security.KeycloakJwtAuthenticationConverter;
+
 /**
  * Every REST request is authenticated as an OAuth2 resource server — Keycloak issues and owns the
  * whole login/registration/token lifecycle now, this app only ever verifies a bearer token against
  * Keycloak's JWKS ({@code spring.security.oauth2.resourceserver.jwt.issuer-uri}, resolved
  * automatically by Spring Boot's auto-config, no manual {@code JwtDecoder} bean needed here).
- * {@link KeycloakJwtAuthenticationConverter} both derives {@code GrantedAuthority}s from the
- * token's realm roles and JIT-provisions/refreshes the local {@code User} row — see its own
- * Javadoc.
+ * {@link KeycloakJwtAuthenticationConverter} (shared via {@code infra} now, not a local copy —
+ * see that class's own Javadoc) builds the {@code CustomOAuth2User} principal straight from the
+ * verified JWT's claims and derives {@code GrantedAuthority}s from the token's realm roles; no
+ * local {@code User} row is persisted or read anymore.
  *
  * <p>No {@code @EnableMethodSecurity} here anymore — this app's only {@code @PreAuthorize}
  * consumer was {@code ai-service}'s {@code IngestionApi}, which now declares its own
@@ -47,6 +51,8 @@ public class SecurityConfig {
 
                 // Admin-only management (currently unmatched — see class Javadoc)
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/v1/public/**").permitAll()
+                .requestMatchers("/api/v1/users/public/**").permitAll()
 
                 .anyRequest().authenticated()
             )

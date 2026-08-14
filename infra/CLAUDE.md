@@ -43,15 +43,30 @@ Module-local guidance for `infra`. Read alongside the root `CLAUDE.md`.
   access-log line (method/path/status/latency) per request. Auto-registered as a servlet filter in
   **all seven** of this reactor's Spring Boot apps — a plain `@Component` implementing `Filter` is
   picked up by Spring Boot for any app whose scan reaches it, which is every one of them now (see
-  the component-scan note below). See the class's own Javadoc for the full mechanics, including the
-  one real limitation: it does **not** propagate across an `@Async` boundary (MDC is thread-local
+  the component-scan note below). **Carries `@Order(Ordered.HIGHEST_PRECEDENCE + 10)`, not
+  optional** — every one of this reactor's seven `SecurityConfig`s auto-registers its own Spring
+  Security filter chain at `SecurityProperties.DEFAULT_FILTER_ORDER` (`HIGHEST_PRECEDENCE + 100`,
+  very early); a filter bean with no `@Order` defaults to `LOWEST_PRECEDENCE` (last), which would
+  put this filter *inside* Security's chain instead of wrapping around it — an
+  unauthenticated/rejected request (401/403) would short-circuit inside Security and never reach
+  this filter at all, meaning no trace-id or access-log line for exactly the requests (failed JWT
+  verification, an expired token) most worth tracing. Caught via a user question while reviewing
+  this feature, not by any automated check. **`+10`, not the bare extreme
+  `HIGHEST_PRECEDENCE` — a second follow-up question caught that too:** two filters sharing the
+  exact same `@Order` value have an undefined relative order, so a future "must run before
+  Security" filter (e.g. a rate-limiter, `gateway/ROADMAP.md` item #4) needs its own distinct
+  value, not a collision with this one — the `+10` leaves headroom on both sides for that. See the
+  class's own Javadoc for the full mechanics, including the one real remaining limitation: it does
+  **not** propagate across an `@Async` boundary (MDC is thread-local
   and `@Async`'s default executor doesn't copy it), which matters for `ai-service`'s background
   indexing pipeline — see that module's `CLAUDE.md`.
   - **`logging.pattern.console` had to be updated in all seven apps' own `application.yml`** to
     add `[traceId=%X{traceId:-}, spanId=%X{spanId:-}]` to the pattern — this is a YAML property,
     not a Java bean, so unlike everything else in this module it genuinely can't be centralized
-    through `infra`'s component scan; it has to be duplicated seven times, same as
-    `KeycloakRealmRoleConverter` already is for the same "no shared mechanism" reason.
+    through `infra`'s component scan; it has to be duplicated seven times. (An earlier revision of
+    this note claimed `KeycloakRealmRoleConverter` was duplicated for "the same reason" — that
+    turned out to be incorrect: a `@Component` *can* be centralized through this module's component
+    scan, same as `JacksonConfig` below. See `security/` below — it's centralized now.)
 - `service/SlugService` (+ impl) — generic slug generation/uniqueness utility. Lives here (not
   `gateway`, not any feature module) specifically because feature modules that need it
   (`content-service`) can't depend on `gateway`, and it's generic enough that `common` (no Spring
@@ -97,6 +112,71 @@ Module-local guidance for `infra`. Read alongside the root `CLAUDE.md`.
   hardcoded dependency order, since that order encodes real cross-entity requirements a
   Spring-bean-registration-order `List<Seeder>` loop wouldn't guarantee. See `Seeder`'s own Javadoc
   before "simplifying" `DataSeedingRunner` into such a loop.
+- `security/{KeycloakRealmRoleConverter,KeycloakJwtAuthenticationConverter}` — shared Keycloak JWT
+  conversion, moved here from seven near-identical per-service copies. `KeycloakRealmRoleConverter`
+  (maps `realm_access.roles` to `ROLE_*` `GrantedAuthority`s) is used by **all seven** services —
+  it had zero module-specific logic, so consolidating it was a pure win. `KeycloakJwtAuthenticationConverter`
+  (builds a `CustomOAuth2User` principal straight from the verified JWT's claims, zero DB access) is
+  used by the **five** services with no need to persist a local identity row — `gateway`,
+  `ecommerce-service`, `task-service`, `content-service`, `ai-service`. `identity-service` and
+  `social-service` keep their **own** local `KeycloakJwtAuthenticationConverter` in their own
+  `security` package, since both genuinely JIT-provision a real local row (`identity.USER`/
+  `social.PROFILE` respectively) as part of the conversion — that's real divergent logic, not
+  duplication, so it wasn't moved here. Both of those two still delegate to this module's shared
+  `KeycloakRealmRoleConverter` for the role-mapping half of the work, though. Requires
+  `spring-boot-starter-oauth2-resource-server` on this module's own `pom.xml` (added for this
+  purpose) — adds nothing new to any consumer's effective classpath, since every one of the seven
+  services already declares that same starter itself.
+  **`identity-service`'s and `social-service`'s own local converters each need an explicit,
+  distinct `@Component` bean name** (`identityKeycloakJwtAuthenticationConverter`/
+  `socialKeycloakJwtAuthenticationConverter`) — a real bug caught right after this consolidation
+  landed: Spring's default bean-name generation uses only the simple class name, not the
+  fully-qualified one, so `identity.security.KeycloakJwtAuthenticationConverter`/
+  `social.security.KeycloakJwtAuthenticationConverter` would otherwise register under the identical
+  default name as this shared bean (`keycloakJwtAuthenticationConverter`) the moment their own
+  `@ComponentScan` reaches this package too — a `ConflictingBeanDefinitionException` at context
+  startup, not a silent override (`allow-bean-definition-overriding` isn't set anywhere in this
+  reactor, so Spring Boot's default `false` applies). Injection itself needed no change — every
+  consumer is typed to one specific class, so autowiring-by-type is unaffected by the bean name
+  either way; only the registration step needed disambiguating. Any future module that keeps its
+  own local converter alongside this shared one needs the same explicit name.
+- `security/KeycloakJwtConstants.java` — claim/authority string constants for the pieces Spring
+  Security's own `org.springframework.security.oauth2.core.oidc.StandardClaimNames` doesn't cover:
+  `TYPE_CLAIM`/`ACCESS_TOKEN_TYPE` (`typ`/`Bearer`), `REALM_ACCESS_CLAIM`/`ROLES_CLAIM`
+  (`realm_access`/`roles`), `ROLE_PREFIX` (`ROLE_`). Deliberately does **not** duplicate
+  `email`/`preferred_username`/`given_name`/`family_name` — those are standard OIDC claims, so
+  `KeycloakRealmRoleConverter`/`KeycloakJwtAuthenticationConverter` (here and in
+  `identity-service`'s/`social-service`'s own local converters) reference `StandardClaimNames`
+  directly instead of a project-specific constant for something the framework already names.
+  **Also deliberately has no `ROLE_ADMIN` constant** — "ADMIN" is a business-domain role name owned
+  by whichever module has its own role enum (`identity-service`'s `UserRole`), not a generic
+  mechanic like `ROLE_PREFIX` is, and `infra` has zero dependency on any feature module so it
+  couldn't reference that enum here even if it wanted to. `identity-service`'s own converter
+  composes its admin check as `KeycloakJwtConstants.ROLE_PREFIX + UserRole.ADMIN.name()` instead —
+  see that class's own Javadoc. Replaced magic string literals that had been re-typed identically
+  across four files (`KeycloakRealmRoleConverter`, this module's `KeycloakJwtAuthenticationConverter`,
+  and `identity-service`'s/`social-service`'s local converters).
+- `security/CurrentUserResolver.java` — a second de-duplication pass alongside the two converters
+  above: `task-service`, `content-service`, and `ai-service` each carried an identical claims-only
+  `resolveXxxUuid(Principal)` helper (reads `CustomOAuth2User.getUserUuid()`, no DB access), differing
+  only in method name (`resolveOwnerUuid`/`resolveAuthorUuid`/`resolveUserUuid`, matching each
+  module's own column vocabulary). Moved here as one method, `resolveUserUuid`, with each of those
+  three modules' own `CurrentUserIdArgumentResolver` calling it and assigning the result to
+  whatever locally-named variable it needs. **Not used by** `social-service` (resolves a real local
+  `SocialProfile` numeric PK via a repository lookup — genuinely different, not duplication),
+  `ecommerce-service` (never uses `@CurrentUserId` at all), or `identity-service` (resolves the
+  caller via `@AuthenticationPrincipal` directly in the controller instead of this helper-class
+  pattern) — all three keep doing what they were already doing.
+- `security/JsonAuthenticationEntryPoint.java` — a third de-duplication pass: `gateway` and
+  `ai-service` (the only two services with an explicit `.exceptionHandling().authenticationEntryPoint(...)`
+  wired up) carried a byte-identical bean returning a JSON `401` body instead of Spring Security's
+  default redirect/HTML response. Zero module-specific dependency, so this one had no wrinkle at
+  all — straight move, no method renaming, no caller-side logic change. The other five services
+  never wired this up at all and fall back to Spring Security's own default `401` behavior for a
+  resource server (no redirect either, since there's no `.oauth2Login()` anywhere in this
+  reactor — but also no machine-readable `ErrorResponse` body); adopting this bean in any of them
+  is a config-only change (reference `infra.security.JsonAuthenticationEntryPoint` in that
+  service's own `SecurityConfig.exceptionHandling()`), not something that needs a new class.
 - `config/json/JacksonConfig` — shared `ObjectMapper` customization (`JavaTimeModule`, tolerant
   deserialization, ISO-8601 dates instead of epoch-millis), moved here from `gateway`. Before this
   move, this bean only ever applied to `gateway`'s own (nonexistent, since it has no REST

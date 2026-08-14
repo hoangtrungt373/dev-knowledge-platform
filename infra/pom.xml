@@ -58,6 +58,17 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-core</artifactId>
         </dependency>
+
+        <!-- Spring Boot OAuth2 Resource Server — needed for security.KeycloakRealmRoleConverter/
+             KeycloakJwtAuthenticationConverter's Jwt/Converter/GrantedAuthority types. Every one of
+             the seven standalone services already declares this same starter itself for their own
+             JWT verification, so this adds nothing new to any consumer's effective classpath — it
+             just makes explicit a dependency that was already implicitly available everywhere,
+             the same reasoning JacksonConfig's move here already established for spring-web. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
     </dependencies>
 
 </project>

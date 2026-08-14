@@ -47,12 +47,14 @@ without resurrecting a full `User` copy).
 **JWT verification is Keycloak-backed** (`security/`, below): this service is a pure OAuth2
 resource server, verifying bearer tokens against Keycloak's JWKS
 (`spring.security.oauth2.resourceserver.jwt.issuer-uri`, same realm as `gateway`) — it never
-issues tokens or handles a login flow. `SecurityConfig` wires `.oauth2ResourceServer(...)` with a
-`KeycloakJwtAuthenticationConverter` (builds the `CustomOAuth2User` principal directly from the
-verified JWT's claims — `sub` stands in for `userUuid`, since there's no locally-generated one — no
-DB read/write at all) and `KeycloakRealmRoleConverter` (maps the token's `realm_access.roles` claim
-to `ROLE_*` authorities, duplicated from `gateway`'s/`identity-service`'s converter of the same
-name — this module has no Maven dependency on either). The old JJWT-based `JwtVerifier`/
+issues tokens or handles a login flow. `SecurityConfig` wires `.oauth2ResourceServer(...)` with
+`infra.security.KeycloakJwtAuthenticationConverter` (builds the `CustomOAuth2User` principal
+directly from the verified JWT's claims — `sub` stands in for `userUuid`, since there's no
+locally-generated one — no DB read/write at all) and `infra.security.KeycloakRealmRoleConverter`
+(maps the token's `realm_access.roles` claim to `ROLE_*` authorities) — both shared beans now,
+picked up via this module's `@ComponentScan` reaching `infra`, not a local copy anymore (see
+`infra/CLAUDE.md`). This module keeps no `security/KeycloakRealmRoleConverter`/
+`KeycloakJwtAuthenticationConverter` classes of its own. The old JJWT-based `JwtVerifier`/
 `JwtAuthenticationFilter` (manual RSA public-key loading via `infra`'s now-deleted `RsaKeyUtils`)
 are gone — see `docs/CHANGELOG.md`'s Keycloak migration entries (Phase 3) for the full history.
 

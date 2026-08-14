@@ -42,16 +42,20 @@ same as every other standalone service in this reactor.
   `SecurityConfig` — `@EnableWebSecurity` + `@EnableMethodSecurity` (this module's own copy now
   declares it, not `gateway`'s — needed here because `IngestionApi` is the only thing in the whole
   reactor with a `@PreAuthorize("hasRole('ADMIN')")` method); rules: `/actuator/**` permits all,
-  `/api/v1/admin/**` requires `ROLE_ADMIN`, everything else requires authentication.
-  `KeycloakRealmRoleConverter` maps `realm_access.roles` to `ROLE_*` authorities, duplicated from
-  every other module's converter of the same name (no Maven dependency to share it through).
-  `KeycloakJwtAuthenticationConverter` builds the `CustomOAuth2User` principal directly from the
-  verified JWT's claims (`sub` → `userUuid`) — no local `User` row at all, mirroring
+  `/api/v1/admin/**` requires `ROLE_ADMIN`, everything else requires authentication. **No
+  `security/KeycloakRealmRoleConverter`/`KeycloakJwtAuthenticationConverter` classes of this
+  module's own anymore** — both moved to `infra.security` as shared beans (see `infra/CLAUDE.md`),
+  picked up via this module's existing `@ComponentScan` reaching `infra`.
+  `infra.security.KeycloakJwtAuthenticationConverter` builds the `CustomOAuth2User` principal
+  directly from the verified JWT's claims (`sub` → `userUuid`) — no local `User` row at all, mirroring
   `content-service`'s/`task-service`'s converter rather than `gateway`'s/`identity-service`'s (see
   the Rules section below for why `ChatSession`/`PipelineMetrics` don't need one either).
-  `CurrentUserResolver` reads the authenticated `CustomOAuth2User` principal's UUID straight off the
-  principal — no database lookup. `JsonAuthenticationEntryPoint` rounds out the package, same shape
-  as every other standalone service's `security/`. **No `CorsConfig` here anymore, and
+  **No local `CurrentUserResolver` anymore** — this module uses the shared
+  `infra.security.CurrentUserResolver.resolveUserUuid(...)` instead (see `infra/CLAUDE.md`), picked
+  up via this module's existing `@ComponentScan` reaching `infra`. **No local
+  `JsonAuthenticationEntryPoint` class anymore either** — also moved to `infra.security` as a
+  shared bean (byte-identical to `gateway`'s own former copy, the only other service that wired
+  one up — see `infra/CLAUDE.md`). **No `CorsConfig` here anymore, and
   `SecurityConfig` dropped its `.cors(...)` wiring entirely too** — this module's own `CorsConfig`
   used to survive `gateway`'s first CORS-consolidation pass, narrowed to just
   `/api/v1/chat/stream` (the SSE streaming chat response), since Spring Cloud Gateway Server MVC
@@ -66,8 +70,9 @@ same as every other standalone service in this reactor.
   endpoint still needs one — re-verify with a grep for real browser-origin callers first.
 - `config/web/CurrentUserIdArgumentResolver` (`@Component`, resolves
   `common.annotation.CurrentUserId String`-annotated controller parameters via
-  `security.CurrentUserResolver`) — duplicated from `content-service`'s/`task-service`'s class of the
-  same name; no STOMP transport here, so no message-argument-resolver counterpart is needed.
+  `infra.security.CurrentUserResolver`, assigning the shared `resolveUserUuid` result to this
+  module's own `userUuid` vocabulary); no STOMP transport here, so no message-argument-resolver
+  counterpart is needed.
   Registered via the existing `ChatMvcConfig`'s `addArgumentResolvers` (alongside its pre-existing
   `addInterceptors` registration of `ChatRateLimitInterceptor` — see the Config classes table below).
 

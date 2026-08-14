@@ -165,6 +165,46 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
 │                                        silently fell back to Spring Boot's un-customized default
 │                                        ObjectMapper. See the gateway section's config/ note below
 │                                        for the full component-scan fix this move depended on.
+├── security/
+│   ├── KeycloakRealmRoleConverter.java — Converter<Jwt, Collection<GrantedAuthority>>; maps a JWT's
+│   │                                    realm_access.roles claim to ROLE_*-prefixed authorities.
+│   │                                    Moved here from seven near-identical per-service copies —
+│   │                                    zero module-specific logic, used by all seven services now.
+│   ├── KeycloakJwtAuthenticationConverter.java — Converter<Jwt, AbstractAuthenticationToken>; builds
+│   │                                    a CustomOAuth2User principal straight from the verified
+│   │                                    JWT's claims (sub → userUuid), zero database access. Moved
+│   │                                    here from five near-identical per-service copies —
+│   │                                    gateway/ecommerce-service/task-service/content-service/
+│   │                                    ai-service all use this shared bean now. identity-service
+│   │                                    and social-service keep their own local converter of the
+│   │                                    same class name in their own security package instead (both
+│   │                                    JIT-provision a real local row — identity.USER/
+│   │                                    social.PROFILE — which is genuine divergent logic, not
+│   │                                    duplication) — see those modules' own sections. Both of
+│   │                                    those two still delegate to this shared
+│   │                                    KeycloakRealmRoleConverter for the role-mapping half.
+│   │                                    Requires spring-boot-starter-oauth2-resource-server on this
+│   │                                    module's own pom.xml — adds nothing new to any consumer's
+│   │                                    classpath, since every service already declares it itself.
+│   ├── CurrentUserResolver.java      — resolveUserUuid(Principal): reads CustomOAuth2User.getUserUuid()
+│   │                                    straight off the principal, zero database access. Moved
+│   │                                    here from task-service/content-service/ai-service's own
+│   │                                    identical copies (which differed only in method name —
+│   │                                    resolveOwnerUuid/resolveAuthorUuid/resolveUserUuid — matching
+│   │                                    each module's own column vocabulary); each of those three
+│   │                                    modules' own CurrentUserIdArgumentResolver now calls this
+│   │                                    shared method and assigns the result locally. Not used by
+│   │                                    social-service (resolves a real local SocialProfile numeric
+│   │                                    PK via a repository lookup), ecommerce-service (never uses
+│   │                                    @CurrentUserId at all), or identity-service (resolves via
+│   │                                    @AuthenticationPrincipal directly in the controller instead).
+│   └── JsonAuthenticationEntryPoint.java — returns a JSON 401 body instead of Spring Security's
+│                                        default redirect/HTML response. Moved here from
+│                                        gateway's/ai-service's byte-identical copies (the only two
+│                                        services with an explicit exceptionHandling() entry point
+│                                        wired up); no other change needed. The other five services
+│                                        still fall back to Spring Security's own default 401
+│                                        behavior for a resource server.
 └── service/
     ├── SlugService.java              — toSlug(String), generateUniqueSlug(...) (two overloads: create vs
     │                                    update-excluding-self); lives here (not content-service) because it's a
@@ -211,16 +251,16 @@ content-service/src/main/java/com/ttg/devknowledgeplatform/content/
 │   │                                 /internal/** permitAll, /actuator/** permitAll,
 │   │                                 /api/v1/admin/** hasRole(ADMIN), everything else authenticated
 │   │                                 (mirrors gateway's old three-way rule set for these same paths)
-│   ├── KeycloakRealmRoleConverter.java — realm_access.roles → ROLE_* authorities; duplicated from
-│   │                                 gateway's/task-service's converter of the same name
-│   ├── KeycloakJwtAuthenticationConverter.java — builds CustomOAuth2User straight from JWT claims
-│   │                                 (sub → userUuid) — no DB read/write, mirrors ecommerce-service's/
-│   │                                 task-service's converter, not gateway's/identity-service's
-│   └── CurrentUserResolver.java   — reads the caller's UUID straight off the CustomOAuth2User
-│                                     principal, zero database access
+│   │   (no local KeycloakRealmRoleConverter.java/KeycloakJwtAuthenticationConverter.java
+│   │    anymore — both moved to infra.security as shared beans, see infra section above;
+│   │    picked up via this module's existing @ComponentScan reaching infra)
+│   (no local CurrentUserResolver.java anymore — uses the shared
+│    infra.security.CurrentUserResolver.resolveUserUuid(...) instead, see infra section above)
 ├── config/web/
 │   ├── CurrentUserIdArgumentResolver.java — resolves @CurrentUserId String-annotated controller
-│   │                                 parameters via security.CurrentUserResolver
+│   │                                 parameters via infra.security.CurrentUserResolver, assigning
+│   │                                 the shared resolveUserUuid result to this module's own
+│   │                                 authorUuid vocabulary
 │   └── WebMvcConfig.java          — registers CurrentUserIdArgumentResolver
 ├── entity/
 │   ├── Category.java              — hierarchical; parent/children self-join; seedId (nullable) for CategorySeeder idempotency
@@ -346,7 +386,7 @@ a live JPA entity.
 
 **No local `User` copy** — `ArticleApi`/`QuestionAnswerApi`'s `create()` endpoints take
 `@CurrentUserId String authorUuid` directly, resolved by this module's own
-`config.web.CurrentUserIdArgumentResolver`/`security.CurrentUserResolver` with zero database access.
+`config.web.CurrentUserIdArgumentResolver`/`infra.security.CurrentUserResolver` with zero database access.
 This replaced an earlier design where `ArticleController`/`QuestionAnswerController` resolved the
 author via `common`'s `UserRepository.findByEmail(...).map(User::getId)` — reverted once this
 module was extracted, since that lookup only ever needed "who is the caller," and `authorId`/
@@ -416,14 +456,17 @@ social-service/src/main/java/com/ttg/devknowledgeplatform/social/
 │   ├── SecurityConfig.java            — this app's own filter chain: everything requires auth
 │   │                                     except /api/v1/users/public/** (public profile lookup),
 │   │                                     the /ws/** handshake, and /actuator/**
-│   ├── KeycloakRealmRoleConverter.java — maps realm_access.roles to ROLE_* authorities; duplicated
-│   │                                     from gateway's/identity-service's/ecommerce-service's/
-│   │                                     task-service's converter of the same name
-│   ├── KeycloakJwtAuthenticationConverter.java — JIT-provisions/refreshes this app's own local
+│   ├── (no local KeycloakRealmRoleConverter.java anymore — uses the shared
+│   │    infra.security.KeycloakRealmRoleConverter bean instead, see infra section above)
+│   ├── KeycloakJwtAuthenticationConverter.java — kept local (one of only two in the reactor doing
+│   │                                     real divergent work, identity-service's is the other):
+│   │                                     JIT-provisions/refreshes this app's own local
 │   │                                     SocialProfile row directly via SocialProfileRepository
 │   │                                     (find by keycloakSubjectId, fallback email, write only if
-│   │                                     changed) — inlined here (like gateway's/ecommerce-service's/
-│   │                                     task-service's), not delegated (unlike identity-service's)
+│   │                                     changed) — inlined here (like the shared converter's own
+│   │                                     shape used to be), not delegated (unlike identity-service's).
+│   │                                     Delegates role-mapping to infra's shared
+│   │                                     KeycloakRealmRoleConverter rather than duplicating it.
 │   ├── CurrentUserResolver.java        — resolves the authenticated CustomOAuth2User principal's
 │   │                                     UUID to this app's own local SocialProfile numeric PK
 │   ├── WebSocketConfig.java            — relocated from gateway in full: registers /ws (no SockJS
@@ -658,12 +701,14 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   │                             @EnableMethodSecurity — needed here since IngestionApi is the only
 │   │                             @PreAuthorize("hasRole('ADMIN')") method left in the whole reactor;
 │   │                             rules: /actuator/** permitAll, /api/v1/admin/** hasRole(ADMIN),
-│   │                             everything else authenticated), KeycloakRealmRoleConverter,
-│   │                             KeycloakJwtAuthenticationConverter (builds CustomOAuth2User
-│   │                             straight from JWT claims — sub → userUuid, no DB read/write at
-│   │                             all, mirrors content-service's/task-service's converter, not
-│   │                             gateway's/identity-service's), CurrentUserResolver,
-│   │                             JsonAuthenticationEntryPoint. No CorsConfig here anymore (used to
+│   │                             everything else authenticated). No local KeycloakRealmRoleConverter/
+│   │                             KeycloakJwtAuthenticationConverter classes anymore — both are
+│   │                             shared infra.security beans now (builds CustomOAuth2User straight
+│   │                             from JWT claims — sub → userUuid, no DB read/write at all — see
+│   │                             infra section above). No local CurrentUserResolver either — uses
+│   │                             infra.security.CurrentUserResolver.resolveUserUuid(...). No local
+│   │                             JsonAuthenticationEntryPoint either — also a shared infra.security
+│   │                             bean now (byte-identical to gateway's own former copy). No CorsConfig here anymore (used to
 │   │                             be narrowed to just /api/v1/chat/stream, then deleted outright
 │   │                             once gateway's own ChatStreamProxyController landed) — every
 │   │                             request this module receives now comes from another server, not
@@ -704,11 +749,11 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   │   │                                        per POST /api/v1/chat/** request
 │   │   ├── CurrentUserIdArgumentResolver.java — @Component, resolves common.annotation.CurrentUserId
 │   │   │                                        String-annotated controller parameters via
-│   │   │                                        security.CurrentUserResolver; duplicated from
-│   │   │                                        content-service's/task-service's class of the same
-│   │   │                                        name, added here during this module's standalone
-│   │   │                                        extraction (no STOMP transport here, so no
-│   │   │                                        message-argument-resolver counterpart needed)
+│   │   │                                        infra.security.CurrentUserResolver (already used
+│   │   │                                        resolveUserUuid, the name the shared class settled
+│   │   │                                        on, so no call-site rename was needed here); no
+│   │   │                                        STOMP transport, so no message-argument-resolver
+│   │   │                                        counterpart needed
 │   │   └── ChatMvcConfig.java                 — this module's own WebMvcConfigurer bean, registers
 │   │                                            ChatRateLimitInterceptor (addInterceptors) AND
 │   │                                            CurrentUserIdArgumentResolver (addArgumentResolvers)
@@ -803,8 +848,11 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── client/
 │   │   └── ContentItemDto.java             — this module's own deserialized copy of content-service's
 │   │                                          InternalContentItemResponse JSON shape (duplicated, not shared —
-│   │                                          same convention as every KeycloakJwtAuthenticationConverter
-│   │                                          duplicate in this codebase); returned by ContentServiceClient
+│   │                                          same "duplicate a cross-service DTO rather than share it"
+│   │                                          convention identity-service's/social-service's own local
+│   │                                          KeycloakJwtAuthenticationConverter still follows, even
+│   │                                          though the claims-only variant is a shared infra bean now);
+│   │                                          returned by ContentServiceClient
 │   └── chat/
 │       ├── ChatRequest.java              — record: question, sessionId, sourceTypes, categoryId, tags, chatModel
 │       ├── ChatResponse.java             — record: answer, List<RagSource>, sessionId; from(RagAnswer, sessionId)
@@ -1035,23 +1083,19 @@ task-service/src/main/java/com/ttg/devknowledgeplatform/task/
 │   │                                     except `/actuator/**` — no public/admin surface, single-
 │   │                                     user personal task tracker); pure OAuth2 resource server,
 │   │                                     verifies bearer tokens against Keycloak's JWKS
-│   ├── KeycloakRealmRoleConverter.java — maps `realm_access.roles` to `ROLE_*` authorities;
-│   │                                     duplicated from gateway's/identity-service's/ecommerce-
-│   │                                     service's converter of the same name rather than shared
-│   ├── KeycloakJwtAuthenticationConverter.java — builds the CustomOAuth2User principal directly
-│   │                                     from the verified JWT's claims (sub stands in for
-│   │                                     userUuid) — persists nothing, mirroring ecommerce-
-│   │                                     service's converter of the same name, not gateway's/
-│   │                                     identity-service's
-│   └── CurrentUserResolver.java        — reads the authenticated CustomOAuth2User principal's UUID
-│                                         straight off the principal, no database lookup
+│   │   (no local KeycloakRealmRoleConverter.java/KeycloakJwtAuthenticationConverter.java
+│   │    anymore — both moved to infra.security as shared beans, see infra section above;
+│   │    picked up via this module's existing @ComponentScan reaching infra)
+│   (no local CurrentUserResolver.java anymore — uses the shared
+│    infra.security.CurrentUserResolver.resolveUserUuid(...) instead, see infra section above)
 ├── config/web/
 │   ├── WebMvcConfig.java               — registers CurrentUserIdArgumentResolver
 │   └── CurrentUserIdArgumentResolver.java — resolves common.annotation.CurrentUserId String-
-│                                         annotated controller parameters via CurrentUserResolver;
-│                                         duplicated from gateway's class of the same name (no STOMP
-│                                         transport here, so no message-argument-resolver
-│                                         counterpart needed)
+│                                         annotated controller parameters via
+│                                         infra.security.CurrentUserResolver, assigning the shared
+│                                         resolveUserUuid result to this module's own ownerUuid
+│                                         vocabulary (no STOMP transport here, so no
+│                                         message-argument-resolver counterpart needed)
 ├── entity/
 │   ├── Project.java                  — name, description, ownerUuid (String, plain column — see
 │   │                                    above), status (ProjectStatus)
@@ -1229,13 +1273,17 @@ identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
     │                                    except `/actuator/**` — no public/admin surface here, unlike
     │                                    content-service/ecommerce-service); pure OAuth2 resource
     │                                    server, verifies bearer tokens against Keycloak's JWKS
-    ├── KeycloakRealmRoleConverter.java — maps `realm_access.roles` to `ROLE_*` authorities;
-    │                                    duplicated from gateway's/ecommerce-service's converter of
-    │                                    the same name rather than shared (no Maven dependency)
-    ├── KeycloakJwtAuthenticationConverter.java — the one converter in the reactor that still
-    │                                    *delegates* rather than inlining: calls this module's own
-    │                                    in-process `service/UserService.findOrCreateFromKeycloak`
-    │                                    directly, since both live in this same standalone app
+    ├── (no local KeycloakRealmRoleConverter.java anymore — uses the shared
+    │    infra.security.KeycloakRealmRoleConverter bean instead, see infra section above)
+    ├── KeycloakJwtAuthenticationConverter.java — kept local (one of only two in the reactor doing
+    │                                    real divergent work, social-service's is the other); the
+    │                                    one converter in the reactor that still *delegates* its
+    │                                    JIT-provisioning rather than inlining it: calls this
+    │                                    module's own in-process
+    │                                    `service/UserService.findOrCreateFromKeycloak` directly,
+    │                                    since both live in this same standalone app. Delegates
+    │                                    role-mapping to infra's shared KeycloakRealmRoleConverter
+    │                                    too, rather than duplicating that half of the work.
     └── service/                       — UserService/Impl, narrowed to findOrCreateFromKeycloak
                                           (KeycloakUserInfo carrier record, same package),
                                           resolveCurrentUser, findByEmail/
@@ -1263,8 +1311,8 @@ alongside this extraction too.
 `gateway`'s own `KeycloakJwtAuthenticationConverter` used to inline this same find-or-create logic
 directly via `common`'s `UserRepository`, JIT-provisioning its own local `User` copy into
 `product.USER`, once calling into this module's `UserService.findOrCreateFromKeycloak` across a
-module boundary stopped being possible. It has since dropped that entirely — `gateway` now builds
-its principal straight from the JWT's claims, same shape as `ecommerce-service`'s/`task-service`'s/
+module boundary stopped being possible. It has since dropped that entirely — `gateway` now uses
+`infra`'s shared, claims-only `KeycloakJwtAuthenticationConverter`, same shape as `ecommerce-service`'s/`task-service`'s/
 `content-service`'s/`ai-service`'s converters, since nothing in `gateway` ever read that row back
 (zero REST controllers). **This module (`identity-service`) is now the sole deployable in the whole
 reactor that persists a `User` row at all** — see root `CLAUDE.md`'s Security section.
@@ -1297,8 +1345,8 @@ against the `ecommerce` schema, the native SQL in `ProductSearchViewRepository.s
 verification path are all still unverified at runtime.
 
 **Does not persist a `User` row at all** — none of this module's own entities have a foreign key
-onto a user, so `KeycloakJwtAuthenticationConverter` only ever needs "who is the caller, and are
-they an admin," both fully answerable from the verified JWT's claims. An earlier revision briefly
+onto a user, so `infra`'s shared, claims-only `KeycloakJwtAuthenticationConverter` only ever needs
+"who is the caller, and are they an admin," both fully answerable from the verified JWT's claims. An earlier revision briefly
 added `@EntityScan`/`@EnableJpaRepositories` plus an `ecommerce.USER` table (found alongside a real
 bug: neither annotation existed, so `common.repository.UserRepository` would never have become a
 bean and this app would have failed to start) — reverted once it became clear this module never
@@ -1370,12 +1418,11 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   ├── SecurityConfig.java          — /api/v1/public/** permitAll, /api/v1/admin/** hasRole(ADMIN),
 │   │                                    stateless, .oauth2ResourceServer(...) verifying bearer
 │   │                                    tokens against Keycloak's JWKS — never issues tokens itself
-│   ├── KeycloakRealmRoleConverter.java — maps realm_access.roles to ROLE_* authorities; duplicated
-│   │                                    from gateway's/identity-service's converter of the same name
-│   └── KeycloakJwtAuthenticationConverter.java — builds the CustomOAuth2User principal directly
-│                                        from the verified JWT's claims (sub stands in for
-│                                        userUuid) — persists nothing, unlike gateway's/
-│                                        identity-service's converters of the same name. This
+│   │   (no local KeycloakRealmRoleConverter.java/KeycloakJwtAuthenticationConverter.java
+│   │    anymore — both moved to infra.security as shared beans, see infra section above;
+│   │    picked up via this module's existing @ComponentScan reaching infra. The shared
+│   │    KeycloakJwtAuthenticationConverter builds the CustomOAuth2User principal directly
+│   │    from the verified JWT's claims — sub stands in for userUuid — persists nothing.) This
 │                                        module's own entities have no foreign key onto a user, so
 │                                        the only real need was resolving the caller's identity/role,
 │                                        fully answerable from the token alone (see this module's
@@ -1548,24 +1595,24 @@ gateway/src/main/java/com/ttg/devknowledgeplatform/
 │   ├── SecurityConfig.java           — .oauth2ResourceServer(jwt -> ...) verifying bearer tokens
 │   │                                    against Keycloak's JWKS (spring.security.oauth2.
 │   │                                    resourceserver.jwt.issuer-uri); no .oauth2Login() anymore
-│   ├── KeycloakRealmRoleConverter.java — Converter<Jwt, Collection<GrantedAuthority>>; maps the
-│   │                                    token's realm_access.roles claim to ROLE_* authorities —
-│   │                                    Spring's default converter only reads a flat scope claim
-│   ├── KeycloakJwtAuthenticationConverter.java — Converter<Jwt, AbstractAuthenticationToken>;
-│   │                                    builds CustomOAuth2User straight from the token's claims
-│   │                                    now (jwt.getSubject() standing in for userUuid) — no
-│   │                                    database read or write at all. Used to JIT-provision/
-│   │                                    refresh this app's own product.USER row directly via
-│   │                                    common's UserRepository; retired outright once it became
-│   │                                    clear nothing in this app ever read that row back (zero
-│   │                                    REST controllers, and the authorization decision was
-│   │                                    always driven by the token's own claims, never the row).
-│   │                                    Mirrors ecommerce-service's/task-service's/
-│   │                                    content-service's/ai-service's converters now instead of
-│   │                                    identity-service's (the one deployable that still persists
-│   │                                    a row, into identity.USER — see that module's section)
-│   └── CorsConfig.java / JsonAuthenticationEntryPoint.java
-│       (**No `CurrentUserResolver` here anymore** — it read the JIT-provisioned row back to
+│   │   (no local KeycloakRealmRoleConverter.java/KeycloakJwtAuthenticationConverter.java of this
+│   │    app's own left at all — both moved to infra.security as shared beans, see infra section
+│   │    above, picked up via this app's existing @ComponentScan reaching infra. infra's shared
+│   │    KeycloakJwtAuthenticationConverter builds CustomOAuth2User straight from the token's
+│   │    claims — jwt.getSubject() standing in for userUuid — no database read or write at all.
+│   │    Used to JIT-provision/refresh this app's own local product.USER row directly via
+│   │    common's UserRepository even earlier still; retired to claims-only once it became clear
+│   │    nothing in this app ever read that row back (zero REST controllers, and the authorization
+│   │    decision was always driven by the token's own claims, never the row) — and by that point
+│   │    was already byte-for-byte identical to ecommerce-service's/task-service's/
+│   │    content-service's/ai-service's own copies, which is exactly why all five now share the one
+│   │    infra bean instead of five separate files. identity-service (and social-service) are the
+│   │    two deployables that still keep a local converter, since both persist a real row —
+│   │    identity.USER/social.PROFILE respectively — see those modules' own sections.)
+│   └── CorsConfig.java
+│       (no local JsonAuthenticationEntryPoint.java anymore either — moved to infra.security as a
+│       shared bean, see infra section above; picked up via this app's existing @ComponentScan
+│       reaching infra. **No `CurrentUserResolver` here anymore** — it read the JIT-provisioned row back to
 │       resolve an Integer PK, but its only two callers had already moved to other modules in
 │       earlier extractions, leaving zero real callers — confirmed via grep before deleting.
 │       **No `WebSocketConfig`/`StompAuthChannelInterceptor` here either** — both relocated to

@@ -148,16 +148,21 @@ both `identity-service` and `social-service` were extracted into standalone serv
   map). `SecurityConfig` (Keycloak is the identity provider — this app is a pure
   OAuth2 **resource server** now, `.oauth2ResourceServer(jwt -> ...)` verifying bearer tokens against
   Keycloak's JWKS via `spring.security.oauth2.resourceserver.jwt.issuer-uri`; no `.oauth2Login()`/
-  custom filter anymore), `KeycloakRealmRoleConverter` (maps the token's `realm_access.roles` claim
-  to `ROLE_*` `GrantedAuthority`s — Spring's default converter doesn't read Keycloak's nested claim
-  shape), `KeycloakJwtAuthenticationConverter` — builds the `CustomOAuth2User` principal **straight
-  from the token's claims now, with zero database access** (`jwt.getSubject()` standing in for
-  `userUuid`), mirroring `ecommerce-service`'s/`task-service`'s/`content-service`'s/`ai-service`'s
-  converters. Used to JIT-provision/refresh this app's own local `User` row into `product.USER`
-  (inlined directly via `common`'s `UserRepository`, since delegating to `identity-service`'s
-  `UserService` in-process stopped being possible once that module went standalone) — retired
-  outright once it became clear nothing in this app ever read that row back (see the intro above).
-  `CorsConfig`, `JsonAuthenticationEntryPoint`. **No `CurrentUserResolver` here anymore** — it read
+  custom filter anymore). **No `KeycloakRealmRoleConverter`/`KeycloakJwtAuthenticationConverter`
+  classes of this app's own left at all** — both moved to `infra.security` as shared beans (see
+  `infra/CLAUDE.md`), picked up automatically via this app's existing `@ComponentScan` reaching
+  `infra`. `infra`'s `KeycloakJwtAuthenticationConverter` builds the `CustomOAuth2User` principal
+  straight from the token's claims, zero database access (`jwt.getSubject()` standing in for
+  `userUuid`) — the same shape this app's own local copy used to have before this consolidation
+  (that local copy used to JIT-provision/refresh this app's own local `User` row into `product.USER`
+  even earlier still — see the intro above — and was, by the time it was retired to claims-only,
+  already byte-for-byte identical to `ecommerce-service`'s/`task-service`'s/`content-service`'s/
+  `ai-service`'s own copies, which is exactly why all five now share one bean in `infra` instead of
+  five separate files).
+  `CorsConfig`. **No `JsonAuthenticationEntryPoint` class of this app's own anymore** — moved to
+  `infra.security` as a shared bean too (byte-identical to `ai-service`'s own former copy, the only
+  other service that wired one up — see `infra/CLAUDE.md`), picked up via this app's existing
+  `@ComponentScan` reaching `infra`. **No `CurrentUserResolver` here anymore** — it read
   the JIT-provisioned row back to resolve an `Integer` PK for `@CurrentUserId`, but its only two
   callers (`CurrentUserIdArgumentResolver`, `CurrentUserIdMessageArgumentResolver`) had already
   moved out to other modules in earlier extractions, leaving it with zero real callers left in this

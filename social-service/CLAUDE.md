@@ -117,9 +117,13 @@ a friend's public profile) and confirmed dropping them is safe.
   `gateway`'s. `SecurityConfig` requires authentication on every endpoint except
   `/api/v1/users/public/**` (public profile lookup — `UserApi.getPublicProfile` degrades gracefully
   for an anonymous viewer, same rule `gateway` carried before extraction), the `/ws/**` handshake,
-  and `/actuator/**`. `KeycloakRealmRoleConverter` maps `realm_access.roles` to `ROLE_*` authorities,
-  duplicated from `gateway`'s/`identity-service`'s/`ecommerce-service`'s/`task-service`'s converter
-  of the same name. `KeycloakJwtAuthenticationConverter` JIT-provisions/refreshes this app's own
+  and `/actuator/**`. **No local `KeycloakRealmRoleConverter` anymore** — this module uses
+  `infra.security.KeycloakRealmRoleConverter` (the shared bean, see `infra/CLAUDE.md`) for
+  `realm_access.roles` → `ROLE_*` mapping instead, picked up via this module's existing
+  `@ComponentScan` reaching `infra`. `security/KeycloakJwtAuthenticationConverter` itself stays
+  local (one of only two converters in the reactor — `identity-service`'s is the other — that do
+  real divergent work beyond claims-only mapping, so neither was a candidate for `infra`'s shared
+  claims-only converter): it JIT-provisions/refreshes this app's own
   local `SocialProfile` row directly via `SocialProfileRepository` — inlined here (like `gateway`'s/
   `ecommerce-service`'s/`task-service`'s), not delegated (unlike `identity-service`'s), and writes
   only the fields `SocialProfile` actually has (no password placeholder, no role, no

@@ -1,7 +1,7 @@
 package com.ttg.devknowledgeplatform.ai.config.web;
 
-import com.ttg.devknowledgeplatform.ai.security.CurrentUserResolver;
 import com.ttg.devknowledgeplatform.common.annotation.CurrentUserId;
+import com.ttg.devknowledgeplatform.infra.security.CurrentUserResolver;
 import org.springframework.core.MethodParameter;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -15,18 +15,13 @@ import org.springframework.web.method.support.ModelAndViewContainer;
  * Resolves {@link CurrentUserId}-annotated controller parameters to the authenticated caller's
  * Keycloak UUID.
  *
- * <p>Duplicated from {@code gateway}'s/{@code task-service}'s/{@code content-service}'s class of
- * the same name — {@code ChatApi} takes {@code @CurrentUserId String userUuid} directly, and
- * {@code gateway}'s resolver (which resolves an {@code Integer} local PK, a different shape
- * entirely) will no longer be reachable in-process once this module is a standalone app. This one
- * never touches a database — see {@link CurrentUserResolver}'s Javadoc for why this module has no
- * local {@code User} row to look up.
+ * <p>{@code ChatApi} takes {@code @CurrentUserId String userUuid} directly. {@link CurrentUserResolver}
+ * is now a shared {@code infra} class (see its own Javadoc) rather than a local copy — this
+ * module's own copy happened to already use the same {@code resolveUserUuid} method name the
+ * shared class settled on, so this consolidation needed no call-site rename here, unlike
+ * {@code task-service}'s/{@code content-service}'s own resolvers.
  *
- * <p>Registered in {@link ChatMvcConfig#addArgumentResolvers}. Safe to add ahead of this module's
- * full standalone cutover — unlike a second {@code SecurityFilterChain}, argument resolvers are
- * additive (Spring tries each one via {@link #supportsParameter} until one matches), so this
- * coexists without conflict alongside {@code gateway}'s own {@code Integer}-typed resolver while
- * both are still in the same shared Spring context.
+ * <p>Registered in {@link ChatMvcConfig#addArgumentResolvers}.
  */
 @Component
 public class CurrentUserIdArgumentResolver implements HandlerMethodArgumentResolver {

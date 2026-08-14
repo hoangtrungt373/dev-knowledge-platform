@@ -43,21 +43,23 @@ built yet — `ai-service`'s own `ContentServiceClient` (server-to-server, again
   these same paths before extraction: `/api/v1/public/**` permits all (read-only published-content
   browsing), `/internal/**` permits all too (see `InternalApiKeyFilter` below — it, not Spring
   Security, is what actually enforces that path), `/actuator/**` permits all, `/api/v1/admin/**`
-  requires `ROLE_ADMIN`, everything else requires authentication. `KeycloakRealmRoleConverter` maps
-  `realm_access.roles` to `ROLE_*` authorities, duplicated from `gateway`'s/`task-service`'s/
-  `identity-service`'s/`ecommerce-service`'s converter of the same name (no Maven dependency to
-  share it through). `KeycloakJwtAuthenticationConverter` builds the `CustomOAuth2User` principal
+  requires `ROLE_ADMIN`, everything else requires authentication. **No
+  `security/KeycloakRealmRoleConverter`/`KeycloakJwtAuthenticationConverter` classes of this
+  module's own anymore** — both moved to `infra.security` as shared beans (see `infra/CLAUDE.md`),
+  picked up via this module's existing `@ComponentScan` reaching `infra`.
+  `infra.security.KeycloakJwtAuthenticationConverter` builds the `CustomOAuth2User` principal
   directly from the verified JWT's claims — no local `User` row at all, mirroring
   `ecommerce-service`'s/`task-service`'s converter rather than `gateway`'s/`identity-service`'s
-  (see the "No local `User` copy" rule below). `CurrentUserResolver` reads the authenticated
-  `CustomOAuth2User` principal's UUID straight off the principal — no database lookup.
+  (see the "No local `User` copy" rule below). **No local `CurrentUserResolver` anymore** — this
+  module uses the shared `infra.security.CurrentUserResolver.resolveUserUuid(...)` instead (see
+  `infra/CLAUDE.md`), picked up via this module's existing `@ComponentScan` reaching `infra`.
   `config/security/InternalApiKeyFilter` + `config/InternalApiProperties` are a separate,
   server-to-server concern (see below), not part of this end-user JWT chain.
 - `config/web/` — `WebMvcConfig` (registers `CurrentUserIdArgumentResolver`) and
   `CurrentUserIdArgumentResolver` (resolves `common.annotation.CurrentUserId String`-annotated
-  controller parameters via `security.CurrentUserResolver`) — duplicated from `gateway`'s/
-  `task-service`'s classes of the same name; no STOMP transport here, so no message-argument-resolver
-  counterpart is needed.
+  controller parameters via `infra.security.CurrentUserResolver`, assigning the shared
+  `resolveUserUuid` result to this module's own `authorUuid` vocabulary); no STOMP transport here,
+  so no message-argument-resolver counterpart is needed.
 - `entity/` — `Category`, `Tag`, `ContentItem`, `ContentItemTag`, `QuestionAnswer`, `Article`. None
   of these hardcode `@Table(schema = "product")` anymore — same bug class as `common.entity.User`'s
   incident (an explicit `@Table(schema=...)` always wins over `hibernate.default_schema`) — so they
@@ -145,7 +147,7 @@ every decision below.
   creation, never read back or joined through anywhere in this module.
   `KeycloakJwtAuthenticationConverter` builds `CustomOAuth2User` straight from the verified JWT's
   claims (`sub` → `userUuid`), same as `ecommerce-service`'s/`task-service`'s converter, and
-  `security.CurrentUserResolver`/`config.web.CurrentUserIdArgumentResolver` read that UUID directly
+  `infra.security.CurrentUserResolver`/`config.web.CurrentUserIdArgumentResolver` read that UUID directly
   with zero database access — see the `project-microservices-extraction-plan` memory's "Option C"
   discussion (written for `ecommerce-service`, equally applicable here). If a future feature needs
   to *display* another user's profile info (e.g. an author byline), reach for an event-driven

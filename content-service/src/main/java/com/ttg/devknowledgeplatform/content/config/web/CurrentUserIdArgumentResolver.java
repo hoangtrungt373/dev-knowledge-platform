@@ -1,7 +1,7 @@
 package com.ttg.devknowledgeplatform.content.config.web;
 
 import com.ttg.devknowledgeplatform.common.annotation.CurrentUserId;
-import com.ttg.devknowledgeplatform.content.security.CurrentUserResolver;
+import com.ttg.devknowledgeplatform.infra.security.CurrentUserResolver;
 import org.springframework.core.MethodParameter;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -15,12 +15,12 @@ import org.springframework.web.method.support.ModelAndViewContainer;
  * Resolves {@link CurrentUserId}-annotated controller parameters to the authenticated caller's
  * Keycloak UUID.
  *
- * <p>Duplicated from {@code gateway}'s/{@code task-service}'s class of the same name —
- * {@code ArticleApi}/{@code QuestionAnswerApi} take {@code @CurrentUserId String authorUuid}
- * directly (not {@code @AuthenticationPrincipal CustomOAuth2User}), and {@code gateway}'s resolver
- * isn't reachable in-process anymore now that this module is a standalone app. Unlike
- * {@code gateway}'s resolver, this one never touches a database — see
- * {@link CurrentUserResolver}'s Javadoc for why this module has no local {@code User} row to look up.
+ * <p>{@code ArticleApi}/{@code QuestionAnswerApi} take {@code @CurrentUserId String authorUuid}
+ * directly (not {@code @AuthenticationPrincipal CustomOAuth2User}). {@link CurrentUserResolver} is
+ * now a shared {@code infra} class (see its own Javadoc) rather than a local copy — this module's
+ * own copy used to exist under a module-specific method name ({@code resolveAuthorUuid}) before
+ * that consolidation; the shared class exposes {@code resolveUserUuid} instead, called below and
+ * assigned to this module's own {@code authorUuid} vocabulary at the call site.
  *
  * <p>Registered in {@link WebMvcConfig#addArgumentResolvers}.
  */
@@ -48,6 +48,6 @@ public class CurrentUserIdArgumentResolver implements HandlerMethodArgumentResol
                     "@CurrentUserId requires an authenticated principal, but the SecurityContext has none. "
                     + "Verify that the route is covered by SecurityConfig.");
         }
-        return CurrentUserResolver.resolveAuthorUuid(auth);
+        return CurrentUserResolver.resolveUserUuid(auth);
     }
 }
