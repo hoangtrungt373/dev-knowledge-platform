@@ -11,12 +11,17 @@ import { authService } from '@auth/services/authService';
  * (and this hook runs) on every route including /login, and an unauthenticated call to a
  * protected endpoint would trip httpClient's 401 handler, which redirects to /login. Checking
  * first avoids ever making that call instead of relying on the 401 fallback.
+ *
+ * `enabled` additionally gates the poll for routes where NavBar itself renders null (/admin,
+ * /chat, /messages) — `isAuthenticated()` alone isn't enough there, since an admin session uses
+ * the exact same `authService` storage as a regular one, so the old "no-ops when unauthenticated"
+ * assumption stopped holding once admin login actually worked.
  */
-export function useFriendRequestsCount(pollMs = 60_000): { count: number; refresh: () => void } {
+export function useFriendRequestsCount(enabled = true, pollMs = 60_000): { count: number; refresh: () => void } {
   const [count, setCount] = useState(0);
 
   const refresh = useCallback(() => {
-    if (!authService.isAuthenticated()) {
+    if (!enabled || !authService.isAuthenticated()) {
       setCount(0);
       return;
     }
@@ -25,13 +30,14 @@ export function useFriendRequestsCount(pollMs = 60_000): { count: number; refres
       .catch(() => {
         // Silent — a failed badge refresh shouldn't surface a notification.
       });
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     refresh();
+    if (!enabled) return;
     const id = setInterval(refresh, pollMs);
     return () => clearInterval(id);
-  }, [refresh, pollMs]);
+  }, [refresh, enabled, pollMs]);
 
   return { count, refresh };
 }

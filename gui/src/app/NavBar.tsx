@@ -20,13 +20,16 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
   const navigate = useNavigate();
   const location = useLocation();
   const isAuthed = authService.isAuthenticated();
+  const hidden =
+    location.pathname.startsWith('/admin') ||
+    location.pathname.startsWith('/chat') ||
+    location.pathname.startsWith('/messages');
   // Called unconditionally (Rules of Hooks) even on routes where NavBar renders null below —
-  // the hook itself no-ops when unauthenticated, so this is a harmless background poll.
-  const { count: friendRequestCount } = useFriendRequestsCount();
+  // `enabled={!hidden}` stops the poll itself on those routes rather than relying on
+  // isAuthenticated() alone, which an admin session also satisfies.
+  const { count: friendRequestCount } = useFriendRequestsCount(!hidden);
 
-  if (location.pathname.startsWith('/admin')) return null;
-  if (location.pathname.startsWith('/chat')) return null;
-  if (location.pathname.startsWith('/messages')) return null;
+  if (hidden) return null;
 
   const handleLogout = (): void => {
     authService.logout();

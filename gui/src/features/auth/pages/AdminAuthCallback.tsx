@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
 import { adminAuthService } from '../services/adminAuthService';
@@ -13,8 +13,16 @@ export default function AdminAuthCallback(): JSX.Element | null {
   const [searchParams] = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const { showError, showSuccess } = useNotification();
+  // The authorization code + PKCE verifier are both one-time-use, so this effect isn't idempotent
+  // — StrictMode's deliberate dev-mode double-invoke would otherwise run the exchange twice, with
+  // the second call failing (code/verifier already consumed) and bouncing back to /admin/login
+  // even though the first call already succeeded. This ref makes the second invocation a no-op.
+  const hasRun = useRef(false);
 
   useEffect(() => {
+    if (hasRun.current) return;
+    hasRun.current = true;
+
     const run = async () => {
       try {
         const code = searchParams.get('code');
