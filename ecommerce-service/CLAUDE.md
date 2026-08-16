@@ -24,13 +24,17 @@ changelog/docker-compose file. `gateway` no longer has a Maven dependency on thi
 **`gateway`-side HTTP proxying to this service is not built yet** — until it is, this service is
 only reachable directly on its own port, not through `gateway`.
 
-**`EcommerceServiceApplication` carries an explicit `@ComponentScan(basePackages =
-{"...ecommerce", "...infra"})`**, added reactor-wide once an audit found no standalone service
-actually reached `infra`'s sibling package by default — here, `ProductServiceImpl`/
-`ProductCategoryServiceImpl` inject `infra.service.SlugService` (product/category slug generation),
-which would otherwise have had no bean definition available and failed at startup with an
-unsatisfied-dependency error; see `infra/CLAUDE.md`'s `JacksonConfig` note for the full
-reactor-wide finding.
+**`EcommerceServiceApplication` carries
+`@Import({JacksonConfig.class, TraceContextFilter.class, SlugServiceImpl.class,
+KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class})`**, naming the exact
+`infra` beans this module uses — `SlugServiceImpl` for `ProductServiceImpl`/
+`ProductCategoryServiceImpl`'s product/category slug generation, the Keycloak pair for this
+module's own `SecurityConfig` — instead of widening `@ComponentScan`/`@ConfigurationPropertiesScan`
+to the whole sibling `infra` package the way an earlier revision did. That broad-scan approach took
+three rounds of real startup failures on `task-service` (a sibling in the identical shape) to get
+right before this reactor moved to explicit imports instead — see `infra/CLAUDE.md`'s note and
+`docs/CHANGELOG.md`'s `[Unreleased]` entry for the full history. `AsyncEventThreadPoolConfig` is
+deliberately **not** imported here — this module has no `@EventHandler` to dispatch.
 
 **No `@EntityScan`/`@EnableJpaRepositories` on `EcommerceServiceApplication`, and no dependency on
 `common.entity.User`/`common.repository.UserRepository` anywhere in this module** — this module

@@ -24,15 +24,23 @@ consolidated `services-liquibase` job — this module has no dedicated `ai-servi
 file of its own) are in place now (port `8086`); `gateway`-side HTTP proxying for end-user traffic
 to this service is not built yet, same as every other standalone service in this reactor.
 
-- `AiServiceApplication` — `@SpringBootApplication` + `@ComponentScan(basePackages = {"...ai",
-  "...infra"})` + `@ConfigurationPropertiesScan` (required here — this module no longer rides on
-  `gateway`'s scan) + `@EnableAsync` (drives `PipelineCompletedEventListener`'s `@EventHandler`
-  dispatch and the SSE/MVC async support this module's own `ChatMvcConfig` configures). The explicit
-  `@ComponentScan` was added reactor-wide once an audit found no standalone service actually reached
-  `infra`'s sibling package by default — here, `PipelineCompletedEventListener` extending `infra`'s
-  `AsyncEventHandler` needs `infra`'s own `AsyncEventThreadPoolConfig` bean to exist in this context;
-  see `infra/CLAUDE.md`'s `JacksonConfig` note for the full reactor-wide finding. **No
-  `@EntityScan`/`@EnableJpaRepositories`** — this module doesn't touch `common.entity.User`/
+- `AiServiceApplication` — `@SpringBootApplication` + `@ConfigurationPropertiesScan` (bare, no
+  `basePackages` — covers this module's own dozen-plus `config/*`/`config/chat/*` properties
+  classes, same as always) + `@EnableConfigurationProperties(AsyncEventThreadPoolProperties.class)`
+  + `@Import({JacksonConfig.class, TraceContextFilter.class, JsonAuthenticationEntryPoint.class,
+  KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
+  AsyncEventThreadPoolConfig.class})` + `@EnableAsync` (drives `PipelineCompletedEventListener`'s
+  `@EventHandler` dispatch and the SSE/MVC async support this module's own `ChatMvcConfig`
+  configures) entry point. Names the exact `infra` beans this module uses — `JsonAuthenticationEntryPoint`
+  for this module's own `SecurityConfig.exceptionHandling()`, the Keycloak pair for the same
+  config's JWT conversion, `AsyncEventThreadPoolConfig` (+ its properties, registered separately
+  since it's a bare `@ConfigurationProperties` POJO with no `@Component`) because
+  `PipelineCompletedEventListener` genuinely extends `infra`'s `AsyncEventHandler` — instead of
+  widening `@ComponentScan`/`@ConfigurationPropertiesScan` to the whole sibling `infra` package the
+  way an earlier revision did. That broad-scan approach took three rounds of real startup failures
+  on `task-service` (a sibling in the identical shape) to get right before this reactor moved to
+  explicit imports instead — see `infra/CLAUDE.md`'s note and `docs/CHANGELOG.md`'s `[Unreleased]`
+  entry for the full history. **No `@EntityScan`/`@EnableJpaRepositories`** — this module doesn't touch `common.entity.User`/
   `common.repository.UserRepository` at all, same shape as
   `content-service`'s/`task-service`'s/`ecommerce-service`'s application classes. Default scanning
   already covers this module's own `entity`/`repository` packages.

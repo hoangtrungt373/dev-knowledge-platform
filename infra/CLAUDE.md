@@ -184,28 +184,47 @@ Module-local guidance for `infra`. Read alongside the root `CLAUDE.md`.
   Spring Boot's un-customized default `ObjectMapper` instead, since none of them had a copy of
   their own. Fixed alongside a deeper, reactor-wide gap this move exposed: see the note below.
 
-**A reactor-wide component-scan gap, found while verifying this `JacksonConfig` move would actually
-work, applies to every bean in this module.** None of the six standalone services'
-`@SpringBootApplication` classes widened their component scan to reach this module's sibling
-package — Spring Boot's default `@ComponentScan` is rooted at the annotated class's own package and
-does not recurse into a sibling. This had been silently breaking real, already-shipping code:
-`identity-service`'s/`social-service`'s injection of `StorageService`,
-`ecommerce-service`'s/`content-service`'s injection of `SlugService`, and
-`social-service`'s/`ai-service`'s `@EventHandler` listeners needing `AsyncEventThreadPoolConfig`'s
-`asyncEventExecutor` bean would all have failed to resolve at Spring context startup — never caught
-until now because none of these six apps had ever actually been booted against a real environment
-in this codebase's history. `social-service` had a second, quieter bug on top: it was missing
-`@EnableAsync` entirely, which doesn't error the way a missing bean does — Spring just silently runs
-`@Async` methods synchronously instead — so its `FriendRequestSentEventListener`/
-`FriendRequestAcceptedEventListener` had been dispatching on the calling thread instead of this
-module's dedicated pool the whole time. Fixed by adding an explicit
-`@ComponentScan(basePackages = {"<own-package>", "com.ttg.devknowledgeplatform.infra"})` to all six
-services' entry-point classes (an explicit `@ComponentScan` replaces rather than adds to
-`@SpringBootApplication`'s implicit single-package scan, so each service's own package had to be
-listed too) plus `@EnableAsync` on `social-service`'s. See each service's own `CLAUDE.md`/entry-point
-Javadoc for the specific beans that motivated its fix, and `docs/CHANGELOG.md`'s `[Unreleased]`
-entry for the full list. Any *new* module added to this reactor needs the same explicit
-`@ComponentScan` the moment it uses any `infra` bean — don't assume default scanning reaches here.
+**Post-2026-08-16: every consumer reaches this module's beans via explicit `@Import`/
+`@EnableConfigurationProperties`, not package scanning.** This is the end state of three rounds of
+component-scan bugs, all stemming from the same root cause: Spring Boot's default `@ComponentScan`/
+`@ConfigurationPropertiesScan` is rooted at the annotated class's own package and does not recurse
+into a sibling, so none of the six standalone services' `@SpringBootApplication` classes ever
+reached this module's sibling package by default (only `gateway`, whose main class sits at this
+reactor's root package, picked it up "for free"). The first fix — widening
+`@ComponentScan`/`@ConfigurationPropertiesScan` to `basePackages = {"<own-package>",
+"com.ttg.devknowledgeplatform.infra"}` — worked, but only after two of its own false starts: a bare
+`@ConfigurationPropertiesScan` (no `basePackages`) doesn't reach a sibling package any more than a
+bare `@ComponentScan` does, and even once `basePackages` was right, the broad scan couldn't tell
+"reachable" from "actually needed" — `config/thread/AsyncEventThreadPoolConfig` got instantiated
+(and failed to construct, its constructor needing `AsyncEventThreadPoolProperties`, a bare
+`@ConfigurationProperties` POJO with no `@Component` of its own, unlike
+`config/storage/StorageProperties`, which does carry one) on every service whose scan reached
+`infra`, regardless of whether that service dispatches any `@EventHandler` at all.
+
+That whole bug class is why this reactor moved off broad scanning into `infra` entirely: each of
+the six non-`gateway` entry-point classes now names the exact beans it uses —
+`@Import({KeycloakJwtAuthenticationConverter.class, ...})` for `@Component`/`@Configuration`
+classes, `@EnableConfigurationProperties(AsyncEventThreadPoolProperties.class)` for the one bare
+properties POJO. Concretely: `KeycloakRealmRoleConverter`/`KeycloakJwtAuthenticationConverter` are
+imported by every service that uses claims-only auth (`task-service`, `ecommerce-service`,
+`content-service`, `ai-service`) or delegates role-mapping to `KeycloakRealmRoleConverter` alone
+(`identity-service`'s/`social-service`'s own local converters); `StorageConfig`/`StorageProperties`/
+`StorageServiceImpl` are imported only by `identity-service`/`social-service`; `SlugServiceImpl`
+only by `ecommerce-service`/`content-service`; `JsonAuthenticationEntryPoint` only by `ai-service`
+(`gateway` reaches it via its own accidental full scan); `AsyncEventThreadPoolConfig` +
+`AsyncEventThreadPoolProperties` only by `ai-service`/`social-service` — the two services that
+actually extend `AsyncEventHandler`. `JacksonConfig`/`TraceContextFilter` are the two truly
+reactor-wide beans every service (including `gateway`, whose full scan already covers them) needs,
+so every non-`gateway` entry point imports both explicitly now rather than relying on scan reach. A
+service keeps a bare, own-package-scoped `@ConfigurationPropertiesScan` only for its own local
+`@ConfigurationProperties` classes (`content-service`'s `InternalApiProperties`, `ai-service`'s
+dozen-plus `config/*`/`config/chat/*` classes) — never extended to reach `infra` anymore. See each
+service's own `CLAUDE.md`/entry-point Javadoc and `docs/CHANGELOG.md`'s `[Unreleased]` entry for the
+full per-service import list and the complete three-round bug history. **Any *new* module added to
+this reactor should use this same explicit `@Import`/`@EnableConfigurationProperties` shape from
+the start** for whichever specific beans in this module it actually needs — don't reach for a
+broad `@ComponentScan(basePackages = {..., "com.ttg.devknowledgeplatform.infra"})`, which is exactly
+what caused all three rounds of bugs here.
 
 ## Rules specific to this module
 

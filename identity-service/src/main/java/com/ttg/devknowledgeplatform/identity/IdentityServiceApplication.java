@@ -2,7 +2,14 @@ package com.ttg.devknowledgeplatform.identity;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Import;
+
+import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
+import com.ttg.devknowledgeplatform.infra.config.storage.StorageConfig;
+import com.ttg.devknowledgeplatform.infra.config.storage.StorageProperties;
+import com.ttg.devknowledgeplatform.infra.security.KeycloakRealmRoleConverter;
+import com.ttg.devknowledgeplatform.infra.service.impl.StorageServiceImpl;
+import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
 
 /**
  * Entry point for the standalone {@code identity-service} application — extracted out of the
@@ -15,16 +22,24 @@ import org.springframework.context.annotation.ComponentScan;
  * {@code social-service}/{@code ai-service}/{@code task-service} — this app has no Maven dependency
  * on any of them anyway, same isolation {@code ecommerce-service} already established.
  *
- * <p><b>{@code @ComponentScan(basePackages = ...)}</b> explicitly re-adds
- * {@code com.ttg.devknowledgeplatform.infra} — a sibling package, not a parent, so default
- * scanning never reached it. This module's {@code UserController}/{@code UserMapper} inject
- * {@code infra.service.StorageService} (avatar upload) — without this, that bean would never have
- * been found and the app would have failed to start with an unsatisfied-dependency error the
- * moment it tried to construct either class. A real, previously-undetected gap across every
- * standalone service in this reactor that uses an {@code infra} bean, caught and fixed
- * reactor-wide in the same pass as this comment (see {@code docs/CHANGELOG.md}). This module's own
- * package must be listed explicitly too — an explicit {@code @ComponentScan} replaces the implicit
- * single-package default {@code @SpringBootApplication} provides, rather than adding to it.
+ * <p><b>{@code @Import} names the exact {@code infra} beans this module actually uses</b>, instead
+ * of widening {@code @ComponentScan}/{@code @ConfigurationPropertiesScan} to the whole sibling
+ * {@code infra} package the way an earlier revision of this class did. That broad-scan approach
+ * went through two rounds of real startup failures on `task-service` (a sibling in the identical
+ * shape) — a bare {@code @ConfigurationPropertiesScan} never reaching {@code infra} at all, then
+ * {@code infra.config.thread.AsyncEventThreadPoolConfig} getting instantiated (and failing to
+ * construct) even though this module dispatches no {@code @EventHandler} — before landing on this
+ * explicit-import shape; see {@code docs/CHANGELOG.md}'s `[Unreleased]` entry for the full history.
+ * This module imports: {@link JacksonConfig} (shared {@code ObjectMapper} customization, needed by
+ * every app in this reactor), {@link TraceContextFilter} (distributed-tracing MDC binding + access
+ * logging, likewise reactor-wide), {@link StorageProperties}/{@link StorageConfig}/
+ * {@link StorageServiceImpl} (the {@code MinioClient} bean plus the avatar-upload service built on
+ * it, used by {@code UserController}/{@code UserMapper}), and {@link KeycloakRealmRoleConverter}
+ * (role mapping, used by this module's own local {@code security.KeycloakJwtAuthenticationConverter}
+ * — see that class's own Javadoc for why this module keeps a local converter rather than using
+ * {@code infra}'s shared one). It does *not* import
+ * {@code infra.config.thread.AsyncEventThreadPoolConfig} — this module dispatches no
+ * {@code @EventHandler}, so that bean is simply never created here.
  *
  * <p>No {@code @EntityScan}/{@code @EnableJpaRepositories} anymore — {@code User}/
  * {@code UserRepository} used to live in {@code common} (default scanning, rooted at this class's
@@ -34,7 +49,8 @@ import org.springframework.context.annotation.ComponentScan;
  * scanning now covers them without help.
  */
 @SpringBootApplication
-@ComponentScan(basePackages = {"com.ttg.devknowledgeplatform.identity", "com.ttg.devknowledgeplatform.infra"})
+@Import({JacksonConfig.class, TraceContextFilter.class, StorageProperties.class,
+        StorageConfig.class, StorageServiceImpl.class, KeycloakRealmRoleConverter.class})
 public class IdentityServiceApplication {
 
     public static void main(String[] args) {

@@ -142,31 +142,51 @@ breaker) remain individually per-service today, not yet centralized at `gateway`
 all seven services (`gateway`, `ecommerce-service`, `identity-service`, `task-service`,
 `social-service`, `content-service`, `ai-service`).
 
-**Post-extraction hardening: a reactor-wide component-scan gap, found while moving `gateway`'s
-`JacksonConfig` into `infra`.** None of the six standalone services' `@SpringBootApplication`
-classes widened their component scan to reach `infra`'s sibling package — Spring Boot's default
+**Post-extraction hardening: `infra` beans are now reached via explicit `@Import`/
+`@EnableConfigurationProperties`, not broad package scanning — the end state of three rounds of
+component-scan bugs.** None of the six standalone services' `@SpringBootApplication` classes
+originally widened their scan to reach `infra`'s sibling package at all (Spring Boot's default
 `@ComponentScan` is rooted at the annotated class's own package and does not recurse into a
-sibling, and only `gateway` (whose main class sits at this reactor's root package) happened to pick
-up `infra` "for free." This had been silently breaking real, already-shipping code
+sibling; only `gateway`, whose main class sits at this reactor's root package, ever picked up
+`infra` "for free") — this had been silently breaking real, already-shipping code
 (`identity-service`'s/`social-service`'s injection of `infra.service.StorageService`,
 `ecommerce-service`'s/`content-service`'s injection of `infra.service.SlugService`,
 `social-service`'s/`ai-service`'s `@EventHandler` listeners needing `infra`'s
-`AsyncEventThreadPoolConfig` bean) — never caught until now because none of these six apps had ever
-actually been booted against a real environment in this codebase's history, a caveat this file and
-several modules' `CLAUDE.md`s have carried since each one's own extraction. `social-service` had a
-second, quieter bug on top: it was missing `@EnableAsync` entirely, which doesn't error the way a
-missing bean does — Spring just silently runs `@Async` methods synchronously instead — so its two
-friend-request event listeners had been dispatching on the calling thread instead of the dedicated
-pool the whole time. Fixed by adding an explicit `@ComponentScan(basePackages = {<own-package>,
-"com.ttg.devknowledgeplatform.infra"})` to all six services' entry-point classes (an explicit
-`@ComponentScan` replaces rather than adds to `@SpringBootApplication`'s implicit single-package
-scan, so each service's own package had to be listed too) plus `@EnableAsync` on `social-service`'s.
-`JacksonConfig` itself moved from `gateway`'s (nonexistent, since it has no REST controllers) own
-`config/` package into `infra`'s new `config/json/` once this fix made every service's scan reach
-it — see `infra/CLAUDE.md`'s `JacksonConfig` note, each service's own `CLAUDE.md`/entry-point
-Javadoc, and `docs/CHANGELOG.md`'s `[Unreleased]` entry for the full detail. Any *new* module added
-to this reactor needs the same explicit `@ComponentScan` the moment it uses any `infra` bean —
-don't assume default scanning reaches there.
+`AsyncEventThreadPoolConfig` bean), never caught until each app was actually booted for the first
+time. The first fix — widening `@ComponentScan`/`@ConfigurationPropertiesScan` to
+`basePackages = {<own-package>, "com.ttg.devknowledgeplatform.infra"}` — worked, but went through
+its own two rounds of bugs getting there (a bare `@ConfigurationPropertiesScan` doesn't reach a
+sibling package any more than a bare `@ComponentScan` does; `infra.config.thread.AsyncEventThreadPoolConfig`
+got instantiated — and failed to construct — on every service whose scan reached `infra`,
+regardless of whether that service ever dispatches an `@EventHandler`, since a package scan can't
+distinguish "reachable" from "actually needed"). That whole class of bug is why this reactor moved
+off broad package-scanning into `infra` entirely: each of the six non-`gateway` entry-point classes
+(`TaskServiceApplication`, `EcommerceServiceApplication`, `IdentityServiceApplication`,
+`ContentServiceApplication`, `AiServiceApplication`, `SocialServiceApplication`) now names the
+*exact* `infra` classes it uses via `@Import({...})` (for `@Component`/`@Configuration` classes) and
+`@EnableConfigurationProperties(...)` (for the one bare `@ConfigurationProperties` POJO with no
+`@Component`, `AsyncEventThreadPoolProperties`) — no `@ComponentScan`/`@ConfigurationPropertiesScan`
+reaching `infra` at all anymore. A service keeps a bare, package-scoped `@ConfigurationPropertiesScan`
+only if it has its own local `@ConfigurationProperties` classes to bind (`content-service`'s
+`InternalApiProperties`, `ai-service`'s dozen-plus `config/*`/`config/chat/*` classes) — that's
+always been safe, since those classes live in the service's own package tree, not a sibling.
+Concrete benefit beyond just avoiding scan bugs: `AsyncEventThreadPoolConfig` (and its Micrometer
+instrumentation) is now only created in the two services that actually dispatch an
+`@EventHandler` (`ai-service`, `social-service`) — `task-service`/`ecommerce-service`/
+`identity-service`/`content-service` no longer instantiate it at all, where a package scan always
+would have. `social-service` also needed `@EnableAsync` fixed in the same overall pass — missing
+entirely, which doesn't error the way a missing bean does (Spring just silently runs `@Async`
+methods synchronously instead), so its two friend-request event listeners had been dispatching on
+the calling thread instead of the dedicated pool the whole time. `JacksonConfig` moved from
+`gateway`'s (nonexistent, since it has no REST controllers) own `config/` package into `infra`'s
+`config/json/` as part of this same effort — every one of the six standalone services now
+`@Import`s it explicitly, same as `TraceContextFilter`. See each service's own
+`CLAUDE.md`/entry-point Javadoc and `docs/CHANGELOG.md`'s `[Unreleased]` entry for the full
+per-service import list and the full three-round bug history. Any *new* module added to this
+reactor should follow this same `@Import`/`@EnableConfigurationProperties` shape from the start for
+whichever specific `infra` beans it actually needs — don't reach for a broad
+`@ComponentScan(basePackages = {..., "com.ttg.devknowledgeplatform.infra"})` the way the very first
+attempt at this did.
 
 When proposing a new **big feature area** (broad scope, likely to grow), default to a dedicated
 Maven module mirroring this shape — owns its own entities/services *and* its own REST controllers/

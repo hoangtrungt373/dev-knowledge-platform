@@ -1,0 +1,36 @@
+spring:
+  # Database — same Postgres instance/database as the monolith (dev-premier), different schema
+  # (content, not product). Same pattern as ecommerce-service's/task-service's application-local.yml.
+  datasource:
+    url: jdbc:postgresql://localhost:5432/dev-premier
+    username: postgres
+    password: password
+    driver-class-name: org.postgresql.Driver
+
+  # JPA — looser than base for local dev, same convention as gateway's/ecommerce-service's
+  # application-local.yml
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: false
+        highlight_sql: true
+
+# Logging
+logging:
+  level:
+    com.ttg.devknowledgeplatform.content: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+
+# Management — expose more endpoints locally
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env,configprops
+  endpoint:
+    health:
+      show-details: always

@@ -47,17 +47,27 @@ names) — grepped for real consumers first (`gui`'s `@auth` feature reads those
 the *logged-in user's own* account dashboard via `identity-service`'s unrelated endpoint, never off
 a friend's public profile) and confirmed dropping them is safe.
 
-- `SocialServiceApplication` — `@SpringBootApplication` + `@ComponentScan(basePackages =
-  {"...social", "...infra"})` + `@EnableAsync`. Both were added/fixed in the same pass, once an
-  audit found no standalone service in this reactor actually reached `infra`'s sibling package by
-  default: this module injects `infra.service.StorageService` (`FriendMapper`/`MessagingMapper`
-  avatar/attachment presigned URLs) and its two `FriendRequest*EventListener`s extend `infra`'s
-  `AsyncEventHandler`, needing `infra`'s own `AsyncEventThreadPoolConfig` bean. `@EnableAsync` was
-  missing entirely before this fix — a quieter bug than a missing bean, since Spring doesn't error
-  on a missing `@EnableAsync`, it just silently runs `@Async` methods synchronously — so both
+- `SocialServiceApplication` — `@SpringBootApplication` +
+  `@EnableConfigurationProperties(AsyncEventThreadPoolProperties.class)` +
+  `@Import({JacksonConfig.class, TraceContextFilter.class, StorageProperties.class,
+  StorageConfig.class, StorageServiceImpl.class, KeycloakRealmRoleConverter.class,
+  AsyncEventThreadPoolConfig.class})` + `@EnableAsync`. Names the exact `infra` beans this module
+  uses — `StorageProperties`/`StorageConfig`/`StorageServiceImpl` for `FriendMapper`/
+  `MessagingMapper`'s avatar/attachment presigned URLs, `KeycloakRealmRoleConverter` for this
+  module's own local `security.KeycloakJwtAuthenticationConverter`'s role-mapping delegate,
+  `AsyncEventThreadPoolConfig` (+ its properties, registered separately since it's a bare
+  `@ConfigurationProperties` POJO with no `@Component`) because its two
+  `FriendRequest*EventListener`s genuinely extend `infra`'s `AsyncEventHandler` — instead of
+  widening `@ComponentScan`/`@ConfigurationPropertiesScan` to the whole sibling `infra` package the
+  way an earlier revision did. That broad-scan approach took three rounds of real startup failures
+  on `task-service` (a sibling in the identical shape) to get right before this reactor moved to
+  explicit imports instead — see `infra/CLAUDE.md`'s note and `docs/CHANGELOG.md`'s `[Unreleased]`
+  entry for the full history. This module has no local `@ConfigurationProperties` classes of its
+  own, so no `@ConfigurationPropertiesScan` is declared at all. `@EnableAsync` was missing entirely
+  until this same overall pass — a quieter bug than a missing bean, since Spring doesn't error on a
+  missing `@EnableAsync`, it just silently runs `@Async` methods synchronously — so both
   listeners had been dispatching on the calling thread instead of the dedicated
-  `asyncEventExecutor` pool the whole time. See `infra/CLAUDE.md`'s `JacksonConfig` note for the
-  full reactor-wide finding.
+  `asyncEventExecutor` pool the whole time.
 - `api/` (+ `api/impl/`) — REST controllers and their interfaces, moved here from `gateway` (named
   `api` at the time): `FriendApi`/`FriendController`, `GroupApi`/`GroupController`,
   `DmApi`/`DmController`, plus the STOMP counterparts `GroupMessagingApi`/`GroupMessagingController`

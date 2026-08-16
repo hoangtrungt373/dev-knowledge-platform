@@ -2,8 +2,14 @@ package com.ttg.devknowledgeplatform.ecommerce;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Import;
 import org.springframework.scheduling.annotation.EnableScheduling;
+
+import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
+import com.ttg.devknowledgeplatform.infra.security.KeycloakJwtAuthenticationConverter;
+import com.ttg.devknowledgeplatform.infra.security.KeycloakRealmRoleConverter;
+import com.ttg.devknowledgeplatform.infra.service.impl.SlugServiceImpl;
+import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
 
 /**
  * Entry point for the standalone {@code ecommerce-service} application — extracted out of the
@@ -15,28 +21,32 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * {@code social-service}/{@code ai-service}/{@code task-service}/{@code identity-service} — this
  * app has no Maven dependency on any of them anyway.
  *
- * <p><b>{@code @ComponentScan(basePackages = ...)}</b> explicitly re-adds
- * {@code com.ttg.devknowledgeplatform.infra} — a sibling of this module's own
- * {@code com.ttg.devknowledgeplatform.ecommerce} package, not a parent, so default scanning
- * (rooted at this class's own package) never reached it on its own. This module injects
- * {@code infra.service.SlugService} (for product slugs), which would otherwise have had no bean
- * definition available and failed at startup with an unsatisfied-dependency error — a real,
- * previously-undetected gap across every standalone service in this reactor that uses an
- * {@code infra} bean, caught and fixed reactor-wide in the same pass as this comment (see
- * {@code docs/CHANGELOG.md}). Declaring the base package list explicitly means this module's own
- * package must be listed too — an explicit {@code @ComponentScan} replaces the implicit
- * single-package default {@code @SpringBootApplication} provides, rather than adding to it.
+ * <p><b>{@code @Import} names the exact {@code infra} beans this module actually uses</b>, instead
+ * of widening {@code @ComponentScan}/{@code @ConfigurationPropertiesScan} to the whole sibling
+ * {@code infra} package the way an earlier revision of this class did. That broad-scan approach
+ * went through two rounds of real startup failures on `task-service` (a sibling in the identical
+ * shape) — a bare {@code @ConfigurationPropertiesScan} never reaching {@code infra} at all, then
+ * {@code infra.config.thread.AsyncEventThreadPoolConfig} getting instantiated (and failing to
+ * construct) even though this module dispatches no {@code @EventHandler} — before landing on this
+ * explicit-import shape; see {@code docs/CHANGELOG.md}'s `[Unreleased]` entry for the full history.
+ * This module imports: {@link JacksonConfig} (shared {@code ObjectMapper} customization, needed by
+ * every app in this reactor), {@link TraceContextFilter} (distributed-tracing MDC binding + access
+ * logging, likewise reactor-wide), {@link SlugServiceImpl} (product/category slug generation, used
+ * by {@code ProductServiceImpl}/{@code ProductCategoryServiceImpl}), and
+ * {@link KeycloakJwtAuthenticationConverter} plus its own collaborator
+ * {@link KeycloakRealmRoleConverter} (JWT → {@code CustomOAuth2User} principal, used by this
+ * module's own {@code security.SecurityConfig}). It does *not* import
+ * {@code infra.config.thread.AsyncEventThreadPoolConfig} — this module dispatches no
+ * {@code @EventHandler}, so that bean is simply never created here.
  *
- * <p>No {@code @EntityScan}/{@code @EnableJpaRepositories} here — this module doesn't touch
- * {@code common.entity.User}/{@code common.repository.UserRepository} at all.
- * {@code KeycloakJwtAuthenticationConverter} builds its {@code CustomOAuth2User} principal
- * directly from the verified JWT's claims (no local {@code User} row persisted or read — see that
- * class's Javadoc and the {@code project-microservices-extraction-plan} memory for the "Option C"
- * decision this reflects), and none of this module's own entities have a foreign key onto a user.
- * (An earlier revision of this class briefly carried both annotations plus
- * an {@code ecommerce.USER} table migration, built on the assumption this module needed a real
- * local {@code User} copy — reverted once it became clear the only real need was resolving the
- * current caller's identity, fully answerable from the JWT alone.)
+ * <p>No {@code @EntityScan}/{@code @EnableJpaRepositories} on {@code EcommerceServiceApplication},
+ * and no dependency on {@code common.entity.User}/{@code common.repository.UserRepository}
+ * anywhere in this module — this module doesn't persist a local {@code User} row at all (see
+ * {@code KeycloakJwtAuthenticationConverter}, above, and the "Option C" decision in the
+ * {@code project-microservices-extraction-plan} memory). An earlier revision of this class briefly
+ * carried both annotations plus an {@code ecommerce.USER} table migration, built on the assumption
+ * this module needed a real local {@code User} copy — reverted once it became clear the only real
+ * need was resolving the current caller's identity, fully answerable from the JWT alone.
  *
  * <p>{@code @EnableScheduling} is declared here because {@link com.ttg.devknowledgeplatform.ecommerce.outbox.OutboxRelay}
  * needs it and, unlike when this module ran inside the monolith (where {@code ai-service}'s
@@ -44,7 +54,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * {@code ai-service} at all.
  */
 @SpringBootApplication
-@ComponentScan(basePackages = {"com.ttg.devknowledgeplatform.ecommerce", "com.ttg.devknowledgeplatform.infra"})
+@Import({JacksonConfig.class, TraceContextFilter.class, SlugServiceImpl.class,
+        KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class})
 @EnableScheduling
 public class EcommerceServiceApplication {
 

@@ -20,12 +20,18 @@ module at all — nor does `social-service`, which used to be the one module all
 **`gateway`-side HTTP proxying to this service is not built yet** — until it is, this service is only
 reachable directly on its own port, same limitation `ecommerce-service` has.
 
-- `IdentityServiceApplication` — `@SpringBootApplication` + `@ComponentScan(basePackages =
-  {"...identity", "...infra"})` entry point. The explicit `@ComponentScan` was added reactor-wide
-  once an audit found no standalone service actually reached `infra`'s sibling package by default —
-  here, `UserController`/`UserMapper` inject `infra.service.StorageService` (avatar upload), which
-  would otherwise have failed to resolve at Spring context startup; see `infra/CLAUDE.md`'s
-  `JacksonConfig` note for the full reactor-wide finding. **No `@EntityScan`/
+- `IdentityServiceApplication` — `@SpringBootApplication` +
+  `@Import({JacksonConfig.class, TraceContextFilter.class, StorageProperties.class,
+  StorageConfig.class, StorageServiceImpl.class, KeycloakRealmRoleConverter.class})` entry point.
+  Names the exact `infra` beans this module uses — the `MinioClient` bean plus the avatar-upload
+  service built on it (`UserController`/`UserMapper`), and `KeycloakRealmRoleConverter` for this
+  module's own local `security.KeycloakJwtAuthenticationConverter`'s role-mapping delegate — instead
+  of widening `@ComponentScan`/`@ConfigurationPropertiesScan` to the whole sibling `infra` package
+  the way an earlier revision did. That broad-scan approach took three rounds of real startup
+  failures on `task-service` (a sibling in the identical shape) to get right before this reactor
+  moved to explicit imports instead — see `infra/CLAUDE.md`'s note and `docs/CHANGELOG.md`'s
+  `[Unreleased]` entry for the full history. `AsyncEventThreadPoolConfig` is deliberately **not**
+  imported here — this module has no `@EventHandler` to dispatch. **No `@EntityScan`/
   `@EnableJpaRepositories` anymore** — `User`/`UserRepository` used to live in `common.entity`/
   `common.repository` (default JPA scanning, scoped to this class's own package tree, doesn't reach
   there, so both annotations used to widen the scan explicitly — a real bug this module hit and

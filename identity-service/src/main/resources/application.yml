@@ -1,3 +1,16 @@
+app:
+  # MinIO — avatar upload (UserController/UserMapper, via infra's StorageService/StorageConfig).
+  # Same MinIO instance/bucket/property keys social-service already uses; this block was missing
+  # entirely from this module's own extraction until StorageServiceImpl was actually constructed
+  # for the first time (previously masked by the component-scan/@ConfigurationPropertiesScan bugs
+  # documented in root CLAUDE.md and docs/CHANGELOG.md — see the `[Unreleased]` entry).
+  storage:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${MINIO_SECRET_KEY:minioadmin}
+    bucket: ${MINIO_BUCKET:user-avatars}
+    presigned-url-expiry-minutes: ${MINIO_PRESIGNED_EXPIRY:60}
+
 spring:
   application:
     name: identity-service

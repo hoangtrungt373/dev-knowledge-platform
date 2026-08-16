@@ -27,16 +27,23 @@ module has no standalone single-service compose file of its own) are in place no
 own `ContentServiceClient` (server-to-server, against `/internal/content-items/**`) is the one real
 inter-service call that exists today.
 
-- `ContentServiceApplication` — `@SpringBootApplication` + `@ComponentScan(basePackages =
-  {"...content", "...infra"})` + `@ConfigurationPropertiesScan` entry point (the
-  `@ConfigurationPropertiesScan` is required here — this module no longer rides on `gateway`'s).
-  The explicit `@ComponentScan` was added reactor-wide once an audit found no standalone service
-  actually reached `infra`'s sibling package by default — here, this module injects
-  `infra.service.SlugService` and its seeders extend `infra.service.seed.CsvSeeder`; see
-  `infra/CLAUDE.md`'s `JacksonConfig` note for the full reactor-wide finding. **No
-  `@EntityScan`/`@EnableJpaRepositories`** — this module doesn't touch `common.entity.User`/
-  `common.repository.UserRepository` at all (see the "No local `User` copy" rule below). Default
-  scanning already covers this module's own `entity`/`repository` packages.
+- `ContentServiceApplication` — `@SpringBootApplication` + `@ConfigurationPropertiesScan` (bare, no
+  `basePackages` — covers this module's own `InternalApiProperties`, a subpackage of `...content`,
+  same as always) + `@Import({JacksonConfig.class, TraceContextFilter.class, SlugServiceImpl.class,
+  KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class})` entry point. Names
+  the exact `infra` beans this module uses — `SlugServiceImpl` for category/tag slugs (used by
+  `CategorySeeder`/`TagSeeder` and the four service impls), the Keycloak pair for this module's own
+  `SecurityConfig` — instead of widening `@ComponentScan`/`@ConfigurationPropertiesScan` to the
+  whole sibling `infra` package the way an earlier revision did. That broad-scan approach took
+  three rounds of real startup failures on `task-service` (a sibling in the identical shape) to get
+  right before this reactor moved to explicit imports instead — see `infra/CLAUDE.md`'s note and
+  `docs/CHANGELOG.md`'s `[Unreleased]` entry for the full history. `AsyncEventThreadPoolConfig` is
+  deliberately **not** imported here — this module has no `@EventHandler` to dispatch.
+  `CategorySeeder`/`TagSeeder` extending `infra.service.seed.CsvSeeder` needs no import of its own
+  — a plain abstract superclass, not a bean. **No `@EntityScan`/`@EnableJpaRepositories`** — this
+  module doesn't touch `common.entity.User`/`common.repository.UserRepository` at all (see the "No
+  local `User` copy" rule below). Default scanning already covers this module's own
+  `entity`/`repository` packages.
 - `security/` — this app's own filter chain, independent of `gateway`'s, since it now runs on its
   own port and must guard its own endpoints regardless of whether `gateway` is proxying to it
   (mirrors `identity-service`'s/`ecommerce-service`'s/`task-service`'s `security/`).

@@ -3,8 +3,17 @@ package com.ttg.devknowledgeplatform.ai;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
-import org.springframework.context.annotation.ComponentScan;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Import;
 import org.springframework.scheduling.annotation.EnableAsync;
+
+import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
+import com.ttg.devknowledgeplatform.infra.config.thread.AsyncEventThreadPoolConfig;
+import com.ttg.devknowledgeplatform.infra.config.thread.AsyncEventThreadPoolProperties;
+import com.ttg.devknowledgeplatform.infra.security.JsonAuthenticationEntryPoint;
+import com.ttg.devknowledgeplatform.infra.security.KeycloakJwtAuthenticationConverter;
+import com.ttg.devknowledgeplatform.infra.security.KeycloakRealmRoleConverter;
+import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
 
 /**
  * Entry point for the standalone {@code ai-service} application — extracted out of the monolith
@@ -20,20 +29,37 @@ import org.springframework.scheduling.annotation.EnableAsync;
  * {@code content-service} was removed in an earlier step of that module's own extraction — see
  * {@code content-service/CLAUDE.md}).
  *
- * <p><b>{@code @ComponentScan(basePackages = ...)}</b> explicitly re-adds
- * {@code com.ttg.devknowledgeplatform.infra} — a sibling package, not a parent, so default
- * scanning never reached it. This module's own {@code event/PipelineCompletedEventListener}
- * extends {@code infra}'s {@code AsyncEventHandler}, which needs {@code infra}'s own
- * {@code AsyncEventThreadPoolConfig} bean (the `asyncEventExecutor` its {@code @Async} dispatch
- * runs on) to exist in this context — without this annotation that bean was never found, a real,
- * previously-undetected gap across every standalone service in this reactor that uses an
- * {@code infra} bean, caught and fixed reactor-wide in the same pass as this comment (see
- * {@code docs/CHANGELOG.md}). Unlike {@code social-service}'s equivalent gap, this one never
- * silently downgraded to synchronous dispatch — {@code @EnableAsync} was already correctly
- * declared below, so the missing bean would have failed the app outright at startup instead. This
- * module's own package must be listed explicitly too — an explicit {@code @ComponentScan}
- * replaces the implicit single-package default {@code @SpringBootApplication} provides, rather
- * than adding to it.
+ * <p><b>{@code @Import}/{@code @EnableConfigurationProperties} name the exact {@code infra} beans
+ * this module actually uses</b>, instead of widening {@code @ComponentScan}/
+ * {@code @ConfigurationPropertiesScan} to the whole sibling {@code infra} package the way an
+ * earlier revision of this class did. That broad-scan approach went through two rounds of real
+ * startup failures on `task-service` (a sibling in the identical shape) — a bare
+ * {@code @ConfigurationPropertiesScan} never reaching {@code infra} at all, then this very module's
+ * {@code infra.config.thread.AsyncEventThreadPoolConfig} usage relying on scan-order luck rather
+ * than an explicit dependency — before landing on this explicit-import shape; see
+ * {@code docs/CHANGELOG.md}'s `[Unreleased]` entry for the full history. This module imports:
+ * {@link JacksonConfig} (shared {@code ObjectMapper} customization, needed by every app in this
+ * reactor), {@link TraceContextFilter} (distributed-tracing MDC binding + access logging, likewise
+ * reactor-wide), {@link JsonAuthenticationEntryPoint} (JSON {@code 401} body, referenced by this
+ * module's own {@code security.SecurityConfig.exceptionHandling()}),
+ * {@link KeycloakJwtAuthenticationConverter} plus its own collaborator
+ * {@link KeycloakRealmRoleConverter} (JWT → {@code CustomOAuth2User} principal), and
+ * {@link AsyncEventThreadPoolConfig} — genuinely needed here, unlike `task-service`/
+ * `ecommerce-service`/`identity-service`/`content-service` — because this module's own
+ * {@code event/PipelineCompletedEventListener} extends {@code infra}'s {@code AsyncEventHandler},
+ * whose {@code @Async} dispatch runs on the {@code asyncEventExecutor} bean that class provides.
+ * {@code @EnableConfigurationProperties(AsyncEventThreadPoolProperties.class)} registers that
+ * config's own constructor dependency — a bare {@code @ConfigurationProperties} POJO with no
+ * {@code @Component} of its own, so it needs explicit registration the way a plain
+ * {@code @Import} wouldn't reliably guarantee for a properties-only class.
+ *
+ * <p>{@code @ConfigurationPropertiesScan} (bare, no {@code basePackages}) is kept for this
+ * module's own many {@code @ConfigurationProperties} classes ({@code config/*}, {@code config/chat/*}
+ * — over a dozen of them), all in subpackages of this class's own, so the default
+ * declaring-class-rooted scan already covers every one of them without needing to reach
+ * {@code infra} at all (that's the one thing the broad-scan approach above got right for this
+ * module; the bug was only ever about the sibling {@code infra} package, handled explicitly above
+ * instead now).
  *
  * <p>No {@code @EntityScan}/{@code @EnableJpaRepositories} here — this module doesn't touch
  * {@code common.entity.User}/{@code common.repository.UserRepository} at all.
@@ -50,14 +76,13 @@ import org.springframework.scheduling.annotation.EnableAsync;
  * context. {@code @EnableScheduling} is already declared on this module's own
  * {@code AiServiceConfig} (for {@code CorpusStatisticsServiceImpl}'s centroid refresh), so it isn't
  * repeated here.
- *
- * <p>{@code @ConfigurationPropertiesScan} is required here (unlike when this module ran embedded in
- * {@code gateway}, which already had one covering this package too) so this module's many
- * {@code @ConfigurationProperties} classes (config/*, config/chat/*, config/thread/*) still get bound.
  */
 @SpringBootApplication
-@ComponentScan(basePackages = {"com.ttg.devknowledgeplatform.ai", "com.ttg.devknowledgeplatform.infra"})
 @ConfigurationPropertiesScan
+@EnableConfigurationProperties(AsyncEventThreadPoolProperties.class)
+@Import({JacksonConfig.class, TraceContextFilter.class, JsonAuthenticationEntryPoint.class,
+        KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
+        AsyncEventThreadPoolConfig.class})
 @EnableAsync
 public class AiServiceApplication {
 

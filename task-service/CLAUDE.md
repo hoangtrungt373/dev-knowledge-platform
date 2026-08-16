@@ -21,13 +21,20 @@ the Maven dependency, so dropping it was a pure `pom.xml` edit. **`gateway`-side
 this service is not built yet** — until it is, this service is only reachable directly on its own
 port, same limitation `ecommerce-service`/`identity-service` have.
 
-- `TaskServiceApplication` — `@SpringBootApplication` + `@ComponentScan(basePackages =
-  {"...task", "...infra"})` entry point. This module doesn't actually inject any `infra` bean today
-  (confirmed via a reactor-wide grep) — the `@ComponentScan` is a no-op here, added purely for
-  consistency with the other five standalone services (all of which genuinely needed it once an
-  audit found none of the six reached `infra`'s sibling package by default — see `infra/CLAUDE.md`'s
-  `JacksonConfig` note) and to prevent this exact gap from resurfacing silently the moment this
-  module ever does add an `infra` dependency. **No `@EntityScan`/`@EnableJpaRepositories`** — this
+- `TaskServiceApplication` — `@SpringBootApplication` +
+  `@Import({JacksonConfig.class, TraceContextFilter.class, KeycloakRealmRoleConverter.class,
+  KeycloakJwtAuthenticationConverter.class})` entry point. Names the exact `infra` beans this
+  module uses instead of widening `@ComponentScan`/`@ConfigurationPropertiesScan` to the whole
+  sibling `infra` package the way an earlier revision did — that broad-scan approach took three
+  rounds of real startup failures to get right (`ConflictingBeanDefinitionException` from a stale
+  build artifact, a bare `@ConfigurationPropertiesScan` not reaching `infra` at all, then
+  `infra.config.thread.AsyncEventThreadPoolConfig` getting instantiated and failing to construct
+  even though this module dispatches no `@EventHandler`) before landing on this explicit-import
+  shape instead — see `infra/CLAUDE.md`'s note and `docs/CHANGELOG.md`'s `[Unreleased]` entry for
+  the full history. `AsyncEventThreadPoolConfig` is deliberately **not** imported here — this
+  module has no `@EventHandler` to dispatch, so unlike a blanket package scan, that bean (and its
+  Micrometer instrumentation) is simply never created in this context. **No
+  `@EntityScan`/`@EnableJpaRepositories`** — this
   module doesn't touch `common.entity.User`/`common.repository.UserRepository` at all (unlike
   `identity-service`, and *unlike an earlier revision of this module itself* — see the "No local
   `User` copy" rule below). Default scanning already covers this module's own `entity`/`repository`
