@@ -94,9 +94,16 @@ export default function SignUp(): JSX.Element {
     e.preventDefault();
     if (!validateForm()) return;
     guard(async () => {
-      const tokens = await authApi.register(firstName.trim(), lastName.trim() || undefined, email, password, showError);
-      authService.storeTokens(tokens);
-      navigate('/dashboard', { replace: true });
+      try {
+        // No showError passthrough here — a single catch below handles both calls' errors so
+        // failures aren't shown twice.
+        await authApi.register(firstName.trim(), lastName.trim() || undefined, email, password);
+        await authService.loginWithPassword(email, password);
+        navigate('/dashboard', { replace: true });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+        showError(message);
+      }
     });
   };
 

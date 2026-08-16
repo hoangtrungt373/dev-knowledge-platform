@@ -1200,19 +1200,23 @@ as `ecommerce-service`/`identity-service`.
 
 ## identity-service
 
-Keycloak now owns login/registration/password/OTP/OAuth2-brokering entirely (see
-`docs/CHANGELOG.md`'s Keycloak migration entries) — this module narrowed to JIT-syncing a local
-`User` row from a verified Keycloak identity, plus the authenticated user's own profile. **Now a
+Keycloak now owns login/password/OTP/OAuth2-brokering entirely (see `docs/CHANGELOG.md`'s Keycloak
+migration entries) — this module narrowed to JIT-syncing a local `User` row from a verified
+Keycloak identity, the authenticated user's own profile, and — reintroduced in a later
+`docs/CHANGELOG.md` `[Unreleased]` entry — **registration**, now implemented as a server-side call
+to Keycloak's own Admin REST API (`KeycloakAdminService`) rather than local password hashing, since
+Keycloak's token endpoint can only authenticate an existing user, never create one. **Now a
 standalone Spring Boot application, not part of the monolith** — see the
 `project-microservices-extraction-plan` memory for the full extraction history.
 
 **Extraction (done):** own `IdentityServiceApplication` entry point, own `identity` Postgres schema
 (separate from the monolith's `product` schema), own JWT verification (`security/` — verifies
-tokens issued by Keycloak, never issues its own), own port (`8082`), own Liquibase changelog +
-`identity-service-liquibase.yml` docker-compose file. `gateway` no longer has a Maven dependency on
-this module, and vice versa was never true. **Not yet built:** the `gateway`-side HTTP proxy to
-this service — until that exists, it's only reachable directly on its own port, same limitation
-`ecommerce-service` has.
+tokens issued by Keycloak, never issues its own), own port (`8082`), own Liquibase changelog
+applied via the consolidated `services-liquibase` job in `docker-compose.apps.yml` (no standalone
+`identity-service-liquibase.yml` file — see root `CLAUDE.md`'s Migrations section). `gateway` no
+longer has a Maven dependency on this module, and vice versa was never true. **Not yet built:** the
+`gateway`-side HTTP proxy to this service — until that exists, it's only reachable directly on its
+own port, same limitation `ecommerce-service` has.
 
 **Now also the sole owner of `User`/`UserRepository`/`UserProvider`/`UserRole`/`UserStatus`** — all
 five moved here outright from `common` once `gateway` retired its own local `User` copy entirely
@@ -1256,9 +1260,12 @@ identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
 │                                        before that module moved to its own SocialProfile/
 │                                        SocialProfileRepository) — kept rather than silently dropped
 ├── api/
-│   ├── AuthApi.java                   — GET /api/v1/auth/user ONLY (renamed from OAuth2Api once
-│   │                                     every other endpoint on it was deleted — Keycloak's own
+│   ├── AuthApi.java                   — GET /api/v1/auth/user (renamed from OAuth2Api once every
+│   │                                     other pre-Keycloak endpoint was deleted — Keycloak's own
 │   │                                     /userinfo doesn't cover this app's avatar/username shape)
+│   │                                     + POST /api/v1/auth/register (added back later — creates
+│   │                                     the Keycloak account via KeycloakAdminService; the one
+│   │                                     endpoint on this module that's `permitAll`, no token yet)
 │   ├── UserApi.java                   — PUT /me, POST /me/avatar ONLY — pure profile mutation. GET
 │   │   │                                 /public/{userUuid} and GET /search live in `social-service`'s
 │   │   │                                 own `UserApi` instead (see that section) since they need
@@ -1268,13 +1275,30 @@ identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
 │   │   └── impl/                      — AuthController / UserController
 ├── mapper/
 │   └── UserMapper.java                — entity → dto/UserInfoResponse
+├── config/
+│   ├── KeycloakAdminProperties.java   — server-url/realm/client-id/client-secret for Keycloak's
+│   │                                    Admin REST API (identity-service-admin confidential
+│   │                                    client's service account, manage-users role — see
+│   │                                    docker/keycloak/realm-export.json). Needs its own explicit
+│   │                                    @Import on IdentityServiceApplication (plain
+│   │                                    @ConfigurationProperties, no @Component stereotype)
+│   └── KeycloakAdminConfig.java       — the Keycloak admin-client bean (client_credentials grant);
+│                                        no explicit @Import needed, default scanning covers it
 ├── dto/
 │   ├── UserInfoResponse.java
-│   └── user/UpdateProfileRequest.java
+│   ├── user/UpdateProfileRequest.java
+│   └── auth/{RegisterRequest,RegisterResponse}.java — request/response for POST /register;
+│                                        RegisterResponse matches gui's own RegisterResponse type
+│                                        exactly, since the account is created pre-verified and gui
+│                                        logs the user in itself afterward (no tokens in this response)
+├── exception/
+│   └── IdentityErrorCode.java         — this module's first ErrorCode enum: EMAIL_ALREADY_EXISTS,
+│                                        KEYCLOAK_USER_CREATE_FAILED
 └── security/
-    ├── SecurityConfig.java            — this app's own filter chain (everything requires auth
-    │                                    except `/actuator/**` — no public/admin surface here, unlike
-    │                                    content-service/ecommerce-service); pure OAuth2 resource
+    ├── SecurityConfig.java            — everything requires auth except `/actuator/**` and
+    │                                    `POST /api/v1/auth/register` (a brand-new user has no token
+    │                                    yet) — no admin surface here, unlike
+    │                                    content-service/ecommerce-service; pure OAuth2 resource
     │                                    server, verifies bearer tokens against Keycloak's JWKS
     ├── (no local KeycloakRealmRoleConverter.java anymore — uses the shared
     │    infra.security.KeycloakRealmRoleConverter bean instead, see infra section above)
@@ -1291,7 +1315,9 @@ identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
                                           (KeycloakUserInfo carrier record, same package),
                                           resolveCurrentUser, findByEmail/
                                           findByUserUuid(Optional)/findById, updateStatus,
-                                          updateProfile, updateAvatar
+                                          updateProfile, updateAvatar; plus KeycloakAdminService/Impl
+                                          — createUser(RegisterRequest), builds a UserRepresentation
+                                          and calls Keycloak's Admin REST API
 ```
 
 **Deleted outright** (all superseded by Keycloak): `security/JwtTokenProvider`,
@@ -1299,7 +1325,9 @@ identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
 `security/service/{CustomOAuth2UserService,CustomOidcUserService}`,
 `security/handler/OAuth2LoginSuccessHandler`, `security/service/StateTokenService`(`Impl`),
 `security/service/RefreshTokenBlacklistService`(`Impl`), `service/{OtpService,EmailService}`(`Impl`),
-every `dto/auth/*` type, `dto/RegisterRequest`,
+the original `dto/auth/*`/`dto/RegisterRequest` (password-confirmation/OTP-oriented — a new, smaller
+`dto/auth/{RegisterRequest,RegisterResponse}` pair came back later for the revived `register`
+endpoint, see the tree above; not the same classes),
 `dto/{OAuth2UserInfo,GoogleOAuth2UserInfo,FacebookOAuth2UserInfo,OAuth2UserInfoFactory}`, and (as
 part of this extraction) `service/seed/UserSeeder` — relocated to `gateway` at the time, since it
 only ever wrote via `common`'s `UserRepository` directly and `gateway` still needed to seed its own

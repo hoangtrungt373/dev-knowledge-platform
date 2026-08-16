@@ -20,7 +20,6 @@ import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import EmailIcon from '@mui/icons-material/Email';
 import LockIcon from '@mui/icons-material/Lock';
 import { authService } from '../services/authService';
-import { authApi } from '../api/authApi';
 import { OAuthProvider } from '../types';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
@@ -63,9 +62,13 @@ export default function Login(): JSX.Element {
     e.preventDefault();
     if (!validateForm()) return;
     guard(async () => {
-      const tokens = await authApi.login(email, password, showError);
-      authService.storeTokens(tokens);
-      navigate('/dashboard', { replace: true });
+      try {
+        await authService.loginWithPassword(email, password);
+        navigate('/dashboard', { replace: true });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
+        showError(message);
+      }
     });
   };
 

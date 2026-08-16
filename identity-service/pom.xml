@@ -77,6 +77,16 @@
             <artifactId>mapstruct</artifactId>
         </dependency>
 
+        <!-- Keycloak Admin REST API client — KeycloakAdminService uses this to create Keycloak
+             user accounts on registration (server-to-server, via the identity-service-admin
+             confidential client's service account). Version pinned to match the Keycloak server
+             image (see root pom.xml's keycloak-admin-client.version property). -->
+        <dependency>
+            <groupId>org.keycloak</groupId>
+            <artifactId>keycloak-admin-client</artifactId>
+            <version>${keycloak-admin-client.version}</version>
+        </dependency>
+
     </dependencies>
 
     <build>

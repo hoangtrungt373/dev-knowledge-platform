@@ -1,6 +1,6 @@
 import { authService } from './authService';
 import { generateCodeChallenge, generateCodeVerifier, generateState } from '../utils/pkce';
-import { decodeJwtPayload } from '@shared/utils/jwt';
+import { claimsToAuthTokens, KeycloakTokenResponse } from '../utils/keycloakClaims';
 
 export interface AdminUser {
   userUuid: string;
@@ -27,19 +27,6 @@ const CALLBACK_PATH = '/admin/auth/callback';
 // round trip to Keycloak's hosted login page, never read again after handleCallback runs.
 const PKCE_VERIFIER_KEY = 'admin_pkce_verifier';
 const PKCE_STATE_KEY = 'admin_pkce_state';
-
-interface KeycloakTokenResponse {
-  access_token: string;
-  refresh_token: string;
-  id_token: string;
-}
-
-interface AccessTokenClaims {
-  sub: string;
-  preferred_username?: string;
-  email?: string;
-  realm_access?: { roles?: string[] };
-}
 
 export const adminAuthService: AdminAuthService = {
   // Authorization Code + PKCE, redirecting the browser directly to Keycloak's hosted login page —
@@ -103,22 +90,13 @@ export const adminAuthService: AdminAuthService = {
     }
 
     const tokens: KeycloakTokenResponse = await response.json();
-    const claims = decodeJwtPayload<AccessTokenClaims>(tokens.access_token);
-    const role = claims.realm_access?.roles?.includes('ADMIN') ? 'ADMIN' : 'USER';
+    const authTokens = claimsToAuthTokens(tokens);
 
-    if (role !== 'ADMIN') {
+    if (authTokens.role !== 'ADMIN') {
       throw new Error('Access denied: admin account required');
     }
 
-    authService.storeTokens({
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      idToken: tokens.id_token,
-      userUuid: claims.sub,
-      username: claims.preferred_username ?? claims.sub,
-      email: claims.email ?? '',
-      role,
-    });
+    authService.storeTokens(authTokens);
     return true;
   },
 

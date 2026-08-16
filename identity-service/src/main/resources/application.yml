@@ -11,6 +11,15 @@ app:
     bucket: ${MINIO_BUCKET:user-avatars}
     presigned-url-expiry-minutes: ${MINIO_PRESIGNED_EXPIRY:60}
 
+  # Keycloak Admin REST API — KeycloakAdminService creates user accounts on registration via the
+  # identity-service-admin confidential client's service account (manage-users role). See
+  # docker/keycloak/realm-export.json for that client's definition.
+  keycloak-admin:
+    server-url: ${KEYCLOAK_ADMIN_SERVER_URL:http://localhost:8180}
+    realm: ${KEYCLOAK_ADMIN_REALM:dev-knowledge-platform}
+    client-id: ${KEYCLOAK_ADMIN_CLIENT_ID:identity-service-admin}
+    client-secret: ${KEYCLOAK_ADMIN_CLIENT_SECRET:dev-identity-admin-secret-change-me}
+
 spring:
   application:
     name: identity-service

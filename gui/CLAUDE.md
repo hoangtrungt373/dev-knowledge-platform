@@ -476,29 +476,46 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   `getUserFriendlyErrorMessage`/`getErrorDetails`) — don't call `fetch` directly from a
   page/component (the admin auth flow below is a deliberate exception, calling Keycloak's own
   endpoints directly rather than through `httpClient`/`gateway` — see its own note).
-  **`@auth/services/adminAuthService.ts` (admin login/logout) is fixed** — it now redirects
-  directly to Keycloak for Authorization Code + PKCE (`startLogin()`/`handleCallback()`) and does a
-  real RP-initiated logout (`logout()`), rather than calling identity-service endpoints that no
-  longer exist. See `docs/CHANGELOG.md`'s `[Unreleased]` entry for the full detail — new
-  `@auth/utils/pkce.ts` (hand-rolled code_verifier/challenge/state, no new dependency),
-  `@shared/utils/jwt.ts#decodeJwtPayload` (shared with `authService.isAuthenticated()`), a new
-  `@auth/pages/AdminAuthCallback.tsx` mounted at `/admin/auth/callback`, and new
-  `VITE_KEYCLOAK_URL`/`VITE_KEYCLOAK_REALM` env vars (`vite-env.d.ts`). Token exchange goes
-  straight from the browser to Keycloak (`http://localhost:8180` by default), never through
-  `gateway` — the "gui" Keycloak client is a public SPA client with no secret
-  (`docker/keycloak/realm-export.json`), so there's nothing for a backend to broker.
-  **Known gap, still not fixed — deliberately out of scope for the admin-login fix above**:
-  `@auth/services/authService.ts`'s `startOAuth` (`/api/v1/auth/oauth2/authorization/{provider}`)
-  and `logout` (`POST /api/v1/auth/logout`), plus `@auth/api/authApi.ts`'s `login`
-  (`POST /api/v1/auth/login`, used by the regular `Login.tsx`/`SignUp.tsx`/`VerifyOtp.tsx`/
-  state-token `AuthCallback.tsx` flow), all still call endpoints `identity-service` no longer
-  exposes — Keycloak owns the whole login/logout lifecycle now, and `identity-service`'s own
-  `AuthApi` only has `GET /api/v1/auth/user` left (see that module's `CLAUDE.md`). These predate
-  the Keycloak migration and were never updated; `logout`'s fire-and-forget `.catch(() => {})`
-  masks the failure so client-side logout still works, but `startOAuth`/regular `login` would
-  genuinely 404. Migrating the regular login/signup/Google-Facebook flow to the same
-  Authorization-Code-+-PKCE shape `adminAuthService` now uses is a real, separate piece of
-  work — don't fix it as a drive-by.
+  **`@auth/services/adminAuthService.ts` (admin login/logout) and `@auth/services/authService.ts`'s
+  `loginWithPassword`/`logout` (regular login/logout) are both fixed now — deliberately using two
+  *different* OAuth grant types, not drift.** `AdminLogin.tsx` uses Authorization Code + PKCE
+  (`adminAuthService.startLogin()`/`handleCallback()`) against the `gui` Keycloak client — the
+  recommended production shape (see `docs/CHANGELOG.md`'s `[Unreleased]` entry). `Login.tsx` uses
+  direct password grant / ROPC (`authService.loginWithPassword()`) against a **separate** new
+  `gui-password-login` client (`docker/keycloak/realm-export.json` —
+  `directAccessGrantsEnabled: true`, kept apart from `gui` so that client never gains password-grant
+  capability) — a deliberate learning choice, not the recommended pattern; don't "fix" `Login.tsx`
+  into consistency with `AdminLogin.tsx` without reading `docs/CHANGELOG.md`'s entry on why. Both
+  flows call straight from the browser to Keycloak (`http://localhost:8180` by default), never
+  through `gateway`/`identity-service` — nothing for a backend to broker either way. Both `logout()`
+  implementations now do a real RP-initiated logout against Keycloak's end-session endpoint instead
+  of the old dead `POST /api/v1/auth/logout`. Shared plumbing between the two flows:
+  `@auth/utils/pkce.ts` (admin-only — hand-rolled code_verifier/challenge/state, no new dependency),
+  `@shared/utils/jwt.ts#decodeJwtPayload` (also used by `authService.isAuthenticated()`), and new
+  `@auth/utils/keycloakClaims.ts#claimsToAuthTokens` (the "raw Keycloak token response → this app's
+  `AuthTokens` shape" adapter — decode access-token claims, derive `role` — used by both
+  `adminAuthService.handleCallback` and `authService.loginWithPassword` since it's identical
+  regardless of which grant type produced the tokens). New `VITE_KEYCLOAK_URL`/
+  `VITE_KEYCLOAK_REALM` env vars (`vite-env.d.ts`) back both. `@auth/api/authApi.ts`'s dead `login`
+  method was removed outright (no remaining callers once `Login.tsx` switched to
+  `authService.loginWithPassword`).
+  **`SignUp.tsx` is fixed too** — `authApi.register` now calls a real, revived
+  `identity-service` endpoint that creates the Keycloak account server-side via the Admin REST API
+  (see that module's `CLAUDE.md`'s `KeycloakAdminService` note and `docs/CHANGELOG.md`'s
+  `[Unreleased]` entry) — this needed a heavier mechanism than login regardless of grant type,
+  since Keycloak's token endpoint only ever authenticates an *existing* user. `authApi.ts`'s
+  `register` return type changed from `AuthTokens` to `RegisterResponse` (already defined in
+  `types.ts`) to match — the new account is created pre-verified, so `SignUp.tsx`'s
+  `handleSubmit` calls `authApi.register(...)` then `authService.loginWithPassword(email, password)`
+  itself (the same call `Login.tsx` uses) rather than expecting tokens back from the register
+  response directly.
+  **Known gap, still not fixed — deliberately out of scope**: `VerifyOtp.tsx` (still calls
+  `authApi.verifyOtp`/`resendOtp` — can't be fixed by switching grant type at all; Keycloak replaced
+  the whole OTP-email flow with its own "Verify Email" required action, a clickable link rather than
+  a 6-digit code — moot anyway now that registration creates accounts pre-verified, see above), and
+  `authService.startOAuth`/both pages' Google-Facebook buttons
+  (`/api/v1/auth/oauth2/authorization/{provider}`) — these still call endpoints `identity-service`
+  no longer exposes. Don't fix either as a drive-by.
 - Token storage keys live in `@shared/constants/storage.ts` (`STORAGE_KEYS`) — don't hardcode
   `localStorage` key strings elsewhere.
 - When the backend renames a field (e.g. the `userId` → `userUuid` rename in `CHANGELOG.md`), the

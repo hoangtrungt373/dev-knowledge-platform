@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -18,10 +19,12 @@ import org.springframework.security.web.SecurityFilterChain;
  * bearer tokens against Keycloak's JWKS ({@code spring.security.oauth2.resourceserver.jwt.issuer-uri});
  * it never issues tokens or handles a login flow.
  *
- * <p>Every endpoint this module owns ({@code AuthApi.getCurrentUser}, {@code UserApi.updateProfile}/
+ * <p>Almost every endpoint this module owns ({@code AuthApi.getCurrentUser}, {@code UserApi.updateProfile}/
  * {@code uploadAvatar}) requires authentication — unlike {@code content-service}/
- * {@code ecommerce-service}, this module has no public or admin-only surface, so the rule set is
- * just "everything requires a valid token" plus the actuator health-check carve-out.
+ * {@code ecommerce-service}, this module has no admin-only surface. The one exception is
+ * {@code POST /api/v1/auth/register}: a brand-new user has no token yet, so this single path is
+ * {@code permitAll} alongside the actuator health-check carve-out — everything else stays
+ * "requires a valid token."
  */
 @Configuration
 @EnableWebSecurity
@@ -35,6 +38,7 @@ public class SecurityConfig {
         http
             .authorizeHttpRequests(authz -> authz
                 .requestMatchers("/actuator/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2

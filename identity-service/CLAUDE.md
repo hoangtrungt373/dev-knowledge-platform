@@ -4,11 +4,15 @@ Module-local guidance for `identity-service`. Read alongside the root `CLAUDE.md
 
 ## What lives here
 
-**Login, registration, password/OTP handling, and Google/Facebook OAuth2 login are no longer this
-module's concern — Keycloak owns that entire lifecycle now** (see `docs/CHANGELOG.md`'s Keycloak
-migration entry, spanning several phases). This module narrowed to: JIT-syncing a local `User` row
-from a verified Keycloak identity, and the authenticated user's own profile (update/avatar).
-Package root: `com.ttg.devknowledgeplatform.identity.*`.
+**Login, password/OTP handling, and Google/Facebook OAuth2 login are no longer this module's
+concern — Keycloak owns that entire lifecycle now** (see `docs/CHANGELOG.md`'s Keycloak migration
+entry, spanning several phases). This module narrowed to: JIT-syncing a local `User` row from a
+verified Keycloak identity, the authenticated user's own profile (update/avatar), and — as of
+`docs/CHANGELOG.md`'s later `[Unreleased]` entry — **registration came back**, with a different
+implementation than before: rather than hashing/storing a password locally, `register` calls
+Keycloak's own Admin REST API server-side (`KeycloakAdminService`), since Keycloak's token endpoint
+can only authenticate an *existing* user, never create one. See the `KeycloakAdminService`/
+`api/AuthApi` bullets below. Package root: `com.ttg.devknowledgeplatform.identity.*`.
 
 **Now a standalone Spring Boot application, not part of the monolith** — see the
 `project-microservices-extraction-plan` memory for the full extraction history. Concretely: its own
@@ -52,29 +56,51 @@ reachable directly on its own port, same limitation `ecommerce-service` has.
 - `enums/{UserProvider,UserRole,UserStatus}` — moved here alongside `User`, for the same reason:
   all three are field types on `User`, and `identity-service` is now the only module that imports
   any of them.
-- `api/` (+ `api/impl/`) — `AuthApi`/`AuthController` (just `GET /api/v1/auth/user`, the only
-  endpoint Keycloak's own `/userinfo` doesn't cover — this app's avatar/local-username profile
-  shape; renamed from `OAuth2Api`/`OAuth2Controller` once every other endpoint on it was deleted)
-  and `UserApi`/`UserController` (`updateProfile`/`uploadAvatar` — the pure "my own profile"
-  operations that only need `UserService`/`UserMapper`/`infra`'s `StorageService`). `getPublicProfile`
-  and `search` live in `social-service`'s own `UserApi`/`UserController` instead (same `/api/v1/users`
-  mapping, different class) — that module resolves its own base lookup via `common`'s
-  `UserRepository` directly now rather than reaching into this module, since this module can no
-  longer be called in-process.
+- `api/` (+ `api/impl/`) — `AuthApi`/`AuthController` (`GET /api/v1/auth/user` — the only profile
+  endpoint Keycloak's own `/userinfo` doesn't cover — plus `POST /api/v1/auth/register`, added back
+  once Keycloak Admin API integration landed; renamed from `OAuth2Api`/`OAuth2Controller` once
+  every other pre-Keycloak endpoint on it was deleted) and `UserApi`/`UserController`
+  (`updateProfile`/`uploadAvatar` — the pure "my own profile" operations that only need
+  `UserService`/`UserMapper`/`infra`'s `StorageService`). `getPublicProfile` and `search` live in
+  `social-service`'s own `UserApi`/`UserController` instead (same `/api/v1/users` mapping, different
+  class) — that module resolves its own base lookup via `common`'s `UserRepository` directly now
+  rather than reaching into this module, since this module can no longer be called in-process.
 - `mapper/UserMapper` — MapStruct abstract class (not a plain interface) needing an injected
   `infra`'s `StorageService` for avatar presigned-URL resolution — MapStruct interfaces can't hold
   instance fields, same pattern as `social-service`'s `FriendMapper`/`MessagingMapper` (which now
   has its own, separately-duplicated `toUserInfo` method for the same shape — see that module's
   `CLAUDE.md`).
-- `dto/user/UpdateProfileRequest`, `dto/UserInfoResponse` — the only DTOs left in this module.
-  Everything auth-flow-specific (`dto/auth/*`, `dto/RegisterRequest`,
-  `dto/{OAuth2UserInfo,GoogleOAuth2UserInfo,FacebookOAuth2UserInfo,OAuth2UserInfoFactory}`) was
-  deleted alongside the endpoints/services that used them.
+- `dto/user/UpdateProfileRequest`, `dto/UserInfoResponse` — the profile DTOs.
+  `dto/auth/RegisterRequest`/`RegisterResponse` came back alongside the revived `register`
+  endpoint — a different shape than the pre-Keycloak `dto/RegisterRequest` this replaces (no
+  password-confirmation/OTP fields; `RegisterResponse` matches `gui`'s existing type exactly, since
+  the account is created pre-verified and `gui` logs the user in itself afterward rather than
+  expecting tokens back from this response). Everything else auth-flow-specific
+  (`dto/{OAuth2UserInfo,GoogleOAuth2UserInfo,FacebookOAuth2UserInfo,OAuth2UserInfoFactory}`) is
+  still deleted, alongside the endpoints/services that used them.
+- `config/KeycloakAdminProperties`/`KeycloakAdminConfig` — connection details + the `Keycloak`
+  admin-client bean (`client_credentials` grant, via the `identity-service-admin` confidential
+  client's service account — see `docker/keycloak/realm-export.json`) `KeycloakAdminService` calls
+  the Admin REST API through. `KeycloakAdminProperties` needs an explicit `@Import` on
+  `IdentityServiceApplication` (a plain `@ConfigurationProperties` class, no `@Component`
+  stereotype — default scanning alone won't register it); `KeycloakAdminConfig` doesn't, since it's
+  a real `@Configuration` class already inside this module's own scanned package tree.
+- `security/service/KeycloakAdminService` (+ `impl/`) — `createUser(RegisterRequest)`: builds a
+  `UserRepresentation` (`username` = `email`, per the realm's `registrationEmailAsUsername: true`;
+  `enabled`/`emailVerified` both `true` — a deliberate scope choice, not gated on Keycloak's real
+  "Verify Email" required action, see `docs/CHANGELOG.md`) and calls
+  `keycloak.realm(...).users().create(...)`, mapping the Admin API's own 409 response to
+  `IdentityErrorCode.EMAIL_ALREADY_EXISTS`.
+- `exception/IdentityErrorCode` — this module's first `ErrorCode` enum (implements `common`'s
+  `ErrorCode` interface, mirroring `content-service`'s `ContentErrorCode`) — `EMAIL_ALREADY_EXISTS`/
+  `KEYCLOAK_USER_CREATE_FAILED`, both thrown by `KeycloakAdminService`.
 - `security/` — this app's own filter chain, independent of `gateway`'s, since it now runs on its
   own port and must guard its own endpoints regardless of whether `gateway` is proxying to it
   (mirrors `ecommerce-service`'s `security/` package). `SecurityConfig` requires authentication on
-  everything except `/actuator/**` — unlike `content-service`/`ecommerce-service`, this module has
-  no public or admin-only surface. **No local `KeycloakRealmRoleConverter` anymore** — this module
+  everything except `/actuator/**` and `POST /api/v1/auth/register` — the latter is the one
+  deliberate exception (a brand-new user has no token yet); unlike `content-service`/
+  `ecommerce-service`, this module has no admin-only surface. **No local `KeycloakRealmRoleConverter`
+  anymore** — this module
   uses `infra.security.KeycloakRealmRoleConverter` (the shared bean, see `infra/CLAUDE.md`) for
   `realm_access.roles` → `ROLE_*` mapping, picked up via this module's existing `@ComponentScan`
   reaching `infra`. `security/KeycloakJwtAuthenticationConverter` itself stays local, though — it's
@@ -105,7 +131,11 @@ column now set to a fixed placeholder string on JIT-created rows, never read/com
 `security/handler/OAuth2LoginSuccessHandler`, `security/service/StateTokenService`(`Impl`),
 `security/service/RefreshTokenBlacklistService`(`Impl`), `service/{OtpService,EmailService}`(`Impl`)
 (the whole OTP-email flow — Keycloak's own "Verify Email" required action replaces it, a click-
-through link rather than a 6-digit code), every `OAuth2Api` endpoint except `getCurrentUser`, and —
+through link rather than a 6-digit code — this module creates users pre-verified today anyway, see
+the `KeycloakAdminService` bullet above, so this OTP flow has no replacement pending), every
+`OAuth2Api` endpoint except `getCurrentUser` **at the time of that migration** (`register` came
+back later with a different implementation — see "What lives here" above — do not read this as
+register being gone forever), and —
 as part of the standalone extraction — `service/seed/UserSeeder`, relocated to `gateway` at the
 time (it only ever wrote via `common`'s `UserRepository` directly, no other dependency on this
 module, and `gateway` still needed to seed its own `product.USER` for the modules still embedded
@@ -115,7 +145,11 @@ reactor anymore, and this module still needs no seed data of its own: a seeded d
 matching Keycloak identity, so this module's own `identity.USER` table only ever fills via
 JIT-provisioning on a real login. The pom's leftover JJWT/Redis-for-blacklist/mail-for-OTP
 dependencies (never cleaned up when the classes using them were deleted) were removed alongside the
-standalone extraction too.
+standalone extraction too. A new, unrelated dependency was added back later for a different reason
+— `org.keycloak:keycloak-admin-client` (version pinned via root `pom.xml`'s
+`keycloak-admin-client.version`, matching the Keycloak server image), backing
+`KeycloakAdminService`'s registration call. Don't confuse this with the deleted local-auth
+dependencies above; this one talks to Keycloak's Admin REST API, not a local credential store.
 
 ## Rules specific to this module
 
@@ -130,6 +164,12 @@ standalone extraction too.
 - **Business logic (validation, uniqueness checks) belongs in `security/service`'s implementations,
   not in `api/impl` controllers** — a controller method should resolve the authenticated principal,
   build a call from the request DTO, call the service, map the result.
+- **The `identity-service-admin` Keycloak client secret (`app.keycloak-admin.client-secret`) must
+  never reach `gui` or any other frontend** — it's a confidential client with real
+  `manage-users` capability, kept entirely separate from the public `gui`/`gui-password-login`
+  clients for exactly this reason. If a future change needs this service to call any other
+  privileged Keycloak Admin API operation, reuse this same client/service account rather than
+  minting another one, but never widen its exposure beyond this module's own backend config.
 - The types this module imports from `common`/`infra` rather than owning locally —
   `common.dto.PagedResponse` (unused here directly today, but the shared type other modules use for
   paged responses), `common.dto.CustomOAuth2User`, `infra.service.StorageService` — stay there since

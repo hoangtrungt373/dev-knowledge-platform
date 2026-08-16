@@ -4,6 +4,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Import;
 
+import com.ttg.devknowledgeplatform.identity.config.KeycloakAdminConfig;
+import com.ttg.devknowledgeplatform.identity.config.KeycloakAdminProperties;
 import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
 import com.ttg.devknowledgeplatform.infra.config.storage.StorageConfig;
 import com.ttg.devknowledgeplatform.infra.config.storage.StorageProperties;
@@ -39,7 +41,16 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
  * — see that class's own Javadoc for why this module keeps a local converter rather than using
  * {@code infra}'s shared one). It does *not* import
  * {@code infra.config.thread.AsyncEventThreadPoolConfig} — this module dispatches no
- * {@code @EventHandler}, so that bean is simply never created here.
+ * {@code @EventHandler}, so that bean is simply never created here. {@link KeycloakAdminProperties}
+ * is this module's own class (not {@code infra}'s) but still needs this explicit {@code @Import},
+ * for a different reason than the {@code infra} classes above: it's a plain
+ * {@code @ConfigurationProperties} class with no {@code @Component} stereotype, so default
+ * component scanning (which does reach this module's own {@code identity.config} package) never
+ * picks it up on its own — importing it registers the bean, then Spring Boot's auto-configured
+ * {@code ConfigurationPropertiesBindingPostProcessor} binds it, same mechanism
+ * {@link StorageProperties} above relies on. {@link KeycloakAdminConfig}, by contrast, needs no
+ * explicit import at all — it's a real {@code @Configuration} class in this module's own package
+ * tree, so default scanning already finds it.
  *
  * <p>No {@code @EntityScan}/{@code @EnableJpaRepositories} anymore — {@code User}/
  * {@code UserRepository} used to live in {@code common} (default scanning, rooted at this class's
@@ -50,7 +61,8 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
  */
 @SpringBootApplication
 @Import({JacksonConfig.class, TraceContextFilter.class, StorageProperties.class,
-        StorageConfig.class, StorageServiceImpl.class, KeycloakRealmRoleConverter.class})
+        StorageConfig.class, StorageServiceImpl.class, KeycloakRealmRoleConverter.class,
+        KeycloakAdminProperties.class})
 public class IdentityServiceApplication {
 
     public static void main(String[] args) {

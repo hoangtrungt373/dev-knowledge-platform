@@ -52,6 +52,10 @@
         <bucket4j.version>8.10.1</bucket4j.version>
         <commons-csv.version>1.11.0</commons-csv.version>
         <spring-cloud.version>2023.0.3</spring-cloud.version>
+        <!-- Matches the quay.io/keycloak/keycloak:26.0 server image in docker-compose.infra.yml —
+             identity-service's KeycloakAdminService uses this to call Keycloak's Admin REST API
+             for user registration. -->
+        <keycloak-admin-client.version>26.0.0</keycloak-admin-client.version>
     </properties>
 
     <dependencyManagement>
