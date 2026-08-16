@@ -130,9 +130,10 @@
     <build>
         <!-- Include the Liquibase changelog XML/SQL bundled under src/main/java so they end up on
              the runtime classpath — same shape as identity-service's/task-service's/
-             content-service's pom.xml. This module's own changelog is run via a standalone
-             ai-service-liquibase.yml docker-compose file (spring.liquibase.enabled stays false
-             here too), not on app boot. -->
+             content-service's pom.xml. This module's own changelog is run via the consolidated
+             services-liquibase job in docker-compose.apps.yml (no dedicated
+             ai-service-liquibase.yml file exists), not on app boot — spring.liquibase.enabled
+             stays false here too. -->
         <resources>
             <resource>
                 <directory>src/main/resources</directory>

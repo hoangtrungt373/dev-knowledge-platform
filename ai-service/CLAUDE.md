@@ -19,10 +19,10 @@ database, not a separate instance — per-service-per-schema, see root `CLAUDE.m
 Conventions), its own port (`8086`), and its own Liquibase changelog. This module already had no
 Maven dependency on `content-service` going into this extraction (see the Rules section below); the
 work here was giving it its own app shell/security/schema and severing `gateway`'s Maven dependency
-on it — not another HTTP rewrite. Its own `Dockerfile` and
-`dev-knowledge-platform-apps-docker-compose.yml`/`ai-service-liquibase.yml` wiring are in place now
-(port `8086`); `gateway`-side HTTP proxying for end-user traffic to this service is not built yet,
-same as every other standalone service in this reactor.
+on it — not another HTTP rewrite. Its own `Dockerfile` and `docker-compose.apps.yml` wiring (the
+consolidated `services-liquibase` job — this module has no dedicated `ai-service-liquibase.yml`
+file of its own) are in place now (port `8086`); `gateway`-side HTTP proxying for end-user traffic
+to this service is not built yet, same as every other standalone service in this reactor.
 
 - `AiServiceApplication` — `@SpringBootApplication` + `@ComponentScan(basePackages = {"...ai",
   "...infra"})` + `@ConfigurationPropertiesScan` (required here — this module no longer rides on

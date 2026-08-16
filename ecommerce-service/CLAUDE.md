@@ -98,14 +98,15 @@ under this module's **own** changelog tree (`database/sql/ecommerce-service.xml`
 short-lived `DKP-0027__add_ecommerce_user_table.sql` existed briefly alongside `identity-service`'s
 extraction (an `ecommerce.USER` table, added when this module was thought to need a persisted
 `User` copy) and was removed once that assumption turned out to be wrong — see
-`EcommerceServiceApplication`'s Javadoc above. Applied via the standalone
-`ecommerce-service-liquibase.yml` docker-compose file at the repo root
-(`docker-compose -f ecommerce-service-liquibase.yml up`), mirroring the same one-shot-runner shape
-every standalone service's own `*-liquibase.yml` file follows (`gateway`'s own
-`dev-knowledge-platform-liquibase.yml` used to be the template for this, back when `gateway` still
-had a Liquibase changelog of its own — that file and the changelog behind it were both deleted
-outright once `gateway` retired its own local `User` persistence entirely, see root `CLAUDE.md`'s
-Database Conventions section). The app itself still runs with `spring.liquibase.enabled: false`.
+`EcommerceServiceApplication`'s Javadoc above. Applied via the consolidated `services-liquibase`
+job in `docker-compose.apps.yml` — this module has **no** standalone
+`ecommerce-service-liquibase.yml` file of its own (unlike `task-service`/`social-service`, which
+each kept a leftover single-service compose file from before this consolidation existed;
+`gateway`'s own old `dev-knowledge-platform-liquibase.yml` was the template for those two, back
+when `gateway` still had a Liquibase changelog of its own — that file and the changelog behind it
+were both deleted outright once `gateway` retired its own local `User` persistence entirely, see
+root `CLAUDE.md`'s Database Conventions section). The app itself still runs with
+`spring.liquibase.enabled: false`.
 
 The minimal admin vertical slice now built on top of those entities:
 
@@ -224,7 +225,7 @@ changes, `./mvnw -pl gateway -am compile`, needs `JAVA_HOME` pointed at a JDK 21
 real Postgres, so the Liquibase migration against the new `ecommerce` schema, Hibernate's
 `ddl-auto: validate` check against it, the native SQL in `ProductSearchViewRepository.search`,
 and the JWT verification path are all still unverified at runtime. A new `Dockerfile` +
-`dev-knowledge-platform-apps-docker-compose.yml` (repo root) exist to run this module in a
+`docker-compose.apps.yml` (repo root) exist to run this module in a
 container for the first time — see root `CLAUDE.md`'s Build & Run Commands — which will be the
 first real exercise of all of the above. Container datasource config is supplied via plain
 `SPRING_DATASOURCE_URL`/`_USERNAME`/`_PASSWORD`/`_DRIVER_CLASS_NAME` environment variables in that
@@ -289,8 +290,9 @@ compose file (this module still has no base-profile `spring.datasource` block an
   build the map via the handler's `Payload.toMap()`, never by hand, so the map's keys live in
   exactly one place.
 - **Liquibase migrations for this module's tables live in this module's own changelog tree now**
-  (`database/sql/ecommerce-service.xml` + `2026/0.0.2/*.sql`), applied via the standalone
-  `ecommerce-service-liquibase.yml` docker-compose file at the repo root — the opposite of every
-  other feature module (which still migrate via `gateway`'s changelog tree per root `CLAUDE.md`'s
-  Database Conventions). Don't move future migrations back under `gateway`'s tree; this module
-  owns its own schema lifecycle now.
+  (`database/sql/ecommerce-service.xml` + `2026/0.0.2/*.sql`), applied via the consolidated
+  `services-liquibase` job in `docker-compose.apps.yml` — this module has no standalone
+  `ecommerce-service-liquibase.yml` file of its own (see the Liquibase note above) — the opposite
+  of every other feature module (which still migrate via `gateway`'s changelog tree per root
+  `CLAUDE.md`'s Database Conventions). Don't move future migrations back under `gateway`'s tree;
+  this module owns its own schema lifecycle now.

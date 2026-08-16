@@ -352,10 +352,13 @@ content-service/src/main/java/com/ttg/devknowledgeplatform/content/database/
 └── sql/
     ├── content-service.xml            — this module's own master changelog; includeAll over
     │                                     2026/0.0.2/, same shape as task-service's/social-service's
-    │                                     own changelog trees. Applied via the standalone
-    │                                     content-service-liquibase.yml compose file at the repo
-    │                                     root (spring.liquibase.enabled stays false on app boot,
-    │                                     same convention as every other standalone service)
+    │                                     own changelog trees. Applied via the consolidated
+    │                                     services-liquibase job in docker-compose.apps.yml — this
+    │                                     module has no standalone content-service-liquibase.yml
+    │                                     file of its own, unlike task-service/social-service (see
+    │                                     root CLAUDE.md's Migrations — Liquibase section);
+    │                                     spring.liquibase.enabled stays false on app boot, same
+    │                                     convention as every other standalone service
     └── 2026/0.0.2/
         └── DKP-0031__add_content_service_tables.sql — fresh snapshot of CATEGORY/TAG/CONTENT_ITEM/
             CONTENT_ITEM_TAG/QUESTION_ANSWER/ARTICLE into a new `content` schema (not a replay of
@@ -687,7 +690,7 @@ extraction, not this one); the work here was giving `ai-service` its own app she
 and severing `gateway`'s Maven dependency on `ai-service`, plus relocating the runtime
 infrastructure `ai-service`'s own controllers/services actually use (`sseStreamExecutor`, the
 Bucket4j Redis connection) out of `gateway`. Its own `Dockerfile` and
-`dev-knowledge-platform-apps-docker-compose.yml`/`ai-service-liquibase.yml` wiring are in place now
+`docker-compose.apps.yml`/`ai-service-liquibase.yml` wiring are in place now
 (port `8086`); `gateway`-side HTTP proxying for end-user traffic to this service is not built yet,
 same as every other standalone service in this reactor.
 
@@ -1794,7 +1797,7 @@ depends on (`common`/`infra`) plus every module's `pom.xml` (needed for Maven to
 full `<modules>` list even for modules it won't build) — it does not copy `identity-service`,
 `ecommerce-service`, `task-service`, `social-service`, `content-service`, or `ai-service` sources.
 
-`dev-knowledge-platform-apps-docker-compose.yml` (repo root) brings up all seven app containers plus
+`docker-compose.apps.yml` (repo root) brings up all seven app containers plus
 **one consolidated `services-liquibase` container** that runs all six standalone services'
 migrations sequentially in a single `sh -c` loop (`ecommerce-service` → `identity-service` →
 `task-service` → `social-service` → `content-service` → `ai-service`, each its own
@@ -1807,20 +1810,24 @@ consolidation: all six changelogs share one Postgres instance and one Liquibase
 `DATABASECHANGELOG`/`DATABASECHANGELOGLOCK` tracking pair regardless of container count, so six
 containers starting in parallel (as they could before, since none of them depended on each other)
 could contend for that lock; one container running them one at a time never contends with itself.
-The six standalone single-service `*-liquibase.yml` files at the repo root (for running just one
-service's migration outside the combined apps-compose flow) are unaffected — this consolidation is
-scoped to the combined apps-compose file only. `gateway` has no migration runner of its own at all
+Only `task-service-liquibase.yml` and `social-service-liquibase.yml` — the two standalone
+single-service compose files that predate this consolidation, for running just one service's
+migration against Postgres's host-exposed port (`host.docker.internal`) outside the combined
+apps-compose flow — are unaffected; `ecommerce-service`, `identity-service`, `content-service`, and
+`ai-service` never got an equivalent standalone file of their own, so the consolidated job is their
+only migration path (a doc/reality mismatch caught and fixed 2026-08-16 — several `CLAUDE.md`/
+`pom.xml`/`application.yml` comments across this reactor used to claim all six had one). `gateway` has no migration runner of its own at all
 (neither the old `dkp-liquibase` nor a slot in the new consolidated loop), since it has no Liquibase
 changelog left to run; the one thing that runner used to do beyond `gateway`'s own concerns
 (bootstrapping the `keycloak` schema, `DKP-0024`) now happens in `docker/postgres/init.sql`
 instead. It has no infra containers of its own — it
-must be run combined with `dev-knowledge-platform-docker-compose.yml` in one command, since that's
+must be run combined with `docker-compose.infra.yml` in one command, since that's
 what puts every container in a single Compose project/network so service-name DNS
 (`postgres`/`redis`/`minio`/`keycloak`) resolves:
 
 ```bash
-docker compose -f dev-knowledge-platform-docker-compose.yml \
-                -f dev-knowledge-platform-apps-docker-compose.yml \
+docker compose -f docker-compose.infra.yml \
+                -f docker-compose.apps.yml \
                 up -d --build
 ```
 
@@ -1829,11 +1836,11 @@ docker compose -f dev-knowledge-platform-docker-compose.yml \
 (`ecommerce`/`identity`/`task`/`social`/`content`/`ai` vs. `gateway`'s `product`, which now holds no
 live tables at all — see the Database section above) — per-service-per-schema, not
 per-service-per-database (see root `CLAUDE.md`'s Database Conventions and the
-`project-microservices-extraction-plan` memory for why). Each service also has its own
-standalone `*-liquibase.yml` compose file at the repo root for migrating its own schema outside the
-combined apps-compose flow (`ecommerce-service-liquibase.yml`, `identity-service-liquibase.yml`,
-`task-service-liquibase.yml`, `social-service-liquibase.yml`, `content-service-liquibase.yml`,
-`ai-service-liquibase.yml`). `social-service` additionally needs a real MinIO connection at runtime
+`project-microservices-extraction-plan` memory for why). `task-service` and `social-service` are
+the only two with their own standalone single-service `*-liquibase.yml` compose file at the repo
+root for migrating outside the combined apps-compose flow (`task-service-liquibase.yml`,
+`social-service-liquibase.yml`) — see the Migration Runners note above for why the other four don't
+have one despite older docs claiming otherwise. `social-service` additionally needs a real MinIO connection at runtime
 (`app.storage.*`, for avatar/attachment presigned URLs via `infra`'s `StorageService`) — the only one
 of the six standalone extractions with that requirement, since none of the others ever mapped
 avatar/attachment data. `ai-service`'s own container is the one with a genuine inter-service runtime

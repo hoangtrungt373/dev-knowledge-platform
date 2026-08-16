@@ -142,8 +142,11 @@ standalone extraction too.
   entity added here should follow the same default-schema-per-app pattern as every other module in
   this reactor.
 - **Liquibase migrations for this module's own `USER` table live in this module's own changelog
-  tree now** (`database/sql/identity-service.xml` + `2026/0.0.2/*.sql`), applied via the standalone
-  `identity-service-liquibase.yml` docker-compose file at the repo root — the opposite of every
-  embedded feature module (which still migrate via `gateway`'s changelog tree per root `CLAUDE.md`'s
-  Database Conventions). Don't move future migrations back under `gateway`'s tree; this module owns
-  its own schema lifecycle now, same as `ecommerce-service`.
+  tree now** (`database/sql/identity-service.xml` + `2026/0.0.2/*.sql`), applied via the
+  consolidated `services-liquibase` job in `docker-compose.apps.yml` — this module has **no**
+  standalone `identity-service-liquibase.yml` file of its own (unlike `task-service`/
+  `social-service`, which each kept a leftover standalone one-shot file from before this
+  consolidation existed; see root `CLAUDE.md`'s Migrations — Liquibase section). Either way, the
+  opposite of every embedded feature module (which still migrate via `gateway`'s changelog tree per
+  root `CLAUDE.md`'s Database Conventions). Don't move future migrations back under `gateway`'s
+  tree; this module owns its own schema lifecycle now, same as `ecommerce-service`.

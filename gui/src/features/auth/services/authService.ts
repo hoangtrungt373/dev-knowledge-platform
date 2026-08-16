@@ -1,5 +1,6 @@
 import { AuthTokens, OAuthProvider } from '../types';
 import { STORAGE_KEYS } from '@shared/constants/storage';
+import { decodeJwtPayload } from '@shared/utils/jwt';
 
 // gateway (8080) — see @shared/api/httpClient.ts's own comment on this same default.
 const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
@@ -9,6 +10,7 @@ export interface AuthService {
   storeTokens(tokens: Partial<AuthTokens>): void;
   getAccessToken(): string | null;
   getRefreshToken(): string | null;
+  getIdToken(): string | null;
   getUserUuid(): string | null;
   getUsername(): string | null;
   getEmail(): string | null;
@@ -27,6 +29,7 @@ export const authService: AuthService = {
   storeTokens(tokens: Partial<AuthTokens>): void {
     if (tokens.accessToken) localStorage.setItem(STORAGE_KEYS.accessToken, tokens.accessToken);
     if (tokens.refreshToken) localStorage.setItem(STORAGE_KEYS.refreshToken, tokens.refreshToken);
+    if (tokens.idToken) localStorage.setItem(STORAGE_KEYS.idToken, tokens.idToken);
     if (tokens.userUuid) localStorage.setItem(STORAGE_KEYS.userUuid, tokens.userUuid);
     if (tokens.username) localStorage.setItem(STORAGE_KEYS.username, tokens.username);
     if (tokens.email) localStorage.setItem(STORAGE_KEYS.email, tokens.email);
@@ -39,6 +42,10 @@ export const authService: AuthService = {
 
   getRefreshToken(): string | null {
     return localStorage.getItem(STORAGE_KEYS.refreshToken);
+  },
+
+  getIdToken(): string | null {
+    return localStorage.getItem(STORAGE_KEYS.idToken);
   },
 
   getUserUuid(): string | null {
@@ -82,7 +89,7 @@ export const authService: AuthService = {
     const token = this.getAccessToken();
     if (!token) return false;
     try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
+      const payload = decodeJwtPayload<{ exp?: number }>(token);
       return typeof payload.exp === 'number' && payload.exp * 1000 > Date.now();
     } catch {
       return false;

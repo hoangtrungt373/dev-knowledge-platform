@@ -64,7 +64,7 @@ Maven library dependencies (shared-kernel style — no runtime call to anything)
 longer depends on any of them in Maven at all; all seven run as separate processes on separate ports
 (`gateway` 8080, `ecommerce-service` 8081, `identity-service` 8082, `task-service` 8083,
 `social-service` 8084, `content-service` 8085, `ai-service` 8086), each with its own Dockerfile and
-`dev-knowledge-platform-apps-docker-compose.yml` entry now. `ai-service`'s own `ContentServiceClient`
+`docker-compose.apps.yml` entry now. `ai-service`'s own `ContentServiceClient`
 HTTP call to `content-service` is one real inter-service call that exists today; `gateway` itself now
 proxies external client traffic to all six over HTTP too, via Spring Cloud Gateway Server MVC
 (`gateway/routing/GatewayRoutesConfig` — see that module's `CLAUDE.md` and root `CLAUDE.md`'s
@@ -194,22 +194,27 @@ one-directional data need on an existing sibling, that sibling too) — rather t
 
 # Start infrastructure (PostgreSQL pgvector, Redis, MinIO, Mailpit, Keycloak) — also creates the
 # keycloak schema and pgvector/uuid-ossp extensions on first-ever run, via docker/postgres/init.sql
-docker-compose -f dev-knowledge-platform-docker-compose.yml up -d
+docker-compose -f docker-compose.infra.yml up -d
 
-# Run each standalone service's own Liquibase migrations (gateway has none of its own anymore —
-# see this file's Database Conventions section)
-docker-compose -f ecommerce-service-liquibase.yml up
-docker-compose -f identity-service-liquibase.yml up
+# Run Liquibase migrations for all six standalone services (gateway has none of its own anymore —
+# see this file's Database Conventions section). This is one consolidated job living inside
+# docker-compose.apps.yml, so it must be combined with docker-compose.infra.yml — it depends on
+# that file's "postgres" service by Compose service name, which only resolves when both files are
+# loaded into the same project:
+docker compose -f docker-compose.infra.yml -f docker-compose.apps.yml run --rm services-liquibase
+
+# task-service and social-service additionally still have their own standalone one-shot compose
+# file (a leftover from before the consolidated job above existed), which hits Postgres's
+# host-exposed port directly (host.docker.internal) instead of the Compose-internal service name —
+# usable on its own, without docker-compose.infra.yml running as a Compose project:
 docker-compose -f task-service-liquibase.yml up
 docker-compose -f social-service-liquibase.yml up
-docker-compose -f content-service-liquibase.yml up
-docker-compose -f ai-service-liquibase.yml up
 
 # Build and run all seven independently-runnable Spring Boot processes — gateway +
 # ecommerce-service + identity-service + task-service + social-service + content-service +
 # ai-service — as containers, alongside the infra containers above (must combine both compose
 # files in one command — see docs/PROJECT_STRUCTURE.md's Deployment section for why)
-docker compose -f dev-knowledge-platform-docker-compose.yml -f dev-knowledge-platform-apps-docker-compose.yml up -d --build
+docker compose -f docker-compose.infra.yml -f docker-compose.apps.yml up -d --build
 
 # Frontend
 cd gui && npm install && npm run build
@@ -387,15 +392,23 @@ database with the new schema live).
   `task-service/.../database/sql/task-service.xml`,
   `social-service/.../database/sql/social-service.xml`,
   `content-service/.../database/sql/content-service.xml`,
-  `ai-service/.../database/sql/ai-service.xml`), applied via its own standalone
-  `*-liquibase.yml` compose file at the repo root — never add a new module's tables to `gateway`'s
-  changelog once that module is a standalone service. `content-service`'s own changelog (a fresh
-  snapshot of the final table shape, not a replay of `gateway`'s incremental history) now has its
-  own standalone `content-service-liquibase.yml` compose file too — not yet run against a real
-  database in this session, same unverified-at-runtime caveat every standalone extraction has
-  carried at this stage. `ai-service`'s own changelog (`DKP-0032`, another fresh snapshot rather
-  than a replay of `gateway`'s incremental `CONTENT_EMBEDDING`/`CHAT_SESSION`/etc. history, into the
-  new `ai` schema) carries the same caveat via its own `ai-service-liquibase.yml`.
+  `ai-service/.../database/sql/ai-service.xml`) — never add a new module's tables to `gateway`'s
+  changelog once that module is a standalone service. All six run via one consolidated
+  `services-liquibase` job baked into `docker-compose.apps.yml` (a single container looping
+  `liquibase ... update` over each service's mounted changelog directory in turn, against the
+  Compose-internal `postgres` service — must be run combined with `docker-compose.infra.yml`, see
+  the Build & Run Commands section above). **Only `task-service` and `social-service` additionally
+  have their own standalone single-service `*-liquibase.yml` compose file at the repo root** (a
+  leftover from before that consolidated job existed, hitting Postgres's host-exposed port via
+  `host.docker.internal` instead) — `ecommerce-service`, `identity-service`, `content-service`, and
+  `ai-service` do **not** have an equivalent standalone file of their own, despite several
+  `CLAUDE.md`/`pom.xml`/`application.yml` comments across this reactor claiming otherwise until this
+  was caught and fixed on 2026-08-16; the consolidated job is their only migration path today.
+  `content-service`'s own changelog (a fresh snapshot of the final table shape, not a replay of
+  `gateway`'s incremental history) and `ai-service`'s own changelog (`DKP-0032`, another fresh
+  snapshot rather than a replay of `gateway`'s incremental `CONTENT_EMBEDDING`/`CHAT_SESSION`/etc.
+  history, into the new `ai` schema) are both still unverified-at-runtime, same caveat every
+  standalone extraction has carried at this stage.
 - Naming: `YYYY/VERSION/YYYYMMDDHHMI__VERSION__TICKET__description.sql`
   - Example: `2026/0.0.2/202608080001__0.0.2__DKP-0032__add_ai_service_tables.sql` — `ai-service`'s own
     changelog, real and current. Every standalone service's changelog tree was renamed from a

@@ -89,8 +89,9 @@
     <build>
         <!-- Include the Liquibase changelog XML/SQL bundled under src/main/java so they end up
              on the runtime classpath — same reasoning/shape as gateway's pom.xml. This module's
-             own Liquibase changelog is run via the standalone ecommerce-service-liquibase.yml
-             docker-compose file (spring.liquibase.enabled stays false here too), not on app boot. -->
+             own Liquibase changelog is run via the consolidated services-liquibase job in
+             docker-compose.apps.yml (no dedicated ecommerce-service-liquibase.yml file exists),
+             not on app boot — spring.liquibase.enabled stays false here too. -->
         <resources>
             <resource>
                 <directory>src/main/resources</directory>

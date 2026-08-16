@@ -24,6 +24,7 @@ import ChatPage from '@chat/pages/ChatPage';
 import MessagesPage from '@messaging/pages/MessagesPage';
 import AuthCallback from '@auth/pages/AuthCallback';
 import AdminLogin from '@auth/pages/AdminLogin';
+import AdminAuthCallback from '@auth/pages/AdminAuthCallback';
 import { authService } from '@auth/services/authService';
 import { darkTheme, lightTheme, ThemeMode } from './theme';
 
@@ -55,6 +56,7 @@ function App() {
             <Route path="/verify-otp" element={<VerifyOtp />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/admin/auth/callback" element={<AdminAuthCallback />} />
 
             {/* Protected user routes */}
             <Route path="/dashboard" element={

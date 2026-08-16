@@ -474,16 +474,31 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   of this — if you find code still hardcoding that port, it's stale, not intentional.
 - All backend calls go through `@shared/api/httpClient.ts` (auth headers, error normalization via
   `getUserFriendlyErrorMessage`/`getErrorDetails`) — don't call `fetch` directly from a
-  page/component. **Known gap, not yet fixed**: `@auth/services/authService.ts`'s `startOAuth`
-  (`/api/v1/auth/oauth2/authorization/{provider}`) and `logout` (`POST /api/v1/auth/logout`), plus
-  `@auth/api/authApi.ts`'s `login` (`POST /api/v1/auth/login`) via `adminAuthService`, all call
-  endpoints `identity-service` no longer exposes — Keycloak owns the whole login/logout lifecycle
-  now, and `identity-service`'s own `AuthApi` only has `GET /api/v1/auth/user` left (see that
-  module's `CLAUDE.md`). These predate the Keycloak migration and were never updated; `logout`'s
-  fire-and-forget `.catch(() => {})` masks the failure so client-side logout still works, but
-  `startOAuth`/admin `login` would genuinely 404. Fixing the admin login flow to route through
-  Keycloak properly is a real, separate piece of work — out of scope for whatever you're doing if
-  you just landed here from a `CLAUDE.md` cross-reference; don't fix it as a drive-by.
+  page/component (the admin auth flow below is a deliberate exception, calling Keycloak's own
+  endpoints directly rather than through `httpClient`/`gateway` — see its own note).
+  **`@auth/services/adminAuthService.ts` (admin login/logout) is fixed** — it now redirects
+  directly to Keycloak for Authorization Code + PKCE (`startLogin()`/`handleCallback()`) and does a
+  real RP-initiated logout (`logout()`), rather than calling identity-service endpoints that no
+  longer exist. See `docs/CHANGELOG.md`'s `[Unreleased]` entry for the full detail — new
+  `@auth/utils/pkce.ts` (hand-rolled code_verifier/challenge/state, no new dependency),
+  `@shared/utils/jwt.ts#decodeJwtPayload` (shared with `authService.isAuthenticated()`), a new
+  `@auth/pages/AdminAuthCallback.tsx` mounted at `/admin/auth/callback`, and new
+  `VITE_KEYCLOAK_URL`/`VITE_KEYCLOAK_REALM` env vars (`vite-env.d.ts`). Token exchange goes
+  straight from the browser to Keycloak (`http://localhost:8180` by default), never through
+  `gateway` — the "gui" Keycloak client is a public SPA client with no secret
+  (`docker/keycloak/realm-export.json`), so there's nothing for a backend to broker.
+  **Known gap, still not fixed — deliberately out of scope for the admin-login fix above**:
+  `@auth/services/authService.ts`'s `startOAuth` (`/api/v1/auth/oauth2/authorization/{provider}`)
+  and `logout` (`POST /api/v1/auth/logout`), plus `@auth/api/authApi.ts`'s `login`
+  (`POST /api/v1/auth/login`, used by the regular `Login.tsx`/`SignUp.tsx`/`VerifyOtp.tsx`/
+  state-token `AuthCallback.tsx` flow), all still call endpoints `identity-service` no longer
+  exposes — Keycloak owns the whole login/logout lifecycle now, and `identity-service`'s own
+  `AuthApi` only has `GET /api/v1/auth/user` left (see that module's `CLAUDE.md`). These predate
+  the Keycloak migration and were never updated; `logout`'s fire-and-forget `.catch(() => {})`
+  masks the failure so client-side logout still works, but `startOAuth`/regular `login` would
+  genuinely 404. Migrating the regular login/signup/Google-Facebook flow to the same
+  Authorization-Code-+-PKCE shape `adminAuthService` now uses is a real, separate piece of
+  work — don't fix it as a drive-by.
 - Token storage keys live in `@shared/constants/storage.ts` (`STORAGE_KEYS`) — don't hardcode
   `localStorage` key strings elsewhere.
 - When the backend renames a field (e.g. the `userId` → `userUuid` rename in `CHANGELOG.md`), the

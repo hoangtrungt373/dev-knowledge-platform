@@ -1,6 +1,7 @@
 export const STORAGE_KEYS = {
   accessToken: 'accessToken',
   refreshToken: 'refreshToken',
+  idToken: 'idToken',
   userUuid: 'userUuid',
   username: 'username',
   email: 'email',

@@ -262,7 +262,7 @@ both `identity-service` and `social-service` were extracted into standalone serv
   that its Maven dependency is gone — the same treatment every other departed module's `COPY` line
   already got. Relies entirely on `application-docker.yml`'s existing env-var defaults
   (`DB_HOST`/`MINIO_ENDPOINT` already default to the infra compose's service names); the
-  `dev-knowledge-platform-apps-docker-compose.yml` at the repo root only overrides the values that
+  `docker-compose.apps.yml` at the repo root only overrides the values that
   have no default (`KEYCLOAK_ISSUER_URI`, `FRONTEND_URL`). This app's own container block in that
   compose file no longer needs `OPENAI_API_KEY`/`CONTENT_SERVICE_BASE_URL`/`INTERNAL_API_KEY` (all
   three were only ever read by `ai-service`'s beans while it was still embedded here) or a

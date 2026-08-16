@@ -11,7 +11,8 @@ spring:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/dev-knowledge-platform}
 
   # Liquibase — disabled by default, same convention as gateway/ecommerce-service: migrations are
-  # applied via the standalone identity-service-liquibase.yml docker-compose file, not on app boot.
+  # applied via the consolidated services-liquibase job in docker-compose.apps.yml (no dedicated
+  # identity-service-liquibase.yml file exists), not on app boot.
   liquibase:
     enabled: false
     change-log: classpath:com/ttg/devknowledgeplatform/identity/database/sql/identity-service.xml

@@ -1,7 +1,7 @@
 # Keycloak dev realm
 
 `realm-export.json` is imported automatically on container start (`start-dev --import-realm`) —
-see the `keycloak` service in `dev-knowledge-platform-docker-compose.yml`. Import only happens if
+see the `keycloak` service in `docker-compose.infra.yml`. Import only happens if
 the `dev-knowledge-platform` realm doesn't already exist in the `keycloak` Postgres schema; if you
 hand-edit the realm via the Admin Console (`http://localhost:8180`, `admin`/`admin`) and want the
 change captured here, re-export it (Realm Settings → Action → Partial/Full Export) and it won't

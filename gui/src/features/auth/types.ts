@@ -53,6 +53,8 @@ export interface AuthTokens {
   username: string;
   email: string;
   role?: string;
+  /** Keycloak's OIDC id_token — needed as id_token_hint for a clean RP-initiated logout. */
+  idToken?: string;
 }
 
 /**

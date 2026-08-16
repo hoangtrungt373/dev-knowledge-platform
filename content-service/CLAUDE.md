@@ -20,11 +20,12 @@ Database Conventions), its own port (`8085`), and its own Liquibase changelog. `
 Maven dependency on this module was removed once its indexing pipeline switched to calling this
 module's own `/internal/content-items/**` API over HTTP instead of injecting repositories
 directly, and `PublicContentApi`/`PublicContentController` moved back here from `ai-service`
-outright — see `ai-service/CLAUDE.md`. Its own `Dockerfile` and
-`dev-knowledge-platform-apps-docker-compose.yml`/`content-service-liquibase.yml` wiring are in
-place now (port `8085`); `gateway`-side HTTP proxying for end-user traffic to this service is not
-built yet — `ai-service`'s own `ContentServiceClient` (server-to-server, against
-`/internal/content-items/**`) is the one real inter-service call that exists today.
+outright — see `ai-service/CLAUDE.md`. Its own `Dockerfile` and `docker-compose.apps.yml` wiring
+(the consolidated `services-liquibase` job, not a dedicated `content-service-liquibase.yml` — this
+module has no standalone single-service compose file of its own) are in place now (port `8085`);
+`gateway`-side HTTP proxying for end-user traffic to this service is not built yet — `ai-service`'s
+own `ContentServiceClient` (server-to-server, against `/internal/content-items/**`) is the one real
+inter-service call that exists today.
 
 - `ContentServiceApplication` — `@SpringBootApplication` + `@ComponentScan(basePackages =
   {"...content", "...infra"})` + `@ConfigurationPropertiesScan` entry point (the
@@ -176,11 +177,13 @@ every decision below.
   `task-service`'s `DKP-0028` and `social-service`'s `DKP-0029`/`DKP-0030` already followed.
   `DKP-0031` also carries `AUTHOR_UUID` directly (not `AUTHOR_ID`) since it was edited in place
   before ever running against a real database, mirroring `task-service`'s own
-  `ownerId`→`ownerUuid` correction. Applied via a standalone `content-service-liquibase.yml`
-  docker-compose file (`docker-compose -f content-service-liquibase.yml up`) — not yet run against
-  a real database in this session, same unverified-at-runtime caveat every standalone extraction in
-  this repo has carried at this stage. Don't move future migrations back under `gateway`'s tree;
-  this module owns its own schema lifecycle now.
+  `ownerId`→`ownerUuid` correction. Applied via the consolidated `services-liquibase` job in
+  `docker-compose.apps.yml` (`docker compose -f docker-compose.infra.yml -f
+  docker-compose.apps.yml run --rm services-liquibase`) — this module has no standalone
+  `content-service-liquibase.yml` file of its own, unlike `task-service`/`social-service`; not yet
+  run against a real database in this session, same unverified-at-runtime caveat every standalone
+  extraction in this repo has carried at this stage. Don't move future migrations back under
+  `gateway`'s tree; this module owns its own schema lifecycle now.
 - **`CategoryService.validateParentAssignment`-style invariants belong here, not `gateway`** — any
   business rule about these entities (uniqueness, cycle detection, in-use guards before delete)
   goes in this module's service impl, never in a `gateway` controller (which no longer exists for
