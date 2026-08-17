@@ -82,7 +82,7 @@
     {
       "clientId": "gui-password-login",
       "name": "Dev Knowledge Platform SPA (Password Grant — learning demo)",
-      "description": "Public client for Option A (direct password grant / ROPC) on Login.tsx, kept separate from the 'gui' client so the Authorization-Code+PKCE admin flow's client never carries password-grant capability. Built for learning purposes — see Login.tsx's/authService.ts's own comments; not the recommended pattern used elsewhere in this reactor (see the 'gui' client above).",
+      "description": "Public client for direct password grant (ROPC) on Login.tsx — kept separate from 'gui' so the Authorization-Code+PKCE flow's client never carries password-grant capability. Learning demo only; see docker/keycloak/README.md.",
       "enabled": true,
       "publicClient": true,
       "protocol": "openid-connect",
@@ -90,12 +90,13 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
-      "redirectUris": []
+      "redirectUris": ["http://localhost:3000/*", "http://localhost:3000/login"],
+      "webOrigins": ["http://localhost:3000"]
     },
     {
       "clientId": "identity-service-admin",
       "name": "identity-service (Keycloak Admin API access)",
-      "description": "Confidential, server-to-server client — identity-service uses its service account (manage-users role, see the users[] entry below) to call Keycloak's Admin REST API and create user accounts on registration. Never used by gui; the client secret must only ever live in identity-service's own config.",
+      "description": "Confidential, server-to-server client — identity-service's service account (manage-users role) calls Keycloak's Admin REST API to create users on registration. Never used by gui. See docker/keycloak/README.md.",
       "enabled": true,
       "publicClient": false,
       "protocol": "openid-connect",

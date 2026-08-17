@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Import;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+import com.ttg.devknowledgeplatform.common.exception.GlobalExceptionHandler;
 import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakJwtAuthenticationConverter;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakRealmRoleConverter;
@@ -55,7 +56,8 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
  */
 @SpringBootApplication
 @Import({JacksonConfig.class, TraceContextFilter.class, SlugServiceImpl.class,
-        KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class})
+        KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
+        GlobalExceptionHandler.class})
 @EnableScheduling
 public class EcommerceServiceApplication {
 

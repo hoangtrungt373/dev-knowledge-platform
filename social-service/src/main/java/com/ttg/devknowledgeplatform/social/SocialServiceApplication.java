@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Import;
 import org.springframework.scheduling.annotation.EnableAsync;
 
+import com.ttg.devknowledgeplatform.common.exception.GlobalExceptionHandler;
 import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
 import com.ttg.devknowledgeplatform.infra.config.storage.StorageConfig;
 import com.ttg.devknowledgeplatform.infra.config.storage.StorageProperties;
@@ -70,7 +71,7 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
 @EnableConfigurationProperties(AsyncEventThreadPoolProperties.class)
 @Import({JacksonConfig.class, TraceContextFilter.class, StorageProperties.class,
         StorageConfig.class, StorageServiceImpl.class, KeycloakRealmRoleConverter.class,
-        AsyncEventThreadPoolConfig.class})
+        AsyncEventThreadPoolConfig.class, GlobalExceptionHandler.class})
 @EnableAsync
 public class SocialServiceApplication {
 

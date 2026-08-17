@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.context.annotation.Import;
 
+import com.ttg.devknowledgeplatform.common.exception.GlobalExceptionHandler;
 import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakJwtAuthenticationConverter;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakRealmRoleConverter;
@@ -60,7 +61,8 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
 @SpringBootApplication
 @ConfigurationPropertiesScan
 @Import({JacksonConfig.class, TraceContextFilter.class, SlugServiceImpl.class,
-        KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class})
+        KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
+        GlobalExceptionHandler.class})
 public class ContentServiceApplication {
 
     public static void main(String[] args) {

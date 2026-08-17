@@ -54,6 +54,12 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/public/**").permitAll()
                 .requestMatchers("/api/v1/users/public/**").permitAll()
 
+                // identity-service's own registration endpoint — a brand-new user has no token
+                // yet. This app's own filter chain runs *before* the proxied request ever reaches
+                // identity-service, so its own permitAll rule for this same path (SecurityConfig)
+                // isn't enough on its own — both layers need the carve-out.
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
+
                 .anyRequest().authenticated()
             )
             .cors(cors -> cors.configurationSource(corsConfigurationSource))

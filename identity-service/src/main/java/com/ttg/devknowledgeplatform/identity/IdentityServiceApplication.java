@@ -4,6 +4,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Import;
 
+import com.ttg.devknowledgeplatform.common.exception.GlobalExceptionHandler;
 import com.ttg.devknowledgeplatform.identity.config.KeycloakAdminConfig;
 import com.ttg.devknowledgeplatform.identity.config.KeycloakAdminProperties;
 import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
@@ -62,7 +63,7 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
 @SpringBootApplication
 @Import({JacksonConfig.class, TraceContextFilter.class, StorageProperties.class,
         StorageConfig.class, StorageServiceImpl.class, KeycloakRealmRoleConverter.class,
-        KeycloakAdminProperties.class})
+        KeycloakAdminProperties.class, GlobalExceptionHandler.class})
 public class IdentityServiceApplication {
 
     public static void main(String[] args) {

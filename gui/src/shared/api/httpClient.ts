@@ -53,8 +53,11 @@ class HttpClientImpl implements HttpClient {
         headers,
       });
 
-      // Fix 7: on 401, try to silently refresh the token then retry once
-      if (response.status === 401 && !endpoint.includes('/auth/refresh') && !endpoint.includes('/auth/login')) {
+      // Fix 7: on 401, try to silently refresh the token then retry once. Pre-authentication
+      // endpoints (no session to expire) are excluded so a failure there surfaces as a normal
+      // error to the caller instead of force-clearing storage and redirecting to /login.
+      if (response.status === 401 && !endpoint.includes('/auth/refresh') && !endpoint.includes('/auth/login')
+          && !endpoint.includes('/auth/register')) {
         const refreshToken = localStorage.getItem(STORAGE_KEYS.refreshToken);
         if (refreshToken) {
           const refreshed = await this.tryRefreshToken(refreshToken);

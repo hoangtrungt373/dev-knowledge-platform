@@ -32,8 +32,12 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
   if (hidden) return null;
 
   const handleLogout = (): void => {
+    // authService.logout() already redirects to Keycloak's RP-initiated logout endpoint, which
+    // itself redirects back to /login via post_logout_redirect_uri — a real full-page navigation.
+    // A client-side navigate('/login') here would race that hard redirect (this app is still
+    // mounted for a moment after window.location.href is set), causing /login to render twice:
+    // once from this client-side route change, then again from the genuine post-logout page load.
     authService.logout();
-    navigate('/login');
   };
 
   const isActive = (path: string): boolean => location.pathname === path;

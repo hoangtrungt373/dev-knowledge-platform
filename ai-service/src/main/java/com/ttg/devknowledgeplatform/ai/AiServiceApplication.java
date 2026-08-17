@@ -7,6 +7,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Import;
 import org.springframework.scheduling.annotation.EnableAsync;
 
+import com.ttg.devknowledgeplatform.common.exception.GlobalExceptionHandler;
 import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
 import com.ttg.devknowledgeplatform.infra.config.thread.AsyncEventThreadPoolConfig;
 import com.ttg.devknowledgeplatform.infra.config.thread.AsyncEventThreadPoolProperties;
@@ -82,7 +83,7 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
 @EnableConfigurationProperties(AsyncEventThreadPoolProperties.class)
 @Import({JacksonConfig.class, TraceContextFilter.class, JsonAuthenticationEntryPoint.class,
         KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
-        AsyncEventThreadPoolConfig.class})
+        AsyncEventThreadPoolConfig.class, GlobalExceptionHandler.class})
 @EnableAsync
 public class AiServiceApplication {
 

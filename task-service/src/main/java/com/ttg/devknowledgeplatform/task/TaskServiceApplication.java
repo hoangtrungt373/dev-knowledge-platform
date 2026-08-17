@@ -4,6 +4,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Import;
 
+import com.ttg.devknowledgeplatform.common.exception.GlobalExceptionHandler;
 import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakJwtAuthenticationConverter;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakRealmRoleConverter;
@@ -52,7 +53,7 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
  */
 @SpringBootApplication
 @Import({JacksonConfig.class, TraceContextFilter.class, KeycloakRealmRoleConverter.class,
-        KeycloakJwtAuthenticationConverter.class})
+        KeycloakJwtAuthenticationConverter.class, GlobalExceptionHandler.class})
 public class TaskServiceApplication {
 
     public static void main(String[] args) {
