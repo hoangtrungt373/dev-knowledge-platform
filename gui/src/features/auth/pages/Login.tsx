@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -26,14 +26,28 @@ import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import { PROVIDER_COLORS } from '@shared/constants/colors';
 
 export default function Login(): JSX.Element {
-  const { showError } = useNotification();
+  const { showError, showSuccess } = useNotification();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { loading, guard } = useSubmitGuard();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+
+  // Landed here from identity-service's sendVerifyEmail redirect (?emailVerified=true) — a
+  // one-time confirmation toast, since Keycloak's own verification flow gives no feedback of its
+  // own once it redirects back into this app. Strip the param so refreshing doesn't re-show it.
+  useEffect(() => {
+    if (searchParams.get('emailVerified') === 'true') {
+      showSuccess('Your email has been verified! You can now sign in.');
+      setSearchParams(params => {
+        params.delete('emailVerified');
+        return params;
+      }, { replace: true });
+    }
+  }, [searchParams, setSearchParams, showSuccess]);
 
   const loginWith = (provider: OAuthProvider): void => {
     authService.startOAuth(provider);

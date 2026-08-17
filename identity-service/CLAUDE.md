@@ -100,12 +100,18 @@ reachable directly on its own port, same limitation `ecommerce-service` has.
   triggers a real verification email via Keycloak's own Admin API `send-verify-email` action
   (private `sendVerifyEmail` helper) — **best-effort**: a mail-server hiccup logs a warning but
   never fails registration itself, since the account already exists either way. `sendVerifyEmail`
-  passes `client_id="gui"`/`redirect_uri=${frontendUrl}/dashboard` (`UserResource.sendVerifyEmail`'s
-  3-arg overload — a `void` method, not `Response`; its generated client proxy throws on a non-2xx
-  reply itself, so there's no status code to check by hand) so clicking the emailed link lands the
-  user back in this app's own Dashboard after Keycloak's own confirmation step, instead of
-  Keycloak's default target (its `account` client's generic "your account has been updated" page —
-  a dead end from this app's perspective). Keycloak's initial "Confirm validity... Click here to
+  passes `client_id="gui"`/`redirect_uri=${frontendUrl}/login?emailVerified=true`
+  (`UserResource.sendVerifyEmail`'s 3-arg overload — a `void` method, not `Response`; its generated
+  client proxy throws on a non-2xx reply itself, so there's no status code to check by hand) so
+  clicking the emailed link lands the user back in this app after Keycloak's own confirmation step,
+  instead of Keycloak's default target (its `account` client's generic "your account has been
+  updated" page — a dead end from this app's perspective). `/login`, not `/dashboard`, deliberately
+  — `gui`'s `GuestRoute` already redirects an authenticated caller on to `/dashboard` (now
+  forwarding the query string, see that class's own note), so one target correctly handles both "no
+  longer logged in since registering" (lands on the real login form) and "still logged in" (bounced
+  straight through) without this module needing to know or care which case applies.
+  `emailVerified=true` lets whichever page actually renders show a one-time confirmation toast —
+  see `gui/CLAUDE.md`. Keycloak's initial "Confirm validity... Click here to
   proceed" click-through itself is a separate, hardcoded anti-prefetch guard on action-token links
   (protects the one-time token from being silently consumed by an email client's link-prescanning)
   — not something exposed as a realm/client config toggle, so it isn't avoidable without a custom

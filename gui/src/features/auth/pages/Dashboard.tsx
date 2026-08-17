@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Avatar,
@@ -57,6 +58,7 @@ function formatDate(iso?: string) {
 
 export default function Dashboard(): JSX.Element | null {
   const { showError, showSuccess } = useNotification();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { loading: saving, guard } = useSubmitGuard();
 
   const [user, setUser] = useState<User | null>(null);
@@ -85,6 +87,19 @@ export default function Dashboard(): JSX.Element | null {
       }
     })();
   }, [showError]);
+
+  // Landed here (still logged in, GuestRoute bounced /login?emailVerified=true straight through)
+  // from identity-service's sendVerifyEmail redirect — same one-time confirmation toast Login.tsx
+  // shows for the logged-out case. Strip the param so refreshing doesn't re-show it.
+  useEffect(() => {
+    if (searchParams.get('emailVerified') === 'true') {
+      showSuccess('Your email has been verified!');
+      setSearchParams(params => {
+        params.delete('emailVerified');
+        return params;
+      }, { replace: true });
+    }
+  }, [searchParams, setSearchParams, showSuccess]);
 
   // Clears the email-verification banner without forcing a full re-login. Verification status is
   // a JWT claim baked into the access token at issuance time, so a plain reload keeps showing the

@@ -82,11 +82,17 @@ public class KeycloakAdminServiceImpl implements KeycloakAdminService {
     private void sendVerifyEmail(String keycloakUserId) {
         // void, not Response — the generated client proxy throws (e.g. WebApplicationException)
         // on a non-2xx reply itself, so there's no status code here to check by hand.
-        // client_id/redirect_uri land the user back in this app's own Dashboard after clicking
-        // through Keycloak's verification link, instead of Keycloak's default target — its own
-        // generic "account" client confirmation page, a dead end from this app's perspective.
+        // client_id/redirect_uri land the user back in this app instead of Keycloak's default
+        // target — its own generic "account" client confirmation page, a dead end from this app's
+        // perspective. /login rather than /dashboard deliberately: if the user already logged out
+        // since registering, GuestRoute would otherwise bounce them /dashboard -> /login anyway (an
+        // extra pointless hop to the same place); if they're still logged in, GuestRoute's own
+        // already-authenticated redirect sends them on to /dashboard regardless — one target
+        // handles both cases via routing logic gui already has. emailVerified=true lets whichever
+        // page actually renders (Login.tsx or, via that redirect, Dashboard.tsx) show a one-time
+        // confirmation toast instead of silently landing with no feedback either way.
         keycloakAdminClient.realm(properties.getRealm())
                 .users().get(keycloakUserId)
-                .sendVerifyEmail("gui", properties.getFrontendUrl() + "/dashboard");
+                .sendVerifyEmail("gui", properties.getFrontendUrl() + "/login?emailVerified=true");
     }
 }

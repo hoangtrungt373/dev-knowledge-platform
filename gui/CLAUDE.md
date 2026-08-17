@@ -553,14 +553,26 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   `!user.emailVerified`, it calls `authService.refreshAccessToken()` (a real `refresh_token` grant
   works even on a still-valid, unexpired access token — no need to wait for actual expiry) then
   re-fetches `/api/v1/auth/user`, both once immediately on mount and again on every
-  `visibilitychange` back to `visible`. Two reasons it needs both triggers, not just one:
-  `identity-service`'s `sendVerifyEmail` now redirects back to `/dashboard` after Keycloak's own
-  confirmation click (see that module's `CLAUDE.md`), which is often a **brand-new** tab/page load
-  that never fires `visibilitychange` on its own (the immediate on-mount check covers this); the
-  visibility listener covers the other real case — the email link opened in a separate tab, with
-  the user coming back to an *already-open* Dashboard tab. Fully silent/best-effort — a failed
-  check has no visible error, since the next trigger just retries. The listener detaches once
-  `emailVerified` flips `true`, so this doesn't keep polling forever.
+  `visibilitychange` back to `visible`. Two reasons it needs both triggers, not just one: the
+  redirect below is often a **brand-new** tab/page load that never fires `visibilitychange` on its
+  own (the immediate on-mount check covers this); the visibility listener covers the other real
+  case — the email link opened in a separate tab, with the user coming back to an *already-open*
+  Dashboard tab. Fully silent/best-effort — a failed check has no visible error, since the next
+  trigger just retries. The listener detaches once `emailVerified` flips `true`, so this doesn't
+  keep polling forever.
+
+  **The verification email's link redirects to `/login?emailVerified=true`, not `/dashboard`** —
+  deliberately, to handle a real edge case: a user who logs out between registering and clicking
+  the emailed link would otherwise get bounced `/dashboard` → (`PrivateRoute`, unauthenticated) →
+  `/login` anyway, landing on a bare login form with zero feedback that verification actually
+  succeeded. `/login` handles both cases in one redirect target: `GuestRoute` (wrapping `/login`)
+  now forwards its current query string when it redirects an already-authenticated caller on to
+  `/dashboard`, instead of dropping it — so a still-logged-in user still gets bounced straight
+  through, same as before, just without losing `?emailVerified=true` along the way. Both
+  `Login.tsx` and `Dashboard.tsx` have a small `useEffect` reading that param via `useSearchParams`,
+  showing a one-time `showSuccess(...)` confirmation toast and then stripping the param
+  (`setSearchParams` with its updater-function form, `{ replace: true }`) so refreshing doesn't
+  re-show it. See `identity-service/CLAUDE.md`'s `sendVerifyEmail` note for the server side of this.
 
   **`authService.startOAuth`/`AuthCallback.tsx` (Google/Facebook login) are fixed too** — no longer
   call `identity-service`'s dead `/api/v1/auth/oauth2/authorization/{provider}` endpoint. Now a
