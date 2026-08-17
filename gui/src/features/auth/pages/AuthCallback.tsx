@@ -1,117 +1,58 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
 import { authService } from '../services/authService';
-import { authApi } from '../api/authApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 
 /**
- * AuthCallback Component - Option 3: State Parameter Approach
- * 
- * Flow:
- * 1. Backend redirects: /auth/callback?state=uuid-token
- * 2. Extract state token from URL
- * 3. Call API to exchange state token for JWT tokens
- * 4. Store tokens in localStorage
- * 5. Navigate to dashboard
+ * Social login's Authorization Code + PKCE callback — Keycloak redirects here with
+ * ?code=...&state=... (or ?error=...) after the user authenticates via Google/Facebook (brokered
+ * by Keycloak — see authService.startOAuth). Mirrors AdminAuthCallback.tsx's shape, minus the
+ * ADMIN-role gate.
  */
 export default function AuthCallback(): JSX.Element | null {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { showError, showSuccess } = useNotification();
+  // The authorization code + PKCE verifier are both one-time-use, so this effect isn't idempotent
+  // — StrictMode's deliberate dev-mode double-invoke would otherwise run the exchange twice, with
+  // the second call failing (code/verifier already consumed) and bouncing back to /login even
+  // though the first call already succeeded. Same guard AdminAuthCallback.tsx uses.
+  const hasRun = useRef(false);
 
   useEffect(() => {
-    const exchangeStateToken = async () => {
+    if (hasRun.current) return;
+    hasRun.current = true;
+
+    const run = async () => {
       try {
-        // Step 1: Extract state token from URL
-        // URL: http://localhost:3000/auth/callback?state=550e8400-e29b-41d4-a716-446655440000
-        const stateToken = searchParams.get('state');
-        
-        if (!stateToken) {
-          const errorMsg = 'Missing state token';
-          setError(errorMsg);
-          setLoading(false);
-          showError(errorMsg);
-          navigate('/login?error=missing_state', { replace: true });
-          return;
-        }
-        
-        console.log('State token received:', stateToken);
-        
-        // Step 2: Exchange state token for actual JWT tokens
-        // Api.exchangeStateToken automatically handles errors and shows notifications
-        const data = await authApi.exchangeStateToken(stateToken, showError);
-        
-        // Step 3: Store tokens in localStorage
-        authService.storeTokens({
-          accessToken: data.accessToken,
-          refreshToken: data.refreshToken,
-          userUuid: data.userUuid,
-          username: data.username,
-          email: data.email,
-          role: data.role,
-        });
-        
-        console.log('Tokens stored in localStorage');
-        
-        // Step 4: Show success and navigate to dashboard
+        const code = searchParams.get('code');
+        const state = searchParams.get('state');
+        const errorParam = searchParams.get('error');
+
+        await authService.handleOAuthCallback(code, state, errorParam);
+
         showSuccess('Login successful!');
         navigate('/dashboard', { replace: true });
-        
-      } catch (err: any) {
-        console.error('Token exchange failed:', err);
-        const errorMsg = err.message || 'Failed to exchange token';
-        setError(errorMsg);
-        setLoading(false);
-        
-        // Error notification already shown by Api.exchangeStateToken
-        // Redirect to login after a delay
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Login failed';
+        setError(message);
+        showError(message);
         setTimeout(() => {
-          navigate('/login?error=token_exchange_failed', { replace: true });
+          navigate('/login', { replace: true });
         }, 2000);
       }
     };
-    
-    // Execute token exchange
-    exchangeStateToken();
+
+    run();
   }, [navigate, searchParams, showError, showSuccess]);
 
-  // Show loading state
-  if (loading && !error) {
-    return (
-      <Box 
-        display="flex" 
-        flexDirection="column" 
-        alignItems="center" 
-        justifyContent="center" 
-        minHeight="60vh"
-      >
-        <CircularProgress size={60} />
-        <Typography variant="body1" sx={{ mt: 3 }}>
-          Exchanging authentication token...
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          Please wait while we complete your login
-        </Typography>
-      </Box>
-    );
-  }
-  
-  // Show error state
   if (error) {
     return (
-      <Box 
-        display="flex" 
-        flexDirection="column" 
-        alignItems="center" 
-        justifyContent="center" 
-        minHeight="60vh"
-        sx={{ px: 2 }}
-      >
+      <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="60vh" sx={{ px: 2 }}>
         <Alert severity="error" sx={{ mb: 2, maxWidth: 500 }}>
-          <Typography variant="h6">Authentication Failed</Typography>
+          <Typography variant="h6">Login Failed</Typography>
           <Typography variant="body2">{error}</Typography>
         </Alert>
         <Typography variant="body2" color="text.secondary">
@@ -120,7 +61,14 @@ export default function AuthCallback(): JSX.Element | null {
       </Box>
     );
   }
-  
-  return null;
+
+  return (
+    <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="60vh">
+      <CircularProgress size={60} />
+      <Typography variant="body1" sx={{ mt: 3 }}>
+        Completing sign-in...
+      </Typography>
+    </Box>
+  );
 }
 

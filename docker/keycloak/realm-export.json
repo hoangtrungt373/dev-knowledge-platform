@@ -112,7 +112,7 @@
     {
       "alias": "google",
       "providerId": "google",
-      "enabled": false,
+      "enabled": true,
       "trustEmail": true,
       "storeToken": false,
       "addReadTokenRoleOnCreate": false,

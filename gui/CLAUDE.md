@@ -512,10 +512,31 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   **Known gap, still not fixed — deliberately out of scope**: `VerifyOtp.tsx` (still calls
   `authApi.verifyOtp`/`resendOtp` — can't be fixed by switching grant type at all; Keycloak replaced
   the whole OTP-email flow with its own "Verify Email" required action, a clickable link rather than
-  a 6-digit code — moot anyway now that registration creates accounts pre-verified, see above), and
-  `authService.startOAuth`/both pages' Google-Facebook buttons
-  (`/api/v1/auth/oauth2/authorization/{provider}`) — these still call endpoints `identity-service`
-  no longer exposes. Don't fix either as a drive-by.
+  a 6-digit code — moot anyway now that registration creates accounts pre-verified, see above).
+
+  **`authService.startOAuth`/`AuthCallback.tsx` (Google/Facebook login) are fixed too** — no longer
+  call `identity-service`'s dead `/api/v1/auth/oauth2/authorization/{provider}` endpoint. Now a
+  third Authorization Code + PKCE flow reusing the same `gui` Keycloak client
+  `adminAuthService`/`AdminLogin.tsx` already established (`OAUTH_CLIENT_ID`/
+  `OAUTH_CALLBACK_PATH`/`OAUTH_PKCE_*` constants in `authService.ts`, distinct sessionStorage keys
+  from the admin flow's `admin_pkce_*` so the two can't clobber each other), plus one addition:
+  `startOAuth` appends `kc_idp_hint=<provider>` to Keycloak's `/auth` redirect so its hosted login
+  page skips straight to the given identity provider instead of showing its own
+  username/password form first. `AuthCallback.tsx` (`/auth/callback`, already in `gui`'s
+  `redirectUris`) now does a real code-exchange via `authService.handleOAuthCallback` — mirrors
+  `AdminAuthCallback.tsx` structurally (including its `hasRun` ref guard against StrictMode's
+  dev-mode double-invoke consuming the one-time-use code/verifier twice) but with no `ADMIN`-role
+  gate. Keycloak itself still brokers the actual Google/Facebook OAuth dance
+  (`docker/keycloak/realm-export.json`'s `identityProviders`) — this app never talks to either
+  provider directly, same as before. `authApi.ts`'s dead `exchangeStateToken` method (the old
+  state-token-exchange approach `AuthCallback.tsx` used to call) was removed outright — no
+  remaining callers. **Still needs a real Google OAuth Client ID/Secret plugged into
+  `docker/keycloak/realm-export.json`'s (or the Admin Console's) `google` identity provider, and
+  `enabled: true`, before the Google button actually works** — see
+  `docker/keycloak/README.md`'s "Google/Facebook login" section for the exact steps (including the
+  Google Cloud Console redirect URI to register). Facebook's identity provider is still disabled
+  with placeholder credentials — the same code path covers it once it gets real credentials too,
+  untested until then.
 - Token storage keys live in `@shared/constants/storage.ts` (`STORAGE_KEYS`) — don't hardcode
   `localStorage` key strings elsewhere.
 - When the backend renames a field (e.g. the `userId` → `userUuid` rename in `CHANGELOG.md`), the
