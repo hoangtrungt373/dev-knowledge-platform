@@ -53,7 +53,7 @@ public class UserServiceImpl implements UserService {
                 || !Objects.equals(user.getFirstName(), info.firstName())
                 || !Objects.equals(user.getLastName(), info.lastName())
                 || user.getRole() != targetRole
-                || !Boolean.TRUE.equals(user.getEmailVerified())
+                || !Objects.equals(user.getEmailVerified(), info.emailVerified())
                 || !Boolean.TRUE.equals(user.getEnabled());
 
         if (!changed) {
@@ -66,7 +66,7 @@ public class UserServiceImpl implements UserService {
         user.setFirstName(info.firstName());
         user.setLastName(info.lastName());
         user.setRole(targetRole);
-        user.setEmailVerified(true);
+        user.setEmailVerified(info.emailVerified());
         user.setEnabled(true);
 
         User saved = userRepository.save(user);

@@ -2,6 +2,7 @@ package com.ttg.devknowledgeplatform.identity.security.service.impl;
 
 import java.util.List;
 
+import org.keycloak.admin.client.CreatedResponseUtil;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
@@ -37,9 +38,9 @@ public class KeycloakAdminServiceImpl implements KeycloakAdminService {
         user.setFirstName(request.firstName());
         user.setLastName(request.lastName());
         user.setEnabled(true);
-        // Created pre-verified rather than requiring Keycloak's "Verify Email" required action —
-        // a deliberate scope choice (see docs/CHANGELOG.md), not an oversight.
-        user.setEmailVerified(true);
+        // Created unverified — sendVerifyEmail below emails a real Keycloak "Verify Email"
+        // action-token link, replacing the previous "created pre-verified" scope choice.
+        user.setEmailVerified(false);
 
         CredentialRepresentation credential = new CredentialRepresentation();
         credential.setType(CredentialRepresentation.PASSWORD);
@@ -47,15 +48,45 @@ public class KeycloakAdminServiceImpl implements KeycloakAdminService {
         credential.setTemporary(false);
         user.setCredentials(List.of(credential));
 
+        String keycloakUserId;
         try (Response response = keycloakAdminClient.realm(properties.getRealm()).users().create(user)) {
-            if (response.getStatus() == Response.Status.CREATED.getStatusCode()) {
-                return;
-            }
             if (response.getStatus() == Response.Status.CONFLICT.getStatusCode()) {
                 throw new BusinessException(IdentityErrorCode.EMAIL_ALREADY_EXISTS, new Object[]{request.email()});
             }
-            log.error("Keycloak user creation failed for {}: HTTP {}", request.email(), response.getStatus());
-            throw new BusinessException(IdentityErrorCode.KEYCLOAK_USER_CREATE_FAILED);
+            if (response.getStatus() != Response.Status.CREATED.getStatusCode()) {
+                log.error("Keycloak user creation failed for {}: HTTP {}", request.email(), response.getStatus());
+                throw new BusinessException(IdentityErrorCode.KEYCLOAK_USER_CREATE_FAILED);
+            }
+            keycloakUserId = CreatedResponseUtil.getCreatedId(response);
         }
+
+        // Best-effort — a mail-server hiccup shouldn't fail registration itself (the account
+        // exists either way); the user can always trigger resendVerificationEmail later.
+        try {
+            sendVerifyEmail(keycloakUserId);
+        } catch (Exception e) {
+            log.warn("Account {} created but failed to send its verification email: {}", request.email(), e.getMessage());
+        }
+    }
+
+    @Override
+    public void resendVerificationEmail(String keycloakSubjectId) {
+        try {
+            sendVerifyEmail(keycloakSubjectId);
+        } catch (Exception e) {
+            log.error("Failed to resend verification email for Keycloak subject {}: {}", keycloakSubjectId, e.getMessage());
+            throw new BusinessException(IdentityErrorCode.VERIFICATION_EMAIL_SEND_FAILED);
+        }
+    }
+
+    private void sendVerifyEmail(String keycloakUserId) {
+        // void, not Response — the generated client proxy throws (e.g. WebApplicationException)
+        // on a non-2xx reply itself, so there's no status code here to check by hand.
+        // client_id/redirect_uri land the user back in this app's own Dashboard after clicking
+        // through Keycloak's verification link, instead of Keycloak's default target — its own
+        // generic "account" client confirmation page, a dead end from this app's perspective.
+        keycloakAdminClient.realm(properties.getRealm())
+                .users().get(keycloakUserId)
+                .sendVerifyEmail("gui", properties.getFrontendUrl() + "/dashboard");
     }
 }

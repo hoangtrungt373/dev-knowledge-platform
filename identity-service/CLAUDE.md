@@ -59,7 +59,9 @@ reachable directly on its own port, same limitation `ecommerce-service` has.
 - `api/` (+ `api/impl/`) — `AuthApi`/`AuthController` (`GET /api/v1/auth/user` — the only profile
   endpoint Keycloak's own `/userinfo` doesn't cover — plus `POST /api/v1/auth/register`, added back
   once Keycloak Admin API integration landed; renamed from `OAuth2Api`/`OAuth2Controller` once
-  every other pre-Keycloak endpoint on it was deleted) and `UserApi`/`UserController`
+  every other pre-Keycloak endpoint on it was deleted; `POST /api/v1/auth/resend-verification-email`
+  added alongside real email verification, see the `KeycloakAdminService` bullet below) and
+  `UserApi`/`UserController`
   (`updateProfile`/`uploadAvatar` — the pure "my own profile" operations that only need
   `UserService`/`UserMapper`/`infra`'s `StorageService`). `getPublicProfile` and `search` live in
   `social-service`'s own `UserApi`/`UserController` instead (same `/api/v1/users` mapping, different
@@ -73,9 +75,10 @@ reachable directly on its own port, same limitation `ecommerce-service` has.
 - `dto/user/UpdateProfileRequest`, `dto/UserInfoResponse` — the profile DTOs.
   `dto/auth/RegisterRequest`/`RegisterResponse` came back alongside the revived `register`
   endpoint — a different shape than the pre-Keycloak `dto/RegisterRequest` this replaces (no
-  password-confirmation/OTP fields; `RegisterResponse` matches `gui`'s existing type exactly, since
-  the account is created pre-verified and `gui` logs the user in itself afterward rather than
-  expecting tokens back from this response). Everything else auth-flow-specific
+  password-confirmation/OTP fields; `RegisterResponse` matches `gui`'s existing type exactly —
+  the account is created *unverified* now (see the `KeycloakAdminService` bullet below) but still
+  immediately usable, and `gui` logs the user in itself afterward rather than expecting tokens
+  back from this response). Everything else auth-flow-specific
   (`dto/{OAuth2UserInfo,GoogleOAuth2UserInfo,FacebookOAuth2UserInfo,OAuth2UserInfoFactory}`) is
   still deleted, alongside the endpoints/services that used them.
 - `config/KeycloakAdminProperties`/`KeycloakAdminConfig` — connection details + the `Keycloak`
@@ -85,15 +88,38 @@ reachable directly on its own port, same limitation `ecommerce-service` has.
   `IdentityServiceApplication` (a plain `@ConfigurationProperties` class, no `@Component`
   stereotype — default scanning alone won't register it); `KeycloakAdminConfig` doesn't, since it's
   a real `@Configuration` class already inside this module's own scanned package tree.
+  `KeycloakAdminProperties.frontendUrl` (`app.keycloak-admin.frontend-url`, env `FRONTEND_URL` —
+  already passed to this service's container in `docker-compose.apps.yml`, previously unread by
+  anything) is the GUI's own public base URL, used only by `sendVerifyEmail` below.
 - `security/service/KeycloakAdminService` (+ `impl/`) — `createUser(RegisterRequest)`: builds a
   `UserRepresentation` (`username` = `email`, per the realm's `registrationEmailAsUsername: true`;
-  `enabled`/`emailVerified` both `true` — a deliberate scope choice, not gated on Keycloak's real
-  "Verify Email" required action, see `docs/CHANGELOG.md`) and calls
-  `keycloak.realm(...).users().create(...)`, mapping the Admin API's own 409 response to
-  `IdentityErrorCode.EMAIL_ALREADY_EXISTS`.
+  `enabled: true`, **`emailVerified: false`** — no longer the earlier "created pre-verified" scope
+  choice, see `docs/CHANGELOG.md`) and calls `keycloak.realm(...).users().create(...)`, mapping the
+  Admin API's own 409 response to `IdentityErrorCode.EMAIL_ALREADY_EXISTS`. On success, extracts
+  the new account's Keycloak id from the create response (`CreatedResponseUtil.getCreatedId`) and
+  triggers a real verification email via Keycloak's own Admin API `send-verify-email` action
+  (private `sendVerifyEmail` helper) — **best-effort**: a mail-server hiccup logs a warning but
+  never fails registration itself, since the account already exists either way. `sendVerifyEmail`
+  passes `client_id="gui"`/`redirect_uri=${frontendUrl}/dashboard` (`UserResource.sendVerifyEmail`'s
+  3-arg overload — a `void` method, not `Response`; its generated client proxy throws on a non-2xx
+  reply itself, so there's no status code to check by hand) so clicking the emailed link lands the
+  user back in this app's own Dashboard after Keycloak's own confirmation step, instead of
+  Keycloak's default target (its `account` client's generic "your account has been updated" page —
+  a dead end from this app's perspective). Keycloak's initial "Confirm validity... Click here to
+  proceed" click-through itself is a separate, hardcoded anti-prefetch guard on action-token links
+  (protects the one-time token from being silently consumed by an email client's link-prescanning)
+  — not something exposed as a realm/client config toggle, so it isn't avoidable without a custom
+  Keycloak theme, which wasn't judged worth the added complexity for this feature.
+  `resendVerificationEmail(keycloakSubjectId)` is the same `sendVerifyEmail` call, exposed for
+  `AuthController.resendVerificationEmail` (`POST /api/v1/auth/resend-verification-email`,
+  authenticated — backs `gui`'s Dashboard "Resend email" banner action) to call on demand; throws
+  `IdentityErrorCode.VERIFICATION_EMAIL_SEND_FAILED` if Keycloak rejects it.
+  `AuthController.resendVerificationEmail` itself rejects with `IdentityErrorCode.EMAIL_ALREADY_VERIFIED`
+  before ever calling Keycloak if the caller's own local `User.emailVerified` is already `true`.
 - `exception/IdentityErrorCode` — this module's first `ErrorCode` enum (implements `common`'s
   `ErrorCode` interface, mirroring `content-service`'s `ContentErrorCode`) — `EMAIL_ALREADY_EXISTS`/
-  `KEYCLOAK_USER_CREATE_FAILED`, both thrown by `KeycloakAdminService`.
+  `KEYCLOAK_USER_CREATE_FAILED`/`EMAIL_ALREADY_VERIFIED`/`VERIFICATION_EMAIL_SEND_FAILED`, all
+  thrown by `KeycloakAdminService`/`AuthController`.
 - `security/` — this app's own filter chain, independent of `gateway`'s, since it now runs on its
   own port and must guard its own endpoints regardless of whether `gateway` is proxying to it
   (mirrors `ecommerce-service`'s `security/` package). `SecurityConfig` requires authentication on
@@ -120,7 +146,13 @@ reachable directly on its own port, same limitation `ecommerce-service` has.
   owner's first Keycloak login), else inserting a new row; only writes when a field actually
   changed — plus `resolveCurrentUser`/`findByEmail`/`findByUserUuid(Optional)`/`findById`/
   `updateStatus`/`updateProfile`/`updateAvatar`. Returns `common` entities, never this module's own
-  DTOs.
+  DTOs. **`KeycloakUserInfo.emailVerified` (the token's `email_verified` claim,
+  `KeycloakJwtAuthenticationConverter` reads it via `jwt.getClaimAsBoolean`) is re-synced into
+  `User.emailVerified` on every request, not just at JIT-creation** — this is what makes the
+  Dashboard verification banner ever turn off: once the caller clicks Keycloak's emailed
+  verification link (out-of-band, no app code involved) and their access token eventually
+  refreshes (or they re-log-in), the fresh token's `email_verified: true` claim flows through here
+  into the local row `AuthController.getCurrentUser` reads back.
 
 **Deleted outright** (all superseded by Keycloak — do not resurrect any of this to "fix" a
 compile error; the fix is always to route through Keycloak instead): `security/JwtTokenProvider`,
@@ -130,12 +162,13 @@ column now set to a fixed placeholder string on JIT-created rows, never read/com
 `security/service/{CustomOAuth2UserService,CustomOidcUserService}`,
 `security/handler/OAuth2LoginSuccessHandler`, `security/service/StateTokenService`(`Impl`),
 `security/service/RefreshTokenBlacklistService`(`Impl`), `service/{OtpService,EmailService}`(`Impl`)
-(the whole OTP-email flow — Keycloak's own "Verify Email" required action replaces it, a click-
-through link rather than a 6-digit code — this module creates users pre-verified today anyway, see
-the `KeycloakAdminService` bullet above, so this OTP flow has no replacement pending), every
-`OAuth2Api` endpoint except `getCurrentUser` **at the time of that migration** (`register` came
-back later with a different implementation — see "What lives here" above — do not read this as
-register being gone forever), and —
+(the whole OTP-code-email flow — a real replacement landed later: Keycloak's own "Verify Email"
+action-token link, triggered via `KeycloakAdminService.createUser`/`resendVerificationEmail`'s
+`sendVerifyEmail` calls, a click-through link rather than a 6-digit code, and — unlike this
+deleted machinery — needing no mail-sending dependency of this module's own, since Keycloak sends
+the email itself), every `OAuth2Api` endpoint except `getCurrentUser` **at the time of that
+migration** (`register` came back later with a different implementation — see "What lives here"
+above — do not read this as register being gone forever), and —
 as part of the standalone extraction — `service/seed/UserSeeder`, relocated to `gateway` at the
 time (it only ever wrote via `common`'s `UserRepository` directly, no other dependency on this
 module, and `gateway` still needed to seed its own `product.USER` for the modules still embedded

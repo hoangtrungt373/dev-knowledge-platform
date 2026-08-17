@@ -2,12 +2,14 @@ package com.ttg.devknowledgeplatform.identity.api.impl;
 
 import com.ttg.devknowledgeplatform.identity.api.AuthApi;
 import com.ttg.devknowledgeplatform.identity.entity.User;
+import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.identity.dto.UserInfoResponse;
 import com.ttg.devknowledgeplatform.identity.dto.auth.RegisterRequest;
 import com.ttg.devknowledgeplatform.identity.dto.auth.RegisterResponse;
+import com.ttg.devknowledgeplatform.identity.exception.IdentityErrorCode;
 import com.ttg.devknowledgeplatform.identity.mapper.UserMapper;
 import com.ttg.devknowledgeplatform.identity.security.service.KeycloakAdminService;
 import com.ttg.devknowledgeplatform.identity.security.service.UserService;
@@ -43,5 +45,18 @@ public class AuthController implements AuthApi {
         keycloakAdminService.createUser(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new RegisterResponse(request.email(), "Account created successfully"));
+    }
+
+    @Override
+    public ResponseEntity<Void> resendVerificationEmail(CustomOAuth2User principal) {
+        User user = userService.findByEmail(principal.getEmail());
+        if (user == null) {
+            throw new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND);
+        }
+        if (Boolean.TRUE.equals(user.getEmailVerified())) {
+            throw new BusinessException(IdentityErrorCode.EMAIL_ALREADY_VERIFIED);
+        }
+        keycloakAdminService.resendVerificationEmail(user.getKeycloakSubjectId());
+        return ResponseEntity.noContent().build();
     }
 }

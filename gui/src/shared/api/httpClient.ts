@@ -12,6 +12,16 @@ import { STORAGE_KEYS } from '@shared/constants/storage';
 // a pre-extraction leftover) until this default was corrected.
 const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
 
+// Silently refreshing an access token means talking to Keycloak's own token endpoint with the
+// right client_id — knowledge this shared HTTP layer shouldn't own. authService.ts (the feature
+// that actually knows Keycloak's URLs/clients) registers its own refreshAccessToken() here once at
+// app startup (see main.tsx) via setTokenRefreshHandler; until registered, a 401 just logs out.
+let tokenRefreshHandler: (() => Promise<boolean>) | null = null;
+
+export function setTokenRefreshHandler(handler: () => Promise<boolean>): void {
+  tokenRefreshHandler = handler;
+}
+
 interface HttpClient {
   request<T>(endpoint: string, options?: RequestInit, showNotification?: (message: string) => void): Promise<T>;
   get<T>(endpoint: string, showNotification?: (message: string) => void): Promise<T>;
@@ -53,25 +63,22 @@ class HttpClientImpl implements HttpClient {
         headers,
       });
 
-      // Fix 7: on 401, try to silently refresh the token then retry once. Pre-authentication
-      // endpoints (no session to expire) are excluded so a failure there surfaces as a normal
-      // error to the caller instead of force-clearing storage and redirecting to /login.
+      // On 401, try to silently refresh the token then retry once. Pre-authentication endpoints
+      // (no session to expire) are excluded so a failure there surfaces as a normal error to the
+      // caller instead of force-clearing storage and redirecting to /login.
       if (response.status === 401 && !endpoint.includes('/auth/refresh') && !endpoint.includes('/auth/login')
           && !endpoint.includes('/auth/register')) {
-        const refreshToken = localStorage.getItem(STORAGE_KEYS.refreshToken);
-        if (refreshToken) {
-          const refreshed = await this.tryRefreshToken(refreshToken);
-          if (refreshed) {
-            const newToken = localStorage.getItem(STORAGE_KEYS.accessToken);
-            const retryHeaders = { ...headers };
-            if (newToken) retryHeaders['Authorization'] = `Bearer ${newToken}`;
-            const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, {
-              ...options,
-              headers: retryHeaders,
-            });
-            if (retryResponse.ok) {
-              return await this.parseBody<T>(retryResponse);
-            }
+        const refreshed = tokenRefreshHandler ? await tokenRefreshHandler() : false;
+        if (refreshed) {
+          const newToken = localStorage.getItem(STORAGE_KEYS.accessToken);
+          const retryHeaders = { ...headers };
+          if (newToken) retryHeaders['Authorization'] = `Bearer ${newToken}`;
+          const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, {
+            ...options,
+            headers: retryHeaders,
+          });
+          if (retryResponse.ok) {
+            return await this.parseBody<T>(retryResponse);
           }
         }
         // Refresh failed or not available — clear session and redirect to login
@@ -112,25 +119,6 @@ class HttpClientImpl implements HttpClient {
       }
 
       throw error;
-    }
-  }
-
-  // Fix 7: attempt a silent token refresh; returns true if successful
-  private async tryRefreshToken(refreshToken: string): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/v1/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
-      if (response.ok) {
-        const data: { accessToken: string } = await response.json();
-        localStorage.setItem(STORAGE_KEYS.accessToken, data.accessToken);
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
     }
   }
 

@@ -476,6 +476,24 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   `getUserFriendlyErrorMessage`/`getErrorDetails`) — don't call `fetch` directly from a
   page/component (the admin auth flow below is a deliberate exception, calling Keycloak's own
   endpoints directly rather than through `httpClient`/`gateway` — see its own note).
+  **`httpClient.ts`'s silent-refresh-on-401 now does a real Keycloak `refresh_token` grant** —
+  it used to POST to a pre-Keycloak-migration `identity-service` endpoint
+  (`/api/v1/auth/refresh`) that no longer exists, so every 401 silently skipped straight to
+  clearing storage and hard-redirecting to `/login`. `httpClient.ts` itself still has zero
+  Keycloak knowledge (it's `@shared`, not a feature) — it exposes `setTokenRefreshHandler`, a
+  module-level injection point a 401 calls if registered. `authService.ts` (which already owns
+  the Keycloak URL/client constants) implements the real logic as `refreshAccessToken()`, and
+  `main.tsx` wires the two together once at the composition root
+  (`setTokenRefreshHandler(() => authService.refreshAccessToken())`) — this is why `main.tsx`
+  imports `@auth/services/authService` even though `App.tsx` is its actual rendered content.
+  **The one non-obvious piece**: a `refresh_token` grant must be requested from the exact Keycloak
+  client the token was originally issued to, and this app now has two (`gui-password-login` for
+  `loginWithPassword`, `gui` for the PKCE/social flows below) with no third place tracking which
+  one a given session came from. Rather than adding that tracking, `refreshAccessToken()` decodes
+  the `azp` (authorized party) claim straight off the currently-stored access token — Keycloak
+  always stamps it with the requesting `client_id`, and decoding a JWT's payload doesn't care
+  whether it's expired (only signature verification would, and this app never verifies signatures
+  client-side — see `decodeJwtPayload`'s own comment).
   **`@auth/services/adminAuthService.ts` (admin login/logout) and `@auth/services/authService.ts`'s
   `loginWithPassword`/`logout` (regular login/logout) are both fixed now — deliberately using two
   *different* OAuth grant types, not drift.** `AdminLogin.tsx` uses Authorization Code + PKCE
@@ -509,10 +527,40 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   `handleSubmit` calls `authApi.register(...)` then `authService.loginWithPassword(email, password)`
   itself (the same call `Login.tsx` uses) rather than expecting tokens back from the register
   response directly.
-  **Known gap, still not fixed — deliberately out of scope**: `VerifyOtp.tsx` (still calls
-  `authApi.verifyOtp`/`resendOtp` — can't be fixed by switching grant type at all; Keycloak replaced
-  the whole OTP-email flow with its own "Verify Email" required action, a clickable link rather than
-  a 6-digit code — moot anyway now that registration creates accounts pre-verified, see above).
+  **Known gap, still not fixed — deliberately out of scope**: `VerifyOtp.tsx` itself (still calls
+  `authApi.verifyOtp`/`resendOtp`, both of which hit `identity-service` endpoints that no longer
+  exist — can't be fixed by switching grant type at all) and its `/verify-otp` route in `App.tsx`
+  are still there, unreachable dead code now that nothing links to them (see the real email
+  verification feature below) — left for the still-queued auth-folder cleanup pass rather than
+  deleted as a drive-by here.
+
+  **Real email verification landed, Keycloak-native and non-blocking** — registration now creates
+  accounts with `emailVerified: false` (`identity-service`'s `KeycloakAdminServiceImpl.createUser`)
+  and triggers a real Keycloak "Verify Email" action-token email via the Admin API's
+  `sendVerifyEmail`, rather than the old "created pre-verified" scope choice. Deliberately
+  **non-blocking**: `Login.tsx`'s direct password grant (ROPC) still works immediately after
+  registration, since no Keycloak `requiredActions` are set — a blocking design (Keycloak rejects
+  ROPC token issuance outright while a required action is pending, no way to complete it in-band)
+  would have meant migrating `Login.tsx` off ROPC onto Authorization Code + PKCE first, a much
+  bigger change than adding verification. `Dashboard.tsx`'s existing (previously dead-linked)
+  email-verification banner is the real UI now — its button calls the new
+  `authApi.resendVerificationEmail()` (`POST /api/v1/auth/resend-verification-email`,
+  authenticated) instead of navigating to `/verify-otp`; `navigate`/`useNavigate` were dropped
+  from `Dashboard.tsx` entirely since that banner button was their only remaining call site.
+  **The stale-claim caveat is handled now, not just documented** — verification status is a JWT
+  claim (`email_verified`), stamped at token-issuance time, so a plain reload/tab-refocus alone
+  never picks up a change. `Dashboard.tsx` has its own `useEffect` for this: while
+  `!user.emailVerified`, it calls `authService.refreshAccessToken()` (a real `refresh_token` grant
+  works even on a still-valid, unexpired access token — no need to wait for actual expiry) then
+  re-fetches `/api/v1/auth/user`, both once immediately on mount and again on every
+  `visibilitychange` back to `visible`. Two reasons it needs both triggers, not just one:
+  `identity-service`'s `sendVerifyEmail` now redirects back to `/dashboard` after Keycloak's own
+  confirmation click (see that module's `CLAUDE.md`), which is often a **brand-new** tab/page load
+  that never fires `visibilitychange` on its own (the immediate on-mount check covers this); the
+  visibility listener covers the other real case — the email link opened in a separate tab, with
+  the user coming back to an *already-open* Dashboard tab. Fully silent/best-effort — a failed
+  check has no visible error, since the next trigger just retries. The listener detaches once
+  `emailVerified` flips `true`, so this doesn't keep polling forever.
 
   **`authService.startOAuth`/`AuthCallback.tsx` (Google/Facebook login) are fixed too** — no longer
   call `identity-service`'s dead `/api/v1/auth/oauth2/authorization/{provider}` endpoint. Now a

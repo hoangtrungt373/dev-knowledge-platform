@@ -87,7 +87,8 @@ public class KeycloakJwtAuthenticationConverter implements Converter<Jwt, Abstra
                 jwt.getClaimAsString(StandardClaimNames.PREFERRED_USERNAME),
                 jwt.getClaimAsString(StandardClaimNames.GIVEN_NAME),
                 jwt.getClaimAsString(StandardClaimNames.FAMILY_NAME),
-                admin);
+                admin,
+                Boolean.TRUE.equals(jwt.getClaimAsBoolean(StandardClaimNames.EMAIL_VERIFIED)));
 
         User user = userService.findOrCreateFromKeycloak(info);
 

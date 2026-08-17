@@ -33,6 +33,7 @@ export interface AuthService {
   startOAuth(provider: OAuthProvider): Promise<void>;
   handleOAuthCallback(code: string | null, state: string | null, error?: string | null): Promise<void>;
   loginWithPassword(email: string, password: string): Promise<void>;
+  refreshAccessToken(): Promise<boolean>;
   storeTokens(tokens: Partial<AuthTokens>): void;
   getAccessToken(): string | null;
   getRefreshToken(): string | null;
@@ -139,6 +140,46 @@ export const authService: AuthService = {
 
     const tokens: KeycloakTokenResponse = await response.json();
     this.storeTokens(claimsToAuthTokens(tokens));
+  },
+
+  // Registered with httpClient (see main.tsx) so a 401 can attempt a silent refresh before
+  // logging the user out. A refresh_token grant must be requested from the exact client the
+  // token was originally issued to — this app now has two ("gui-password-login" for
+  // loginWithPassword, "gui" for the PKCE/social flows above) — so rather than tracking which
+  // one alongside the tokens, this decodes the still-stored (possibly expired) access token's own
+  // `azp` claim, which Keycloak always stamps with the requesting client_id. Decoding an expired
+  // JWT's payload is safe; only signature verification would care about expiry, and we never
+  // verify the signature client-side anyway (see decodeJwtPayload's own comment).
+  async refreshAccessToken(): Promise<boolean> {
+    const refreshToken = this.getRefreshToken();
+    const accessToken = this.getAccessToken();
+    if (!refreshToken || !accessToken) return false;
+
+    let clientId: string;
+    try {
+      clientId = decodeJwtPayload<{ azp?: string }>(accessToken).azp ?? OAUTH_CLIENT_ID;
+    } catch {
+      return false;
+    }
+
+    try {
+      const response = await fetch(`${REALM_BASE_URL}/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          client_id: clientId,
+          refresh_token: refreshToken,
+        }),
+      });
+      if (!response.ok) return false;
+
+      const tokens: KeycloakTokenResponse = await response.json();
+      this.storeTokens(claimsToAuthTokens(tokens));
+      return true;
+    } catch {
+      return false;
+    }
   },
 
   // Fix 8: store role alongside other tokens

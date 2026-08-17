@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Avatar,
@@ -25,6 +24,7 @@ import LockIcon from '@mui/icons-material/Lock';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelOutlinedIcon from '@mui/icons-material/CancelOutlined';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import { authApi } from '../api/authApi';
 import { profileApi } from '../api/profileApi';
 import { authService } from '../services/authService';
 import { User } from '../types';
@@ -56,7 +56,6 @@ function formatDate(iso?: string) {
 }
 
 export default function Dashboard(): JSX.Element | null {
-  const navigate = useNavigate();
   const { showError, showSuccess } = useNotification();
   const { loading: saving, guard } = useSubmitGuard();
 
@@ -68,6 +67,7 @@ export default function Dashboard(): JSX.Element | null {
   const [username, setUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [resendingVerification, setResendingVerification] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -85,6 +85,42 @@ export default function Dashboard(): JSX.Element | null {
       }
     })();
   }, [showError]);
+
+  // Clears the email-verification banner without forcing a full re-login. Verification status is
+  // a JWT claim baked into the access token at issuance time, so a plain reload keeps showing the
+  // stale (unverified) value — Keycloak's own action-token link can't push a change into an
+  // already-open tab. Refreshing gives a real refresh_token grant a chance to pick up the new
+  // claim as soon as possible, without waiting for the current access token to actually expire.
+  // Runs once immediately (identity-service's sendVerifyEmail redirects back to /dashboard after
+  // the Keycloak confirmation click, which is often a brand-new tab/page load — one that never
+  // fires visibilitychange on its own) and again on every future tab-refocus (the case where the
+  // link was opened in a separate tab and the user comes back to this already-open one).
+  // Silent/best-effort — a failed check here just means the next trigger tries again.
+  useEffect(() => {
+    if (!user || user.emailVerified) return;
+
+    const checkVerification = async () => {
+      const refreshed = await authService.refreshAccessToken();
+      if (!refreshed) return;
+      try {
+        const me = await profileApi.getCurrentUser();
+        setUser(me);
+      } catch {
+        // Silent — next trigger retries.
+      }
+    };
+
+    checkVerification();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkVerification();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [user?.emailVerified]);
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -108,6 +144,16 @@ export default function Dashboard(): JSX.Element | null {
       setAvatarUploading(false);
       // Reset so the same file can be re-selected
       if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setResendingVerification(true);
+    try {
+      await authApi.resendVerificationEmail(showError);
+      showSuccess('Verification email sent — check your inbox');
+    } finally {
+      setResendingVerification(false);
     }
   };
 
@@ -177,16 +223,17 @@ export default function Dashboard(): JSX.Element | null {
         >
           <Stack direction="row" spacing={2} alignItems="center">
             <Typography variant="body2">
-              Your email address is not verified. Check your inbox for the verification code we sent during registration.
+              Your email address is not verified. Check your inbox for the verification link we sent.
             </Typography>
             <Button
               color="inherit"
               size="small"
               variant="outlined"
-              onClick={() => navigate(`/verify-otp?email=${encodeURIComponent(user.email)}`)}
+              disabled={resendingVerification}
+              onClick={handleResendVerification}
               sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
             >
-              Verify now
+              {resendingVerification ? 'Sending…' : 'Resend email'}
             </Button>
           </Stack>
         </Alert>

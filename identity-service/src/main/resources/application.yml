@@ -19,6 +19,7 @@ app:
     realm: ${KEYCLOAK_ADMIN_REALM:dev-knowledge-platform}
     client-id: ${KEYCLOAK_ADMIN_CLIENT_ID:identity-service-admin}
     client-secret: ${KEYCLOAK_ADMIN_CLIENT_SECRET:dev-identity-admin-secret-change-me}
+    frontend-url: ${FRONTEND_URL:http://localhost:3000}
 
 spring:
   application:

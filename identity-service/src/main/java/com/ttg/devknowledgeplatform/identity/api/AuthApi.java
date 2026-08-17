@@ -47,4 +47,13 @@ public interface AuthApi {
      */
     @PostMapping("/register")
     ResponseEntity<RegisterResponse> register(@Valid @RequestBody RegisterRequest request);
+
+    /**
+     * Re-sends Keycloak's email-verification link to the authenticated caller's own account.
+     *
+     * @param principal the authenticated OAuth2 user
+     * @return {@code 204} on success; {@code 409} if the email is already verified
+     */
+    @PostMapping("/resend-verification-email")
+    ResponseEntity<Void> resendVerificationEmail(@AuthenticationPrincipal CustomOAuth2User principal);
 }

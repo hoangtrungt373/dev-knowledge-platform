@@ -24,4 +24,13 @@ public class KeycloakAdminProperties {
 
     /** The above client's secret — never logged, never sent to any frontend. */
     private String clientSecret;
+
+    /**
+     * The GUI's own public base URL — passed as {@code redirect_uri} on
+     * {@code UserResource.sendVerifyEmail} calls so Keycloak's email-verification link lands the
+     * user back in this app's own Dashboard instead of Keycloak's generic {@code account} client
+     * confirmation page (its default target when no {@code client_id}/{@code redirect_uri} is
+     * given).
+     */
+    private String frontendUrl;
 }
