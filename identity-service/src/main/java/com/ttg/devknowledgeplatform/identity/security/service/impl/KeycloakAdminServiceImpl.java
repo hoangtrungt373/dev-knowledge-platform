@@ -143,16 +143,45 @@ public class KeycloakAdminServiceImpl implements KeycloakAdminService {
 
     @Override
     public void updateUsername(String keycloakSubjectId, String newUsername) {
+        if (!applyUsername(keycloakSubjectId, newUsername)) {
+            throw new BusinessException(CommonErrorCode.USER_USERNAME_ALREADY_EXISTS, new Object[]{newUsername});
+        }
+    }
+
+    @Override
+    public String assignDerivedUsername(String keycloakSubjectId, String email) {
+        String base = deriveUsernameBase(email);
+        int suffix = 0;
+        while (true) {
+            String candidate = withSuffix(base, suffix);
+            if (applyUsername(keycloakSubjectId, candidate)) {
+                return candidate;
+            }
+            if (suffix >= USERNAME_MAX_SUFFIX_ATTEMPTS) {
+                throw new BusinessException(IdentityErrorCode.KEYCLOAK_USER_UPDATE_FAILED);
+            }
+            suffix++;
+        }
+    }
+
+    /**
+     * Attempts to rename the given Keycloak user to {@code candidate}.
+     *
+     * @return {@code true} if applied, {@code false} if Keycloak rejected it as a username conflict
+     * @throws BusinessException(IdentityErrorCode.KEYCLOAK_USER_UPDATE_FAILED) on any other failure
+     */
+    private boolean applyUsername(String keycloakSubjectId, String candidate) {
         var userResource = keycloakAdminClient.realm(properties.getRealm()).users().get(keycloakSubjectId);
         UserRepresentation representation = userResource.toRepresentation();
-        representation.setUsername(newUsername);
+        representation.setUsername(candidate);
         try {
             // void, not Response — same generated-client shape as sendVerifyEmail below; a non-2xx
             // reply throws rather than returning a status code to check by hand.
             userResource.update(representation);
+            return true;
         } catch (WebApplicationException e) {
             if (e.getResponse().getStatus() == Response.Status.CONFLICT.getStatusCode()) {
-                throw new BusinessException(CommonErrorCode.USER_USERNAME_ALREADY_EXISTS, new Object[]{newUsername});
+                return false;
             }
             log.error("Keycloak username update failed for subject {}: HTTP {}", keycloakSubjectId, e.getResponse().getStatus());
             throw new BusinessException(IdentityErrorCode.KEYCLOAK_USER_UPDATE_FAILED);

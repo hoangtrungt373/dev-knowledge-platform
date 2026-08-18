@@ -48,4 +48,24 @@ public interface KeycloakAdminService {
      *         Keycloak otherwise rejects the request ({@code IdentityErrorCode.KEYCLOAK_USER_UPDATE_FAILED})
      */
     void updateUsername(String keycloakSubjectId, String newUsername);
+
+    /**
+     * Renames a brokered-login (Google/Facebook) account away from its Keycloak-assigned default
+     * username — Keycloak's own "First Broker Login" flow sets a federated identity's username
+     * equal to its email (it has no separate username concept of its own), the same starting point
+     * local password-based accounts had before {@link #createUser} began generating one from the
+     * email's local part. Derives a candidate the same way {@link #createUser} does and retries
+     * with a numeric suffix on a collision.
+     *
+     * <p>Called from {@code UserService#findOrCreateFromKeycloak} only on a brand-new
+     * JIT-provisioned row, never on every request — a rename here changes what Keycloak reports for
+     * every subsequent login too, so repeating it would be pointless as well as wasteful.
+     *
+     * @param keycloakSubjectId the account's Keycloak subject id ({@code sub} claim)
+     * @param email             the account's email — also its current (default) username
+     * @return the newly-assigned username
+     * @throws com.ttg.devknowledgeplatform.common.exception.BusinessException if every candidate up
+     *         to the retry budget is rejected ({@code IdentityErrorCode.KEYCLOAK_USER_UPDATE_FAILED})
+     */
+    String assignDerivedUsername(String keycloakSubjectId, String email);
 }

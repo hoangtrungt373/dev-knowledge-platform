@@ -48,10 +48,29 @@ public class UserServiceImpl implements UserService {
         boolean isNew = user.getId() == null;
         UserRole targetRole = info.admin() ? UserRole.ADMIN : UserRole.USER;
 
+        // A brand-new brokered (Google/Facebook) login lands in Keycloak with username == email —
+        // Keycloak's own default for a federated identity, which has no separate username concept
+        // of its own; the same starting point local password-based accounts had before
+        // KeycloakAdminServiceImpl.createUser began generating one from the email's local part.
+        // Only ever attempted on the account's very first JIT-provisioning (isNew): a rename here
+        // changes what Keycloak reports on every later login too, so repeating it on every request
+        // would be pointless as well as wasteful. Best-effort — if Keycloak rejects it for any
+        // reason, the account just keeps its email-shaped username rather than blocking login over
+        // a cosmetic default; the caller can still rename it later via the Dashboard edit flow.
+        String username = info.username();
+        if (isNew && username.equals(info.email())) {
+            try {
+                username = keycloakAdminService.assignDerivedUsername(info.subject(), info.email());
+            } catch (Exception e) {
+                log.warn("Could not assign a derived username for new Keycloak subject {}: {}",
+                        info.subject(), e.getMessage());
+            }
+        }
+
         boolean changed = isNew
                 || !Objects.equals(user.getKeycloakSubjectId(), info.subject())
                 || !Objects.equals(user.getEmail(), info.email())
-                || !Objects.equals(user.getUsername(), info.username())
+                || !Objects.equals(user.getUsername(), username)
                 || !Objects.equals(user.getFirstName(), info.firstName())
                 || !Objects.equals(user.getLastName(), info.lastName())
                 || user.getRole() != targetRole
@@ -64,7 +83,7 @@ public class UserServiceImpl implements UserService {
 
         user.setKeycloakSubjectId(info.subject());
         user.setEmail(info.email());
-        user.setUsername(info.username());
+        user.setUsername(username);
         user.setFirstName(info.firstName());
         user.setLastName(info.lastName());
         user.setRole(targetRole);

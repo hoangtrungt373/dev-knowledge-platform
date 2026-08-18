@@ -1328,9 +1328,12 @@ identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
                                           chars) with numeric-suffix collision retry (withSuffix,
                                           up to 50 attempts, only on an actual username conflict —
                                           an email conflict still fails as EMAIL_ALREADY_EXISTS);
-                                          resendVerificationEmail; updateUsername (Admin REST API
-                                          rename, mapping a Keycloak 409 to
-                                          CommonErrorCode.USER_USERNAME_ALREADY_EXISTS)
+                                          resendVerificationEmail; updateUsername/
+                                          assignDerivedUsername (the latter for a brand-new
+                                          Google/Facebook login's Keycloak-default username==email)
+                                          share a private applyUsername rename-attempt helper,
+                                          mapping a Keycloak 409 to
+                                          CommonErrorCode.USER_USERNAME_ALREADY_EXISTS
 ```
 
 **Deleted outright** (all superseded by Keycloak): `security/JwtTokenProvider`,

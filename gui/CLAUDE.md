@@ -583,6 +583,34 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   called when the username actually changed, to avoid an unnecessary refresh-token grant on a plain
   firstName/lastName edit.
 
+  **A third, structurally different source of the same staleness: a brand-new Google/Facebook
+  login.** `identity-service`'s `UserServiceImpl.findOrCreateFromKeycloak` now auto-renames a
+  brokered login's Keycloak-assigned default username (`username == email`) on first sight (see
+  that method's own note in `identity-service/CLAUDE.md`) — but unlike the two cases above, there's
+  no single call site that both triggers the rename and knows to refresh afterward: the rename
+  happens as a side effect of whichever authenticated request happens to be the *first* one after
+  login, and `AuthCallback.tsx` (the PKCE callback that completes the login itself) never talks to
+  our own backend at all, only to Keycloak's token endpoint directly — it has no way to know a
+  rename even happened. Since `AuthCallback.tsx` always `navigate('/dashboard', { replace: true })`s
+  on success, `Dashboard.tsx`'s own mount effect (the one that already calls
+  `profileApi.getCurrentUser()`) is guaranteed to be that first request, so the fix lives there
+  instead: right after `setUser(me)`, it decodes the *current* access token's own
+  `preferred_username` claim (`@shared/utils/jwt#decodeJwtPayload`) and compares it against
+  `me.username` — the response body already reflects the just-renamed local row regardless, since
+  that comes from the freshly-saved entity, not the stale claim. A mismatch means this token predates
+  a server-side rename (whichever one — this check doesn't care if it was the broker case above or
+  something else entirely), so it calls `authService.refreshAccessToken()` once before anything else
+  in the app can fire a second authenticated request against the stale token. Deliberately a general
+  "does the claim match what the server just told me" check rather than a backend-supplied "was this
+  a brand-new account" flag — it's agnostic to *why* the local and token views diverged, so it would
+  equally catch any future server-side rename path without needing its own dedicated signal.
+  This mount effect also gained a `hasFetchedRef` guard (same idiom as `AuthCallback.tsx`/
+  `AdminAuthCallback.tsx`'s `hasRun`) once it started calling `refreshAccessToken()` conditionally —
+  StrictMode's dev-mode double-invoke was already firing the plain `getCurrentUser()` fetch twice
+  (harmless on its own, an idempotent GET), but doubling a real token-rotation call isn't safe the
+  same way: two near-simultaneous refresh grants risk the second one hitting an already-rotated-out
+  refresh token and failing.
+
   **The verification email's link redirects to `/login?emailVerified=true`, not `/dashboard`** —
   deliberately, to handle a real edge case: a user who logs out between registering and clicking
   the emailed link would otherwise get bounced `/dashboard` → (`PrivateRoute`, unauthenticated) →

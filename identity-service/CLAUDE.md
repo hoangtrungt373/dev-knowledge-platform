@@ -156,6 +156,16 @@ reachable directly on its own port, same limitation `ecommerce-service` has.
   local-DB uniqueness check already threw) and any other non-2xx to a new
   `IdentityErrorCode.KEYCLOAK_USER_UPDATE_FAILED`. Called from `UserServiceImpl.updateProfile`
   *before* the local row is saved — see that method's own note below for why order matters here.
+  Both `updateUsername` and `createUser`'s own retry loop now share one private `applyUsername`
+  helper (rename attempt → `true`/`false`/throw), rather than each duplicating the
+  fetch-representation/set-username/catch-409 shape.
+  `assignDerivedUsername(keycloakSubjectId, email)` — added for brokered (Google/Facebook) logins,
+  which land in Keycloak with `username == email` by default (a federated identity has no separate
+  username concept of its own, so Keycloak's own "First Broker Login" flow falls back to the email —
+  the same starting point local accounts had before `createUser` began deriving one). Reuses
+  `deriveUsernameBase`/`withSuffix` and retries via `applyUsername` on a collision, same alphabet/cap
+  as `createUser`. Called from `UserService#findOrCreateFromKeycloak` — see that method's own note
+  below for the call site, the staleness wrinkle it reintroduces, and how `gui` handles it.
 - `exception/IdentityErrorCode` — this module's first `ErrorCode` enum (implements `common`'s
   `ErrorCode` interface, mirroring `content-service`'s `ContentErrorCode`) — `EMAIL_ALREADY_EXISTS`/
   `KEYCLOAK_USER_CREATE_FAILED`/`EMAIL_ALREADY_VERIFIED`/`VERIFICATION_EMAIL_SEND_FAILED`/
@@ -212,6 +222,24 @@ reachable directly on its own port, same limitation `ecommerce-service` has.
   this exact same Keycloak claim, independently of this module — a rename here doesn't propagate to
   friend search/public profiles until that service's own converter next runs against a fresh token
   (or is revisited to do the same Admin API push). See `docs/CHANGELOG.md`'s `[Unreleased]` entry.
+  **`findOrCreateFromKeycloak` also renames a brokered login's default username, on first sight
+  only.** Right after computing `isNew`, if `info.username()` (the JWT's `preferred_username`) still
+  equals `info.email()`, it calls `KeycloakAdminService.assignDerivedUsername(info.subject(),
+  info.email())` in a best-effort `try/catch` (log-and-continue on failure — never blocks login over
+  a cosmetic default) and uses whatever it returns — falling back to `info.username()` unchanged on
+  failure — as the value written to both `changed`'s comparison and `user.setUsername(...)`, instead
+  of `info.username()` directly. Deliberately gated on `isNew`: this only ever needs to happen once
+  per account, and repeating it on every request would just be a wasted Admin API round trip inside
+  the authentication hot path. **This reintroduces the exact same claim-staleness problem
+  `updateProfile`'s own fix above has** — the token this very request authenticated with was minted
+  *before* the rename, so its `preferred_username` claim still says the old (email) value; left
+  alone, the *next* authenticated request (from anywhere in the app, not just this one) would see
+  that stale claim and JIT-sync the local row right back to it. Since `AuthCallback.tsx` (the
+  Google/Facebook PKCE callback) always navigates to `/dashboard` first after a fresh login, `gui`
+  closes this window in `Dashboard.tsx`'s own mount effect rather than in `AuthCallback.tsx` itself
+  — see `gui/CLAUDE.md` for why a general "does the token's claim match what this response just
+  said" check there, rather than a special-cased "was this a brand-new account" signal from the
+  backend, is what it does.
 
 **Deleted outright** (all superseded by Keycloak — do not resurrect any of this to "fix" a
 compile error; the fix is always to route through Keycloak instead): `security/JwtTokenProvider`,

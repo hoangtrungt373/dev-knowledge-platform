@@ -31,6 +31,7 @@ import { authService } from '../services/authService';
 import { User } from '../types';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
+import { decodeJwtPayload } from '@shared/utils/jwt';
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -79,8 +80,17 @@ export default function Dashboard(): JSX.Element | null {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // This effect calls authService.refreshAccessToken() below on a claim mismatch — a real token
+  // rotation, not just an idempotent GET, so it can't safely run twice. StrictMode's dev-mode
+  // double-invoke would otherwise fire it twice back to back; a second concurrent refresh could
+  // hit an already-rotated-out refresh token and fail. Same guard AuthCallback.tsx/
+  // AdminAuthCallback.tsx use for their own one-time-use PKCE code exchange.
+  const hasFetchedRef = useRef(false);
 
   useEffect(() => {
+    if (hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
+
     (async () => {
       try {
         const me = await profileApi.getCurrentUser(showError);
@@ -88,6 +98,28 @@ export default function Dashboard(): JSX.Element | null {
         setFirstName(me.firstName ?? '');
         setLastName(me.lastName ?? '');
         setUsername(me.username ?? '');
+
+        // A brand-new Google/Facebook login gets JIT-provisioned server-side with a derived
+        // username that differs from Keycloak's own default (identity-service's
+        // UserServiceImpl.findOrCreateFromKeycloak renames it away from username==email on first
+        // sight) — but the access token this very request was authenticated with was minted
+        // *before* that rename, so its preferred_username claim still says the old value. Left
+        // alone, the next authenticated call anywhere in the app would see that stale claim and
+        // get JIT-synced back to it, silently reverting the rename (the same staleness class
+        // handleSave's own refreshAccessToken call already guards against for a manual edit).
+        // Comparing the claim against what this response just said settles it before that can
+        // happen, regardless of which page happens to make the first authenticated call.
+        const accessToken = authService.getAccessToken();
+        if (accessToken) {
+          try {
+            const { preferred_username } = decodeJwtPayload<{ preferred_username?: string }>(accessToken);
+            if (preferred_username && preferred_username !== me.username) {
+              await authService.refreshAccessToken();
+            }
+          } catch {
+            // Best-effort — a decode failure just means the next natural token refresh catches up.
+          }
+        }
       } catch (error) {
         if ((error as any)?.status === 401) authService.logout();
       } finally {
