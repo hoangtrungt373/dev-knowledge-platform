@@ -30,4 +30,22 @@ public interface KeycloakAdminService {
      *         the request ({@code IdentityErrorCode.VERIFICATION_EMAIL_SEND_FAILED})
      */
     void resendVerificationEmail(String keycloakSubjectId);
+
+    /**
+     * Renames a Keycloak user's {@code username} via the Admin REST API.
+     *
+     * <p>Keycloak, not the local {@code User} row, is this reactor's source of truth for identity
+     * claims — {@code preferred_username} is re-synced from Keycloak into the local row on every
+     * authenticated request (see {@code UserService#findOrCreateFromKeycloak}), so a local-only
+     * rename would be silently reverted on the caller's very next request. This must be called
+     * before the local row is updated, so a Keycloak-side conflict leaves nothing to roll back.
+     *
+     * @param keycloakSubjectId the account's Keycloak subject id ({@code sub} claim /
+     *                          {@code User.keycloakSubjectId}), not the local numeric PK
+     * @param newUsername       the new username, already validated/normalized by the caller
+     * @throws com.ttg.devknowledgeplatform.common.exception.BusinessException if the username is
+     *         already taken in the realm ({@code CommonErrorCode.USER_USERNAME_ALREADY_EXISTS}) or
+     *         Keycloak otherwise rejects the request ({@code IdentityErrorCode.KEYCLOAK_USER_UPDATE_FAILED})
+     */
+    void updateUsername(String keycloakSubjectId, String newUsername);
 }

@@ -1293,7 +1293,8 @@ identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
 │                                        logs the user in itself afterward (no tokens in this response)
 ├── exception/
 │   └── IdentityErrorCode.java         — this module's first ErrorCode enum: EMAIL_ALREADY_EXISTS,
-│                                        KEYCLOAK_USER_CREATE_FAILED
+│                                        KEYCLOAK_USER_CREATE_FAILED, EMAIL_ALREADY_VERIFIED,
+│                                        VERIFICATION_EMAIL_SEND_FAILED, KEYCLOAK_USER_UPDATE_FAILED
 └── security/
     ├── SecurityConfig.java            — everything requires auth except `/actuator/**` and
     │                                    `POST /api/v1/auth/register` (a brand-new user has no token
@@ -1315,9 +1316,21 @@ identity-service/src/main/java/com/ttg/devknowledgeplatform/identity/
                                           (KeycloakUserInfo carrier record, same package),
                                           resolveCurrentUser, findByEmail/
                                           findByUserUuid(Optional)/findById, updateStatus,
-                                          updateProfile, updateAvatar; plus KeycloakAdminService/Impl
-                                          — createUser(RegisterRequest), builds a UserRepresentation
-                                          and calls Keycloak's Admin REST API
+                                          updateProfile (renames the user in Keycloak first via
+                                          KeycloakAdminService.updateUsername when the username
+                                          actually changed, before writing the local row — Keycloak
+                                          re-syncs preferred_username into this row on every
+                                          request, so a local-only rename would just be reverted on
+                                          the caller's next call), updateAvatar; plus
+                                          KeycloakAdminService/Impl — createUser(RegisterRequest)
+                                          derives username from the email's local part
+                                          (deriveUsernameBase, sanitized to [a-z0-9_], capped at 30
+                                          chars) with numeric-suffix collision retry (withSuffix,
+                                          up to 50 attempts, only on an actual username conflict —
+                                          an email conflict still fails as EMAIL_ALREADY_EXISTS);
+                                          resendVerificationEmail; updateUsername (Admin REST API
+                                          rename, mapping a Keycloak 409 to
+                                          CommonErrorCode.USER_USERNAME_ALREADY_EXISTS)
 ```
 
 **Deleted outright** (all superseded by Keycloak): `security/JwtTokenProvider`,

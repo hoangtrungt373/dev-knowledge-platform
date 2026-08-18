@@ -56,6 +56,14 @@ function formatDate(iso?: string) {
   return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
+// Applied to the Personal Information fields while not editing — same TextField, same box size,
+// just styled to look like plain text so the Paper's height never changes between view/edit.
+const readOnlyFieldSx = {
+  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
+  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
+  '& .MuiInputBase-input': { cursor: 'default' },
+} as const;
+
 export default function Dashboard(): JSX.Element | null {
   const { showError, showSuccess } = useNotification();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -197,11 +205,18 @@ export default function Dashboard(): JSX.Element | null {
       return;
     }
     setUsernameError('');
+    const usernameChanged = trimmedUsername !== user?.username;
     guard(async () => {
       const updated = await profileApi.updateProfile(
         { firstName: firstName.trim(), lastName: lastName.trim(), username: trimmedUsername },
         showError,
       );
+      // A changed username is renamed in Keycloak too (see identity-service's UserServiceImpl),
+      // but the currently-held access token's own preferred_username claim was stamped at
+      // issuance and won't reflect it until a fresh token is issued — same staleness the
+      // email-verification banner already works around. Refresh now so the next request (even a
+      // plain page reload) doesn't get JIT-synced back to the old Keycloak-side username.
+      if (usernameChanged) await authService.refreshAccessToken();
       setUser(updated);
       setIsEditing(false);
       showSuccess('Profile updated successfully');
@@ -360,75 +375,78 @@ export default function Dashboard(): JSX.Element | null {
         <Typography variant="h6" sx={{ mb: 2 }}>Personal Information</Typography>
         <Divider sx={{ mb: 3 }} />
 
-        {isEditing ? (
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="First Name"
-                value={firstName}
-                onChange={e => setFirstName(e.target.value)}
-                inputProps={{ maxLength: 255 }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Last Name"
-                value={lastName}
-                onChange={e => setLastName(e.target.value)}
-                inputProps={{ maxLength: 255 }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Username"
-                value={username}
-                onChange={e => {
-                  setUsername(e.target.value);
-                  setUsernameError('');
-                }}
-                error={!!usernameError}
-                helperText={usernameError || 'Lowercase letters, numbers, and underscores only'}
-                inputProps={{ maxLength: 30 }}
-              />
-            </Grid>
+        <Grid container spacing={3}>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              size="small"
+              label="First Name"
+              placeholder="—"
+              value={isEditing ? firstName : (user.firstName ?? '')}
+              onChange={e => setFirstName(e.target.value)}
+              inputProps={{ maxLength: 255 }}
+              InputProps={{ readOnly: !isEditing }}
+              sx={!isEditing ? readOnlyFieldSx : undefined}
+            />
           </Grid>
-        ) : (
-          <Grid container spacing={3}>
-            <Grid item xs={12} sm={6}>
-              <InfoRow label="First Name" value={user.firstName} />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <InfoRow label="Last Name" value={user.lastName} />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <InfoRow
-                label="Email"
-                value={
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <span>{user.email}</span>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Last Name"
+              placeholder="—"
+              value={isEditing ? lastName : (user.lastName ?? '')}
+              onChange={e => setLastName(e.target.value)}
+              inputProps={{ maxLength: 255 }}
+              InputProps={{ readOnly: !isEditing }}
+              sx={!isEditing ? readOnlyFieldSx : undefined}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Email"
+              value={user.email}
+              InputProps={{
+                readOnly: true,
+                endAdornment: (
+                  <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0, pl: 1 }}>
                     {user.emailVerified
                       ? <CheckCircleIcon sx={{ fontSize: 16, color: 'success.main' }} />
                       : <CancelOutlinedIcon sx={{ fontSize: 16, color: 'warning.main' }} />
                     }
                     <Typography
-                      component="span"
-                      variant="body2"
+                      variant="caption"
                       color={user.emailVerified ? 'success.main' : 'warning.main'}
+                      sx={{ whiteSpace: 'nowrap' }}
                     >
                       {user.emailVerified ? 'Verified' : 'Not verified'}
                     </Typography>
                   </Stack>
-                }
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <InfoRow label="Username" value={`@${user.username}`} />
-            </Grid>
+                ),
+              }}
+              sx={readOnlyFieldSx}
+            />
           </Grid>
-        )}
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Username"
+              value={isEditing ? username : `@${user.username}`}
+              onChange={e => {
+                setUsername(e.target.value);
+                setUsernameError('');
+              }}
+              error={!!usernameError}
+              helperText={usernameError || 'Lowercase letters, numbers, and underscores only'}
+              inputProps={{ maxLength: 30 }}
+              InputProps={{ readOnly: !isEditing }}
+              sx={!isEditing ? readOnlyFieldSx : undefined}
+            />
+          </Grid>
+        </Grid>
       </Paper>
 
       {/* Account Details */}

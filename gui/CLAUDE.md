@@ -570,6 +570,19 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   trigger just retries. The listener detaches once `emailVerified` flips `true`, so this doesn't
   keep polling forever.
 
+  **The same stale-claim fix now also applies to editing username.** `Dashboard.tsx`'s Personal
+  Information fields are always-mounted `TextField`s (`InputProps.readOnly` toggled by `isEditing`,
+  not swapped for `Typography` — this keeps the Paper's height invariant across the edit/view
+  transition, see `docs/CHANGELOG.md`'s `[Unreleased]` entry for the layout history). `handleSave`
+  compares the submitted username against `user.username` and, when it actually changed, calls
+  `authService.refreshAccessToken()` right after `profileApi.updateProfile` succeeds — before that
+  call, `identity-service` has already renamed the user in Keycloak itself (see
+  `identity-service/CLAUDE.md`'s `UserService.updateProfile` note), but the browser's currently-held
+  access token still carries the old `preferred_username` claim (stamped at issuance), which would
+  otherwise get JIT-synced back into the local DB row on the very next authenticated request. Only
+  called when the username actually changed, to avoid an unnecessary refresh-token grant on a plain
+  firstName/lastName edit.
+
   **The verification email's link redirects to `/login?emailVerified=true`, not `/dashboard`** —
   deliberately, to handle a real edge case: a user who logs out between registering and clicking
   the emailed link would otherwise get bounced `/dashboard` → (`PrivateRoute`, unauthenticated) →

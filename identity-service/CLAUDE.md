@@ -92,10 +92,38 @@ reachable directly on its own port, same limitation `ecommerce-service` has.
   already passed to this service's container in `docker-compose.apps.yml`, previously unread by
   anything) is the GUI's own public base URL, used only by `sendVerifyEmail` below.
 - `security/service/KeycloakAdminService` (+ `impl/`) — `createUser(RegisterRequest)`: builds a
-  `UserRepresentation` (`username` = `email`, per the realm's `registrationEmailAsUsername: true`;
-  `enabled: true`, **`emailVerified: false`** — no longer the earlier "created pre-verified" scope
-  choice, see `docs/CHANGELOG.md`) and calls `keycloak.realm(...).users().create(...)`, mapping the
-  Admin API's own 409 response to `IdentityErrorCode.EMAIL_ALREADY_EXISTS`. On success, extracts
+  `UserRepresentation` (`enabled: true`, **`emailVerified: false`** — no longer the earlier "created
+  pre-verified" scope choice, see `docs/CHANGELOG.md`) and calls `keycloak.realm(...).users().create(...)`,
+  mapping the Admin API's own 409 response to `IdentityErrorCode.EMAIL_ALREADY_EXISTS`.
+  **`username` is derived from the email's local part, not the full email** —
+  `deriveUsernameBase` lowercases everything before the `@` and collapses any character outside
+  `[a-z0-9_]` (dots, plusses, hyphens) to a single underscore, falling back to `"user"` if nothing
+  survives sanitization; `withSuffix` appends a numeric disambiguator (truncating the base as
+  needed to stay under `USERNAME_MAX_LENGTH = 30`, the same cap `gui`'s own username-edit
+  validation enforces) on a real collision. `createUser` retries with the next suffix only when
+  Keycloak's 409 body says the *username* collided (`"...same username"` vs `"...same email"` — the
+  two conflict reasons Keycloak's own error message distinguishes); an email collision (or an
+  exhausted 50-attempt suffix budget, astronomically unlikely) still surfaces as
+  `EMAIL_ALREADY_EXISTS` to the caller, same as before this change.
+  **This derivation logic alone did nothing while `realm-export.json`'s
+  `registrationEmailAsUsername` stayed `true`** — Keycloak's own server source
+  (`UsersResource.createUser()`/`UserResource.updateUserFromRep()`) unconditionally overrides
+  *any* submitted `username` with `email` whenever that realm flag is on, for every caller
+  (Admin REST API included, not just Keycloak's native self-registration form — an earlier revision
+  of this note wrongly assumed the flag was form-scoped; it isn't). `editUsernameAllowed` gates a
+  username *update* the same absolute way — `false` (this realm's original default) makes Keycloak
+  refuse the change outright regardless of caller, which is what silently defeated
+  `updateUsername` above too. Both are now `registrationEmailAsUsername: false`/
+  `editUsernameAllowed: true` in `realm-export.json` — but that file only applies on a *fresh*
+  Keycloak import (see `docker/keycloak/README.md`'s import-once caveat), so an already-provisioned
+  dev instance needs the same two settings flipped by hand (Admin Console → Realm Settings → Login)
+  or via a live `PUT /admin/realms/{realm}` call before either feature actually takes effect.
+  `registrationAllowed: true` (Keycloak's own native self-registration form, reachable via its
+  hosted login page) is a separate, still-open path neither flip touches.
+  `loginWithEmailAllowed: true` (unrelated flag, unchanged) is what keeps `gui`'s password-grant
+  login working regardless — its `username` grant parameter is always the caller's email
+  (`authService.loginWithPassword`), which Keycloak resolves against either field when this flag is
+  on, so login needed no change here. On success, extracts
   the new account's Keycloak id from the create response (`CreatedResponseUtil.getCreatedId`) and
   triggers a real verification email via Keycloak's own Admin API `send-verify-email` action
   (private `sendVerifyEmail` helper) — **best-effort**: a mail-server hiccup logs a warning but
@@ -122,10 +150,16 @@ reachable directly on its own port, same limitation `ecommerce-service` has.
   `IdentityErrorCode.VERIFICATION_EMAIL_SEND_FAILED` if Keycloak rejects it.
   `AuthController.resendVerificationEmail` itself rejects with `IdentityErrorCode.EMAIL_ALREADY_VERIFIED`
   before ever calling Keycloak if the caller's own local `User.emailVerified` is already `true`.
+  `updateUsername(keycloakSubjectId, newUsername)` — added so a username edit actually sticks:
+  fetches the Keycloak `UserRepresentation` (`.toRepresentation()`), sets its `username`, and calls
+  `.update(...)`, mapping a 409 to `CommonErrorCode.USER_USERNAME_ALREADY_EXISTS` (the same code the
+  local-DB uniqueness check already threw) and any other non-2xx to a new
+  `IdentityErrorCode.KEYCLOAK_USER_UPDATE_FAILED`. Called from `UserServiceImpl.updateProfile`
+  *before* the local row is saved — see that method's own note below for why order matters here.
 - `exception/IdentityErrorCode` — this module's first `ErrorCode` enum (implements `common`'s
   `ErrorCode` interface, mirroring `content-service`'s `ContentErrorCode`) — `EMAIL_ALREADY_EXISTS`/
-  `KEYCLOAK_USER_CREATE_FAILED`/`EMAIL_ALREADY_VERIFIED`/`VERIFICATION_EMAIL_SEND_FAILED`, all
-  thrown by `KeycloakAdminService`/`AuthController`.
+  `KEYCLOAK_USER_CREATE_FAILED`/`EMAIL_ALREADY_VERIFIED`/`VERIFICATION_EMAIL_SEND_FAILED`/
+  `KEYCLOAK_USER_UPDATE_FAILED`, all thrown by `KeycloakAdminService`/`AuthController`.
 - `security/` — this app's own filter chain, independent of `gateway`'s, since it now runs on its
   own port and must guard its own endpoints regardless of whether `gateway` is proxying to it
   (mirrors `ecommerce-service`'s `security/` package). `SecurityConfig` requires authentication on
@@ -159,6 +193,25 @@ reachable directly on its own port, same limitation `ecommerce-service` has.
   verification link (out-of-band, no app code involved) and their access token eventually
   refreshes (or they re-log-in), the fresh token's `email_verified: true` claim flows through here
   into the local row `AuthController.getCurrentUser` reads back.
+  **`updateProfile` renames the user in Keycloak too, not just the local row, when `username`
+  actually changes.** The same re-sync described above cuts both ways: because
+  `KeycloakJwtAuthenticationConverter` re-derives `username` from the token's `preferred_username`
+  claim on every request, a local-only rename would be silently reverted on the caller's very next
+  call — this bit real usage before it was caught (see `docs/CHANGELOG.md`'s `[Unreleased]` entry).
+  `updateProfile` now only touches `username` when the trimmed/lowercased value differs from
+  `user.getUsername()` (skips the Keycloak round trip on a firstName/lastName-only save), checks
+  local uniqueness first (`existsByUsernameAndIdNot`, unchanged), then calls
+  `KeycloakAdminService.updateUsername(user.getKeycloakSubjectId(), trimmed)` **before** setting the
+  field locally — if Keycloak rejects the rename (its own uniqueness conflict or otherwise), nothing
+  has been written locally yet, so there's nothing to roll back. `gui`'s side of this fix
+  (`authService.refreshAccessToken()` after a successful username-changing save) is documented in
+  `gui/CLAUDE.md` — the local row and Keycloak agree immediately after this call, but the *caller's
+  already-issued access token* doesn't until a fresh one is obtained, same staleness window the
+  email-verification claim already has.
+  **Known gap, not fixed here**: `social-service`'s own `SocialProfile.username` JIT-syncs from
+  this exact same Keycloak claim, independently of this module — a rename here doesn't propagate to
+  friend search/public profiles until that service's own converter next runs against a fresh token
+  (or is revisited to do the same Admin API push). See `docs/CHANGELOG.md`'s `[Unreleased]` entry.
 
 **Deleted outright** (all superseded by Keycloak — do not resurrect any of this to "fix" a
 compile error; the fix is always to route through Keycloak instead): `security/JwtTokenProvider`,

@@ -15,6 +15,7 @@ import com.ttg.devknowledgeplatform.identity.entity.User;
 import com.ttg.devknowledgeplatform.identity.enums.UserRole;
 import com.ttg.devknowledgeplatform.identity.enums.UserStatus;
 import com.ttg.devknowledgeplatform.identity.repository.UserRepository;
+import com.ttg.devknowledgeplatform.identity.security.service.KeycloakAdminService;
 import com.ttg.devknowledgeplatform.identity.security.service.KeycloakUserInfo;
 import com.ttg.devknowledgeplatform.identity.security.service.UserService;
 
@@ -32,6 +33,7 @@ public class UserServiceImpl implements UserService {
     private static final String KEYCLOAK_MANAGED_PASSWORD_PLACEHOLDER = "KEYCLOAK_MANAGED";
 
     private final UserRepository userRepository;
+    private final KeycloakAdminService keycloakAdminService;
 
     @Override
     public User findOrCreateFromKeycloak(KeycloakUserInfo info) {
@@ -117,10 +119,17 @@ public class UserServiceImpl implements UserService {
         user.setLastName(lastName != null ? lastName.trim() : user.getLastName());
         if (username != null) {
             String trimmed = username.trim().toLowerCase();
-            if (userRepository.existsByUsernameAndIdNot(trimmed, user.getId())) {
-                throw new ApiException(CommonErrorCode.USER_USERNAME_ALREADY_EXISTS, new Object[] {trimmed});
+            if (!trimmed.equals(user.getUsername())) {
+                if (userRepository.existsByUsernameAndIdNot(trimmed, user.getId())) {
+                    throw new ApiException(CommonErrorCode.USER_USERNAME_ALREADY_EXISTS, new Object[] {trimmed});
+                }
+                // Keycloak owns preferred_username and re-syncs it into this row on every request
+                // (see findOrCreateFromKeycloak) — renaming locally first would just get reverted
+                // on the caller's next request, so Keycloak must be updated first. Called only on
+                // an actual change to avoid an Admin API round trip on every firstName/lastName-only save.
+                keycloakAdminService.updateUsername(user.getKeycloakSubjectId(), trimmed);
+                user.setUsername(trimmed);
             }
-            user.setUsername(trimmed);
         }
         return userRepository.save(user);
     }
