@@ -34,7 +34,6 @@ interface FormErrors {
   confirmPassword?: string;
 }
 
-// Fix 5: replace username field with firstName + lastName to match RegisterRequest
 export default function SignUp(): JSX.Element {
   const { showError } = useNotification();
   const navigate = useNavigate();

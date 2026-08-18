@@ -31,7 +31,16 @@ Cross-directory imports use path aliases (`@shared/*`, `@app/*`, `@auth/*`, `@ch
 `../../` traversal — imports within a single feature (e.g. a page importing its own feature's
 `api/`) stay relative (`../api/chatApi`), only *cross*-feature imports use the alias.
 
-- Routing: `react-router-dom` v6, wired up in `app/App.tsx`.
+- Routing: `react-router-dom` v6, wired up in `app/App.tsx`. **No route-level code-splitting today**
+  — every page component is still a static import (`React.lazy`/`Suspense` was tried and reverted;
+  see `docs/CHANGELOG-ARCHIVE.md`/git history if picking this back up — the diagnosis, that every
+  OIDC redirect round trip (`Login.tsx`'s/`AdminLogin.tsx`'s/social login's `window.location.href`
+  flows, RP-initiated `logout()`, the email-verification `sendVerifyEmail` redirect) forces a full
+  page reload that fetches every route's entire dependency tree regardless of which one route it
+  lands on, still holds — this was deferred as a "later" optimization, not ruled out). An unused
+  `app/ErrorBoundary.tsx` from that attempt is still in the tree — not wired into `App.tsx` — since
+  it's a real prerequisite (lazy-loading needs an error boundary for a failed chunk load) if this
+  gets revisited, rather than something to delete and re-write from scratch next time.
 - No global state library (no Redux/Zustand) — state is React Context + hooks.
 - **No test framework is configured yet** — `package.json` only has `dev`/`build`/`preview` scripts,
   no `vitest`/`jest`, no test config file. `app/App.test.tsx` and `src/reportWebVitals.ts` are

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Paper, Typography, Button, CircularProgress, Alert } from '@mui/material';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
@@ -11,9 +11,16 @@ export default function AdminLogin(): JSX.Element {
   const [redirecting, setRedirecting] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  if (adminAuthService.isAuthenticated()) {
-    navigate('/admin/dashboard', { replace: true });
-  }
+  // Redirecting during render (calling navigate() in the component body, not an effect) triggers
+  // "Cannot update a component while rendering a different component" — a real, if usually
+  // harmless-looking, React anti-pattern. GuestRoute (Login.tsx's own equivalent guard) avoids it
+  // by returning a <Navigate> element instead; this page can't do the same since it always
+  // renders its own form, so an effect is the correct fix here instead.
+  useEffect(() => {
+    if (adminAuthService.isAuthenticated()) {
+      navigate('/admin/dashboard', { replace: true });
+    }
+  }, [navigate]);
 
   const handleSignIn = async () => {
     setLoginError(null);

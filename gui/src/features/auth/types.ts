@@ -22,21 +22,7 @@ export interface User {
 }
 
 /**
- * Token response from refresh token endpoint
- */
-export interface TokenResponse {
-  accessToken: string;
-}
-
-/**
- * Refresh token request payload
- */
-export interface RefreshTokenRequest {
-  refreshToken: string;
-}
-
-/**
- * Response from register / resend-otp endpoints
+ * Response from the register endpoint
  */
 export interface RegisterResponse {
   email: string;

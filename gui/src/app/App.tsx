@@ -16,7 +16,6 @@ import { NotificationProvider } from '@shared/contexts/NotificationContext';
 import { StompConnectionProvider } from '@messaging/context/StompConnectionContext';
 import Login from '@auth/pages/Login';
 import SignUp from '@auth/pages/SignUp';
-import VerifyOtp from '@auth/pages/VerifyOtp';
 import Dashboard from '@auth/pages/Dashboard';
 import FriendsPage from '@friends/pages/FriendsPage';
 import TasksPage from '@tasks/pages/TasksPage';
@@ -53,7 +52,6 @@ function App() {
             <Route path="/signup" element={<GuestRoute><SignUp /></GuestRoute>} />
 
             {/* Public routes */}
-            <Route path="/verify-otp" element={<VerifyOtp />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/auth/callback" element={<AdminAuthCallback />} />

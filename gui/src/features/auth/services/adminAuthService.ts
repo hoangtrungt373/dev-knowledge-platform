@@ -1,6 +1,5 @@
 import { authService } from './authService';
-import { generateCodeChallenge, generateCodeVerifier, generateState } from '../utils/pkce';
-import { claimsToAuthTokens, KeycloakTokenResponse } from '../utils/keycloakClaims';
+import { exchangePkceCode, PkceFlowConfig, startPkceLogin } from '../utils/pkceAuthFlow';
 
 export interface AdminUser {
   userUuid: string;
@@ -20,77 +19,24 @@ export interface AdminAuthService {
 const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8180';
 const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'dev-knowledge-platform';
 const REALM_BASE_URL = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect`;
-const CLIENT_ID = 'gui';
-const CALLBACK_PATH = '/admin/auth/callback';
 
-// sessionStorage, not localStorage — this is a one-shot secret only needed across the redirect
-// round trip to Keycloak's hosted login page, never read again after handleCallback runs.
-const PKCE_VERIFIER_KEY = 'admin_pkce_verifier';
-const PKCE_STATE_KEY = 'admin_pkce_state';
+// The "gui" public SPA client (no secret), matching docker/keycloak/realm-export.json.
+// storageKeyPrefix distinct from authService's own regular/social login flow's ("oauth") so the
+// two can't clobber each other's sessionStorage if somehow both are in flight in one browser.
+const ADMIN_FLOW_CONFIG: PkceFlowConfig = {
+  clientId: 'gui',
+  callbackPath: '/admin/auth/callback',
+  storageKeyPrefix: 'admin',
+};
 
 export const adminAuthService: AdminAuthService = {
-  // Authorization Code + PKCE, redirecting the browser directly to Keycloak's hosted login page —
-  // the "gui" client is a public SPA client (no secret), matching docker/keycloak/realm-export.json.
+  // Authorization Code + PKCE, redirecting the browser directly to Keycloak's hosted login page.
   async startLogin(): Promise<void> {
-    const verifier = generateCodeVerifier();
-    const challenge = await generateCodeChallenge(verifier);
-    const state = generateState();
-
-    sessionStorage.setItem(PKCE_VERIFIER_KEY, verifier);
-    sessionStorage.setItem(PKCE_STATE_KEY, state);
-
-    const params = new URLSearchParams({
-      client_id: CLIENT_ID,
-      response_type: 'code',
-      scope: 'openid',
-      redirect_uri: `${window.location.origin}${CALLBACK_PATH}`,
-      code_challenge: challenge,
-      code_challenge_method: 'S256',
-      state,
-    });
-
-    window.location.href = `${REALM_BASE_URL}/auth?${params.toString()}`;
+    await startPkceLogin(ADMIN_FLOW_CONFIG);
   },
 
   async handleCallback(code: string | null, state: string | null, error?: string | null): Promise<boolean> {
-    const storedState = sessionStorage.getItem(PKCE_STATE_KEY);
-    const storedVerifier = sessionStorage.getItem(PKCE_VERIFIER_KEY);
-    sessionStorage.removeItem(PKCE_STATE_KEY);
-    sessionStorage.removeItem(PKCE_VERIFIER_KEY);
-
-    if (error) {
-      throw new Error(`Keycloak login failed: ${error}`);
-    }
-    if (!code) {
-      throw new Error('Missing authorization code');
-    }
-    // Guards against authorization-code injection / login CSRF — the state value returned by
-    // Keycloak must match the one we generated before redirecting.
-    if (!state || !storedState || state !== storedState) {
-      throw new Error('Invalid login state — please try signing in again');
-    }
-    if (!storedVerifier) {
-      throw new Error('Missing PKCE verifier — please try signing in again');
-    }
-
-    const response = await fetch(`${REALM_BASE_URL}/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: CLIENT_ID,
-        code,
-        redirect_uri: `${window.location.origin}${CALLBACK_PATH}`,
-        code_verifier: storedVerifier,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to exchange authorization code for tokens');
-    }
-
-    const tokens: KeycloakTokenResponse = await response.json();
-    const authTokens = claimsToAuthTokens(tokens);
+    const authTokens = await exchangePkceCode(ADMIN_FLOW_CONFIG, code, state, error);
 
     if (authTokens.role !== 'ADMIN') {
       throw new Error('Access denied: admin account required');

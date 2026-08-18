@@ -121,7 +121,8 @@
         "clientId": "REPLACE_WITH_GOOGLE_CLIENT_ID",
         "clientSecret": "REPLACE_WITH_GOOGLE_CLIENT_SECRET",
         "defaultScope": "openid profile email",
-        "syncMode": "IMPORT"
+        "syncMode": "IMPORT",
+        "prompt": "select_account"
       }
     },
     {

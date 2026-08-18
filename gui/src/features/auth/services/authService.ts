@@ -2,7 +2,7 @@ import { AuthTokens, OAuthProvider } from '../types';
 import { STORAGE_KEYS } from '@shared/constants/storage';
 import { decodeJwtPayload } from '@shared/utils/jwt';
 import { claimsToAuthTokens, KeycloakTokenResponse } from '../utils/keycloakClaims';
-import { generateCodeChallenge, generateCodeVerifier, generateState } from '../utils/pkce';
+import { exchangePkceCode, PkceFlowConfig, startPkceLogin } from '../utils/pkceAuthFlow';
 
 const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8180';
 const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'dev-knowledge-platform';
@@ -17,17 +17,16 @@ const PASSWORD_CLIENT_ID = 'gui-password-login';
 // Social login (startOAuth/handleOAuthCallback) reuses the same "gui" public client the admin
 // Authorization Code + PKCE flow uses (adminAuthService.ts) — it's already a standardFlowEnabled
 // SPA client with /auth/callback in its redirectUris (docker/keycloak/realm-export.json), so no
-// new Keycloak client is needed, just a different redirect_uri/callback route and a kc_idp_hint
-// param telling Keycloak's hosted login page to skip straight to the given identity provider
-// instead of showing its own username/password form first.
-const OAUTH_CLIENT_ID = 'gui';
-const OAUTH_CALLBACK_PATH = '/auth/callback';
-// sessionStorage, not localStorage — one-shot secrets only needed across the redirect round trip
-// to Keycloak/the upstream IdP, never read again after handleOAuthCallback runs. Distinct keys
-// from adminAuthService's own (admin_pkce_*) so the two flows can't clobber each other if a user
-// somehow has both in flight in the same browser.
-const OAUTH_PKCE_VERIFIER_KEY = 'oauth_pkce_verifier';
-const OAUTH_PKCE_STATE_KEY = 'oauth_pkce_state';
+// new Keycloak client is needed, just a different redirect_uri/callback route and (via
+// startOAuth's extraParams) a kc_idp_hint telling Keycloak's hosted login page to skip straight to
+// the given identity provider instead of showing its own username/password form first.
+// storageKeyPrefix distinct from adminAuthService's own ("admin") so the two flows can't clobber
+// each other's sessionStorage if a user somehow has both in flight in the same browser.
+const OAUTH_FLOW_CONFIG: PkceFlowConfig = {
+  clientId: 'gui',
+  callbackPath: '/auth/callback',
+  storageKeyPrefix: 'oauth',
+};
 
 export interface AuthService {
   startOAuth(provider: OAuthProvider): Promise<void>;
@@ -41,7 +40,7 @@ export interface AuthService {
   getUserUuid(): string | null;
   getUsername(): string | null;
   getEmail(): string | null;
-  getRole(): string | null;   // Fix 8
+  getRole(): string | null;
   clear(): void;
   logout(): void;
   isAuthenticated(): boolean;
@@ -50,73 +49,18 @@ export interface AuthService {
 export const authService: AuthService = {
   // Authorization Code + PKCE against the "gui" client, with kc_idp_hint telling Keycloak's
   // hosted login page to redirect straight to the given identity provider (Google/Facebook)
-  // instead of showing its own username/password form first — same mechanism
-  // adminAuthService.startLogin() uses, plus the one extra param. Keycloak itself brokers the
-  // actual Google/Facebook OAuth dance (docker/keycloak/realm-export.json's identityProviders);
-  // this app never talks to either provider directly.
+  // instead of showing its own username/password form first. Keycloak itself brokers the actual
+  // Google/Facebook OAuth dance (docker/keycloak/realm-export.json's identityProviders); this app
+  // never talks to either provider directly.
   async startOAuth(provider: OAuthProvider): Promise<void> {
-    const verifier = generateCodeVerifier();
-    const challenge = await generateCodeChallenge(verifier);
-    const state = generateState();
-
-    sessionStorage.setItem(OAUTH_PKCE_VERIFIER_KEY, verifier);
-    sessionStorage.setItem(OAUTH_PKCE_STATE_KEY, state);
-
-    const params = new URLSearchParams({
-      client_id: OAUTH_CLIENT_ID,
-      response_type: 'code',
-      scope: 'openid',
-      redirect_uri: `${window.location.origin}${OAUTH_CALLBACK_PATH}`,
-      code_challenge: challenge,
-      code_challenge_method: 'S256',
-      state,
-      kc_idp_hint: provider,
-    });
-
-    window.location.href = `${REALM_BASE_URL}/auth?${params.toString()}`;
+    await startPkceLogin(OAUTH_FLOW_CONFIG, { kc_idp_hint: provider });
   },
 
   // AuthCallback.tsx's counterpart to adminAuthService.handleCallback — no ADMIN-role gate here,
   // any authenticated account (regular or admin) may sign in via a social provider.
   async handleOAuthCallback(code: string | null, state: string | null, error?: string | null): Promise<void> {
-    const storedState = sessionStorage.getItem(OAUTH_PKCE_STATE_KEY);
-    const storedVerifier = sessionStorage.getItem(OAUTH_PKCE_VERIFIER_KEY);
-    sessionStorage.removeItem(OAUTH_PKCE_STATE_KEY);
-    sessionStorage.removeItem(OAUTH_PKCE_VERIFIER_KEY);
-
-    if (error) {
-      throw new Error(`Social login failed: ${error}`);
-    }
-    if (!code) {
-      throw new Error('Missing authorization code');
-    }
-    // Guards against authorization-code injection / login CSRF — same check
-    // adminAuthService.handleCallback performs.
-    if (!state || !storedState || state !== storedState) {
-      throw new Error('Invalid login state — please try signing in again');
-    }
-    if (!storedVerifier) {
-      throw new Error('Missing PKCE verifier — please try signing in again');
-    }
-
-    const response = await fetch(`${REALM_BASE_URL}/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: OAUTH_CLIENT_ID,
-        code,
-        redirect_uri: `${window.location.origin}${OAUTH_CALLBACK_PATH}`,
-        code_verifier: storedVerifier,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to exchange authorization code for tokens');
-    }
-
-    const tokens: KeycloakTokenResponse = await response.json();
-    this.storeTokens(claimsToAuthTokens(tokens));
+    const authTokens = await exchangePkceCode(OAUTH_FLOW_CONFIG, code, state, error);
+    this.storeTokens(authTokens);
   },
 
   // Option A (direct password grant / ROPC) — POSTs the password straight to Keycloak's token
@@ -157,7 +101,7 @@ export const authService: AuthService = {
 
     let clientId: string;
     try {
-      clientId = decodeJwtPayload<{ azp?: string }>(accessToken).azp ?? OAUTH_CLIENT_ID;
+      clientId = decodeJwtPayload<{ azp?: string }>(accessToken).azp ?? OAUTH_FLOW_CONFIG.clientId;
     } catch {
       return false;
     }
@@ -182,7 +126,6 @@ export const authService: AuthService = {
     }
   },
 
-  // Fix 8: store role alongside other tokens
   storeTokens(tokens: Partial<AuthTokens>): void {
     if (tokens.accessToken) localStorage.setItem(STORAGE_KEYS.accessToken, tokens.accessToken);
     if (tokens.refreshToken) localStorage.setItem(STORAGE_KEYS.refreshToken, tokens.refreshToken);
@@ -217,7 +160,6 @@ export const authService: AuthService = {
     return localStorage.getItem(STORAGE_KEYS.email);
   },
 
-  // Fix 8
   getRole(): string | null {
     return localStorage.getItem(STORAGE_KEYS.role);
   },
@@ -240,7 +182,8 @@ export const authService: AuthService = {
     window.location.href = `${REALM_BASE_URL}/logout?${params.toString()}`;
   },
 
-  // Fix 9: validate JWT expiry from the `exp` claim instead of just checking presence
+  // Validates the JWT's actual expiry (`exp` claim) rather than just checking a token is present —
+  // an expired-but-still-stored token should not count as authenticated.
   isAuthenticated(): boolean {
     const token = this.getAccessToken();
     if (!token) return false;
