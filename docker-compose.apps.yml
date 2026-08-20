@@ -56,11 +56,14 @@ services:
       SPRING_DATASOURCE_PASSWORD: password
       SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
       KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/dev-knowledge-platform
+      MINIO_ENDPOINT: http://minio:9000
     ports:
       - "8081:8081"
     depends_on:
       services-liquibase:
         condition: service_completed_successfully
+      minio:
+        condition: service_healthy
 
   identity-service:
     build:

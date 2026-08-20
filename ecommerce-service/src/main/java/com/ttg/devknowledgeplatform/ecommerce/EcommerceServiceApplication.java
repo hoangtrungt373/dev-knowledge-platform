@@ -7,9 +7,12 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 import com.ttg.devknowledgeplatform.common.exception.GlobalExceptionHandler;
 import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
+import com.ttg.devknowledgeplatform.infra.config.storage.StorageConfig;
+import com.ttg.devknowledgeplatform.infra.config.storage.StorageProperties;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakJwtAuthenticationConverter;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakRealmRoleConverter;
 import com.ttg.devknowledgeplatform.infra.service.impl.SlugServiceImpl;
+import com.ttg.devknowledgeplatform.infra.service.impl.StorageServiceImpl;
 import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
 
 /**
@@ -33,10 +36,14 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
  * This module imports: {@link JacksonConfig} (shared {@code ObjectMapper} customization, needed by
  * every app in this reactor), {@link TraceContextFilter} (distributed-tracing MDC binding + access
  * logging, likewise reactor-wide), {@link SlugServiceImpl} (product/category slug generation, used
- * by {@code ProductServiceImpl}/{@code ProductCategoryServiceImpl}), and
+ * by {@code ProductServiceImpl}/{@code ProductCategoryServiceImpl}),
  * {@link KeycloakJwtAuthenticationConverter} plus its own collaborator
  * {@link KeycloakRealmRoleConverter} (JWT → {@code CustomOAuth2User} principal, used by this
- * module's own {@code security.SecurityConfig}). It does *not* import
+ * module's own {@code security.SecurityConfig}), and {@link StorageProperties}/
+ * {@link StorageConfig}/{@link StorageServiceImpl} (the {@code MinioClient} bean plus the
+ * product-image-upload service built on it — {@code ProductServiceImpl.uploadImage}/
+ * {@code ProductMapper}'s presigned-URL resolution — same trio {@code identity-service} imports
+ * for its own avatar upload). It does *not* import
  * {@code infra.config.thread.AsyncEventThreadPoolConfig} — this module dispatches no
  * {@code @EventHandler}, so that bean is simply never created here.
  *
@@ -57,6 +64,7 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
 @SpringBootApplication
 @Import({JacksonConfig.class, TraceContextFilter.class, SlugServiceImpl.class,
         KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
+        StorageProperties.class, StorageConfig.class, StorageServiceImpl.class,
         GlobalExceptionHandler.class})
 @EnableScheduling
 public class EcommerceServiceApplication {

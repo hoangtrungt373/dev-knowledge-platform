@@ -6,6 +6,7 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.ProductVariant;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Manages the lifecycle of {@link Product}s and their variants/images.
@@ -77,6 +78,23 @@ public interface ProductService {
      * @throws com.ttg.devknowledgeplatform.common.exception.ApiException if its sort order conflicts with an existing image
      */
     ProductImage addImage(Integer productId, ProductCommands.ImageInput input);
+
+    /**
+     * Uploads an image file to storage and adds it to a product's gallery (US-1.6) — the real
+     * upload path the admin GUI uses. Unlike {@link #addImage}, which trusts an already-known
+     * {@code storageKey}, this writes the file's bytes to MinIO itself via {@code infra}'s
+     * {@code StorageService} before persisting the {@code ProductImage} row.
+     *
+     * @param productId the product's primary key
+     * @param file      the image file; {@code StorageService} rejects a non-image content type or
+     *                  a file over 5 MB
+     * @param sortOrder the new image's position in the gallery
+     * @return the added image
+     * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException if the product does not exist
+     * @throws com.ttg.devknowledgeplatform.common.exception.ApiException if the file fails validation or the
+     *         sort order conflicts with an existing image
+     */
+    ProductImage uploadImage(Integer productId, MultipartFile file, Integer sortOrder);
 
     /**
      * Removes one image from a product's gallery (US-1.6 — images are independently removable).

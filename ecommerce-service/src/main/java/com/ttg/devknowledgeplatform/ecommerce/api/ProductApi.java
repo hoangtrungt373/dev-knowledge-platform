@@ -12,6 +12,7 @@ import com.ttg.devknowledgeplatform.ecommerce.dto.UpdateProductRequest;
 
 import jakarta.validation.Valid;
 
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * HTTP contract for the admin product management API.
@@ -84,6 +86,24 @@ public interface ProductApi {
     @PostMapping("/{id}/images")
     ResponseEntity<ProductImageResponse> addImage(
             @PathVariable Integer id, @Valid @RequestBody ProductImageRequest request);
+
+    /**
+     * Uploads an image file and adds it to a product's gallery (US-1.6) — the real upload path
+     * for the admin GUI. {@link #addImage} still exists for a caller that already knows a
+     * {@code storageKey}; this is the endpoint that actually writes bytes to MinIO, via
+     * {@code infra}'s {@code StorageService}.
+     *
+     * @param id        product primary key
+     * @param file      the image file ({@code StorageService} rejects a non-image content type or
+     *                  a file over 5 MB)
+     * @param sortOrder the new image's position in the gallery
+     * @return {@code 201} with the added image, including a time-limited presigned {@code url}
+     */
+    @PostMapping(path = "/{id}/images/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    ResponseEntity<ProductImageResponse> uploadImage(
+            @PathVariable Integer id,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("sortOrder") Integer sortOrder);
 
     /**
      * Removes one image from a product's gallery (US-1.6).

@@ -25,6 +25,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Set;
@@ -83,6 +84,12 @@ public class ProductController implements ProductApi {
         ProductCommands.ImageInput input = new ProductCommands.ImageInput(request.getStorageKey(), request.getSortOrder());
         var added = productService.addImage(id, input);
         return ResponseEntity.status(HttpStatus.CREATED).body(productMapper.toImageResponse(added));
+    }
+
+    @Override
+    public ResponseEntity<ProductImageResponse> uploadImage(Integer id, MultipartFile file, Integer sortOrder) {
+        var uploaded = productService.uploadImage(id, file, sortOrder);
+        return ResponseEntity.status(HttpStatus.CREATED).body(productMapper.toImageResponse(uploaded));
     }
 
     @Override

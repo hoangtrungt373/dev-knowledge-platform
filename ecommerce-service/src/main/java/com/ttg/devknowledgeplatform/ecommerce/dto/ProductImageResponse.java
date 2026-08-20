@@ -14,4 +14,6 @@ public class ProductImageResponse {
     private Integer id;
     private String storageKey;
     private Integer sortOrder;
+    /** Time-limited presigned GET URL for {@link #storageKey}, resolved by {@code ProductMapper}. */
+    private String url;
 }

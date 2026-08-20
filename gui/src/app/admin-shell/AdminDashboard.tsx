@@ -5,6 +5,8 @@ import ArticleIcon from '@mui/icons-material/Article';
 import QuizIcon from '@mui/icons-material/Quiz';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
 import DataArrayIcon from '@mui/icons-material/DataArray';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
+import CategoryIcon from '@mui/icons-material/Category';
 import { adminAuthService } from '@auth/services/adminAuthService';
 
 const FEATURE_CARDS = [
@@ -42,6 +44,18 @@ const FEATURE_CARDS = [
     label: 'Articles',
     icon: <ArticleIcon fontSize="small" />,
     description: 'Create and publish articles.',
+    status: 'soon' as const,
+  },
+  {
+    label: 'Products',
+    icon: <Inventory2Icon fontSize="small" />,
+    description: 'Manage the e-commerce product catalog.',
+    status: 'soon' as const,
+  },
+  {
+    label: 'Product Categories',
+    icon: <CategoryIcon fontSize="small" />,
+    description: 'Organise products into a category tree.',
     status: 'soon' as const,
   },
 ];

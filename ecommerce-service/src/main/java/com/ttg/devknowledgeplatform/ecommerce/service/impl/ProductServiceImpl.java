@@ -18,6 +18,7 @@ import com.ttg.devknowledgeplatform.ecommerce.repository.spec.ProductSpecificati
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductCommands;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductService;
 import com.ttg.devknowledgeplatform.infra.service.SlugService;
+import com.ttg.devknowledgeplatform.infra.service.StorageService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,11 +28,13 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +48,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductCategoryRepository productCategoryRepository;
     private final OutboxEventRepository outboxEventRepository;
     private final SlugService slugService;
+    private final StorageService storageService;
 
     @Override
     public Product create(ProductCommands.Create command) {
@@ -205,6 +209,29 @@ public class ProductServiceImpl implements ProductService {
 
         publishProductChanged(productId);
         log.info("Added image sortOrder={} to product id={}", input.sortOrder(), productId);
+        return saved;
+    }
+
+    @Override
+    public ProductImage uploadImage(Integer productId, MultipartFile file, Integer sortOrder) {
+        Product product = findById(productId);
+        validateSortOrderAvailable(product, sortOrder, null);
+
+        // Uploads the bytes first (outside any existing image's identity) so a validation failure
+        // in StorageService (wrong content type, over 5 MB) never leaves a half-created
+        // ProductImage row behind — matches addImage's ordering, just with a real upload in place
+        // of trusting a client-supplied key.
+        String objectKey = storageService.uploadImage("products/" + productId + "/" + UUID.randomUUID(), file);
+
+        ProductImage image = new ProductImage();
+        image.setProduct(product);
+        image.setStorageKey(objectKey);
+        image.setSortOrder(sortOrder);
+        ProductImage saved = productImageRepository.save(image);
+        product.getImages().add(saved);
+
+        publishProductChanged(productId);
+        log.info("Uploaded image sortOrder={} to product id={}", sortOrder, productId);
         return saved;
     }
 
