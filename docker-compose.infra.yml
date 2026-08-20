@@ -81,9 +81,9 @@ services:
       - "8180:8080"
     volumes:
       - ./docker/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
-#    depends_on:
-#      postgres:
-#        condition: service_healthy
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:

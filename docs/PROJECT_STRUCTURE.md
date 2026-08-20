@@ -1558,6 +1558,15 @@ Not yet built: `ProductCategory` delete and Epics 2–5. The `gateway`-side HTTP
 variant/image add/remove/reorder endpoints (an earlier revision of this section listed both as
 not yet built) are both done — see above.
 
+**Test suite (new):** `src/test/java/.../service/impl/` (`ProductCategoryServiceImplTest`,
+`ProductServiceImplTest`, `ProductSearchServiceImplTest`, `ProductChangedOutboxEventHandlerTest`)
+and `src/test/java/.../outbox/` (`OutboxEventDispatcherTest`, `OutboxEventProcessorTest`) — plain
+JUnit 5/Mockito/AssertJ unit tests, 73 passing, no Docker needed. Plus
+`src/test/java/.../repository/ProductSearchViewRepositoryIT` — a real Postgres Testcontainers
+integration test for US-1.3/1.4's native `tsvector`/`pg_trgm`/JSONB-containment search matching,
+which a mock can't verify. See `ecommerce-service/CLAUDE.md`'s test-suite note for the full
+reasoning and the Docker caveat.
+
 Compiles against `common` + `infra` as ordinary library dependencies; has **no** Maven dependency
 on any other feature module, and none of them (including `gateway`) depend on it either — see
 root `CLAUDE.md`'s dependency-order section for why Epic 5's originally-planned dependency on

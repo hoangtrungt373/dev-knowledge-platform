@@ -364,6 +364,42 @@ block follows.
   just recreate the same "every future epic edits the same file" problem. Producers should always
   build the map via the handler's `Payload.toMap()`, never by hand, so the map's keys live in
   exactly one place.
+- **This module's own test suite now lives here** (`src/test/java/.../`) — the first true unit-test
+  suite in this whole reactor (`social-service`'s is the only other test suite anywhere, and it's
+  Testcontainers integration tests for STOMP, not mocked unit tests). Plain JUnit 5 + Mockito +
+  AssertJ, `@ExtendWith(MockitoExtension.class)`, `@Nested` classes grouping tests by method —
+  `ProductCategoryServiceImplTest`, `ProductServiceImplTest` (the richest — every US-1.6/1.7
+  validation branch: no-variants, duplicate/conflicting SKU, inconsistent attribute keys,
+  last-variant-removal rejection, sort-order conflicts, cross-product ownership checks, and the
+  upload-validates-before-touching-`StorageService` ordering), `ProductSearchServiceImplTest`
+  (only the service's own blank-`q`/attribute-JSON-building/unsorted-`Pageable` logic — see
+  below), `ProductChangedOutboxEventHandlerTest` (the projection logic behind US-1.5/1.7),
+  `outbox/OutboxEventDispatcherTest`, `outbox/OutboxEventProcessorTest` (the generic claim-
+  dispatch-mark mechanism, independent of any one handler). 73 tests, all passing, no Docker
+  needed for any of them.
+  - **`repository/ProductSearchViewRepositoryIT` is the one exception — a real Postgres
+    Testcontainers integration test, not a unit test**, because US-1.3's `tsvector`/`pg_trgm`
+    ranking and US-1.4's price-range/JSONB-containment filtering are native SQL
+    (`ProductSearchViewRepository.search`) that a mocked repository structurally cannot verify —
+    `ProductSearchServiceImplTest` only covers the thin service wrapper around that query, never
+    the query's own matching behavior. This test applies the module's own real Liquibase migration
+    SQL directly via JDBC in `@BeforeAll` (not Spring Boot's Liquibase autoconfiguration, which
+    `@DataJpaTest` doesn't wire up) — guaranteeing it runs against the exact real DDL (extension,
+    generated column, GIN indexes included), not a hand-rolled approximation. `@DataJpaTest` +
+    `@AutoConfigureTestDatabase(replace = NONE)` + `@DynamicPropertySource` pointing at the
+    container avoids ever booting this app's Spring Security/OAuth2 wiring (a JPA-only slice has
+    no reason to reach Keycloak). **Confirmed to compile and to fail at exactly the expected
+    point** (`Could not find a valid Docker environment`) — this reactor's sandboxed build
+    environment has no Docker daemon reachable, so this one test is unverified beyond that; run it
+    yourself (`./mvnw -pl ecommerce-service test -Dtest=ProductSearchViewRepositoryIT`) wherever
+    Docker is available. Added `org.testcontainers:junit-jupiter`/`:postgresql` as new test-scope
+    dependencies to this module's `pom.xml` for it (versions managed by `spring-boot-dependencies`,
+    same as `social-service`'s own Testcontainers dependencies).
+  - No test-vs-integration-test phase separation (e.g. Failsafe) exists anywhere in this reactor —
+    `social-service`'s own Testcontainers suite runs via plain Surefire's `test` phase too, so this
+    module's Docker-dependent IT follows that same existing convention rather than introducing new
+    build machinery; `mvn test` on this module will fail outright wherever Docker isn't reachable,
+    same as it already would for `social-service`.
 - **Liquibase migrations for this module's tables live in this module's own changelog tree now**
   (`database/sql/ecommerce-service.xml` + `2026/0.0.2/*.sql`), applied via the consolidated
   `services-liquibase` job in `docker-compose.apps.yml` — this module has no standalone
