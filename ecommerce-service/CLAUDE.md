@@ -237,6 +237,24 @@ The public browse/search/detail surface (US-1.1, US-1.2, US-1.3, US-1.4):
   treats a deactivated product's slug the same as a nonexistent one, so a public caller can't tell
   the difference) — under this module's own `security/SecurityConfig` `/api/v1/public/**`
   permit-all rule, no auth required, matching the public nature of browsing.
+  **`ProductSearchViewMapper` is an abstract class, not a plain interface** — same reason as
+  `ProductMapper`: it injects `StorageService` to resolve `ProductSearchView.primaryImageStorageKey`
+  into a presigned `primaryImageUrl` on `ProductSearchResponse` via `@AfterMapping` (null-safe —
+  a product with no images yet has a `null` key and stays `null`). Without this, the storefront
+  grid (`gui`'s `@ecommerce/pages/shop/ShopPage.tsx`) would have nothing but an unusable private
+  MinIO key to render as a thumbnail — the raw key alone was the shape `toResponse` produced before
+  the storefront GUI was built against it.
+- **`api/PublicProductCategoryApi`+`Controller` at `/api/v1/public/product-categories`** — a
+  read-only counterpart to `ProductCategoryApi`'s admin-gated
+  `/api/v1/admin/product-categories`, added once the storefront needed a category filter rail: a
+  logged-out (or logged-in, non-admin) shopper can't reach the admin endpoint at all
+  (`/api/v1/admin/**` requires `ROLE_ADMIN`). Delegates to the exact same
+  `ProductCategoryService.list(null)`/`ProductCategoryMapper.toResponse` the admin controller
+  already uses — no new service logic, just a second, unauthenticated entry point onto the same
+  read. Falls under this module's existing `/api/v1/public/**` permit-all rule automatically, no
+  `SecurityConfig` change needed. `gateway`'s `GatewayRoutesConfig.ecommerceServiceRoutes()` gained
+  a matching `/api/v1/public/product-categories/**` route alongside its existing
+  `/api/v1/public/products/**` one.
 
 **`service/seed/`** — a starter sample catalog (developer-swag theme: apparel, drinkware,
 stickers, office, accessories), gated by `app.seed.enabled` (`${APP_SEED_ENABLED:false}`, `"true"`

@@ -25,5 +25,7 @@ public class ProductSearchResponse {
     private boolean inStock;
     /** The product's first gallery image by sort order (US-1.1); {@code null} if it has none yet. */
     private String primaryImageStorageKey;
+    /** Time-limited presigned GET URL for {@link #primaryImageStorageKey}, resolved by {@code ProductSearchViewMapper}; {@code null} whenever that key is. */
+    private String primaryImageUrl;
     private Map<String, List<String>> availableAttributes;
 }

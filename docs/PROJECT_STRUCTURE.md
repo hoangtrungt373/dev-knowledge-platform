@@ -1522,7 +1522,10 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │                                    via @AfterMapping, same pattern as identity-service's
 │                                    UserMapper; also maps ProductVariant→ProductVariantResponse
 │                                    and ProductImage→ProductImageResponse for ProductResponse's
-│                                    nested lists) / ProductSearchViewMapper
+│                                    nested lists) / ProductSearchViewMapper (also an abstract class
+│                                    now, resolving primaryImageStorageKey into a presigned
+│                                    primaryImageUrl the same way — without it the storefront grid
+│                                    would have nothing but an unusable private MinIO key to render)
 ├── api/                         — REST layer
 │   ├── ProductCategoryApi.java / ProductApi.java — admin CRUD (/api/v1/admin/**), incl.
 │   │                                 POST/DELETE .../variants/{id} and
@@ -1533,10 +1536,16 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                 still exists for a caller that already knows a storage key
 │   ├── ProductSearchApi.java    — public browse/search + GET /{slug} detail
 │   │                                 (/api/v1/public/products, US-1.1/1.2/1.3/1.4)
+│   ├── PublicProductCategoryApi.java — GET /api/v1/public/product-categories, a read-only
+│   │                                 counterpart to ProductCategoryApi's admin-gated list — added
+│   │                                 for the storefront's category filter rail, which a
+│   │                                 non-admin/logged-out shopper can't reach the admin endpoint
+│   │                                 for; delegates to the same ProductCategoryService.list(null)
 │   └── impl/                    — ProductCategoryController / ProductController (admin-gated
 │                                    automatically via this module's own security/SecurityConfig
-│                                    /api/v1/admin/** rule) / ProductSearchController (public via
-│                                    that same config's /api/v1/public/** rule)
+│                                    /api/v1/admin/** rule) / ProductSearchController /
+│                                    PublicProductCategoryController (both public via that same
+│                                    config's /api/v1/public/** rule)
 └── dto/                         — ProductCategoryResponse/CreateProductCategoryRequest/
                                      UpdateProductCategoryRequest, ProductResponse/
                                      CreateProductRequest/UpdateProductRequest,

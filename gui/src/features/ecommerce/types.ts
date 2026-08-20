@@ -71,3 +71,21 @@ export interface UpdateProductPayload {
   description?: string;
   productCategoryId: number;
 }
+
+// ── Storefront (public browse/search) ───────────────────────────────────────
+// Mirrors ProductSearchResponse — a different, denormalized shape from Product above (that one
+// backs admin CRUD and the detail page; this one backs the CQRS read model browse/search grid).
+
+export interface ProductSearchResult {
+  productId: number;
+  name: string;
+  slug: string;
+  productCategoryId: number;
+  categoryName: string;
+  minPrice: number;
+  maxPrice: number;
+  inStock: boolean;
+  /** Time-limited presigned GET URL, resolved server-side; null if the product has no images yet. */
+  primaryImageUrl: string | null;
+  availableAttributes: Record<string, string[]>;
+}

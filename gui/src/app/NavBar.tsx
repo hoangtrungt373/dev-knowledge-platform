@@ -6,6 +6,7 @@ import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
+import StorefrontIcon from '@mui/icons-material/Storefront';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { authService } from '@auth/services/authService';
 import { useFriendRequestsCount } from '@friends/hooks/useFriendRequestsCount';
@@ -52,6 +53,21 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
         >
           Dev Knowledge Platform
         </Typography>
+
+        {/* Shop is genuinely public (ecommerce-service's permitAll browse/search/detail) — the
+            only nav entry visible regardless of auth state, unlike everything else below. */}
+        <Button
+          color="inherit"
+          size="small"
+          startIcon={<StorefrontIcon fontSize="small" />}
+          onClick={() => navigate('/shop')}
+          sx={{
+            mr: 0.5,
+            backgroundColor: location.pathname.startsWith('/shop') ? 'action.selected' : 'transparent',
+          }}
+        >
+          Shop
+        </Button>
 
         {isAuthed && (
           <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>

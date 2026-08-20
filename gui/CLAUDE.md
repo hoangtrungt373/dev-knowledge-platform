@@ -17,7 +17,8 @@ gui/src/
 │   ├── ai/             — ai-service admin/monitoring screens (pipeline metrics, embeddings index)
 │   ├── tasks/           — personal task/project management, fronting task-service
 │   └── ecommerce/        — ecommerce-service admin screens (Product Categories, Products incl.
-│                            variant/image gallery management)
+│                            variant/image gallery management) + pages/shop/ (the public
+│                            storefront: browse/search/filter, product detail)
 ├── app/          — app shell: App.tsx (routes), main.tsx, theme.ts, NavBar, GuestRoute/PrivateRoute,
 │                    admin-shell/ (AdminLayout, AdminDashboard — the admin nav frame + landing page)
 └── shared/        — httpClient, common.types-equivalent (types.ts, incl. PagedResponse), the
@@ -510,6 +511,39 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     first sidesteps that. `ProductImage.url` (a time-limited presigned URL, resolved server-side by
     `ProductMapper` — see `ecommerce-service/CLAUDE.md`) is what actually renders as each
     thumbnail; never construct a MinIO URL client-side from `storageKey`.
+  - **`pages/shop/` — the public storefront (US-1.1–1.4), the app's first genuinely public feature
+    besides `/login`/`/signup`.** Every other feature in this app sits behind `PrivateRoute`;
+    `/shop`/`/shop/:slug` are plain, ungated routes in `App.tsx`, matching
+    `ecommerce-service`'s own `permitAll` `/api/v1/public/products/**` — browsing works identically
+    logged in or out, and `httpClient` already omits the `Authorization` header when there's no
+    token, so no special-casing was needed there. `NavBar.tsx`'s "Shop" button is the one nav entry
+    rendered unconditionally, outside the `isAuthed`/`!isAuthed` branches every other button lives
+    in.
+    - `ShopPage.tsx` — category rail (via a **new** `shopApi.listCategories()`, hitting a **new**
+      backend endpoint `PublicProductCategoryApi` at `/api/v1/public/product-categories`; the
+      existing `ecommerceApi.listProductCategories()` hits the admin-gated endpoint and would 403
+      for a non-admin shopper) + price/in-stock filters + a dynamic attribute-facet panel + a
+      paginated product grid (`components/shop/ProductCard.tsx`). **Attribute facet options are
+      built from whatever's on the currently-loaded page of results, not the whole category** —
+      there's no "every attribute value in this category" endpoint, so switching pages can reveal
+      different facet options. A known, page-scoped approximation, not a bug; don't "fix" it by
+      assuming a missing facet means that value doesn't exist anywhere in the category.
+    - `ProductDetailPage.tsx` — image gallery (main + thumbnail strip) + `VariantSelector.tsx`.
+      **Deliberately no "Add to Cart"** — Epic 2 (cart/checkout) isn't built, so there's nowhere
+      for it to go yet; showing one would be UI for a feature that doesn't exist. Revisit once
+      Epic 2 lands, not before.
+    - `components/shop/VariantSelector.tsx` resolves a picked attribute combination (e.g. size=M,
+      color=Black) to one exact `ProductVariant` from the product's own real `variants[]` list —
+      genuinely combo-accurate, unlike `ShopPage`'s browse-time facets (which only know "some
+      variant has size M" and "some variant has color Black" independently, per
+      `ProductSearchView`'s own documented limitation on the backend). A product with no
+      attributes at all (a single variant, e.g. "This Is Fine" decal) renders no picker — the
+      component auto-selects that sole variant instead.
+    - `api/shopApi.ts` — a separate file from `ecommerceApi.ts` (admin CRUD), mirroring the
+      backend's own `ProductSearchApi`/`ProductApi` split. `getBySlug` reuses the existing `Product`
+      type from Phase B/admin (same `ProductResponse` shape); `search` uses a **new**
+      `ProductSearchResult` type (mirrors `ProductSearchResponse` — a genuinely different,
+      denormalized shape, not reusable with `Product`).
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

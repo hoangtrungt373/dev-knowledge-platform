@@ -26,10 +26,13 @@ import lombok.RequiredArgsConstructor;
  * /api/v1/users} (this module owns {@code /me/**}, {@code social-service} owns {@code
  * /public/**}/{@code /search}), {@code /api/v1/public} ({@code content-service} owns {@code
  * /question-answers/**}/{@code /articles/**}, {@code ecommerce-service} owns {@code
- * /products/**}), and {@code /api/v1/admin} (three different services, but each one's own
- * resource segment — {@code /products/**}, {@code /articles/**}, {@code /embeddings/**}, etc. —
- * never collides with another's). Confirmed via a full audit of every {@code @RequestMapping} in
- * the reactor before writing this class, not assumed from the top-level prefix alone.
+ * /products/**} and {@code /product-categories/**} — the latter added for the storefront's
+ * category filter rail, since a logged-out shopper can't reach the admin-gated
+ * {@code /api/v1/admin/product-categories/**}), and {@code /api/v1/admin} (three different
+ * services, but each one's own resource segment — {@code /products/**}, {@code /articles/**},
+ * {@code /embeddings/**}, etc. — never collides with another's). Confirmed via a full audit of
+ * every {@code @RequestMapping} in the reactor before writing this class, not assumed from the
+ * top-level prefix alone.
  *
  * <p><b>{@code content-service}'s {@code /internal/content-items/**} is deliberately not routed
  * here</b> — it's service-to-service traffic ({@code ai-service} calls it directly on
@@ -54,7 +57,9 @@ public class GatewayRoutesConfig {
 
     private final GatewayServicesProperties services;
 
-    /** Routes {@code /api/v1/admin/products/**}, {@code /api/v1/admin/product-categories/**}, and {@code /api/v1/public/products/**} to {@code ecommerce-service}. */
+    /** Routes {@code /api/v1/admin/products/**}, {@code /api/v1/admin/product-categories/**},
+     * {@code /api/v1/public/products/**}, and {@code /api/v1/public/product-categories/**} to
+     * {@code ecommerce-service}. */
     @Bean
     public RouterFunction<ServerResponse> ecommerceServiceRoutes() {
         String baseUrl = services.getEcommerceServiceBaseUrl();
@@ -62,6 +67,7 @@ public class GatewayRoutesConfig {
                 .route(path("/api/v1/admin/products/**"), http(baseUrl))
                 .route(path("/api/v1/admin/product-categories/**"), http(baseUrl))
                 .route(path("/api/v1/public/products/**"), http(baseUrl))
+                .route(path("/api/v1/public/product-categories/**"), http(baseUrl))
                 .build();
     }
 

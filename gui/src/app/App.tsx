@@ -15,6 +15,8 @@ import EmbeddingsPage from '@ai/pages/EmbeddingsPage';
 import ProductCategoryListPage from '@ecommerce/pages/ProductCategoryListPage';
 import ProductListPage from '@ecommerce/pages/ProductListPage';
 import ProductFormPage from '@ecommerce/pages/ProductFormPage';
+import ShopPage from '@ecommerce/pages/shop/ShopPage';
+import ProductDetailPage from '@ecommerce/pages/shop/ProductDetailPage';
 import { NotificationProvider } from '@shared/contexts/NotificationContext';
 import { StompConnectionProvider } from '@messaging/context/StompConnectionContext';
 import Login from '@auth/pages/Login';
@@ -58,6 +60,12 @@ function App() {
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/auth/callback" element={<AdminAuthCallback />} />
+
+            {/* Storefront — genuinely public, unlike every other feature below (backed by
+                ecommerce-service's own permitAll /api/v1/public/products/** — browsing works the
+                same logged in or out) */}
+            <Route path="/shop" element={<ShopPage />} />
+            <Route path="/shop/:slug" element={<ProductDetailPage />} />
 
             {/* Protected user routes */}
             <Route path="/dashboard" element={
