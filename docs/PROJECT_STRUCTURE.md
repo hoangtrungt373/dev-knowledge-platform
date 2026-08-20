@@ -1382,9 +1382,14 @@ outbox relay, and a public browse/search/detail surface with attribute-value fil
 schema (same `dev-premier` database as the monolith, not a separate database instance —
 per-service-per-schema, see root `CLAUDE.md`'s Database Conventions), own JWT verification
 (`security/` — verifies tokens issued elsewhere, never issues its own), own port (`8081`), own
-Liquibase changelog + `ecommerce-service-liquibase.yml` docker-compose file. `gateway` no longer
-has a Maven dependency on this module. **Not yet built:** the `gateway`-side HTTP proxy to this
-service — until that exists, it's only reachable directly on its own port.
+Liquibase changelog applied via the consolidated `services-liquibase` job — **this module has no
+standalone `ecommerce-service-liquibase.yml` file of its own** (an earlier revision of this
+section wrongly claimed one existed; only `task-service`/`social-service` have that leftover
+single-service compose file, see root `CLAUDE.md`'s Database Conventions section). `gateway` no
+longer has a Maven dependency on this module, but **does now proxy external client traffic to it**
+— `GatewayRoutesConfig`'s `ecommerceServiceRoutes()` bean routes `/api/v1/admin/products/**`,
+`/api/v1/admin/product-categories/**`, and `/api/v1/public/products/**` (an earlier revision of
+this section said this proxy wasn't built yet; it is).
 
 **Compiles cleanly** (full reactor including the extraction changes; needs `JAVA_HOME` pointed at
 a JDK 21 install) but hasn't been run against a real Postgres yet — the Liquibase migration
@@ -1492,15 +1497,40 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │           ProductSearchView from current Product/ProductVariant state; deletes the row (rather
 │           than updating it) when the product is deactivated or missing, since ProductSearchView
 │           has no active column of its own
-├── mapper/                      — MapStruct: ProductCategoryMapper / ProductMapper (also maps
-│                                    ProductVariant→ProductVariantResponse and
-│                                    ProductImage→ProductImageResponse for ProductResponse's
+├── service/seed/                — starter sample catalog (developer-swag theme), gated by
+│   │                                app.seed.enabled
+│   ├── ProductCategorySeeder.java  — extends infra's CsvSeeder<ProductCategory>; idempotency key
+│   │                                    is name itself (not a decoupled seedId like content-service's
+│   │                                    seeders — a fixed-sample-dataset simplification)
+│   ├── ProductSeeder.java          — implements Seeder directly (joins products.csv +
+│   │                                    product_variants.csv by name); routes through
+│   │                                    ProductService.create/deactivate, not a bare repository
+│   │                                    save, so PRODUCT_CHANGED fires and ProductSearchView gets
+│   │                                    populated
+│   ├── ProductImageSeeder.java     — extends CsvSeeder<Void>; generates placeholder JPEGs
+│   │                                    (PlaceholderImageGenerator, java.awt/ImageIO) and uploads
+│   │                                    them through ProductService.uploadImage via a new
+│   │                                    InMemoryMultipartFile (byte-array-backed MultipartFile —
+│   │                                    Spring's MockMultipartFile is spring-test-scoped only)
+│   └── EcommerceDataSeedingRunner.java — ApplicationRunner, @ConditionalOnProperty
+│                                           ("app.seed.enabled"), explicit categories→products→images
+│                                           order, same shape as content-service's/social-service's
+│                                           own runners
+├── mapper/                      — MapStruct: ProductCategoryMapper / ProductMapper (an abstract
+│                                    class, not a plain interface — injects infra's StorageService
+│                                    to resolve each ProductImage.storageKey into a presigned url
+│                                    via @AfterMapping, same pattern as identity-service's
+│                                    UserMapper; also maps ProductVariant→ProductVariantResponse
+│                                    and ProductImage→ProductImageResponse for ProductResponse's
 │                                    nested lists) / ProductSearchViewMapper
 ├── api/                         — REST layer
 │   ├── ProductCategoryApi.java / ProductApi.java — admin CRUD (/api/v1/admin/**), incl.
 │   │                                 POST/DELETE .../variants/{id} and
 │   │                                 POST/DELETE/PATCH .../images/{id} for independent
-│   │                                 variant/image mutation (US-1.6)
+│   │                                 variant/image mutation (US-1.6), plus
+│   │                                 POST .../images/upload (multipart file+sortOrder) — the real
+│   │                                 upload path, backed by infra's StorageService; addImage
+│   │                                 still exists for a caller that already knows a storage key
 │   ├── ProductSearchApi.java    — public browse/search + GET /{slug} detail
 │   │                                 (/api/v1/public/products, US-1.1/1.2/1.3/1.4)
 │   └── impl/                    — ProductCategoryController / ProductController (admin-gated
@@ -1521,10 +1551,12 @@ under this module's **own** changelog tree now (not `gateway`'s) — `PRODUCT_CA
 `PRODUCT_IMAGE`, `PRODUCT_VARIANT`, `PRODUCT_SEARCH_VIEW`, `OUTBOX_EVENT` (with its
 `STATUS`/`ATTEMPT_COUNT`/`LAST_ERROR` columns), plus `CREATE SCHEMA ecommerce`, the `pg_trgm`
 extension, and GIN indexes for `tsvector`/trigram/JSONB containment search on
-`PRODUCT_SEARCH_VIEW`. Applied via `ecommerce-service-liquibase.yml` at the repo root.
+`PRODUCT_SEARCH_VIEW`. Applied via the consolidated `services-liquibase` job in
+`docker-compose.apps.yml` — see the Liquibase note above.
 
-Not yet built: the `gateway`-side HTTP proxy, variant/image add-remove-reorder endpoints,
-`ProductCategory` delete, and Epics 2–5.
+Not yet built: `ProductCategory` delete and Epics 2–5. The `gateway`-side HTTP proxy and
+variant/image add/remove/reorder endpoints (an earlier revision of this section listed both as
+not yet built) are both done — see above.
 
 Compiles against `common` + `infra` as ordinary library dependencies; has **no** Maven dependency
 on any other feature module, and none of them (including `gateway`) depend on it either — see

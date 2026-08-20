@@ -10,6 +10,11 @@ app:
     bucket: ${MINIO_BUCKET:product-images}
     presigned-url-expiry-minutes: ${MINIO_PRESIGNED_EXPIRY:60}
 
+  # CSV-based sample catalog seeding (EcommerceDataSeedingRunner) — off by default, enabled per
+  # profile, same property name/shape as content-service's/social-service's own seeders.
+  seed:
+    enabled: ${APP_SEED_ENABLED:false}
+
 spring:
   application:
     name: ecommerce-service

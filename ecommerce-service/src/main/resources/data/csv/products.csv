@@ -1,0 +1,14 @@
+name,description,categoryName,active
+404 Not Found T-Shirt,"A classic tee for when your code (or your search) comes up empty. 100% combed cotton, unisex fit.",Apparel,true
+Ctrl+Z Hoodie,"Because everyone needs an undo button. Heavyweight fleece hoodie with a kangaroo pocket.",Apparel,true
+sudo make me a sandwich T-Shirt,"For developers who appreciate elevated privileges (and lunch). Soft ringspun cotton.",Apparel,true
+It's Not a Bug It's a Feature Long Sleeve,"The eternal developer defense, now wearable. Midweight long-sleeve tee.",Apparel,true
+console.log('I love you') Mug,"Debug your mornings with this 11oz ceramic mug, dishwasher and microwave safe.",Drinkware,true
+git commit -m 'fixed' Tumbler,"Double-walled stainless steel tumbler for the commit that finally worked.",Drinkware,true
+Rubber Duck Debugging Sticker Pack,"Vinyl sticker pack featuring the original pair programmer. Weatherproof, laptop-ready.",Stickers,true
+This Is Fine Laptop Decal,"A dumpster fire, but make it code. Die-cut vinyl decal for laptops and water bottles.",Stickers,true
+Segfault Desk Mat,"Extra-large desk mat with a stitched edge, because your wrists deserve better than the bare desk.",Office,true
+TODO Fix This Later Notebook,"A dot-grid notebook for tasks that will absolutely never get fixed later. Retired design.",Office,false
+Merge Conflict Laptop Sleeve,"Padded neoprene laptop sleeve for surviving the next merge conflict.",Accessories,true
+I Love Semicolons Tote Bag,"Heavyweight canvas tote for developers who never forget the little things.",Accessories,true
+Compile Time Socks,"Combed cotton crew socks for the long wait between builds.",Accessories,true

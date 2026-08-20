@@ -15,7 +15,9 @@ gui/src/
 │   ├── messaging/     — 1:1 DM chat over STOMP WebSocket (Phase 1; groups/channels are Phase 2)
 │   ├── content/       — content-CRUD admin screens (Category/Tag/QuestionAnswer)
 │   ├── ai/             — ai-service admin/monitoring screens (pipeline metrics, embeddings index)
-│   └── tasks/           — personal task/project management, fronting task-service
+│   ├── tasks/           — personal task/project management, fronting task-service
+│   └── ecommerce/        — ecommerce-service admin screens (Product Categories, Products incl.
+│                            variant/image gallery management)
 ├── app/          — app shell: App.tsx (routes), main.tsx, theme.ts, NavBar, GuestRoute/PrivateRoute,
 │                    admin-shell/ (AdminLayout, AdminDashboard — the admin nav frame + landing page)
 └── shared/        — httpClient, common.types-equivalent (types.ts, incl. PagedResponse), the
@@ -26,7 +28,7 @@ gui/src/
 Each `features/<name>/` folder owns its own `api/`, `types.ts`, `pages/`, `components/`, `hooks/` —
 whichever of those it needs; nothing is centralized by layer anymore (see "Why this shape" below).
 Cross-directory imports use path aliases (`@shared/*`, `@app/*`, `@auth/*`, `@chat/*`, `@friends/*`,
-`@messaging/*`, `@content/*`, `@ai/*`, `@tasks/*` — defined in both `tsconfig.json`'s `compilerOptions.paths` and
+`@messaging/*`, `@content/*`, `@ai/*`, `@tasks/*`, `@ecommerce/*` — defined in both `tsconfig.json`'s `compilerOptions.paths` and
 `vite.config.ts`'s `resolve.alias`, and must be kept in sync between the two) instead of relative
 `../../` traversal — imports within a single feature (e.g. a page importing its own feature's
 `api/`) stay relative (`../api/chatApi`), only *cross*-feature imports use the alias.
@@ -466,6 +468,48 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     `TasksSidebar` filters
     the shared list to `ACTIVE` itself rather than being handed an already-filtered list, and calls
     `onProjectsChanged` (→ `TasksPage`'s `fetchProjects`) after create/edit/archive.
+- **`@ecommerce` (admin CRUD for `ecommerce-service`'s Epic 1 — Product Categories, Products)** —
+  fronts `ProductCategoryApi`/`ProductApi` through `gateway` (`GatewayRoutesConfig` already routes
+  `/api/v1/admin/products/**`/`/api/v1/admin/product-categories/**`, so this feature uses the same
+  `VITE_BACKEND_URL`/`httpClient` every other admin feature does — no third backend-origin
+  constant needed, unlike `@messaging`'s direct-to-`social-service` case below).
+  `pages/ProductCategoryListPage.tsx` + `components/ProductCategoryFormDialog.tsx` mirror
+  `@content`'s `TagListPage`/`TagFormDialog` — a flat, unpaginated list (matching
+  `ProductCategoryApi.list`'s own shape), no delete action since the backend exposes none.
+  `pages/ProductListPage.tsx` + `pages/ProductFormPage.tsx` mirror `@content`'s
+  `QuestionAnswerListPage`/`FormPage`, but variant/image management is genuinely different between
+  create and edit mode, not just a smaller version of the same form:
+  - **Create mode**: variants are staged locally (a `DisplayVariant[]` with locally-generated
+    string ids, not yet persisted) and submitted together with the basic fields in one
+    `createProduct` call, since the backend requires ≥1 variant to create a product at all (US-1.6)
+    — there's no way to create a variant-less product and add variants after the fact. Images
+    can't be added yet either — uploading needs a real `productId`, which doesn't exist until
+    after creation — so the create form shows a "save this product first" notice in the image
+    gallery's place and, on success, navigates straight to the new product's own edit page rather
+    than back to the list, so the natural next step (add images) is one click away.
+  - **Edit mode**: variant add/remove and image upload/remove/reorder are independent, immediate
+    API calls (`ecommerceApi.addVariant`/`removeVariant`/`uploadImage`/`removeImage`/
+    `updateImageSortOrder`, each followed by a refetch of the whole product) — separate from the
+    "Save" button, which only ever touches name/description/category via `updateProduct`. This
+    mirrors `ProductApi`'s own shape: variants/images are independently mutable endpoints on the
+    backend, not fields inside the update-basic-fields payload.
+  - `components/ProductVariantEditor.tsx` + `ProductVariantDialog.tsx` — the add-variant dialog's
+    attribute key/value editor locks its key set to whatever the product's first variant already
+    uses once one exists, enforcing US-1.6's "every variant shares the same attribute keys" rule
+    client-side before ever hitting the backend's own check. The remove action is disabled
+    client-side whenever only one variant remains, for the same reason (the backend rejects
+    removing a product's last variant; no point round-tripping to learn that).
+  - `components/ProductImageGallery.tsx` — upload via `httpClient.postForm` (same pattern as
+    `@auth/api/profileApi.ts#uploadAvatar`), remove, and a real move-earlier/move-later reorder.
+    **The reorder is a 3-step scratch-sort-order swap, not a direct 2-step swap** — the backend
+    rejects a sort order that collides with any of the product's *other* images
+    (`UpdateProductImageSortOrderRequest`, `UNIQUE (PRODUCT_ID, SORT_ORDER)`), so swapping two
+    adjacent images' sort orders directly would have the second `PATCH` collide with the first
+    image's not-yet-moved-away value for the instant before it moves; moving the first image to an
+    unused scratch value (`SCRATCH_SORT_ORDER = 100000`, well outside any real gallery's range)
+    first sidesteps that. `ProductImage.url` (a time-limited presigned URL, resolved server-side by
+    `ProductMapper` — see `ecommerce-service/CLAUDE.md`) is what actually renders as each
+    thumbnail; never construct a MinIO URL client-side from `storageKey`.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

@@ -50,13 +50,13 @@ const FEATURE_CARDS = [
     label: 'Products',
     icon: <Inventory2Icon fontSize="small" />,
     description: 'Manage the e-commerce product catalog.',
-    status: 'soon' as const,
+    status: 'ready' as const,
   },
   {
     label: 'Product Categories',
     icon: <CategoryIcon fontSize="small" />,
-    description: 'Organise products into a category tree.',
-    status: 'soon' as const,
+    description: 'Manage the flat product-category taxonomy.',
+    status: 'ready' as const,
   },
 ];
 

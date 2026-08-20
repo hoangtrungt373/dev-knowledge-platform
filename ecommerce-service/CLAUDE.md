@@ -21,20 +21,28 @@ public browse/search/detail surface with attribute-value filtering — see below
 `dev-premier` database as the monolith, not a separate database instance — per-service-per-schema,
 see root `CLAUDE.md`'s Database Conventions), its own port (`8081`), and its own Liquibase
 changelog/docker-compose file. `gateway` no longer has a Maven dependency on this module at all.
-**`gateway`-side HTTP proxying to this service is not built yet** — until it is, this service is
-only reachable directly on its own port, not through `gateway`.
+**`gateway`-side HTTP proxying to this service is built** — `GatewayRoutesConfig`'s
+`ecommerceServiceRoutes()` bean routes `/api/v1/admin/products/**`,
+`/api/v1/admin/product-categories/**`, and `/api/v1/public/products/**` to this service's
+`app.services.ecommerce-service-base-url` (an earlier revision of this file said this proxy wasn't
+built yet; it is, and `gui`'s admin GUI — see below — calls it through `gateway` accordingly, not
+this service's own port directly).
 
 **`EcommerceServiceApplication` carries
 `@Import({JacksonConfig.class, TraceContextFilter.class, SlugServiceImpl.class,
-KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class})`**, naming the exact
+KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
+StorageProperties.class, StorageConfig.class, StorageServiceImpl.class})`**, naming the exact
 `infra` beans this module uses — `SlugServiceImpl` for `ProductServiceImpl`/
 `ProductCategoryServiceImpl`'s product/category slug generation, the Keycloak pair for this
-module's own `SecurityConfig` — instead of widening `@ComponentScan`/`@ConfigurationPropertiesScan`
-to the whole sibling `infra` package the way an earlier revision did. That broad-scan approach took
-three rounds of real startup failures on `task-service` (a sibling in the identical shape) to get
-right before this reactor moved to explicit imports instead — see `infra/CLAUDE.md`'s note and
-`docs/CHANGELOG.md`'s `[Unreleased]` entry for the full history. `AsyncEventThreadPoolConfig` is
-deliberately **not** imported here — this module has no `@EventHandler` to dispatch.
+module's own `SecurityConfig`, and the `StorageProperties`/`StorageConfig`/`StorageServiceImpl`
+trio for `ProductServiceImpl.uploadImage`/`ProductMapper`'s presigned-URL resolution (see below) —
+same trio `identity-service` imports for its own avatar upload — instead of widening
+`@ComponentScan`/`@ConfigurationPropertiesScan` to the whole sibling `infra` package the way an
+earlier revision did. That broad-scan approach took three rounds of real startup failures on
+`task-service` (a sibling in the identical shape) to get right before this reactor moved to
+explicit imports instead — see `infra/CLAUDE.md`'s note and `docs/CHANGELOG.md`'s `[Unreleased]`
+entry for the full history. `AsyncEventThreadPoolConfig` is deliberately **not** imported here —
+this module has no `@EventHandler` to dispatch.
 
 **No `@EntityScan`/`@EnableJpaRepositories` on `EcommerceServiceApplication`, and no dependency on
 `common.entity.User`/`common.repository.UserRepository` anywhere in this module** — this module
@@ -138,12 +146,19 @@ The minimal admin vertical slice now built on top of those entities:
     time, so a lazy re-fetch isn't guaranteed to see rows inserted moments later in the same unit
     of work. Keep this pattern for any future bidirectional create-with-children flow in this
     module.
-- `mapper/` — `ProductCategoryMapper`, `ProductMapper` (MapStruct; `ProductMapper` also maps
-  `ProductVariant`→`ProductVariantResponse` and `ProductImage`→`ProductImageResponse` for the
-  nested lists on `ProductResponse`).
+- `mapper/` — `ProductCategoryMapper`, `ProductMapper`. **`ProductMapper` is an abstract class, not
+  a plain interface** — it injects `infra`'s `StorageService` (`@Autowired protected`) so an
+  `@AfterMapping` step (`resolveImageUrl`) can resolve each `ProductImage.storageKey` into a
+  time-limited presigned `url` field on `ProductImageResponse`, the field the admin GUI actually
+  renders as a thumbnail — same pattern as `identity-service`'s `UserMapper` resolving an avatar
+  URL. `toImageResponse` carries `@Mapping(target = "url", ignore = true)` since `url` has no
+  source field on the entity; the `@AfterMapping` step fills it in afterward. `ProductMapper` also
+  maps `ProductVariant`→`ProductVariantResponse` and `ProductImage`→`ProductImageResponse` for the
+  nested lists on `ProductResponse`.
 - `dto/` — `ProductCategoryResponse`/`CreateProductCategoryRequest`/`UpdateProductCategoryRequest`,
   `ProductResponse`/`CreateProductRequest`/`UpdateProductRequest`,
-  `ProductVariantRequest`/`ProductVariantResponse`, `ProductImageRequest`/`ProductImageResponse`.
+  `ProductVariantRequest`/`ProductVariantResponse`,
+  `ProductImageRequest`/`ProductImageResponse` (the latter now also carries `url`, see above).
 - `api/` (+ `api/impl/`) — `ProductCategoryApi`/`Controller` (`/api/v1/admin/product-categories`:
   create/update/getById/list — no delete yet), `ProductApi`/`Controller`
   (`/api/v1/admin/products`: create-with-variants-and-images/update-basic-fields/
@@ -151,7 +166,12 @@ The minimal admin vertical slice now built on top of those entities:
   (US-1.6) — `POST`/`DELETE .../variants/{variantId}` (removing the last remaining variant is
   rejected — `Product`'s "always ≥1 variant" invariant applies here too, not just at creation) and
   `POST`/`DELETE`/`PATCH .../images/{imageId}` (add/remove/reorder; a product *can* end up with
-  zero images, unlike variants)). All admin-gated automatically via **this module's own**
+  zero images, unlike variants), plus `POST .../images/upload` (multipart `file`+`sortOrder`) —
+  the real upload path, backed by `ProductServiceImpl.uploadImage` calling `infra`'s
+  `StorageService.uploadImage` (image-only content type, ≤5 MB, both enforced there) before
+  persisting the `ProductImage` row. `addImage` still exists for a caller that already knows a
+  `storageKey`; nothing in `gui` calls it, since the admin GUI only ever uploads real files.).
+  All admin-gated automatically via **this module's own**
   `security/SecurityConfig` URL-pattern rule for `/api/v1/admin/**` — no method-level
   `@PreAuthorize` needed, same shape as `gateway`'s equivalent rule, but a separate filter chain
   now that this app runs standalone.
@@ -218,23 +238,74 @@ The public browse/search/detail surface (US-1.1, US-1.2, US-1.3, US-1.4):
   the difference) — under this module's own `security/SecurityConfig` `/api/v1/public/**`
   permit-all rule, no auth required, matching the public nature of browsing.
 
-**Not built yet** (do not assume these exist): the `gateway`-side HTTP proxy to this service,
-`ProductCategory` delete, combo-accurate attribute filtering (the current filter checks "some
-variant has size M" and "some variant has color Blue" independently, not "one variant with both
-together" — see `ProductSearchView`'s Javadoc), and everything for Epics 2–5. Check
-`docs/CHANGELOG.md`'s `[Unreleased]` entry and this file's own freshness before assuming more
-exists than what's listed above. **Compiles cleanly** (full reactor including the extraction
-changes, `./mvnw -pl gateway -am compile`, needs `JAVA_HOME` pointed at a JDK 21 install, see the
-`reference-jdk21-location` memory) but has **not** been run: the app hasn't been booted against a
-real Postgres, so the Liquibase migration against the new `ecommerce` schema, Hibernate's
-`ddl-auto: validate` check against it, the native SQL in `ProductSearchViewRepository.search`,
-and the JWT verification path are all still unverified at runtime. A new `Dockerfile` +
-`docker-compose.apps.yml` (repo root) exist to run this module in a
-container for the first time — see root `CLAUDE.md`'s Build & Run Commands — which will be the
-first real exercise of all of the above. Container datasource config is supplied via plain
-`SPRING_DATASOURCE_URL`/`_USERNAME`/`_PASSWORD`/`_DRIVER_CLASS_NAME` environment variables in that
-compose file (this module still has no base-profile `spring.datasource` block and no
-`application-docker.yml` — don't add one for this; env vars are the deliberate choice here).
+**`service/seed/`** — a starter sample catalog (developer-swag theme: apparel, drinkware,
+stickers, office, accessories), gated by `app.seed.enabled` (`${APP_SEED_ENABLED:false}`, `"true"`
+in `docker-compose.apps.yml`'s `ecommerce-service` block) same shape as `content-service`'s/
+`social-service`'s own seeders:
+
+- `ProductCategorySeeder` (`data/csv/product_categories.csv`, column: `name`) — extends `infra`'s
+  `CsvSeeder<ProductCategory>`, same Template Method shape as `content-service`'s `CategorySeeder`.
+  **Idempotency key is `name` itself, not a decoupled `seedId` column** — unlike
+  `content-service`'s seeders, which persist a permanent `seedId` specifically so a category's
+  display name stays freely editable across re-seeds. This is a small, fixed sample dataset, not
+  long-lived content coexisting with user edits, so that decoupling wasn't judged worth a schema
+  migration for a first pass; renaming a seeded category through the admin GUI would make a
+  re-run treat the CSV row as new. Revisit with a real `seedId` column if this outgrows "fixed
+  sample catalog."
+- `ProductSeeder` (`data/csv/products.csv` joined with `data/csv/product_variants.csv` by product
+  name) — **implements `infra`'s `Seeder` directly, not `CsvSeeder<T>`**, for two reasons: it needs
+  every matching variant row before it can build one create command, and it routes through
+  `ProductService.create`/`deactivate` rather than a bare repository save. The service-layer route
+  matters for correctness, not just style — `ProductServiceImpl.create`/`deactivate` both publish
+  `PRODUCT_CHANGED`, which is what gets a seeded product into `ProductSearchView` at all; inserting
+  rows directly would leave every seeded product invisible to public browse/search (US-1.1/1.3/1.4)
+  until something else touched them, since nothing else re-derives that CQRS read model. Attribute
+  maps are encoded in one CSV cell as `key1=value1;key2=value2` (a CSV cell can't hold a nested
+  map). `products.csv`'s optional `active` column demonstrates US-1.7 for one row
+  ("TODO Fix This Later Notebook") for free — created normally, then immediately deactivated.
+- `ProductImageSeeder` (`data/csv/product_images.csv`) — a first gallery image for five featured
+  products, via `PlaceholderImageGenerator` (renders a solid-color-plus-label JPEG with
+  `java.awt`/`ImageIO`, no checked-in binary assets — no real product photography exists for this
+  sample catalog) wrapped in `InMemoryMultipartFile` (a minimal byte-array-backed
+  `MultipartFile` — Spring's own `MockMultipartFile` is `spring-test`-scoped, not available to main
+  source) and fed through `ProductService.uploadImage` — the same real upload path the admin GUI
+  uses (see `gui/CLAUDE.md`'s `@ecommerce` note), and this seeder's first real exercise of it.
+  Extends `CsvSeeder<Void>` (buildEntity's real work is the `uploadImage` call itself; `persist` is
+  a no-op) — `alreadyExists` checks for any existing image at the target `sortOrder` on that
+  product, not a permanent identifier, same fixed-sample-dataset tradeoff as `ProductCategorySeeder`.
+- `EcommerceDataSeedingRunner` — `ApplicationRunner`, `@ConditionalOnProperty("app.seed.enabled")`,
+  explicit order (categories → products → images, each depending on the previous existing) — same
+  pattern as `content-service`'s/`social-service`'s own runners, not a `List<Seeder>` loop (see
+  `infra`'s `Seeder` Javadoc for why).
+
+**Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
+filtering (the current filter checks "some variant has size M" and "some variant has color Blue"
+independently, not "one variant with both together" — see `ProductSearchView`'s Javadoc), and
+everything for Epics 2–5. Check `docs/CHANGELOG.md`'s `[Unreleased]` entry and this file's own
+freshness before assuming more exists than what's listed above. **Compiles cleanly** (verified via
+a targeted `-pl ecommerce-service -am compile` after the image-upload/`ProductMapper` changes, and
+the full reactor including the extraction changes compiles too, `./mvnw -pl gateway -am compile`;
+needs `JAVA_HOME` pointed at a JDK 21 install, see the `reference-jdk21-location` memory) but has
+**not** been run: the app hasn't been booted against a real Postgres, so the Liquibase migration
+against the new `ecommerce` schema, Hibernate's `ddl-auto: validate` check against it, the native
+SQL in `ProductSearchViewRepository.search`, the JWT verification path, and the new `app.storage.*`
+MinIO wiring (bucket auto-creation, `uploadImage`, presigned-URL resolution) are all still
+unverified at runtime. A new `Dockerfile` + `docker-compose.apps.yml` (repo root) exist to run this
+module in a container for the first time — see root `CLAUDE.md`'s Build & Run Commands — which
+will be the first real exercise of all of the above. Container datasource config is supplied via
+plain `SPRING_DATASOURCE_URL`/`_USERNAME`/`_PASSWORD`/`_DRIVER_CLASS_NAME` environment variables in
+that compose file (this module still has no base-profile `spring.datasource` block and no
+`application-docker.yml` — don't add one for this; env vars are the deliberate choice here). The
+new `app.storage.*` block, by contrast, *does* live in this module's base `application.yml` (not a
+docker-only file) — same `${VAR:default}` placeholder convention this file's own
+`issuer-uri` property already used, and the same shape `identity-service`'s own `app.storage`
+block follows.
+
+**`gui`'s admin GUI for this module's Epic 1 now exists** — a `@ecommerce` feature folder
+(`ProductCategoryListPage`/`FormDialog`, `ProductListPage`/`FormPage` +
+`ProductVariantEditor`/`Dialog`/`ProductImageGallery`), calling this service through `gateway`
+(not this service's own port directly) — see `gui/CLAUDE.md`. It's the first real client of the
+`uploadImage` endpoint above.
 
 ## Rules specific to this module
 
@@ -243,9 +314,9 @@ compose file (this module still has no base-profile `spring.datasource` block an
   runtime call) but has **no Maven dependency on any other feature module, and `gateway` has none
   on it.** Never re-add a `gateway` → `ecommerce-service` Maven dependency — that would put this
   module's beans (the outbox relay, controllers) back on `gateway`'s classpath and cause both
-  apps to run them simultaneously. Cross-service communication happens over HTTP (once the
-  `gateway` proxy layer is built) or, for anything genuinely async, the Outbox/Inbox pattern
-  discussed for Epic 4's webhooks — never a compile-time dependency again.
+  apps to run them simultaneously. Cross-service communication happens over HTTP (`gateway`'s
+  proxy layer, already built — see above) or, for anything genuinely async, the Outbox/Inbox
+  pattern discussed for Epic 4's webhooks — never a compile-time dependency again.
 - **Epic 5's originally-planned `ecommerce-service` → `ai-service` dependency needs rethinking**
   now that both modules are standalone: `ai-service` is a separate deployable now too (its own `ai`
   schema, own port `8086` — see root `CLAUDE.md`), so a plain Maven dependency (the original plan,

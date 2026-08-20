@@ -1,0 +1,50 @@
+productName,sku,price,stockQuantity,attributes
+404 Not Found T-Shirt,TEE-404-S-BLK,24.99,40,size=S;color=Black
+404 Not Found T-Shirt,TEE-404-S-WHT,24.99,35,size=S;color=White
+404 Not Found T-Shirt,TEE-404-M-BLK,24.99,50,size=M;color=Black
+404 Not Found T-Shirt,TEE-404-M-WHT,24.99,45,size=M;color=White
+404 Not Found T-Shirt,TEE-404-L-BLK,24.99,38,size=L;color=Black
+404 Not Found T-Shirt,TEE-404-L-WHT,24.99,30,size=L;color=White
+404 Not Found T-Shirt,TEE-404-XL-BLK,24.99,20,size=XL;color=Black
+404 Not Found T-Shirt,TEE-404-XL-WHT,24.99,0,size=XL;color=White
+Ctrl+Z Hoodie,HOOD-CTRLZ-S-BLK,54.99,15,size=S;color=Black
+Ctrl+Z Hoodie,HOOD-CTRLZ-S-NVY,54.99,12,size=S;color=Navy
+Ctrl+Z Hoodie,HOOD-CTRLZ-M-BLK,54.99,22,size=M;color=Black
+Ctrl+Z Hoodie,HOOD-CTRLZ-M-NVY,54.99,18,size=M;color=Navy
+Ctrl+Z Hoodie,HOOD-CTRLZ-L-BLK,54.99,20,size=L;color=Black
+Ctrl+Z Hoodie,HOOD-CTRLZ-L-NVY,54.99,14,size=L;color=Navy
+Ctrl+Z Hoodie,HOOD-CTRLZ-XL-BLK,54.99,10,size=XL;color=Black
+Ctrl+Z Hoodie,HOOD-CTRLZ-XL-NVY,54.99,8,size=XL;color=Navy
+sudo make me a sandwich T-Shirt,TEE-SUDO-S-BLK,22.99,30,size=S;color=Black
+sudo make me a sandwich T-Shirt,TEE-SUDO-S-WHT,22.99,28,size=S;color=White
+sudo make me a sandwich T-Shirt,TEE-SUDO-M-BLK,22.99,40,size=M;color=Black
+sudo make me a sandwich T-Shirt,TEE-SUDO-M-WHT,22.99,36,size=M;color=White
+sudo make me a sandwich T-Shirt,TEE-SUDO-L-BLK,22.99,33,size=L;color=Black
+sudo make me a sandwich T-Shirt,TEE-SUDO-L-WHT,22.99,29,size=L;color=White
+sudo make me a sandwich T-Shirt,TEE-SUDO-XL-BLK,22.99,18,size=XL;color=Black
+sudo make me a sandwich T-Shirt,TEE-SUDO-XL-WHT,22.99,15,size=XL;color=White
+It's Not a Bug It's a Feature Long Sleeve,LS-FEATURE-S,29.99,20,size=S
+It's Not a Bug It's a Feature Long Sleeve,LS-FEATURE-M,29.99,25,size=M
+It's Not a Bug It's a Feature Long Sleeve,LS-FEATURE-L,29.99,22,size=L
+It's Not a Bug It's a Feature Long Sleeve,LS-FEATURE-XL,29.99,12,size=XL
+console.log('I love you') Mug,MUG-CONSOLE-WHT,14.99,60,color=White
+console.log('I love you') Mug,MUG-CONSOLE-BLK,14.99,55,color=Black
+git commit -m 'fixed' Tumbler,TUMB-FIXED-BLK-12,19.99,25,color=Black;capacity=12oz
+git commit -m 'fixed' Tumbler,TUMB-FIXED-SLV-12,19.99,22,color=Silver;capacity=12oz
+git commit -m 'fixed' Tumbler,TUMB-FIXED-BLK-16,21.99,20,color=Black;capacity=16oz
+git commit -m 'fixed' Tumbler,TUMB-FIXED-SLV-16,21.99,18,color=Silver;capacity=16oz
+Rubber Duck Debugging Sticker Pack,STK-DUCK-5,4.99,100,packSize=5-pack
+Rubber Duck Debugging Sticker Pack,STK-DUCK-10,8.99,80,packSize=10-pack
+This Is Fine Laptop Decal,DECAL-FINE-01,3.99,150,
+Segfault Desk Mat,MAT-SEGFAULT-S,24.99,30,size=Small
+Segfault Desk Mat,MAT-SEGFAULT-L,34.99,25,size=Large
+TODO Fix This Later Notebook,NOTE-TODO-BLK,12.99,10,color=Black
+TODO Fix This Later Notebook,NOTE-TODO-KFT,12.99,10,color=Kraft
+Merge Conflict Laptop Sleeve,SLV-MERGE-13-BLK,29.99,18,size=13in;color=Black
+Merge Conflict Laptop Sleeve,SLV-MERGE-13-GRY,29.99,15,size=13in;color=Gray
+Merge Conflict Laptop Sleeve,SLV-MERGE-15-BLK,32.99,20,size=15in;color=Black
+Merge Conflict Laptop Sleeve,SLV-MERGE-15-GRY,32.99,16,size=15in;color=Gray
+I Love Semicolons Tote Bag,TOTE-SEMI-NAT,16.99,25,color=Natural
+I Love Semicolons Tote Bag,TOTE-SEMI-BLK,16.99,22,color=Black
+Compile Time Socks,SOCK-COMPILE-SM,11.99,40,size=S-M
+Compile Time Socks,SOCK-COMPILE-LXL,11.99,35,size=L-XL

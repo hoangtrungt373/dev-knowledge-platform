@@ -12,6 +12,9 @@ import QuestionAnswerListPage from '@content/pages/QuestionAnswerListPage';
 import QuestionAnswerFormPage from '@content/pages/QuestionAnswerFormPage';
 import PipelineMetricsPage from '@ai/pages/PipelineMetricsPage';
 import EmbeddingsPage from '@ai/pages/EmbeddingsPage';
+import ProductCategoryListPage from '@ecommerce/pages/ProductCategoryListPage';
+import ProductListPage from '@ecommerce/pages/ProductListPage';
+import ProductFormPage from '@ecommerce/pages/ProductFormPage';
 import { NotificationProvider } from '@shared/contexts/NotificationContext';
 import { StompConnectionProvider } from '@messaging/context/StompConnectionContext';
 import Login from '@auth/pages/Login';
@@ -121,6 +124,10 @@ function App() {
               <Route path="question-answers/:id/edit" element={<QuestionAnswerFormPage />} />
               <Route path="pipeline-metrics" element={<PipelineMetricsPage />} />
               <Route path="embeddings" element={<EmbeddingsPage />} />
+              <Route path="product-categories" element={<ProductCategoryListPage />} />
+              <Route path="products" element={<ProductListPage />} />
+              <Route path="products/new" element={<ProductFormPage />} />
+              <Route path="products/:id/edit" element={<ProductFormPage />} />
               <Route index element={<Navigate to="dashboard" replace />} />
             </Route>
 

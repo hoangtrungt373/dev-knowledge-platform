@@ -16,4 +16,7 @@ public interface ProductRepository extends JpaRepository<Product, Integer>, JpaS
     boolean existsBySlugAndIdNot(String slug, Integer id);
 
     Optional<Product> findBySlug(String slug);
+
+    /** Used by {@code service.seed.ProductSeeder} as its idempotency natural key. */
+    Optional<Product> findByNameIgnoreCase(String name);
 }

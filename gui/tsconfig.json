@@ -31,7 +31,8 @@
       "@messaging/*": ["src/features/messaging/*"],
       "@content/*": ["src/features/content/*"],
       "@ai/*": ["src/features/ai/*"],
-      "@tasks/*": ["src/features/tasks/*"]
+      "@tasks/*": ["src/features/tasks/*"],
+      "@ecommerce/*": ["src/features/ecommerce/*"]
     }
   },
   "include": ["src"],
