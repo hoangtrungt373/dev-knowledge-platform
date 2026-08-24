@@ -19,7 +19,7 @@ public class BusinessException extends ApiException {
         super(errorCode, message, args);
     }
 
-    public BusinessException(ErrorCode errorCode, Object[] templateArgs) {
+    public BusinessException(ErrorCode errorCode, Object... templateArgs) {
         super(errorCode, templateArgs);
     }
 }

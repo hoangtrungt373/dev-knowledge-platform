@@ -32,7 +32,7 @@ public class TagServiceImpl implements TagService {
     public Tag create(String name, TagStatus status) {
         String normalizedName = normalizeName(name);
         if (tagRepository.existsByNameIgnoreCase(normalizedName)) {
-            throw new ApiException(ContentErrorCode.TAG_NAME_CONFLICT, new Object[] {normalizedName});
+            throw new ApiException(ContentErrorCode.TAG_NAME_CONFLICT, normalizedName);
         }
         String slug = slugService.generateUniqueSlug(normalizedName, tagRepository::existsBySlug, ContentErrorCode.TAG_SLUG_CONFLICT);
 
@@ -53,7 +53,7 @@ public class TagServiceImpl implements TagService {
 
         if (!tag.getName().equalsIgnoreCase(normalizedName)) {
             if (tagRepository.existsByNameIgnoreCaseAndIdNot(normalizedName, id)) {
-                throw new ApiException(ContentErrorCode.TAG_NAME_CONFLICT, new Object[] {normalizedName});
+                throw new ApiException(ContentErrorCode.TAG_NAME_CONFLICT, normalizedName);
             }
             tag.setName(normalizedName);
             tag.setSlug(slugService.generateUniqueSlug(normalizedName, tagRepository::existsBySlugAndIdNot, id, ContentErrorCode.TAG_SLUG_CONFLICT));
@@ -83,7 +83,7 @@ public class TagServiceImpl implements TagService {
     public void delete(Integer id) {
         Tag tag = findById(id);
         if (contentItemTagRepository.existsByTagId(id)) {
-            throw new ApiException(ContentErrorCode.TAG_IN_USE, new Object[] {id});
+            throw new ApiException(ContentErrorCode.TAG_IN_USE, id);
         }
         tagRepository.delete(tag);
         log.info("Deleted tag id={}", id);
@@ -92,7 +92,7 @@ public class TagServiceImpl implements TagService {
     private Tag findById(Integer id) {
         return tagRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.TAG_NOT_FOUND, new Object[] {id}));
+                        ContentErrorCode.TAG_NOT_FOUND, id));
     }
 
     private static String normalizeName(String name) {

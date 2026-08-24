@@ -38,7 +38,7 @@ public class SlugServiceImpl implements SlugService {
         int counter = 1;
         while (exists.test(slug)) {
             if (counter > MAX_SLUG_ATTEMPTS) {
-                throw new ApiException(conflictCode, new Object[] {input});
+                throw new ApiException(conflictCode, input);
             }
             slug = baseSlug + "-" + counter++;
         }
@@ -53,7 +53,7 @@ public class SlugServiceImpl implements SlugService {
         int counter = 1;
         while (existsExcluding.test(slug, excludeId)) {
             if (counter > MAX_SLUG_ATTEMPTS) {
-                throw new ApiException(conflictCode, new Object[] {input});
+                throw new ApiException(conflictCode, input);
             }
             slug = baseSlug + "-" + counter++;
         }

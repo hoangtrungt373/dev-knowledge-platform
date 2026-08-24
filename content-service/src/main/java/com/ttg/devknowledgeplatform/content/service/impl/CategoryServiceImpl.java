@@ -38,7 +38,7 @@ public class CategoryServiceImpl implements CategoryService {
     public Category create(String name, Integer parentId) {
         String normalizedName = normalizeName(name);
         if (categoryRepository.existsByNameIgnoreCase(normalizedName)) {
-            throw new ApiException(ContentErrorCode.CATEGORY_NAME_CONFLICT, new Object[] {normalizedName});
+            throw new ApiException(ContentErrorCode.CATEGORY_NAME_CONFLICT, normalizedName);
         }
         Category parent = resolveParent(parentId);
         String slug = slugService.generateUniqueSlug(normalizedName, categoryRepository::existsBySlug, ContentErrorCode.CATEGORY_SLUG_CONFLICT);
@@ -61,7 +61,7 @@ public class CategoryServiceImpl implements CategoryService {
 
         if (!category.getName().equalsIgnoreCase(normalizedName)) {
             if (categoryRepository.existsByNameIgnoreCaseAndIdNot(normalizedName, id)) {
-                throw new ApiException(ContentErrorCode.CATEGORY_NAME_CONFLICT, new Object[] {normalizedName});
+                throw new ApiException(ContentErrorCode.CATEGORY_NAME_CONFLICT, normalizedName);
             }
             category.setName(normalizedName);
             category.setSlug(slugService.generateUniqueSlug(normalizedName, categoryRepository::existsBySlugAndIdNot, id, ContentErrorCode.CATEGORY_SLUG_CONFLICT));
@@ -119,10 +119,10 @@ public class CategoryServiceImpl implements CategoryService {
     public void delete(Integer id) {
         Category category = findById(id);
         if (categoryRepository.existsByParentId(id)) {
-            throw new ApiException(ContentErrorCode.CATEGORY_HAS_CHILDREN, new Object[] {id});
+            throw new ApiException(ContentErrorCode.CATEGORY_HAS_CHILDREN, id);
         }
         if (contentItemRepository.existsByCategoryId(id)) {
-            throw new ApiException(ContentErrorCode.CATEGORY_IN_USE, new Object[] {id});
+            throw new ApiException(ContentErrorCode.CATEGORY_IN_USE, id);
         }
         categoryRepository.delete(category);
         log.info("Deleted category id={}", id);
@@ -139,7 +139,7 @@ public class CategoryServiceImpl implements CategoryService {
     private Category findById(Integer id) {
         return categoryRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.CATEGORY_NOT_FOUND, new Object[] {id}));
+                        ContentErrorCode.CATEGORY_NOT_FOUND, id));
     }
 
     private Category resolveParent(Integer parentId) {
@@ -148,7 +148,7 @@ public class CategoryServiceImpl implements CategoryService {
         }
         return categoryRepository.findById(parentId)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.CATEGORY_NOT_FOUND, new Object[] {parentId}));
+                        ContentErrorCode.CATEGORY_NOT_FOUND, parentId));
     }
 
     /**

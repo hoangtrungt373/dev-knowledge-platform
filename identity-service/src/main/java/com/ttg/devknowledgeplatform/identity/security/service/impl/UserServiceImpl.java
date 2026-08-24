@@ -140,7 +140,7 @@ public class UserServiceImpl implements UserService {
             String trimmed = username.trim().toLowerCase();
             if (!trimmed.equals(user.getUsername())) {
                 if (userRepository.existsByUsernameAndIdNot(trimmed, user.getId())) {
-                    throw new ApiException(CommonErrorCode.USER_USERNAME_ALREADY_EXISTS, new Object[] {trimmed});
+                    throw new ApiException(CommonErrorCode.USER_USERNAME_ALREADY_EXISTS, trimmed);
                 }
                 // Keycloak owns preferred_username and re-syncs it into this row on every request
                 // (see findOrCreateFromKeycloak) — renaming locally first would just get reverted

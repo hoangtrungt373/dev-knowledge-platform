@@ -60,7 +60,7 @@ public class ProductServiceImpl implements ProductService {
         validateConsistentAttributeKeys(variants);
         for (ProductCommands.VariantInput variant : variants) {
             if (productVariantRepository.existsBySku(variant.sku())) {
-                throw new ApiException(EcommerceErrorCode.PRODUCT_VARIANT_SKU_CONFLICT, new Object[] {variant.sku()});
+                throw new ApiException(EcommerceErrorCode.PRODUCT_VARIANT_SKU_CONFLICT, variant.sku());
             }
         }
 
@@ -146,7 +146,7 @@ public class ProductServiceImpl implements ProductService {
     public Product getActiveBySlug(String slug) {
         return productRepository.findBySlug(slug)
                 .filter(Product::isActive)
-                .orElseThrow(() -> new ResourceNotFoundException(EcommerceErrorCode.PRODUCT_NOT_FOUND, new Object[] {slug}));
+                .orElseThrow(() -> new ResourceNotFoundException(EcommerceErrorCode.PRODUCT_NOT_FOUND, slug));
     }
 
     @Override
@@ -159,7 +159,7 @@ public class ProductServiceImpl implements ProductService {
     public ProductVariant addVariant(Integer productId, ProductCommands.VariantInput input) {
         Product product = findById(productId);
         if (productVariantRepository.existsBySku(input.sku())) {
-            throw new ApiException(EcommerceErrorCode.PRODUCT_VARIANT_SKU_CONFLICT, new Object[] {input.sku()});
+            throw new ApiException(EcommerceErrorCode.PRODUCT_VARIANT_SKU_CONFLICT, input.sku());
         }
         validateAttributeKeysMatchExisting(product, input.attributes());
 
@@ -265,36 +265,36 @@ public class ProductServiceImpl implements ProductService {
 
     private Product findById(Integer id) {
         return productRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(EcommerceErrorCode.PRODUCT_NOT_FOUND, new Object[] {id}));
+                .orElseThrow(() -> new ResourceNotFoundException(EcommerceErrorCode.PRODUCT_NOT_FOUND, id));
     }
 
     private ProductCategory findCategoryById(Integer id) {
         return productCategoryRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        EcommerceErrorCode.PRODUCT_CATEGORY_NOT_FOUND, new Object[] {id}));
+                        EcommerceErrorCode.PRODUCT_CATEGORY_NOT_FOUND, id));
     }
 
     private ProductVariant findVariantById(Integer id) {
         return productVariantRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(EcommerceErrorCode.PRODUCT_VARIANT_NOT_FOUND, new Object[] {id}));
+                .orElseThrow(() -> new ResourceNotFoundException(EcommerceErrorCode.PRODUCT_VARIANT_NOT_FOUND, id));
     }
 
     private ProductImage findImageById(Integer id) {
         return productImageRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(EcommerceErrorCode.PRODUCT_IMAGE_NOT_FOUND, new Object[] {id}));
+                .orElseThrow(() -> new ResourceNotFoundException(EcommerceErrorCode.PRODUCT_IMAGE_NOT_FOUND, id));
     }
 
     private static void validateVariantBelongsToProduct(ProductVariant variant, Product product) {
         if (!variant.getProduct().getId().equals(product.getId())) {
             throw new ApiException(EcommerceErrorCode.PRODUCT_VARIANT_BELONGS_TO_ANOTHER_PRODUCT,
-                    new Object[] {variant.getId(), product.getId()});
+                    variant.getId(), product.getId());
         }
     }
 
     private static void validateImageBelongsToProduct(ProductImage image, Product product) {
         if (!image.getProduct().getId().equals(product.getId())) {
             throw new ApiException(EcommerceErrorCode.PRODUCT_IMAGE_BELONGS_TO_ANOTHER_PRODUCT,
-                    new Object[] {image.getId(), product.getId()});
+                    image.getId(), product.getId());
         }
     }
 
@@ -308,7 +308,7 @@ public class ProductServiceImpl implements ProductService {
                 .filter(image -> excludingImageId == null || !image.getId().equals(excludingImageId))
                 .anyMatch(image -> image.getSortOrder().equals(sortOrder));
         if (taken) {
-            throw new ApiException(EcommerceErrorCode.PRODUCT_IMAGE_SORT_ORDER_CONFLICT, new Object[] {sortOrder});
+            throw new ApiException(EcommerceErrorCode.PRODUCT_IMAGE_SORT_ORDER_CONFLICT, sortOrder);
         }
     }
 
@@ -350,7 +350,7 @@ public class ProductServiceImpl implements ProductService {
         for (ProductCommands.VariantInput variant : variants) {
             if (!seen.add(variant.sku())) {
                 throw new ApiException(
-                        EcommerceErrorCode.PRODUCT_VARIANT_DUPLICATE_SKU_IN_REQUEST, new Object[] {variant.sku()});
+                        EcommerceErrorCode.PRODUCT_VARIANT_DUPLICATE_SKU_IN_REQUEST, variant.sku());
             }
         }
     }
@@ -360,7 +360,7 @@ public class ProductServiceImpl implements ProductService {
         for (ProductCommands.ImageInput image : images) {
             if (!seen.add(image.sortOrder())) {
                 throw new ApiException(
-                        EcommerceErrorCode.PRODUCT_IMAGE_DUPLICATE_SORT_ORDER, new Object[] {image.sortOrder()});
+                        EcommerceErrorCode.PRODUCT_IMAGE_DUPLICATE_SORT_ORDER, image.sortOrder());
             }
         }
     }

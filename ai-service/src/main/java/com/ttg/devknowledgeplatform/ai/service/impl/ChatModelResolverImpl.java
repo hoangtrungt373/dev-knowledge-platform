@@ -31,7 +31,7 @@ public class ChatModelResolverImpl implements ChatModelResolver {
         String resolvedId = resolveModelId(modelId);
         ChatLanguageModel model = chatLanguageModels.get(resolvedId);
         if (model == null) {
-            throw new BusinessException(AiErrorCode.AI_MODEL_UNSUPPORTED, new Object[] {modelId});
+            throw new BusinessException(AiErrorCode.AI_MODEL_UNSUPPORTED, modelId);
         }
         return model;
     }
@@ -41,7 +41,7 @@ public class ChatModelResolverImpl implements ChatModelResolver {
         String resolvedId = resolveModelId(modelId);
         StreamingChatLanguageModel model = streamingChatLanguageModels.get(resolvedId);
         if (model == null) {
-            throw new BusinessException(AiErrorCode.AI_MODEL_UNSUPPORTED, new Object[] {modelId});
+            throw new BusinessException(AiErrorCode.AI_MODEL_UNSUPPORTED, modelId);
         }
         return model;
     }

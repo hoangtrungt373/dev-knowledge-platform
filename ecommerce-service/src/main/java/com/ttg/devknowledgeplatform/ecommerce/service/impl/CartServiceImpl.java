@@ -106,9 +106,9 @@ public class CartServiceImpl implements CartService {
     private void validateVariantAvailable(Integer variantId) {
         ProductVariant variant = productVariantRepository.findById(variantId)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        EcommerceErrorCode.PRODUCT_VARIANT_NOT_FOUND, new Object[] {variantId}));
+                        EcommerceErrorCode.PRODUCT_VARIANT_NOT_FOUND, variantId));
         if (!variant.getProduct().isActive()) {
-            throw new ApiException(EcommerceErrorCode.CART_VARIANT_UNAVAILABLE, new Object[] {variantId});
+            throw new ApiException(EcommerceErrorCode.CART_VARIANT_UNAVAILABLE, variantId);
         }
     }
 

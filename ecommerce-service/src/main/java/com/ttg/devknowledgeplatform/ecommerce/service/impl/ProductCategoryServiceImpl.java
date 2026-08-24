@@ -32,7 +32,7 @@ public class ProductCategoryServiceImpl implements ProductCategoryService {
     public ProductCategory create(String name) {
         String normalizedName = normalizeName(name);
         if (productCategoryRepository.existsByNameIgnoreCase(normalizedName)) {
-            throw new ApiException(EcommerceErrorCode.PRODUCT_CATEGORY_NAME_CONFLICT, new Object[] {normalizedName});
+            throw new ApiException(EcommerceErrorCode.PRODUCT_CATEGORY_NAME_CONFLICT, normalizedName);
         }
         String slug = slugService.generateUniqueSlug(
                 normalizedName, productCategoryRepository::existsBySlug, EcommerceErrorCode.PRODUCT_CATEGORY_SLUG_CONFLICT);
@@ -53,7 +53,7 @@ public class ProductCategoryServiceImpl implements ProductCategoryService {
 
         if (!category.getName().equalsIgnoreCase(normalizedName)) {
             if (productCategoryRepository.existsByNameIgnoreCaseAndIdNot(normalizedName, id)) {
-                throw new ApiException(EcommerceErrorCode.PRODUCT_CATEGORY_NAME_CONFLICT, new Object[] {normalizedName});
+                throw new ApiException(EcommerceErrorCode.PRODUCT_CATEGORY_NAME_CONFLICT, normalizedName);
             }
             category.setName(normalizedName);
             category.setSlug(slugService.generateUniqueSlug(
@@ -80,7 +80,7 @@ public class ProductCategoryServiceImpl implements ProductCategoryService {
     private ProductCategory findById(Integer id) {
         return productCategoryRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        EcommerceErrorCode.PRODUCT_CATEGORY_NOT_FOUND, new Object[] {id}));
+                        EcommerceErrorCode.PRODUCT_CATEGORY_NOT_FOUND, id));
     }
 
     private static String normalizeName(String name) {

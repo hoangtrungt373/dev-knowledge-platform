@@ -15,7 +15,7 @@ public class ResourceNotFoundException extends BusinessException {
         super(errorCode, message);
     }
 
-    public ResourceNotFoundException(ErrorCode errorCode, Object[] templateArgs) {
+    public ResourceNotFoundException(ErrorCode errorCode, Object... templateArgs) {
         super(errorCode, templateArgs);
     }
 

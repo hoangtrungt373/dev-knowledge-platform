@@ -72,7 +72,7 @@ public class InternalContentServiceImpl implements InternalContentService {
     private ContentItem findById(Integer id) {
         return contentItemRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.CONTENT_ITEM_NOT_FOUND, new Object[] {id}));
+                        ContentErrorCode.CONTENT_ITEM_NOT_FOUND, id));
     }
 
     private InternalContentItemResponse toResponse(ContentItem item) {

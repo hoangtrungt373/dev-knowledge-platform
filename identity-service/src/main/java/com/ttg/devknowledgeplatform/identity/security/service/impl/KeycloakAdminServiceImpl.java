@@ -80,7 +80,7 @@ public class KeycloakAdminServiceImpl implements KeycloakAdminService {
                         suffix++;
                         continue;
                     }
-                    throw new BusinessException(IdentityErrorCode.EMAIL_ALREADY_EXISTS, new Object[]{request.email()});
+                    throw new BusinessException(IdentityErrorCode.EMAIL_ALREADY_EXISTS, request.email());
                 }
                 if (response.getStatus() != Response.Status.CREATED.getStatusCode()) {
                     log.error("Keycloak user creation failed for {}: HTTP {}", request.email(), response.getStatus());
@@ -144,7 +144,7 @@ public class KeycloakAdminServiceImpl implements KeycloakAdminService {
     @Override
     public void updateUsername(String keycloakSubjectId, String newUsername) {
         if (!applyUsername(keycloakSubjectId, newUsername)) {
-            throw new BusinessException(CommonErrorCode.USER_USERNAME_ALREADY_EXISTS, new Object[]{newUsername});
+            throw new BusinessException(CommonErrorCode.USER_USERNAME_ALREADY_EXISTS, newUsername);
         }
     }
 

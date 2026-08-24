@@ -37,8 +37,11 @@ public class ApiException extends RuntimeException {
      * instead of a call-site literal — use this when the error code's default message already has
      * the right shape (e.g. {@code "A category with name ''{0}'' already exists"}) and only needs
      * the runtime value(s) substituted in, rather than a bespoke string built by concatenation.
+     * Varargs so a single-argument call site doesn't need to wrap its value in
+     * {@code new Object[] {...}} — an already-built {@code Object[]} still works unchanged, since
+     * varargs accepts a pre-built array directly instead of wrapping it again.
      */
-    public ApiException(ErrorCode errorCode, Object[] templateArgs) {
+    public ApiException(ErrorCode errorCode, Object... templateArgs) {
         super(errorCode.formatMessage(templateArgs));
         this.errorCode = errorCode;
         this.args = templateArgs;
