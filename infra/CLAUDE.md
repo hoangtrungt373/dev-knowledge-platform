@@ -163,11 +163,27 @@ Module-local guidance for `infra`. Read alongside the root `CLAUDE.md`.
   module's own column vocabulary). Moved here as one method, `resolveUserUuid`, with each of those
   three modules' own `CurrentUserIdArgumentResolver` calling it and assigning the result to
   whatever locally-named variable it needs. **Not used by** `social-service` (resolves a real local
-  `SocialProfile` numeric PK via a repository lookup — genuinely different, not duplication),
-  `ecommerce-service` (never uses `@CurrentUserId` at all), or `identity-service` (resolves the
-  caller via `@AuthenticationPrincipal` directly in the controller instead of this helper-class
-  pattern) — all three keep doing what they were already doing.
-- `security/JsonAuthenticationEntryPoint.java` — a third de-duplication pass: `gateway` and
+  `SocialProfile` numeric PK via a repository lookup — genuinely different, not duplication) or
+  `identity-service` (resolves the caller via `@AuthenticationPrincipal` directly in the controller
+  instead of this helper-class pattern) — both keep doing what they were already doing.
+  `ecommerce-service` used to have no `@CurrentUserId` consumer at all (Epic 1 had no entity with
+  an owner column) but gained one once Epic 2's cart needed to resolve the caller — see
+  `security/CurrentUserIdArgumentResolver.java` immediately below for the class this method backs.
+- `security/CurrentUserIdArgumentResolver.java` — a third de-duplication pass, and the Spring MVC
+  plumbing layer sitting directly on top of `CurrentUserResolver` above: `content-service`,
+  `task-service`, `ai-service`, and (once Epic 2 needed it) `ecommerce-service` each carried a
+  byte-identical `HandlerMethodArgumentResolver` resolving `@CurrentUserId String`-annotated
+  controller parameters via `CurrentUserResolver.resolveUserUuid` — differing only in Javadoc
+  wording (each module's own `ownerUuid`/`authorUuid`/`userUuid` column vocabulary), same as
+  `CurrentUserResolver`'s own consolidation. Each consuming module's own `WebMvcConfig`/
+  `ChatMvcConfig` still registers it locally via `addArgumentResolvers` — only the resolver class
+  itself moved, not the registration step (registration is inherently per-module, since it's
+  `addArgumentResolvers` on that module's own `WebMvcConfigurer` bean). **Not used by**
+  `social-service` (its own copy resolves an `Integer` local `SocialProfile` PK via a repository
+  lookup — genuinely divergent logic, plus a STOMP-side `CurrentUserIdMessageArgumentResolver`
+  counterpart this class has no equivalent for) or `identity-service`/`gateway` (neither has ever
+  had a copy — see `CurrentUserResolver`'s own note above for why).
+- `security/JsonAuthenticationEntryPoint.java` — a fourth de-duplication pass: `gateway` and
   `ai-service` (the only two services with an explicit `.exceptionHandling().authenticationEntryPoint(...)`
   wired up) carried a byte-identical bean returning a JSON `401` body instead of Spring Security's
   default redirect/HTML response. Zero module-specific dependency, so this one had no wrinkle at
@@ -208,8 +224,11 @@ classes, `@EnableConfigurationProperties(AsyncEventThreadPoolProperties.class)` 
 properties POJO. Concretely: `KeycloakRealmRoleConverter`/`KeycloakJwtAuthenticationConverter` are
 imported by every service that uses claims-only auth (`task-service`, `ecommerce-service`,
 `content-service`, `ai-service`) or delegates role-mapping to `KeycloakRealmRoleConverter` alone
-(`identity-service`'s/`social-service`'s own local converters); `StorageConfig`/`StorageProperties`/
-`StorageServiceImpl` are imported only by `identity-service`/`social-service`; `SlugServiceImpl`
+(`identity-service`'s/`social-service`'s own local converters); `CurrentUserIdArgumentResolver` is
+imported by those same four claims-only services (`ecommerce-service` only once Epic 2's cart
+needed a `@CurrentUserId` consumer for the first time — Epic 1 never did); `StorageConfig`/
+`StorageProperties`/`StorageServiceImpl` are imported by `identity-service`/`social-service` and
+(for product-image uploads, not avatars) `ecommerce-service`; `SlugServiceImpl`
 only by `ecommerce-service`/`content-service`; `JsonAuthenticationEntryPoint` only by `ai-service`
 (`gateway` reaches it via its own accidental full scan); `AsyncEventThreadPoolConfig` +
 `AsyncEventThreadPoolProperties` only by `ai-service`/`social-service` — the two services that

@@ -191,13 +191,23 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
 │   │                                    here from task-service/content-service/ai-service's own
 │   │                                    identical copies (which differed only in method name —
 │   │                                    resolveOwnerUuid/resolveAuthorUuid/resolveUserUuid — matching
-│   │                                    each module's own column vocabulary); each of those three
-│   │                                    modules' own CurrentUserIdArgumentResolver now calls this
-│   │                                    shared method and assigns the result locally. Not used by
+│   │                                    each module's own column vocabulary); CurrentUserIdArgumentResolver
+│   │                                    (below) calls this shared method. Not used by
 │   │                                    social-service (resolves a real local SocialProfile numeric
-│   │                                    PK via a repository lookup), ecommerce-service (never uses
-│   │                                    @CurrentUserId at all), or identity-service (resolves via
+│   │                                    PK via a repository lookup) or identity-service (resolves via
 │   │                                    @AuthenticationPrincipal directly in the controller instead).
+│   │                                    ecommerce-service had no @CurrentUserId consumer in Epic 1
+│   │                                    but gained one for Epic 2's cart.
+│   ├── CurrentUserIdArgumentResolver.java — resolves @CurrentUserId String-annotated controller
+│   │                                    parameters via CurrentUserResolver.resolveUserUuid. Moved
+│   │                                    here from four near-identical per-service copies
+│   │                                    (content-service/task-service/ai-service/ecommerce-service —
+│   │                                    byte-identical logic, differing only in Javadoc wording).
+│   │                                    Each consuming module's own WebMvcConfig/ChatMvcConfig still
+│   │                                    registers it locally via addArgumentResolvers — only the
+│   │                                    resolver class itself moved. Not used by social-service (own
+│   │                                    Integer-PK copy, genuinely divergent) or identity-service/
+│   │                                    gateway (never had one).
 │   └── JsonAuthenticationEntryPoint.java — returns a JSON 401 body instead of Spring Security's
 │                                        default redirect/HTML response. Moved here from
 │                                        gateway's/ai-service's byte-identical copies (the only two
@@ -257,11 +267,10 @@ content-service/src/main/java/com/ttg/devknowledgeplatform/content/
 │   (no local CurrentUserResolver.java anymore — uses the shared
 │    infra.security.CurrentUserResolver.resolveUserUuid(...) instead, see infra section above)
 ├── config/web/
-│   ├── CurrentUserIdArgumentResolver.java — resolves @CurrentUserId String-annotated controller
-│   │                                 parameters via infra.security.CurrentUserResolver, assigning
-│   │                                 the shared resolveUserUuid result to this module's own
-│   │                                 authorUuid vocabulary
-│   └── WebMvcConfig.java          — registers CurrentUserIdArgumentResolver
+│   └── WebMvcConfig.java          — registers infra's shared CurrentUserIdArgumentResolver
+│                                     (assigns the resolveUserUuid result to this module's own
+│                                     authorUuid vocabulary) — no local resolver class of this
+│                                     module's own anymore, see infra section above
 ├── entity/
 │   ├── Category.java              — hierarchical; parent/children self-join; seedId (nullable) for CategorySeeder idempotency
 │   ├── Tag.java                   — status (TagStatus); seedId (nullable) for TagSeeder idempotency
@@ -388,8 +397,8 @@ own pipeline, now reaching this module over HTTP (`ContentServiceClient` → `In
 a live JPA entity.
 
 **No local `User` copy** — `ArticleApi`/`QuestionAnswerApi`'s `create()` endpoints take
-`@CurrentUserId String authorUuid` directly, resolved by this module's own
-`config.web.CurrentUserIdArgumentResolver`/`infra.security.CurrentUserResolver` with zero database access.
+`@CurrentUserId String authorUuid` directly, resolved by `infra`'s shared
+`security.CurrentUserIdArgumentResolver`/`CurrentUserResolver` with zero database access.
 This replaced an earlier design where `ArticleController`/`QuestionAnswerController` resolved the
 author via `common`'s `UserRepository.findByEmail(...).map(User::getId)` — reverted once this
 module was extracted, since that lookup only ever needed "who is the caller," and `authorId`/
@@ -750,20 +759,17 @@ ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/
 │   ├── web/
 │   │   ├── ChatRateLimitInterceptor.java     — HandlerInterceptor; consumes one ChatRateLimiter token
 │   │   │                                        per POST /api/v1/chat/** request
-│   │   ├── CurrentUserIdArgumentResolver.java — @Component, resolves common.annotation.CurrentUserId
-│   │   │                                        String-annotated controller parameters via
-│   │   │                                        infra.security.CurrentUserResolver (already used
-│   │   │                                        resolveUserUuid, the name the shared class settled
-│   │   │                                        on, so no call-site rename was needed here); no
-│   │   │                                        STOMP transport, so no message-argument-resolver
-│   │   │                                        counterpart needed
 │   │   └── ChatMvcConfig.java                 — this module's own WebMvcConfigurer bean, registers
 │   │                                            ChatRateLimitInterceptor (addInterceptors) AND
-│   │                                            CurrentUserIdArgumentResolver (addArgumentResolvers)
-│   │                                            — Spring composes every WebMvcConfigurer in the
-│   │                                            context automatically, so this module doesn't need
-│   │                                            any gateway-hosted WebMvcConfig to register either
-│   │                                            on its behalf (gateway has none left at all)
+│   │                                            infra's shared CurrentUserIdArgumentResolver
+│   │                                            (addArgumentResolvers — a local copy of this class
+│   │                                            existed briefly after this module's standalone
+│   │                                            extraction, then moved to infra.security once
+│   │                                            byte-identical to content-service's/task-service's
+│   │                                            own copies) — Spring composes every WebMvcConfigurer
+│   │                                            in the context automatically, so this module doesn't
+│   │                                            need any gateway-hosted WebMvcConfig to register
+│   │                                            either on its behalf (gateway has none left at all)
 │   ├── thread/
 │   │   ├── ThreadPoolProperties.java — @ConfigurationProperties at app.threads.*; sseExecutor:
 │   │   │                                corePoolSize (10), maxPoolSize (50), queueCapacity (100),
@@ -1092,13 +1098,12 @@ task-service/src/main/java/com/ttg/devknowledgeplatform/task/
 │   (no local CurrentUserResolver.java anymore — uses the shared
 │    infra.security.CurrentUserResolver.resolveUserUuid(...) instead, see infra section above)
 ├── config/web/
-│   ├── WebMvcConfig.java               — registers CurrentUserIdArgumentResolver
-│   └── CurrentUserIdArgumentResolver.java — resolves common.annotation.CurrentUserId String-
-│                                         annotated controller parameters via
-│                                         infra.security.CurrentUserResolver, assigning the shared
-│                                         resolveUserUuid result to this module's own ownerUuid
-│                                         vocabulary (no STOMP transport here, so no
-│                                         message-argument-resolver counterpart needed)
+│   └── WebMvcConfig.java               — registers infra's shared CurrentUserIdArgumentResolver,
+│                                         assigning the resolveUserUuid result to this module's own
+│                                         ownerUuid vocabulary — no local resolver class of this
+│                                         module's own anymore, see infra section above (no STOMP
+│                                         transport here, so no message-argument-resolver
+│                                         counterpart needed)
 ├── entity/
 │   ├── Project.java                  — name, description, ownerUuid (String, plain column — see
 │   │                                    above), status (ProjectStatus)
@@ -1373,10 +1378,13 @@ run against a real Postgres yet — same unverified-at-runtime caveat as `ecomme
 
 Study-project e-commerce vertical slice, **and now a standalone Spring Boot application, not part
 of the monolith**. Full scope/rationale for all five epics lives in `docs/user-stories/`
-(`README.md` + `01-catalog-search.md` through `05-reviews-recommendations.md`) — only
-**Epic 1 (Catalog & Search)** has code so far, but all 7 of its user stories are now built: admin
+(`README.md` + `01-catalog-search.md` through `05-reviews-recommendations.md`).
+**Epic 1 (Catalog & Search)** is fully built (all 7 user stories): admin
 CRUD for `ProductCategory`/`Product` including independent variant/image add-remove-reorder, the
 outbox relay, and a public browse/search/detail surface with attribute-value filtering.
+**Epic 2 (Cart & Checkout) is in progress** — the cart half (US-2.1–2.4) is built, showcasing this
+epic's own locked pattern (Redis as a *primary* store, not a cache); checkout (US-2.5–2.7,
+`Address`/`Order` creation) is not yet.
 
 **Extraction (done):** own `EcommerceServiceApplication` entry point, own `ecommerce` Postgres
 schema (same `dev-premier` database as the monolith, not a separate database instance —
@@ -1479,6 +1487,11 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │                                        the only real need was resolving the caller's identity/role,
 │                                        fully answerable from the token alone (see this module's
 │                                        own CLAUDE.md for the "Option C" reasoning)
+├── config/web/WebMvcConfig.java  — registers infra's shared CurrentUserIdArgumentResolver — new
+│                                    for Epic 2's cart (this module's first @CurrentUserId
+│                                    consumer; Epic 1 had no entity with an owner column). No local
+│                                    resolver class of this module's own — a local copy existed
+│                                    briefly before moving to infra.security, see infra section above
 ├── service/
 │   ├── ProductCategoryService.java / ProductService.java / ProductSearchService.java — return
 │   │   entities, not REST DTOs; this module's own mapper/ does entity→response mapping (same
@@ -1497,6 +1510,12 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │           ProductSearchView from current Product/ProductVariant state; deletes the row (rather
 │           than updating it) when the product is deactivated or missing, since ProductSearchView
 │           has no active column of its own
+├── service/{Cart,CartLine,CartService}.java — Epic 2's cart (US-2.1–2.4): Cart/CartLine are plain
+│   │   domain records, not entities (no table backs a cart — it lives entirely in Redis)
+│   └── impl/CartServiceImpl.java — one Redis hash per cart (cart:{userUuid}, variantId->quantity
+│       via StringRedisTemplate); addItem increments (HINCRBY, not read-then-write); setQuantity's
+│       0 branch removes the line and skips availability validation; 30-day TTL refreshed on every
+│       mutation, never a read (US-2.4's deliberate abandoned-cart cleanup)
 ├── service/seed/                — starter sample catalog (developer-swag theme), gated by
 │   │                                app.seed.enabled
 │   ├── ProductCategorySeeder.java  — extends infra's CsvSeeder<ProductCategory>; idempotency key
@@ -1526,6 +1545,9 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │                                    now, resolving primaryImageStorageKey into a presigned
 │                                    primaryImageUrl the same way — without it the storefront grid
 │                                    would have nothing but an unusable private MinIO key to render)
+│                                    / CartMapper (hand-written, not MapStruct — computes
+│                                    subtotal/itemCount across only the available lines, real
+│                                    aggregation logic MapStruct's per-field model doesn't fit)
 ├── api/                         — REST layer
 │   ├── ProductCategoryApi.java / ProductApi.java — admin CRUD (/api/v1/admin/**), incl.
 │   │                                 POST/DELETE .../variants/{id} and
@@ -1541,16 +1563,22 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                 for the storefront's category filter rail, which a
 │   │                                 non-admin/logged-out shopper can't reach the admin endpoint
 │   │                                 for; delegates to the same ProductCategoryService.list(null)
+│   ├── CartApi.java              — /api/v1/cart (US-2.1–2.4), authenticated-only — no new
+│   │                                 SecurityConfig rule needed (falls under the existing default
+│   │                                 anyRequest().authenticated()); every mutating method returns
+│   │                                 the freshly-resolved CartResponse, not just 200
 │   └── impl/                    — ProductCategoryController / ProductController (admin-gated
 │                                    automatically via this module's own security/SecurityConfig
 │                                    /api/v1/admin/** rule) / ProductSearchController /
 │                                    PublicProductCategoryController (both public via that same
-│                                    config's /api/v1/public/** rule)
+│                                    config's /api/v1/public/** rule) / CartController
 └── dto/                         — ProductCategoryResponse/CreateProductCategoryRequest/
                                      UpdateProductCategoryRequest, ProductResponse/
                                      CreateProductRequest/UpdateProductRequest,
                                      ProductVariantRequest/ProductVariantResponse,
                                      ProductImageRequest/ProductImageResponse,
+                                     CartResponse/CartLineResponse/AddCartItemRequest/
+                                     UpdateCartItemRequest,
                                      UpdateProductImageSortOrderRequest,
                                      ProductSearchResponse
 ```

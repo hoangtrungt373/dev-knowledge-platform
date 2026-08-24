@@ -10,10 +10,12 @@ User stories for all five epics: `docs/user-stories/` (`README.md` + `01-catalog
 through `05-reviews-recommendations.md`) — read the relevant epic's file before extending that
 part of the domain; it captures the scope decisions and trade-offs behind what's built.
 
-Only **Epic 1 (Catalog & Search)** has code so far, but it's now fully built — all 7 user stories
+**Epic 1 (Catalog & Search)** is fully built — all 7 user stories
 (`docs/user-stories/01-catalog-search.md`) have working code: admin CRUD for
 `ProductCategory`/`Product` including independent variant/image mutation, the outbox relay, and a
-public browse/search/detail surface with attribute-value filtering — see below.
+public browse/search/detail surface with attribute-value filtering — see below. **Epic 2 (Cart &
+Checkout) is in progress** — the cart half (US-2.1–2.4) is built (see `service/Cart*`/`api/CartApi`
+below); checkout (US-2.5–2.7, `Address`/`Order` creation) is not yet.
 
 **This module is now a standalone Spring Boot application, not part of the monolith** — see the
 `project-ecommerce-service-module` memory for the full extraction history. Concretely: its own
@@ -296,10 +298,63 @@ in `docker-compose.apps.yml`'s `ecommerce-service` block) same shape as `content
   pattern as `content-service`'s/`social-service`'s own runners, not a `List<Seeder>` loop (see
   `infra`'s `Seeder` Javadoc for why).
 
+**Epic 2 (Cart & Checkout) — the cart half (US-2.1–2.4) is built; checkout (US-2.5–2.7) is not
+yet.** Showcases this epic's own locked pattern: **Redis as a primary store, not a cache** (see
+`docs/user-stories/02-cart-checkout.md`'s "Key decisions locked for this epic") — no Postgres table
+backs a cart at all.
+
+- **This module's first use of Redis, and its first use of `@CurrentUserId`.** New
+  `spring-boot-starter-data-redis` dependency; connection properties (`spring.data.redis.*`) are
+  the exact same property names/env vars (`REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`/etc.)
+  `ai-service`'s own Redis connection already uses (its Bucket4j rate limiter) — same shared
+  instance, this module's own `cart:` key prefix keeps the two services' keys from colliding. **No
+  custom `RedisConfig` class needed** — a plain autoconfigured `StringRedisTemplate` is exactly
+  what a `variantId -> quantity` hash needs; `ai-service`'s own `RedisConfig` only exists because
+  Bucket4j needs a raw Lettuce client with a mixed `String`/`byte[]` codec Spring's connection
+  factory can't provide, which doesn't apply here. `config/web/WebMvcConfig` registers `infra`'s
+  shared `CurrentUserIdArgumentResolver` — this module never needed `@CurrentUserId` in Epic 1 (no
+  entity with an owner column). A local copy of the resolver class existed briefly (copied
+  verbatim from `content-service`'s own) before moving to `infra.security` once it turned out to
+  be byte-identical to that module's/`task-service`'s/`ai-service`'s own copies too; see
+  `infra/CLAUDE.md`'s note.
+- `service/{Cart,CartLine,CartService}` — plain domain records (`Cart`/`CartLine`), not JPA
+  entities — there's no table to map. `CartLine.available()`/`unavailable()` factory methods carry
+  whether the variant (or its parent product) still exists/is active (US-2.7's revalidation logic,
+  reused by the plain cart view too, not just checkout) — an unavailable line keeps its
+  `variantId`/`quantity` (so the shopper can see something changed) but no resolved `ProductVariant`.
+- `service/impl/CartServiceImpl` — one Redis hash per cart, key `cart:{userUuid}`
+  (`StringRedisTemplate`'s hash operations: `increment` for add — US-2.1's "increments quantity
+  rather than creating a duplicate line" is `HINCRBY`, not read-then-write — `put`/`delete` for
+  `setQuantity`). `cartTtl` (`@Value("${app.ecommerce.cart.ttl:P30D}")`, declared in
+  `application.yml` — externalized rather than a hardcoded constant, same convention
+  `OutboxRelay`'s own `app.ecommerce.outbox.relay.poll-interval` already established for a timing
+  knob) is refreshed via `EXPIRE` after **every** mutation, including
+  a removal that just emptied the hash (Redis already drops an emptied hash on its own, so that
+  `EXPIRE` is a harmless no-op) — never on a plain read. The expiry is a deliberate, silent
+  abandoned-cart cleanup (US-2.4), not a bug to guard against. `addItem` validates the variant's
+  existence/active status *before* ever touching Redis (a soft check only — no stock reservation
+  at add-to-cart time; that's Epic 3's concern); `setQuantity`'s removal branch (`quantity <= 0`)
+  skips that validation entirely, since a shopper must always be able to remove an already-invalid
+  line.
+- `mapper/CartMapper` — **hand-written, not MapStruct**, unlike every other mapper in this module:
+  it computes `subtotal`/`itemCount` by accumulating across only the `available` lines, which
+  doesn't fit MapStruct's per-field object-mapping model at all.
+- `dto/{CartResponse,CartLineResponse,AddCartItemRequest,UpdateCartItemRequest}` — an unavailable
+  line's response has only `variantId`/`quantity`/`available=false`; every other field is omitted
+  (`@JsonInclude(NON_NULL)`), not zeroed out, so a GUI can't mistake "no data" for "priced at $0."
+- `api/CartApi`+`Controller` at `/api/v1/cart` — **authenticated-only, no new `SecurityConfig` rule
+  needed** (no `/public/**`/`/admin/**` prefix, so it falls under the existing default
+  `anyRequest().authenticated()` rule). Every mutating endpoint (`addItem`/`updateItem`/`removeItem`)
+  returns the freshly-resolved `CartResponse`, not just a bare `200`/the one mutated line — avoids
+  a wasted second `GET` round trip from whatever GUI is showing a live cart. `gateway`'s
+  `GatewayRoutesConfig` gained a new `/api/v1/cart/**` route — the app's first genuinely new
+  top-level prefix (no shared-prefix disambiguation needed, unlike `/api/v1/public`/`/api/v1/admin`).
+
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"
-independently, not "one variant with both together" — see `ProductSearchView`'s Javadoc), and
-everything for Epics 2–5. Check `docs/CHANGELOG.md`'s `[Unreleased]` entry and this file's own
+independently, not "one variant with both together" — see `ProductSearchView`'s Javadoc), Epic 2's
+checkout half (`Address`, `Order`/`OrderLine`, checkout service — US-2.5–2.7), and everything for
+Epics 3–5. Check `docs/CHANGELOG.md`'s `[Unreleased]` entry and this file's own
 freshness before assuming more exists than what's listed above. **Compiles cleanly** (verified via
 a targeted `-pl ecommerce-service -am compile` after the image-upload/`ProductMapper` changes, and
 the full reactor including the extraction changes compiles too, `./mvnw -pl gateway -am compile`;

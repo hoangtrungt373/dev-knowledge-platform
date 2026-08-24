@@ -63,11 +63,14 @@ inter-service call that exists today.
   `infra/CLAUDE.md`), picked up via this module's existing `@ComponentScan` reaching `infra`.
   `config/security/InternalApiKeyFilter` + `config/InternalApiProperties` are a separate,
   server-to-server concern (see below), not part of this end-user JWT chain.
-- `config/web/` — `WebMvcConfig` (registers `CurrentUserIdArgumentResolver`) and
-  `CurrentUserIdArgumentResolver` (resolves `common.annotation.CurrentUserId String`-annotated
-  controller parameters via `infra.security.CurrentUserResolver`, assigning the shared
-  `resolveUserUuid` result to this module's own `authorUuid` vocabulary); no STOMP transport here,
-  so no message-argument-resolver counterpart is needed.
+- `config/web/WebMvcConfig` — registers `infra.security.CurrentUserIdArgumentResolver` (resolves
+  `common.annotation.CurrentUserId String`-annotated controller parameters via
+  `infra.security.CurrentUserResolver`, assigning the shared `resolveUserUuid` result to this
+  module's own `authorUuid` vocabulary). **No local `CurrentUserIdArgumentResolver` class of this
+  module's own anymore** — moved to `infra.security` as a shared bean once it turned out to be
+  byte-identical to `task-service`'s/`ai-service`'s (and, later, `ecommerce-service`'s) own copies;
+  see `infra/CLAUDE.md`'s note. No STOMP transport here, so no message-argument-resolver
+  counterpart is needed.
 - `entity/` — `Category`, `Tag`, `ContentItem`, `ContentItemTag`, `QuestionAnswer`, `Article`. None
   of these hardcode `@Table(schema = "product")` anymore — same bug class as `common.entity.User`'s
   incident (an explicit `@Table(schema=...)` always wins over `hibernate.default_schema`) — so they

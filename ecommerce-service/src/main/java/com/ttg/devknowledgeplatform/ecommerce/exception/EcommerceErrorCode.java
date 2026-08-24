@@ -42,7 +42,11 @@ public enum EcommerceErrorCode implements ErrorCode {
             "Sort order {0} is already used by another image on this product", HttpStatus.CONFLICT),
     PRODUCT_IMAGE_NOT_FOUND("PRODUCT_IMAGE_003", "Image not found: {0}", HttpStatus.NOT_FOUND),
     PRODUCT_IMAGE_BELONGS_TO_ANOTHER_PRODUCT("PRODUCT_IMAGE_004",
-            "Image {0} does not belong to product {1}", HttpStatus.BAD_REQUEST);
+            "Image {0} does not belong to product {1}", HttpStatus.BAD_REQUEST),
+
+    // Cart Errors (CART_*) — Epic 2
+    CART_VARIANT_UNAVAILABLE("CART_001",
+            "Variant {0} is no longer available (its product has been deactivated)", HttpStatus.CONFLICT);
 
     private final String code;
     private final String message;

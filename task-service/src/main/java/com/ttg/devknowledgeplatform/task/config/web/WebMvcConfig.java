@@ -8,12 +8,15 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import lombok.RequiredArgsConstructor;
 
+import com.ttg.devknowledgeplatform.infra.security.CurrentUserIdArgumentResolver;
+
 /**
- * This module's own Spring MVC configuration — registers {@link CurrentUserIdArgumentResolver} so
- * any controller parameter annotated with {@link com.ttg.devknowledgeplatform.common.annotation.CurrentUserId}
- * resolves automatically. Spring composes every {@link WebMvcConfigurer} bean in the context, so
- * this module needs no help from {@code gateway} (which isn't on the classpath here anyway) to
- * register its own resolver.
+ * This module's own Spring MVC configuration — registers {@code infra}'s shared
+ * {@link CurrentUserIdArgumentResolver} (see that class's own Javadoc for why it's shared now,
+ * not a local copy) so any controller parameter annotated with
+ * {@link com.ttg.devknowledgeplatform.common.annotation.CurrentUserId} resolves automatically.
+ * Spring composes every {@link WebMvcConfigurer} bean in the context, so this module needs no help
+ * from {@code gateway} (which isn't on the classpath here anyway) to register its own resolver.
  */
 @Configuration
 @RequiredArgsConstructor

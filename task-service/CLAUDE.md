@@ -53,10 +53,13 @@ port, same limitation `ecommerce-service`/`identity-service` have.
   the "No local `User` copy" rule below). **No local `CurrentUserResolver` anymore** — this module
   uses the shared `infra.security.CurrentUserResolver.resolveUserUuid(...)` instead (see
   `infra/CLAUDE.md`), picked up via this module's existing `@ComponentScan` reaching `infra`.
-- `config/web/` — `WebMvcConfig` (registers `CurrentUserIdArgumentResolver`) and
-  `CurrentUserIdArgumentResolver` (resolves `common.annotation.CurrentUserId String`-annotated
-  controller parameters via `infra.security.CurrentUserResolver`, assigning the shared
-  `resolveUserUuid` result to this module's own `ownerUuid` vocabulary).
+- `config/web/WebMvcConfig` — registers `infra.security.CurrentUserIdArgumentResolver` (resolves
+  `common.annotation.CurrentUserId String`-annotated controller parameters via
+  `infra.security.CurrentUserResolver`, assigning the shared `resolveUserUuid` result to this
+  module's own `ownerUuid` vocabulary). **No local `CurrentUserIdArgumentResolver` class of this
+  module's own anymore** — moved to `infra.security` as a shared bean once it turned out to be
+  byte-identical to `content-service`'s/`ai-service`'s (and, later, `ecommerce-service`'s) own
+  copies; see `infra/CLAUDE.md`'s note.
 - `entity/` — `Project` (name, description, `ownerUuid`, `status`), `Task` (`project` nullable —
   standalone tasks allowed, `ownerUuid`, title, description, `status`, `priority`, `dueDate`,
   `parentTask` nullable self-`@ManyToOne` + `subtasks` `@OneToMany` — subtask nesting capped at one

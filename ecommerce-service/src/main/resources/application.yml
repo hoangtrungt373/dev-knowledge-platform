@@ -15,6 +15,12 @@ app:
   seed:
     enabled: ${APP_SEED_ENABLED:false}
 
+  ecommerce:
+    cart:
+      # Sliding TTL (US-2.4) — refreshed on every cart mutation, never on a plain read. ISO-8601
+      # duration format, same style as OutboxRelay's own app.ecommerce.outbox.relay.poll-interval.
+      ttl: ${CART_TTL:P30D}
+
 spring:
   application:
     name: ecommerce-service
@@ -26,6 +32,18 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/dev-knowledge-platform}
+
+  # Redis — Epic 2's cart storage (primary store, not a cache; see
+  # docs/user-stories/02-cart-checkout.md). Same property names/env vars as ai-service's own
+  # Redis connection (its Bucket4j rate limiter) — this module connects to the identical shared
+  # instance, just under its own "cart:" key prefix so the two services' keys never collide.
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: ${REDIS_TIMEOUT:2000ms}
 
   # Liquibase — disabled by default, same convention as gateway: migrations are applied via the
   # consolidated services-liquibase job in docker-compose.apps.yml (no dedicated

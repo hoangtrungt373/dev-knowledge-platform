@@ -9,6 +9,7 @@ import com.ttg.devknowledgeplatform.common.exception.GlobalExceptionHandler;
 import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
 import com.ttg.devknowledgeplatform.infra.config.storage.StorageConfig;
 import com.ttg.devknowledgeplatform.infra.config.storage.StorageProperties;
+import com.ttg.devknowledgeplatform.infra.security.CurrentUserIdArgumentResolver;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakJwtAuthenticationConverter;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakRealmRoleConverter;
 import com.ttg.devknowledgeplatform.infra.service.impl.SlugServiceImpl;
@@ -43,7 +44,11 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
  * {@link StorageConfig}/{@link StorageServiceImpl} (the {@code MinioClient} bean plus the
  * product-image-upload service built on it — {@code ProductServiceImpl.uploadImage}/
  * {@code ProductMapper}'s presigned-URL resolution — same trio {@code identity-service} imports
- * for its own avatar upload). It does *not* import
+ * for its own avatar upload), and {@link CurrentUserIdArgumentResolver} (resolves
+ * {@code @CurrentUserId} controller parameters, needed once Epic 2's cart introduced this
+ * module's first per-caller-identity requirement — moved here from a local copy once it turned
+ * out to be byte-identical across every claims-only service; see that class's own Javadoc). It
+ * does *not* import
  * {@code infra.config.thread.AsyncEventThreadPoolConfig} — this module dispatches no
  * {@code @EventHandler}, so that bean is simply never created here.
  *
@@ -65,7 +70,7 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
 @Import({JacksonConfig.class, TraceContextFilter.class, SlugServiceImpl.class,
         KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
         StorageProperties.class, StorageConfig.class, StorageServiceImpl.class,
-        GlobalExceptionHandler.class})
+        CurrentUserIdArgumentResolver.class, GlobalExceptionHandler.class})
 @EnableScheduling
 public class EcommerceServiceApplication {
 

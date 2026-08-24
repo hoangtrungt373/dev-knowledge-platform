@@ -11,6 +11,7 @@ import com.ttg.devknowledgeplatform.common.exception.GlobalExceptionHandler;
 import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
 import com.ttg.devknowledgeplatform.infra.config.thread.AsyncEventThreadPoolConfig;
 import com.ttg.devknowledgeplatform.infra.config.thread.AsyncEventThreadPoolProperties;
+import com.ttg.devknowledgeplatform.infra.security.CurrentUserIdArgumentResolver;
 import com.ttg.devknowledgeplatform.infra.security.JsonAuthenticationEntryPoint;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakJwtAuthenticationConverter;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakRealmRoleConverter;
@@ -44,8 +45,11 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
  * reactor-wide), {@link JsonAuthenticationEntryPoint} (JSON {@code 401} body, referenced by this
  * module's own {@code security.SecurityConfig.exceptionHandling()}),
  * {@link KeycloakJwtAuthenticationConverter} plus its own collaborator
- * {@link KeycloakRealmRoleConverter} (JWT → {@code CustomOAuth2User} principal), and
- * {@link AsyncEventThreadPoolConfig} — genuinely needed here, unlike `task-service`/
+ * {@link KeycloakRealmRoleConverter} (JWT → {@code CustomOAuth2User} principal),
+ * {@link CurrentUserIdArgumentResolver} (resolves {@code @CurrentUserId} controller parameters,
+ * registered by this module's own {@code ChatMvcConfig} — moved here from a local copy once it
+ * turned out to be byte-identical across every claims-only service; see that class's own Javadoc),
+ * and {@link AsyncEventThreadPoolConfig} — genuinely needed here, unlike `task-service`/
  * `ecommerce-service`/`identity-service`/`content-service` — because this module's own
  * {@code event/PipelineCompletedEventListener} extends {@code infra}'s {@code AsyncEventHandler},
  * whose {@code @Async} dispatch runs on the {@code asyncEventExecutor} bean that class provides.
@@ -83,7 +87,8 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
 @EnableConfigurationProperties(AsyncEventThreadPoolProperties.class)
 @Import({JacksonConfig.class, TraceContextFilter.class, JsonAuthenticationEntryPoint.class,
         KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
-        AsyncEventThreadPoolConfig.class, GlobalExceptionHandler.class})
+        CurrentUserIdArgumentResolver.class, AsyncEventThreadPoolConfig.class,
+        GlobalExceptionHandler.class})
 @EnableAsync
 public class AiServiceApplication {
 

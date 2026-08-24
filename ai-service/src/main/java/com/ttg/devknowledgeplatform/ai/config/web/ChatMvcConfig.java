@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.ai.config.web;
 import java.util.List;
 
 import com.ttg.devknowledgeplatform.ai.config.sse.SseStreamTemplate;
+import com.ttg.devknowledgeplatform.infra.security.CurrentUserIdArgumentResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -18,8 +19,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * {@code @CurrentUserId}) only ever served this module.
  *
  * <p>Registers the chat rate-limit interceptor for all {@code /api/v1/chat/**} paths (the
- * interceptor itself skips non-POST requests so GET session endpoints are unaffected), this
- * module's own {@link CurrentUserIdArgumentResolver} (resolves {@code @CurrentUserId String}), and
+ * interceptor itself skips non-POST requests so GET session endpoints are unaffected), {@code infra}'s
+ * shared {@link CurrentUserIdArgumentResolver} (resolves {@code @CurrentUserId String} — see that
+ * class's own Javadoc for why it's shared now, not a local copy), and
  * the SSE stream executor as Spring MVC's async task executor + timeout (the timeout value is
  * owned by {@link SseStreamTemplate#SSE_TIMEOUT_MS}, not duplicated here, since that class also
  * constructs {@code SseEmitter} instances directly and the two timeouts must stay in sync).

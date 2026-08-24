@@ -76,13 +76,16 @@ to this service is not built yet, same as every other standalone service in this
   bean to do here. See `gateway/CLAUDE.md`'s `routing/` bullet and root `CLAUDE.md`'s
   Architecture → Routing section. Don't add a `CorsConfig` back here on the assumption some
   endpoint still needs one — re-verify with a grep for real browser-origin callers first.
-- `config/web/CurrentUserIdArgumentResolver` (`@Component`, resolves
+- **No local `config/web/CurrentUserIdArgumentResolver` class anymore** — moved to
+  `infra.security` as a shared bean once it turned out to be byte-identical to
+  `content-service`'s/`task-service`'s (and, later, `ecommerce-service`'s) own copies; see
+  `infra/CLAUDE.md`'s note. `infra.security.CurrentUserIdArgumentResolver` still resolves
   `common.annotation.CurrentUserId String`-annotated controller parameters via
   `infra.security.CurrentUserResolver`, assigning the shared `resolveUserUuid` result to this
-  module's own `userUuid` vocabulary); no STOMP transport here, so no message-argument-resolver
-  counterpart is needed.
-  Registered via the existing `ChatMvcConfig`'s `addArgumentResolvers` (alongside its pre-existing
-  `addInterceptors` registration of `ChatRateLimitInterceptor` — see the Config classes table below).
+  module's own `userUuid` vocabulary; no STOMP transport here, so no message-argument-resolver
+  counterpart is needed. Registered via the existing `ChatMvcConfig`'s `addArgumentResolvers`
+  (alongside its pre-existing `addInterceptors` registration of `ChatRateLimitInterceptor` — see
+  the Config classes table below) — only the resolver class itself moved, not the registration.
 
 `exception/AiErrorCode` — `AI_*` codes (`AI_SERVICE_UNAVAILABLE`/`AI_EMBEDDING_FAILED`/
 `AI_MODEL_UNSUPPORTED`), implements `common`'s `ErrorCode` interface, same pattern as
@@ -203,9 +206,11 @@ No single flat `app.ai.embedding` block — settings are split by concern:
 `RateLimitProperties` (`app.ai.rate-limit`) lives in `config/chat/` alongside `ChatRateLimiter` —
 moved in from `gateway` once it became clear rate limiting only ever protected this module's own
 chat endpoint. `ChatMvcConfig` (`config/web/`) registers both `ChatRateLimitInterceptor` for
-`/api/v1/chat/**` (`addInterceptors`) and this module's own `CurrentUserIdArgumentResolver`
-(`addArgumentResolvers`, added during this module's standalone extraction — see the top of this
-file) — Spring composes every `WebMvcConfigurer` in the context automatically, so this module
+`/api/v1/chat/**` (`addInterceptors`) and `infra`'s shared `CurrentUserIdArgumentResolver`
+(`addArgumentResolvers` — a local copy of this class existed briefly after this module's
+standalone extraction, then moved to `infra.security` once it turned out to be byte-identical to
+`content-service`'s/`task-service`'s own copies; see the top of this file and `infra/CLAUDE.md`'s
+note) — Spring composes every `WebMvcConfigurer` in the context automatically, so this module
 doesn't need any `gateway`-hosted `WebMvcConfig` to register either on its behalf; `gateway` has no
 `WebMvcConfig` of its own left at all now that it has zero embedded feature modules.
 

@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Import;
 
 import com.ttg.devknowledgeplatform.common.exception.GlobalExceptionHandler;
 import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
+import com.ttg.devknowledgeplatform.infra.security.CurrentUserIdArgumentResolver;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakJwtAuthenticationConverter;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakRealmRoleConverter;
 import com.ttg.devknowledgeplatform.infra.service.impl.SlugServiceImpl;
@@ -37,7 +38,10 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
  * {@code CategorySeeder}/{@code TagSeeder} and the four service impls), and
  * {@link KeycloakJwtAuthenticationConverter} plus its own collaborator
  * {@link KeycloakRealmRoleConverter} (JWT → {@code CustomOAuth2User} principal, used by this
- * module's own {@code security.SecurityConfig}). It does *not* import
+ * module's own {@code security.SecurityConfig}), and {@link CurrentUserIdArgumentResolver}
+ * (resolves {@code @CurrentUserId} controller parameters — moved here from a local copy once it
+ * turned out to be byte-identical across every claims-only service; see that class's own Javadoc).
+ * It does *not* import
  * {@code infra.config.thread.AsyncEventThreadPoolConfig} — this module dispatches no
  * {@code @EventHandler}, so that bean is simply never created here. {@code CategorySeeder}/
  * {@code TagSeeder} extending {@code infra.service.seed.CsvSeeder} needs no import of its own —
@@ -62,7 +66,7 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
 @ConfigurationPropertiesScan
 @Import({JacksonConfig.class, TraceContextFilter.class, SlugServiceImpl.class,
         KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
-        GlobalExceptionHandler.class})
+        CurrentUserIdArgumentResolver.class, GlobalExceptionHandler.class})
 public class ContentServiceApplication {
 
     public static void main(String[] args) {
