@@ -89,3 +89,73 @@ export interface ProductSearchResult {
   primaryImageUrl: string | null;
   availableAttributes: Record<string, string[]>;
 }
+
+// ── Cart & Checkout (Epic 2) ─────────────────────────────────────────────────
+// Mirrors ecommerce-service's CartResponse/CartLineResponse/CheckoutPreviewResponse/
+// CheckoutConfirmResponse. A CartLine's fields beyond variantId/quantity/available are omitted by
+// the backend (@JsonInclude(NON_NULL)) when available is false — optional here for the same
+// reason, not because they're ever optional on an available line.
+
+export interface CartLine {
+  variantId: number;
+  quantity: number;
+  /** false when the variant (or its product) no longer exists/is active — US-2.7. */
+  available: boolean;
+  sku?: string;
+  productId?: number;
+  productName?: string;
+  productSlug?: string;
+  attributes?: Record<string, string>;
+  unitPrice?: number;
+  lineTotal?: number;
+  /** Time-limited presigned GET URL for the product's first gallery image; null if it has none yet. */
+  primaryImageUrl?: string | null;
+}
+
+export interface Cart {
+  lines: CartLine[];
+  /** Sum of lineTotal across available lines only. */
+  subtotal: number;
+  /** Sum of quantity across available lines only. */
+  itemCount: number;
+}
+
+export interface Address {
+  fullName: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+}
+
+export interface OrderLine {
+  variantId: number;
+  sku: string;
+  productName: string;
+  unitPrice: number;
+  quantity: number;
+  lineTotal: number;
+}
+
+export interface CheckoutPreview {
+  /** Every current cart line — some may have available: false (US-2.7). */
+  lines: CartLine[];
+  subtotal: number;
+  shippingFee: number;
+  total: number;
+}
+
+/** The confirmed order (US-2.6) — mirrors CheckoutConfirmResponse. */
+export interface OrderConfirmation {
+  orderId: number;
+  status: string;
+  address: Address;
+  lines: OrderLine[];
+  subtotal: number;
+  shippingFee: number;
+  total: number;
+  /** Any cart line dropped at this final revalidation — normally empty. */
+  droppedLines: CartLine[];
+}

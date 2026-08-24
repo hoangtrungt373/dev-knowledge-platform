@@ -3,14 +3,19 @@ package com.ttg.devknowledgeplatform.ecommerce.mapper;
 import com.ttg.devknowledgeplatform.ecommerce.dto.CartLineResponse;
 import com.ttg.devknowledgeplatform.ecommerce.dto.CartResponse;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductImage;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductVariant;
 import com.ttg.devknowledgeplatform.ecommerce.service.Cart;
 import com.ttg.devknowledgeplatform.ecommerce.service.CartLine;
+import com.ttg.devknowledgeplatform.infra.service.StorageService;
+
+import lombok.RequiredArgsConstructor;
 
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -19,10 +24,17 @@ import java.util.List;
  *
  * <p>Hand-written, not MapStruct — unlike every other mapper in this module, this one computes an
  * aggregate ({@code subtotal}/{@code itemCount} across only the {@code available} lines), which
- * doesn't fit MapStruct's per-field object-mapping model.
+ * doesn't fit MapStruct's per-field object-mapping model. Still injects {@link StorageService}
+ * (plain constructor injection here, not the {@code @Autowired protected} field
+ * {@code ProductMapper}/{@code ProductSearchViewMapper} use — those are MapStruct-generated
+ * abstract classes, this one isn't) to resolve each line's {@code primaryImageUrl}, the same
+ * presigned-URL pattern those two mappers already use for their own thumbnails.
  */
 @Component
+@RequiredArgsConstructor
 public class CartMapper {
+
+    private final StorageService storageService;
 
     public CartResponse toResponse(Cart cart) {
         BigDecimal subtotal = BigDecimal.ZERO;
@@ -66,8 +78,22 @@ public class CartMapper {
                     .productSlug(product.getSlug())
                     .attributes(variant.getAttributes())
                     .unitPrice(variant.getPrice())
-                    .lineTotal(lineTotal);
+                    .lineTotal(lineTotal)
+                    .primaryImageUrl(resolvePrimaryImageUrl(product));
         }
         return builder.build();
+    }
+
+    /**
+     * Resolves the product's first gallery image (by {@code sortOrder}, since {@code Product.images}
+     * carries no {@code @OrderBy} of its own) into a presigned URL — null if the product has no
+     * images yet, same nullable shape {@code ProductSearchViewMapper.resolvePrimaryImageUrl} uses
+     * for the storefront grid's own primary-image thumbnail.
+     */
+    private String resolvePrimaryImageUrl(Product product) {
+        return product.getImages().stream()
+                .min(Comparator.comparing(ProductImage::getSortOrder))
+                .map(image -> storageService.getPresignedUrl(image.getStorageKey()))
+                .orElse(null);
     }
 }

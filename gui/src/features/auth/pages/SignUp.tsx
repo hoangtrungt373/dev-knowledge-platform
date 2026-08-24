@@ -26,6 +26,7 @@ import { OAuthProvider } from '../types';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import { PROVIDER_COLORS } from '@shared/constants/colors';
+import { useCart } from '@ecommerce/context/CartContext';
 
 interface FormErrors {
   firstName?: string;
@@ -38,6 +39,7 @@ export default function SignUp(): JSX.Element {
   const { showError } = useNotification();
   const navigate = useNavigate();
   const { loading, guard } = useSubmitGuard();
+  const { refresh: refreshCart } = useCart();
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -98,6 +100,7 @@ export default function SignUp(): JSX.Element {
         // failures aren't shown twice.
         await authApi.register(firstName.trim(), lastName.trim() || undefined, email, password);
         await authService.loginWithPassword(email, password);
+        refreshCart(); // brand-new account, but keeps this path consistent with Login.tsx's own call
         navigate('/dashboard', { replace: true });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Registration failed. Please try again.';

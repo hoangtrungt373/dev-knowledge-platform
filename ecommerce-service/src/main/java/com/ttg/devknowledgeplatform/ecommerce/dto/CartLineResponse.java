@@ -25,4 +25,6 @@ public class CartLineResponse {
     private Map<String, String> attributes;
     private BigDecimal unitPrice;
     private BigDecimal lineTotal;
+    /** Time-limited presigned GET URL for the product's first gallery image (by sortOrder); null if the product has no images yet. */
+    private String primaryImageUrl;
 }

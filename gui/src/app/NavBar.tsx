@@ -7,9 +7,11 @@ import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import StorefrontIcon from '@mui/icons-material/Storefront';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { authService } from '@auth/services/authService';
 import { useFriendRequestsCount } from '@friends/hooks/useFriendRequestsCount';
+import { useCart } from '@ecommerce/context/CartContext';
 import { ThemeMode } from './theme';
 
 interface NavBarProps {
@@ -29,10 +31,17 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
   // `enabled={!hidden}` stops the poll itself on those routes rather than relying on
   // isAuthenticated() alone, which an admin session also satisfies.
   const { count: friendRequestCount } = useFriendRequestsCount(!hidden);
+  // Called unconditionally too (Rules of Hooks) — CartProvider always wraps NavBar, so this never
+  // throws; the cart itself only has real data once the user is authenticated (see CartContext).
+  const { cart, clear: clearCart } = useCart();
 
   if (hidden) return null;
 
   const handleLogout = (): void => {
+    // Clears the badge immediately — authService.logout() redirects to Keycloak's RP-initiated
+    // logout endpoint next, a real full-page navigation that would tear this state down anyway,
+    // but this avoids a stale item count for the instant before that redirect lands.
+    clearCart();
     // authService.logout() already redirects to Keycloak's RP-initiated logout endpoint, which
     // itself redirects back to /login via post_logout_redirect_uri — a real full-page navigation.
     // A client-side navigate('/login') here would race that hard redirect (this app is still
@@ -143,6 +152,24 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
               }}
             >
               Tasks
+            </Button>
+
+            <Button
+              color="inherit"
+              size="small"
+              startIcon={
+                <Badge badgeContent={cart?.itemCount ?? 0} color="error" max={9}>
+                  <ShoppingCartIcon fontSize="small" />
+                </Badge>
+              }
+              onClick={() => navigate('/cart')}
+              sx={{
+                backgroundColor: isActive('/cart')
+                  ? 'action.selected'
+                  : 'transparent',
+              }}
+            >
+              Cart
             </Button>
 
             <Button color="inherit" size="small" onClick={handleLogout}>

@@ -528,10 +528,134 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       there's no "every attribute value in this category" endpoint, so switching pages can reveal
       different facet options. A known, page-scoped approximation, not a bug; don't "fix" it by
       assuming a missing facet means that value doesn't exist anywhere in the category.
-    - `ProductDetailPage.tsx` — image gallery (main + thumbnail strip) + `VariantSelector.tsx`.
-      **Deliberately no "Add to Cart"** — Epic 2 (cart/checkout) isn't built, so there's nowhere
-      for it to go yet; showing one would be UI for a feature that doesn't exist. Revisit once
-      Epic 2 lands, not before.
+    - `ProductDetailPage.tsx` — image gallery (main + thumbnail strip) + `VariantSelector.tsx` +
+      a quantity stepper and **Add to Cart** button (now that Epic 2 is built — see below). Resets
+      the quantity back to 1 whenever the selected variant changes (a quantity picked for a
+      different variant shouldn't silently carry over). Renders "Log in to buy" instead when
+      `authService.isAuthenticated()` is false — Epic 2 is authenticated-only, no guest cart, so
+      this avoids ever attempting the call at all rather than relying on `httpClient`'s 401
+      fallback (same reasoning `useFriendRequestsCount`'s own auth guard already documents).
+    - `api/shopApi.ts` — a separate file from `ecommerceApi.ts` (admin CRUD), mirroring the
+      backend's own `ProductSearchApi`/`ProductApi` split. `getBySlug` reuses the existing `Product`
+      type from Phase B/admin (same `ProductResponse` shape); `search` uses a **new**
+      `ProductSearchResult` type (mirrors `ProductSearchResponse` — a genuinely different,
+      denormalized shape, not reusable with `Product`).
+  - **`pages/cart/CartPage.tsx` + `pages/checkout/CheckoutPage.tsx` — Epic 2's Cart & Checkout
+    GUI (US-2.1–2.7), both `PrivateRoute`-gated (`/cart`, `/checkout`) unlike the public `/shop`
+    routes above, since this epic is authenticated-only with no guest cart.** Discussed and decided
+    with the user before building, same as the storefront's own template discussion: a **dedicated
+    `/cart` page**, not a slide-out drawer (this app has zero drawer precedent — only
+    `AdminLayout`'s *permanent* sidebar — and every other feature here is a full page), and a
+    **single-page checkout with stacked sections** (order summary → address form → place-order
+    button), not an MUI `Stepper` wizard (no wizard precedent exists anywhere in this app either,
+    and the backend itself is a two-call `preview`/`confirm` flow, which a single page maps onto
+    directly with no step-state to manage).
+    - `context/CartContext.tsx` (`CartProvider`/`useCart`) — global cart state, same shape as
+      `NotificationContext`/`StompConnectionContext`, provided in `App.tsx` (wrapping
+      `StompConnectionProvider`, inside `NotificationProvider`). One source of truth so the
+      NavBar's item-count `Badge` and every cart-touching page share the same data without each
+      holding its own copy; `addItem`/`updateItem`/`removeItem` all set local state directly from
+      the mutation response (the backend's own "every mutating endpoint returns the updated cart"
+      contract — see `ecommerce-service/CLAUDE.md`), no extra refetch needed. **`changeVariant`
+      (added for the cart's inline variant switcher, see below) is the one exception to "call the
+      API, `setCart` the response"**: it makes two backend calls (`addItem` the new variant, then
+      `removeItem` the old one, since `CartApi` has no dedicated swap endpoint) but deliberately
+      calls `setCart` only once, after the second — calling it after the first too (the naive
+      "just call the existing `addItem`/`removeItem` back to back" approach, tried first) renders
+      the transient state where both the old and new variant's lines exist at once, which reads as
+      a new line flickering in and immediately back out right as the swap completes. **The initial fetch
+      only runs once, on mount, and does not react to login** (a client-side `navigate()` after
+      login doesn't remount the provider) — `Login.tsx`/`SignUp.tsx`/`AuthCallback.tsx` all call
+      `refresh()` explicitly right after a successful login as a result, and `NavBar`'s logout
+      handler calls `clear()` in the opposite direction. `NavBar.tsx` calls `useCart()`
+      unconditionally (Rules of Hooks — the provider always wraps it) but only renders the Cart
+      button inside the existing `isAuthed` block, same as every other authenticated nav entry.
+    - `api/cartApi.ts` (`getCart`/`addItem`/`updateItem`/`removeItem`) and `api/checkoutApi.ts`
+      (`preview`/`confirm`) — two files, mirroring the backend's own `CartApi`/`CheckoutApi` split
+      and this feature's existing admin-vs-public file-per-concern convention.
+    - `types.ts` gained `CartLine`/`Cart`/`Address`/`OrderLine`/`CheckoutPreview`/
+      `OrderConfirmation`, mirroring `CartResponse`/`CartLineResponse`/`AddressRequest`/
+      `AddressResponse`/`OrderLineResponse`/`CheckoutPreviewResponse`/`CheckoutConfirmResponse`
+      field-for-field (the backend's `@JsonInclude(NON_NULL)` omission of an unavailable line's
+      fields beyond `variantId`/`quantity`/`available` is why those fields are optional on
+      `CartLine`, not because they're ever optional on an available line).
+    - `CartPage.tsx` — one row per `CartLine`; an unavailable line renders grayed out with a
+      "No longer available" chip and only a Remove control (mirrors the backend's own
+      available-flag contract, same shape `CartLineResponse`'s Javadoc documents). Each available
+      line renders a 64×64 `CartLineThumbnail` from `CartLine.primaryImageUrl` (a new field —
+      `CartMapper` resolves it server-side from the product's own gallery, same presigned-URL
+      pattern `ProductCard.tsx`'s storefront thumbnail already uses), falling back to the same
+      `ImageNotSupportedIcon` treatment when a product has no images yet; an unavailable line
+      renders the same thumbnail slot with no image (nothing to show — the line only carries
+      `variantId`/`quantity`), keeping row height consistent either way.
+      **`CartLineThumbnail` fades in on `onLoad`** (`opacity` 0→1, 200ms) rather than popping in the
+      instant the browser finishes decoding — added once the inline variant switcher (below) made
+      the underlying blink visible: switching variants remounts the row (keyed by `variantId`), so
+      a brand-new `<img>` node mounts every time, and `primaryImageUrl` is a freshly re-signed
+      presigned URL on every cart fetch (even for the *same* underlying picture across two variants
+      of one product), so the browser can never serve it from cache. The fade can't remove that
+      network round trip, only smooth over it. Quantity
+      +/- buttons call `updateItem` directly (immediate mutation, no local staging) — the "−"
+      button disables at quantity 1 rather than silently removing the line on decrement, since a
+      dedicated Remove button already covers that action explicitly. A per-row `pending` flag
+      (keyed by `variantId`) disables only the row with an in-flight mutation, not the whole page.
+      The thumbnail + name/attributes block (not the whole row) links to `/shop/${line.productSlug}`
+      — react-router-dom's own `Link` (a real `<a href>`, not a `Box`/`onClick`+`navigate()` the way
+      `ProductCard.tsx`'s `CardActionArea` does it), specifically so the browser's native
+      right-click "Open link in new tab"/middle-click/ctrl-click all work for free; plain inline
+      `style` (not `sx`, since `Link` isn't a MUI component) resets `color`/`textDecoration` and
+      carries the flex layout. Sibling to the quantity controls/Remove button rather than wrapping
+      them, so no `stopPropagation` juggling is needed the way `TaskRow` needs it in `@tasks`.
+      Available lines only: an unavailable line has no `productSlug` at all (the backend's own
+      `@JsonInclude(NON_NULL)` omission, per the available-flag contract above), so there's nothing
+      to link to and that row stays a plain, unlinked block.
+    - **Inline variant switching**: a line's attributes render as one bordered "Variation:" box
+      (`Size: M, Color: Blue` inline, plus a `KeyboardArrowDownIcon` chevron) — a Shopee-cart-style
+      single unit, not one `Chip` per attribute key (that per-chip design was tried first and
+      replaced; each key/value pair is joined into one `variationLabel` string instead). Clicking
+      the box opens an MUI `Popover` anchored to it with a full variant picker plus **Cancel**/
+      **Confirm** buttons — no separate dialog/page, and deliberately not auto-apply-on-pick (that
+      was this feature's very first cut too): `VariantSelector`'s `onSelect` only ever updates a
+      staged `pendingVariant` local state now, never calls `onVariantChange` directly, so a
+      shopper can browse combinations risk-free and back out. **Confirm** is disabled whenever
+      `pendingVariant` is null (incomplete/invalid combination) or already equal to `line.variantId`
+      (nothing actually changed) — only then does it call `onVariantChange`/close the popover.
+      **Cancel**, and dismissing the popover any other way (`Popover`'s own `onClose`), both route
+      through the same `closeVariantMenu` (clears both `variantMenuAnchor` and `pendingVariant`),
+      so a discarded in-progress selection never leaks into the next time the box is opened. The
+      box's own `onClick` calls `preventDefault()`/`stopPropagation()` first, since it sits inside
+      the product-detail `Link` above and would otherwise also follow that link.
+      `CartApi` has no dedicated "swap variant" endpoint (only add/update/remove-by-variantId — see
+      `ecommerce-service/CLAUDE.md`), so `CartPage.tsx`'s `handleVariantChange` calls
+      `CartContext`'s `changeVariant` (see above) rather than raw `addItem`+`removeItem` — not
+      atomic (two backend calls, not one transaction), but `addItem`'s own `HINCRBY` means
+      switching to a variant already elsewhere in the cart merges into that existing line rather
+      than duplicating it, same as a plain add-to-cart would. Reuses
+      `components/shop/VariantSelector.tsx` (the same attribute-combo picker
+      `ProductDetailPage.tsx` uses) rather than building a second variant UI — that component
+      gained a new optional `initialAttributes` prop (pre-fills `selections` instead of starting
+      blank) specifically for this, so the popover opens already showing the line's current
+      combination (which is also why `pendingVariant` starts non-null on open — re-confirming the
+      unchanged combination is exactly what the equality check above guards against). The full
+      variant list isn't on `CartLine` at all (it only carries the one resolved variant's own
+      fields), so `CartLineRow` lazily fetches it via the existing
+      `shopApi.getBySlug(line.productSlug)` on the box's first click, not on row mount — most
+      lines in a cart are never touched, so this avoids one extra request per line just to render a
+      static row. The swap shares the row's existing `pending` flag (keyed by `variantId`, same as
+      quantity/remove), so the quantity stepper and Remove button disable during the swap the same
+      way they already do for any other mutation.
+    - `CheckoutPage.tsx` — fetches `checkoutApi.preview()` on mount; an empty cart or an
+      all-lines-unavailable cart (both guarded server-side, see `ecommerce-service/CLAUDE.md`)
+      renders a "Can't check out right now" message with a link back to `/cart` instead of the
+      form. The address form is plain `useState` + a `validate()` function + `useSubmitGuard`,
+      the same shape `SignUp.tsx`/`Login.tsx` already establish — no Formik/react-hook-form
+      introduced. On successful `confirm`, swaps to an inline order-confirmation view built
+      straight from the `OrderConfirmation` response (order id, items, address, totals, any
+      dropped lines) rather than navigating to a dedicated order page — there is no backend
+      "get order by id" endpoint to navigate to (see `ecommerce-service/CLAUDE.md`'s
+      `OrderRepository` note), so this is the only place that data will ever be shown. Calls
+      `useCart().refresh()` right after a successful confirm to resync the NavBar badge/context
+      with the now-actually-empty server-side cart, rather than assuming local state.
     - `components/shop/VariantSelector.tsx` resolves a picked attribute combination (e.g. size=M,
       color=Black) to one exact `ProductVariant` from the product's own real `variants[]` list —
       genuinely combo-accurate, unlike `ShopPage`'s browse-time facets (which only know "some

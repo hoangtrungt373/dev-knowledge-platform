@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
 import { authService } from '../services/authService';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import { useCart } from '@ecommerce/context/CartContext';
 
 /**
  * Social login's Authorization Code + PKCE callback — Keycloak redirects here with
@@ -15,6 +16,7 @@ export default function AuthCallback(): JSX.Element | null {
   const [searchParams] = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const { showError, showSuccess } = useNotification();
+  const { refresh: refreshCart } = useCart();
   // The authorization code + PKCE verifier are both one-time-use, so this effect isn't idempotent
   // — StrictMode's deliberate dev-mode double-invoke would otherwise run the exchange twice, with
   // the second call failing (code/verifier already consumed) and bouncing back to /login even
@@ -33,6 +35,7 @@ export default function AuthCallback(): JSX.Element | null {
 
         await authService.handleOAuthCallback(code, state, errorParam);
 
+        refreshCart();
         showSuccess('Login successful!');
         navigate('/dashboard', { replace: true });
       } catch (err) {
@@ -46,7 +49,7 @@ export default function AuthCallback(): JSX.Element | null {
     };
 
     run();
-  }, [navigate, searchParams, showError, showSuccess]);
+  }, [navigate, searchParams, showError, showSuccess, refreshCart]);
 
   if (error) {
     return (

@@ -5,6 +5,10 @@ import { ProductVariant } from '../../types';
 interface Props {
   variants: ProductVariant[];
   onSelect: (variant: ProductVariant | null) => void;
+  /** Pre-fills the selection (e.g. the currently active variant's own attributes) instead of
+   * starting blank — used by `CartPage`'s inline variant switcher so the popover opens already
+   * showing what's in the cart today, not an empty picker. */
+  initialAttributes?: Record<string, string>;
 }
 
 /**
@@ -14,7 +18,7 @@ interface Props {
  * limitation), this component has the product's real, full variant list, so it can require an
  * exact match across every attribute key rather than an approximation.
  */
-export default function VariantSelector({ variants, onSelect }: Props): JSX.Element | null {
+export default function VariantSelector({ variants, onSelect, initialAttributes }: Props): JSX.Element | null {
   const attributeKeys = useMemo(
     () => (variants.length > 0 ? Object.keys(variants[0].attributes) : []),
     [variants],
@@ -30,7 +34,7 @@ export default function VariantSelector({ variants, onSelect }: Props): JSX.Elem
     return map;
   }, [attributeKeys, variants]);
 
-  const [selections, setSelections] = useState<Record<string, string>>({});
+  const [selections, setSelections] = useState<Record<string, string>>(initialAttributes ?? {});
 
   // A single, attribute-less variant needs no picker at all — select it immediately.
   useEffect(() => {

@@ -24,10 +24,12 @@ import { OAuthProvider } from '../types';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import { PROVIDER_COLORS } from '@shared/constants/colors';
+import { useCart } from '@ecommerce/context/CartContext';
 
 export default function Login(): JSX.Element {
   const { showError, showSuccess } = useNotification();
   const navigate = useNavigate();
+  const { refresh: refreshCart } = useCart();
   const [searchParams, setSearchParams] = useSearchParams();
   const { loading, guard } = useSubmitGuard();
 
@@ -78,6 +80,10 @@ export default function Login(): JSX.Element {
     guard(async () => {
       try {
         await authService.loginWithPassword(email, password);
+        // CartProvider's own initial fetch already ran (unauthenticated, so it no-opped) before
+        // this login happened and won't re-run on its own — refresh explicitly so the NavBar's
+        // cart badge reflects any items from a previous session right away.
+        refreshCart();
         navigate('/dashboard', { replace: true });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Login failed. Please try again.';

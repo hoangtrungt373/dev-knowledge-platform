@@ -46,7 +46,11 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+      # Matches docker-compose.infra.yml's redis service (`--requirepass password`) and
+      # docker-compose.apps.yml's own ${REDIS_PASSWORD:-password} default for the containerized
+      # run — without this default, a local (non-container) run against that same Redis instance
+      # gets a NOAUTH error, since Spring Data Redis's own default is no password at all.
+      password: ${REDIS_PASSWORD:password}
       database: ${REDIS_DATABASE:0}
       timeout: ${REDIS_TIMEOUT:2000ms}
 

@@ -345,10 +345,18 @@ backs a cart at all.
   doesn't fit MapStruct's per-field object-mapping model at all. `toLineResponse(CartLine)` is
   extracted as its own public method (used both by `toResponse`'s own loop and by
   `CheckoutMapper`, below) so the "unavailable line → every field but `variantId`/`quantity` stays
-  null" branching lives in exactly one place.
+  null" branching lives in exactly one place. Also injects `infra`'s `StorageService` (plain
+  constructor injection, not the `@Autowired protected` field `ProductMapper`/
+  `ProductSearchViewMapper` use — those are MapStruct-generated abstract classes, this one isn't)
+  to resolve each available line's `primaryImageUrl` from `product.getImages()`'s minimum
+  `sortOrder` entry — null if the product has no images yet, same nullable shape
+  `ProductSearchViewMapper.resolvePrimaryImageUrl` already uses for the storefront grid's own
+  thumbnail. `Product.images` carries no `@OrderBy` of its own, so this picks the minimum by
+  `sortOrder` explicitly rather than trusting collection order.
 - `dto/{CartResponse,CartLineResponse,AddCartItemRequest,UpdateCartItemRequest}` — an unavailable
-  line's response has only `variantId`/`quantity`/`available=false`; every other field is omitted
-  (`@JsonInclude(NON_NULL)`), not zeroed out, so a GUI can't mistake "no data" for "priced at $0."
+  line's response has only `variantId`/`quantity`/`available=false`; every other field
+  (`primaryImageUrl` included) is omitted (`@JsonInclude(NON_NULL)`), not zeroed out, so a GUI
+  can't mistake "no data" for "priced at $0."
 - `api/CartApi`+`Controller` at `/api/v1/cart` — **authenticated-only, no new `SecurityConfig` rule
   needed** (no `/public/**`/`/admin/**` prefix, so it falls under the existing default
   `anyRequest().authenticated()` rule). Every mutating endpoint (`addItem`/`updateItem`/`removeItem`)

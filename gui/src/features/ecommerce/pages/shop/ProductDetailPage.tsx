@@ -6,11 +6,19 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  IconButton,
   Stack,
+  TextField,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ImageNotSupportedIcon from '@mui/icons-material/ImageNotSupported';
+import AddIcon from '@mui/icons-material/Add';
+import RemoveIcon from '@mui/icons-material/Remove';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import { authService } from '@auth/services/authService';
+import { useNotification } from '@shared/contexts/NotificationContext';
+import { useCart } from '../../context/CartContext';
 import { Product, ProductVariant } from '../../types';
 import { shopApi } from '../../api/shopApi';
 import VariantSelector from '../../components/shop/VariantSelector';
@@ -25,12 +33,16 @@ function formatPriceRange(variants: ProductVariant[]): string {
 export default function ProductDetailPage(): JSX.Element {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+  const { showError, showSuccess } = useNotification();
+  const { addItem } = useCart();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
+  const [quantity, setQuantity] = useState(1);
+  const [addingToCart, setAddingToCart] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
@@ -38,6 +50,26 @@ export default function ProductDetailPage(): JSX.Element {
     setNotFound(false);
     shopApi.getBySlug(slug).then(setProduct).catch(() => setNotFound(true)).finally(() => setLoading(false));
   }, [slug]);
+
+  // A variant switch invalidates whatever quantity was picked for the previous one — reset rather
+  // than silently carrying a stale value into the next add-to-cart call.
+  useEffect(() => {
+    setQuantity(1);
+  }, [selectedVariant?.id]);
+
+  const handleAddToCart = async (): Promise<void> => {
+    if (!selectedVariant) return;
+    setAddingToCart(true);
+    try {
+      await addItem(selectedVariant.id, quantity);
+      showSuccess(`Added ${quantity} × ${product?.name} to your cart.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not add this item to your cart.';
+      showError(message);
+    } finally {
+      setAddingToCart(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -139,6 +171,39 @@ export default function ProductDetailPage(): JSX.Element {
           <Divider sx={{ mb: 3 }} />
 
           <VariantSelector variants={product.variants} onSelect={setSelectedVariant} />
+
+          <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 3 }}>
+            <Stack direction="row" alignItems="center" sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+              <IconButton size="small" onClick={() => setQuantity(q => Math.max(1, q - 1))} disabled={quantity <= 1}>
+                <RemoveIcon fontSize="small" />
+              </IconButton>
+              <TextField
+                value={quantity}
+                onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                variant="standard"
+                InputProps={{ disableUnderline: true }}
+                inputProps={{ style: { textAlign: 'center', width: 32 } }}
+              />
+              <IconButton size="small" onClick={() => setQuantity(q => q + 1)}>
+                <AddIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+
+            {authService.isAuthenticated() ? (
+              <Button
+                variant="contained"
+                startIcon={<ShoppingCartIcon />}
+                disabled={!selectedVariant || !inStockDisplay || addingToCart}
+                onClick={handleAddToCart}
+              >
+                {addingToCart ? 'Adding…' : 'Add to Cart'}
+              </Button>
+            ) : (
+              <Button variant="contained" onClick={() => navigate('/login')}>
+                Log in to buy
+              </Button>
+            )}
+          </Stack>
         </Box>
       </Box>
     </Box>

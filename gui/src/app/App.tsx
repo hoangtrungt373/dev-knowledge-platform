@@ -17,7 +17,10 @@ import ProductListPage from '@ecommerce/pages/ProductListPage';
 import ProductFormPage from '@ecommerce/pages/ProductFormPage';
 import ShopPage from '@ecommerce/pages/shop/ShopPage';
 import ProductDetailPage from '@ecommerce/pages/shop/ProductDetailPage';
+import CartPage from '@ecommerce/pages/cart/CartPage';
+import CheckoutPage from '@ecommerce/pages/checkout/CheckoutPage';
 import { NotificationProvider } from '@shared/contexts/NotificationContext';
+import { CartProvider } from '@ecommerce/context/CartContext';
 import { StompConnectionProvider } from '@messaging/context/StompConnectionContext';
 import Login from '@auth/pages/Login';
 import SignUp from '@auth/pages/SignUp';
@@ -49,6 +52,7 @@ function App() {
     <ThemeProvider theme={mode === 'dark' ? darkTheme : lightTheme}>
       <CssBaseline />
       <NotificationProvider>
+        <CartProvider>
         <StompConnectionProvider>
           <NavBar mode={mode} onToggleMode={toggleMode} />
           <Routes>
@@ -83,6 +87,19 @@ function App() {
             <Route path="/tasks" element={
               <PrivateRoute>
                 <TasksPage />
+              </PrivateRoute>
+            } />
+
+            {/* Cart & Checkout — Epic 2 is authenticated-only, no guest cart, unlike /shop above */}
+            <Route path="/cart" element={
+              <PrivateRoute>
+                <CartPage />
+              </PrivateRoute>
+            } />
+
+            <Route path="/checkout" element={
+              <PrivateRoute>
+                <CheckoutPage />
               </PrivateRoute>
             } />
 
@@ -150,6 +167,7 @@ function App() {
             />
           </Routes>
         </StompConnectionProvider>
+        </CartProvider>
       </NotificationProvider>
     </ThemeProvider>
   );
