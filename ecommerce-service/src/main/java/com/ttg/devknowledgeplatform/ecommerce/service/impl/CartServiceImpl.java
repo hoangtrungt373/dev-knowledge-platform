@@ -1,7 +1,6 @@
 package com.ttg.devknowledgeplatform.ecommerce.service.impl;
 
-import com.ttg.devknowledgeplatform.common.exception.ApiException;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductVariant;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductVariantRepository;
@@ -104,12 +103,9 @@ public class CartServiceImpl implements CartService {
 
     /** Soft existence/active check only (US-2.1) — no stock reservation at add-to-cart time; that's Epic 3's concern. */
     private void validateVariantAvailable(Integer variantId) {
-        ProductVariant variant = productVariantRepository.findById(variantId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        EcommerceErrorCode.PRODUCT_VARIANT_NOT_FOUND, variantId));
-        if (!variant.getProduct().isActive()) {
-            throw new ApiException(EcommerceErrorCode.CART_VARIANT_UNAVAILABLE, variantId);
-        }
+        ProductVariant variant = Validator.notFound(
+                productVariantRepository.findById(variantId), EcommerceErrorCode.PRODUCT_VARIANT_NOT_FOUND, variantId);
+        Validator.isTrue(variant.getProduct().isActive(), EcommerceErrorCode.CART_VARIANT_UNAVAILABLE, variantId);
     }
 
     private static String cartKey(String userUuid) {

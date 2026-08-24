@@ -7,6 +7,7 @@ import org.springframework.security.core.Authentication;
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.social.repository.SocialProfileRepository;
 
 /**
@@ -35,9 +36,9 @@ public final class CurrentUserResolver {
             throw new IllegalStateException(
                     "@CurrentUserId requires an authenticated CustomOAuth2User principal, but none is present.");
         }
-        return socialProfileRepository.findByProfileUuid(user.getUserUuid())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        CommonErrorCode.USER_NOT_FOUND, "No profile found for UUID: " + user.getUserUuid()))
+        return Validator.notFound(
+                        socialProfileRepository.findByProfileUuid(user.getUserUuid()),
+                        CommonErrorCode.USER_NOT_FOUND, "No profile found for UUID: " + user.getUserUuid())
                 .getId();
     }
 }

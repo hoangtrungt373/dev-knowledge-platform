@@ -5,9 +5,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.common.util.DateUtils;
 import com.ttg.devknowledgeplatform.social.entity.DmMessage;
 import com.ttg.devknowledgeplatform.social.entity.DmThread;
@@ -45,9 +44,8 @@ public class DmServiceImpl implements DmService {
 
         // Single gate for "not friends" and "blocked" alike — reuses FriendService's own
         // mutual-invisibility-preserving lookup instead of re-querying Friendship/UserBlock here.
-        if (friendService.getRelationshipStatus(senderId, recipientUuid) != RelationshipStatus.FRIENDS) {
-            throw new BusinessException(SocialErrorCode.DM_FRIEND_REQUIRED);
-        }
+        Validator.isTrue(friendService.getRelationshipStatus(senderId, recipientUuid) == RelationshipStatus.FRIENDS,
+                SocialErrorCode.DM_FRIEND_REQUIRED);
 
         DmThread thread = resolveOrCreateThread(sender, recipient);
 
@@ -76,12 +74,10 @@ public class DmServiceImpl implements DmService {
 
     @Override
     public Page<DmMessage> listMessages(Integer userId, Integer threadId, Pageable pageable) {
-        DmThread thread = dmThreadRepository.findById(threadId)
-                .orElseThrow(() -> new ResourceNotFoundException(SocialErrorCode.DM_THREAD_NOT_FOUND));
-        if (!thread.getUser1().getId().equals(userId) && !thread.getUser2().getId().equals(userId)) {
-            // Same error as "doesn't exist" — a non-participant shouldn't learn the thread exists.
-            throw new ResourceNotFoundException(SocialErrorCode.DM_THREAD_NOT_FOUND);
-        }
+        DmThread thread = Validator.notFound(dmThreadRepository.findById(threadId), SocialErrorCode.DM_THREAD_NOT_FOUND);
+        // Same error as "doesn't exist" — a non-participant shouldn't learn the thread exists.
+        Validator.isTrue(thread.getUser1().getId().equals(userId) || thread.getUser2().getId().equals(userId),
+                SocialErrorCode.DM_THREAD_NOT_FOUND);
         return dmMessageRepository.findByDmThreadOrderByDteCreationDesc(thread, pageable);
     }
 
@@ -92,9 +88,8 @@ public class DmServiceImpl implements DmService {
     }
 
     private static void requireContentOrAttachment(String content, MessageAttachmentInput attachment) {
-        if ((content == null || content.isBlank()) && attachment == null) {
-            throw new BusinessException(CommonErrorCode.VALIDATION_FIELD_INVALID, "Message must have text or an attachment");
-        }
+        Validator.isFalse((content == null || content.isBlank()) && attachment == null,
+                CommonErrorCode.VALIDATION_FIELD_INVALID, "Message must have text or an attachment");
     }
 
     private static MessageType resolveMessageType(MessageAttachmentInput attachment) {
@@ -111,12 +106,11 @@ public class DmServiceImpl implements DmService {
     }
 
     private SocialProfile resolveUser(Integer userId) {
-        return socialProfileRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND));
+        return Validator.notFound(socialProfileRepository.findById(userId), CommonErrorCode.USER_NOT_FOUND);
     }
 
     private SocialProfile resolveUserByUuid(String userUuid) {
-        return socialProfileRepository.findByProfileUuid(userUuid)
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found: " + userUuid));
+        return Validator.notFound(
+                socialProfileRepository.findByProfileUuid(userUuid), CommonErrorCode.USER_NOT_FOUND, "User not found: " + userUuid);
     }
 }

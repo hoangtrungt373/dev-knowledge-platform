@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.identity.config.KeycloakAdminProperties;
 import com.ttg.devknowledgeplatform.identity.dto.auth.RegisterRequest;
 import com.ttg.devknowledgeplatform.identity.exception.IdentityErrorCode;
@@ -143,9 +144,8 @@ public class KeycloakAdminServiceImpl implements KeycloakAdminService {
 
     @Override
     public void updateUsername(String keycloakSubjectId, String newUsername) {
-        if (!applyUsername(keycloakSubjectId, newUsername)) {
-            throw new BusinessException(CommonErrorCode.USER_USERNAME_ALREADY_EXISTS, newUsername);
-        }
+        Validator.isTrue(applyUsername(keycloakSubjectId, newUsername),
+                CommonErrorCode.USER_USERNAME_ALREADY_EXISTS, newUsername);
     }
 
     @Override
@@ -157,9 +157,7 @@ public class KeycloakAdminServiceImpl implements KeycloakAdminService {
             if (applyUsername(keycloakSubjectId, candidate)) {
                 return candidate;
             }
-            if (suffix >= USERNAME_MAX_SUFFIX_ATTEMPTS) {
-                throw new BusinessException(IdentityErrorCode.KEYCLOAK_USER_UPDATE_FAILED);
-            }
+            Validator.isTrue(suffix < USERNAME_MAX_SUFFIX_ATTEMPTS, IdentityErrorCode.KEYCLOAK_USER_UPDATE_FAILED);
             suffix++;
         }
     }

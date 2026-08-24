@@ -1,7 +1,6 @@
 package com.ttg.devknowledgeplatform.ecommerce.service.impl;
 
-import com.ttg.devknowledgeplatform.common.exception.ApiException;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OutboxEvent;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategory;
@@ -53,15 +52,12 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public Product create(ProductCommands.Create command) {
         List<ProductCommands.VariantInput> variants = command.variants();
-        if (variants == null || variants.isEmpty()) {
-            throw new ApiException(EcommerceErrorCode.PRODUCT_REQUIRES_AT_LEAST_ONE_VARIANT);
-        }
+        Validator.isFalse(variants == null || variants.isEmpty(), EcommerceErrorCode.PRODUCT_REQUIRES_AT_LEAST_ONE_VARIANT);
         validateNoDuplicateSkusInRequest(variants);
         validateConsistentAttributeKeys(variants);
         for (ProductCommands.VariantInput variant : variants) {
-            if (productVariantRepository.existsBySku(variant.sku())) {
-                throw new ApiException(EcommerceErrorCode.PRODUCT_VARIANT_SKU_CONFLICT, variant.sku());
-            }
+            Validator.isFalse(productVariantRepository.existsBySku(variant.sku()),
+                    EcommerceErrorCode.PRODUCT_VARIANT_SKU_CONFLICT, variant.sku());
         }
 
         List<ProductCommands.ImageInput> images = command.images() == null ? List.of() : command.images();
@@ -144,9 +140,8 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public Product getActiveBySlug(String slug) {
-        return productRepository.findBySlug(slug)
-                .filter(Product::isActive)
-                .orElseThrow(() -> new ResourceNotFoundException(EcommerceErrorCode.PRODUCT_NOT_FOUND, slug));
+        return Validator.notFound(
+                productRepository.findBySlug(slug).filter(Product::isActive), EcommerceErrorCode.PRODUCT_NOT_FOUND, slug);
     }
 
     @Override
@@ -158,9 +153,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public ProductVariant addVariant(Integer productId, ProductCommands.VariantInput input) {
         Product product = findById(productId);
-        if (productVariantRepository.existsBySku(input.sku())) {
-            throw new ApiException(EcommerceErrorCode.PRODUCT_VARIANT_SKU_CONFLICT, input.sku());
-        }
+        Validator.isFalse(productVariantRepository.existsBySku(input.sku()), EcommerceErrorCode.PRODUCT_VARIANT_SKU_CONFLICT, input.sku());
         validateAttributeKeysMatchExisting(product, input.attributes());
 
         ProductVariant variant = new ProductVariant();
@@ -184,9 +177,7 @@ public class ProductServiceImpl implements ProductService {
         ProductVariant variant = findVariantById(variantId);
         validateVariantBelongsToProduct(variant, product);
 
-        if (product.getVariants().size() <= 1) {
-            throw new ApiException(EcommerceErrorCode.PRODUCT_REQUIRES_AT_LEAST_ONE_VARIANT);
-        }
+        Validator.isFalse(product.getVariants().size() <= 1, EcommerceErrorCode.PRODUCT_REQUIRES_AT_LEAST_ONE_VARIANT);
 
         product.getVariants().remove(variant);
         productVariantRepository.delete(variant);
@@ -264,38 +255,29 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private Product findById(Integer id) {
-        return productRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(EcommerceErrorCode.PRODUCT_NOT_FOUND, id));
+        return Validator.notFound(productRepository.findById(id), EcommerceErrorCode.PRODUCT_NOT_FOUND, id);
     }
 
     private ProductCategory findCategoryById(Integer id) {
-        return productCategoryRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        EcommerceErrorCode.PRODUCT_CATEGORY_NOT_FOUND, id));
+        return Validator.notFound(productCategoryRepository.findById(id), EcommerceErrorCode.PRODUCT_CATEGORY_NOT_FOUND, id);
     }
 
     private ProductVariant findVariantById(Integer id) {
-        return productVariantRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(EcommerceErrorCode.PRODUCT_VARIANT_NOT_FOUND, id));
+        return Validator.notFound(productVariantRepository.findById(id), EcommerceErrorCode.PRODUCT_VARIANT_NOT_FOUND, id);
     }
 
     private ProductImage findImageById(Integer id) {
-        return productImageRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(EcommerceErrorCode.PRODUCT_IMAGE_NOT_FOUND, id));
+        return Validator.notFound(productImageRepository.findById(id), EcommerceErrorCode.PRODUCT_IMAGE_NOT_FOUND, id);
     }
 
     private static void validateVariantBelongsToProduct(ProductVariant variant, Product product) {
-        if (!variant.getProduct().getId().equals(product.getId())) {
-            throw new ApiException(EcommerceErrorCode.PRODUCT_VARIANT_BELONGS_TO_ANOTHER_PRODUCT,
-                    variant.getId(), product.getId());
-        }
+        Validator.isTrue(variant.getProduct().getId().equals(product.getId()),
+                EcommerceErrorCode.PRODUCT_VARIANT_BELONGS_TO_ANOTHER_PRODUCT, variant.getId(), product.getId());
     }
 
     private static void validateImageBelongsToProduct(ProductImage image, Product product) {
-        if (!image.getProduct().getId().equals(product.getId())) {
-            throw new ApiException(EcommerceErrorCode.PRODUCT_IMAGE_BELONGS_TO_ANOTHER_PRODUCT,
-                    image.getId(), product.getId());
-        }
+        Validator.isTrue(image.getProduct().getId().equals(product.getId()),
+                EcommerceErrorCode.PRODUCT_IMAGE_BELONGS_TO_ANOTHER_PRODUCT, image.getId(), product.getId());
     }
 
     /**
@@ -307,9 +289,7 @@ public class ProductServiceImpl implements ProductService {
         boolean taken = product.getImages().stream()
                 .filter(image -> excludingImageId == null || !image.getId().equals(excludingImageId))
                 .anyMatch(image -> image.getSortOrder().equals(sortOrder));
-        if (taken) {
-            throw new ApiException(EcommerceErrorCode.PRODUCT_IMAGE_SORT_ORDER_CONFLICT, sortOrder);
-        }
+        Validator.isFalse(taken, EcommerceErrorCode.PRODUCT_IMAGE_SORT_ORDER_CONFLICT, sortOrder);
     }
 
     /**
@@ -323,9 +303,7 @@ public class ProductServiceImpl implements ProductService {
         }
         Set<String> existingKeys = product.getVariants().get(0).getAttributes().keySet();
         Set<String> newKeys = newAttributes == null ? Set.of() : newAttributes.keySet();
-        if (!existingKeys.equals(newKeys)) {
-            throw new ApiException(EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_KEYS_INCONSISTENT);
-        }
+        Validator.isTrue(existingKeys.equals(newKeys), EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_KEYS_INCONSISTENT);
     }
 
     /**
@@ -348,20 +326,16 @@ public class ProductServiceImpl implements ProductService {
     private static void validateNoDuplicateSkusInRequest(List<ProductCommands.VariantInput> variants) {
         Set<String> seen = new HashSet<>();
         for (ProductCommands.VariantInput variant : variants) {
-            if (!seen.add(variant.sku())) {
-                throw new ApiException(
-                        EcommerceErrorCode.PRODUCT_VARIANT_DUPLICATE_SKU_IN_REQUEST, variant.sku());
-            }
+            Validator.isTrue(seen.add(variant.sku()),
+                    EcommerceErrorCode.PRODUCT_VARIANT_DUPLICATE_SKU_IN_REQUEST, variant.sku());
         }
     }
 
     private static void validateNoDuplicateSortOrdersInRequest(List<ProductCommands.ImageInput> images) {
         Set<Integer> seen = new HashSet<>();
         for (ProductCommands.ImageInput image : images) {
-            if (!seen.add(image.sortOrder())) {
-                throw new ApiException(
-                        EcommerceErrorCode.PRODUCT_IMAGE_DUPLICATE_SORT_ORDER, image.sortOrder());
-            }
+            Validator.isTrue(seen.add(image.sortOrder()),
+                    EcommerceErrorCode.PRODUCT_IMAGE_DUPLICATE_SORT_ORDER, image.sortOrder());
         }
     }
 
@@ -372,8 +346,8 @@ public class ProductServiceImpl implements ProductService {
             Set<String> keys = variant.attributes() == null ? Set.of() : new HashSet<>(variant.attributes().keySet());
             if (firstKeys == null) {
                 firstKeys = keys;
-            } else if (!firstKeys.equals(keys)) {
-                throw new ApiException(EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_KEYS_INCONSISTENT);
+            } else {
+                Validator.isTrue(firstKeys.equals(keys), EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_KEYS_INCONSISTENT);
             }
         }
     }

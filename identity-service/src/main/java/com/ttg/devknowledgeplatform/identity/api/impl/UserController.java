@@ -1,9 +1,11 @@
 package com.ttg.devknowledgeplatform.identity.api.impl;
 
+import java.util.Optional;
+
 import com.ttg.devknowledgeplatform.identity.api.UserApi;
 import com.ttg.devknowledgeplatform.identity.entity.User;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.identity.dto.UserInfoResponse;
 import com.ttg.devknowledgeplatform.identity.dto.user.UpdateProfileRequest;
@@ -43,10 +45,8 @@ public class UserController implements UserApi {
 
     @Override
     public ResponseEntity<UserInfoResponse> uploadAvatar(CustomOAuth2User principal, MultipartFile file) {
-        User currentUser = userService.findByEmail(principal.getEmail());
-        if (currentUser == null) {
-            throw new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND);
-        }
+        User currentUser = Validator.notFound(
+                Optional.ofNullable(userService.findByEmail(principal.getEmail())), CommonErrorCode.USER_NOT_FOUND);
 
         String existing = currentUser.getProfilePicture();
         if (existing != null && !existing.startsWith("http")) {

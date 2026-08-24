@@ -1,8 +1,7 @@
 package com.ttg.devknowledgeplatform.content.service.impl;
 
-import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.content.entity.Category;
 import com.ttg.devknowledgeplatform.content.entity.ContentItem;
 import com.ttg.devknowledgeplatform.content.entity.ContentItemTag;
@@ -129,9 +128,8 @@ public class QuestionAnswerServiceImpl implements QuestionAnswerService {
 
     @Override
     public QuestionAnswer getBySlug(String slug) {
-        return questionAnswerRepository.findByContentItem_Slug(slug)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.QUESTION_ANSWER_NOT_FOUND, slug));
+        return Validator.notFound(
+                questionAnswerRepository.findByContentItem_Slug(slug), ContentErrorCode.QUESTION_ANSWER_NOT_FOUND, slug);
     }
 
     @Override
@@ -157,23 +155,17 @@ public class QuestionAnswerServiceImpl implements QuestionAnswerService {
     }
 
     private QuestionAnswer findById(Integer id) {
-        return questionAnswerRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.QUESTION_ANSWER_NOT_FOUND, id));
+        return Validator.notFound(questionAnswerRepository.findById(id), ContentErrorCode.QUESTION_ANSWER_NOT_FOUND, id);
     }
 
     private Category resolveCategory(Integer categoryId) {
         if (categoryId == null) return null;
-        return categoryRepository.findById(categoryId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.CATEGORY_NOT_FOUND, categoryId));
+        return Validator.notFound(categoryRepository.findById(categoryId), ContentErrorCode.CATEGORY_NOT_FOUND, categoryId);
     }
 
     private void applyTagIds(ContentItem contentItem, Set<Integer> tagIds) {
-        if (tagIds.stream().anyMatch(Objects::isNull)) {
-            throw new ApiException(
-                    CommonErrorCode.VALIDATION_FIELD_INVALID, "tagIds must not contain null");
-        }
+        Validator.isFalse(tagIds.stream().anyMatch(Objects::isNull),
+                CommonErrorCode.VALIDATION_FIELD_INVALID, "tagIds must not contain null");
         LinkedHashSet<Integer> unique = new LinkedHashSet<>(tagIds);
         if (unique.isEmpty()) {
             contentItem.getContentItemTags().clear();
@@ -181,19 +173,15 @@ public class QuestionAnswerServiceImpl implements QuestionAnswerService {
         }
 
         List<Tag> existing = tagRepository.findAllById(unique);
-        if (existing.size() != unique.size()) {
-            throw new ApiException(
-                    ContentErrorCode.TAG_NOT_FOUND, "One or more tags were not found");
-        }
+        Validator.isTrue(existing.size() == unique.size(),
+                ContentErrorCode.TAG_NOT_FOUND, "One or more tags were not found");
         List<Integer> inactive = existing.stream()
                 .filter(t -> t.getStatus() != TagStatus.ACTIVE)
                 .map(Tag::getId)
                 .toList();
-        if (!inactive.isEmpty()) {
-            throw new ApiException(
-                    CommonErrorCode.VALIDATION_FIELD_INVALID,
-                    "Tags with ids " + inactive + " are inactive and cannot be assigned");
-        }
+        Validator.isTrue(inactive.isEmpty(),
+                CommonErrorCode.VALIDATION_FIELD_INVALID,
+                "Tags with ids " + inactive + " are inactive and cannot be assigned");
 
         contentItem.getContentItemTags().clear();
         for (Integer tagId : unique) {

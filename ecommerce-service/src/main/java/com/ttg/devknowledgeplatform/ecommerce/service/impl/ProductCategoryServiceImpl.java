@@ -1,7 +1,6 @@
 package com.ttg.devknowledgeplatform.ecommerce.service.impl;
 
-import com.ttg.devknowledgeplatform.common.exception.ApiException;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategory;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductCategoryRepository;
@@ -31,9 +30,8 @@ public class ProductCategoryServiceImpl implements ProductCategoryService {
     @Override
     public ProductCategory create(String name) {
         String normalizedName = normalizeName(name);
-        if (productCategoryRepository.existsByNameIgnoreCase(normalizedName)) {
-            throw new ApiException(EcommerceErrorCode.PRODUCT_CATEGORY_NAME_CONFLICT, normalizedName);
-        }
+        Validator.isFalse(productCategoryRepository.existsByNameIgnoreCase(normalizedName),
+                EcommerceErrorCode.PRODUCT_CATEGORY_NAME_CONFLICT, normalizedName);
         String slug = slugService.generateUniqueSlug(
                 normalizedName, productCategoryRepository::existsBySlug, EcommerceErrorCode.PRODUCT_CATEGORY_SLUG_CONFLICT);
 
@@ -52,9 +50,8 @@ public class ProductCategoryServiceImpl implements ProductCategoryService {
         String normalizedName = normalizeName(name);
 
         if (!category.getName().equalsIgnoreCase(normalizedName)) {
-            if (productCategoryRepository.existsByNameIgnoreCaseAndIdNot(normalizedName, id)) {
-                throw new ApiException(EcommerceErrorCode.PRODUCT_CATEGORY_NAME_CONFLICT, normalizedName);
-            }
+            Validator.isFalse(productCategoryRepository.existsByNameIgnoreCaseAndIdNot(normalizedName, id),
+                    EcommerceErrorCode.PRODUCT_CATEGORY_NAME_CONFLICT, normalizedName);
             category.setName(normalizedName);
             category.setSlug(slugService.generateUniqueSlug(
                     normalizedName, productCategoryRepository::existsBySlugAndIdNot, id,
@@ -78,9 +75,7 @@ public class ProductCategoryServiceImpl implements ProductCategoryService {
     }
 
     private ProductCategory findById(Integer id) {
-        return productCategoryRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        EcommerceErrorCode.PRODUCT_CATEGORY_NOT_FOUND, id));
+        return Validator.notFound(productCategoryRepository.findById(id), EcommerceErrorCode.PRODUCT_CATEGORY_NOT_FOUND, id);
     }
 
     private static String normalizeName(String name) {

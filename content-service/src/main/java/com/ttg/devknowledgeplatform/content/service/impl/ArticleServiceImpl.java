@@ -1,8 +1,7 @@
 package com.ttg.devknowledgeplatform.content.service.impl;
 
-import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.content.entity.Article;
 import com.ttg.devknowledgeplatform.content.entity.Category;
 import com.ttg.devknowledgeplatform.content.entity.ContentItem;
@@ -127,9 +126,7 @@ public class ArticleServiceImpl implements ArticleService {
 
     @Override
     public Article getBySlug(String slug) {
-        return articleRepository.findByContentItem_Slug(slug)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.ARTICLE_NOT_FOUND, slug));
+        return Validator.notFound(articleRepository.findByContentItem_Slug(slug), ContentErrorCode.ARTICLE_NOT_FOUND, slug);
     }
 
     @Override
@@ -148,28 +145,22 @@ public class ArticleServiceImpl implements ArticleService {
     }
 
     private Article findById(Integer id) {
-        return articleRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.ARTICLE_NOT_FOUND, id));
+        return Validator.notFound(articleRepository.findById(id), ContentErrorCode.ARTICLE_NOT_FOUND, id);
     }
 
     private Category resolveCategory(Integer categoryId) {
         if (categoryId == null) return null;
-        return categoryRepository.findById(categoryId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.CATEGORY_NOT_FOUND, categoryId));
+        return Validator.notFound(categoryRepository.findById(categoryId), ContentErrorCode.CATEGORY_NOT_FOUND, categoryId);
     }
 
     private static void validateArticleType(ContentType type) {
-        if (type != ContentType.ARTICLE && type != ContentType.BLOG_POST) {
-            throw new ApiException(ContentErrorCode.ARTICLE_TYPE_INVALID, type);
-        }
+        Validator.isFalse(type != ContentType.ARTICLE && type != ContentType.BLOG_POST,
+                ContentErrorCode.ARTICLE_TYPE_INVALID, type);
     }
 
     private void applyTagIds(ContentItem contentItem, Set<Integer> tagIds) {
-        if (tagIds.stream().anyMatch(Objects::isNull)) {
-            throw new ApiException(CommonErrorCode.VALIDATION_FIELD_INVALID, "tagIds must not contain null");
-        }
+        Validator.isFalse(tagIds.stream().anyMatch(Objects::isNull),
+                CommonErrorCode.VALIDATION_FIELD_INVALID, "tagIds must not contain null");
         LinkedHashSet<Integer> unique = new LinkedHashSet<>(tagIds);
         if (unique.isEmpty()) {
             contentItem.getContentItemTags().clear();
@@ -177,17 +168,14 @@ public class ArticleServiceImpl implements ArticleService {
         }
 
         List<Tag> existing = tagRepository.findAllById(unique);
-        if (existing.size() != unique.size()) {
-            throw new ApiException(ContentErrorCode.TAG_NOT_FOUND, "One or more tags were not found");
-        }
+        Validator.isTrue(existing.size() == unique.size(),
+                ContentErrorCode.TAG_NOT_FOUND, "One or more tags were not found");
         List<Integer> inactive = existing.stream()
                 .filter(t -> t.getStatus() != TagStatus.ACTIVE)
                 .map(Tag::getId)
                 .toList();
-        if (!inactive.isEmpty()) {
-            throw new ApiException(CommonErrorCode.VALIDATION_FIELD_INVALID,
-                    "Tags with ids " + inactive + " are inactive and cannot be assigned");
-        }
+        Validator.isTrue(inactive.isEmpty(), CommonErrorCode.VALIDATION_FIELD_INVALID,
+                "Tags with ids " + inactive + " are inactive and cannot be assigned");
 
         contentItem.getContentItemTags().clear();
         for (Integer tagId : unique) {

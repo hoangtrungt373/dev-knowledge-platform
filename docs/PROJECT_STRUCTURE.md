@@ -89,7 +89,10 @@ common/src/main/java/com/ttg/devknowledgeplatform/common/
     │                                    GlobalExceptionHandler#handleRateLimit needs a compile-time
     │                                    @ExceptionHandler(RateLimitExceededException.class) reference, and
     │                                    GlobalExceptionHandler itself must stay in common
-    └── ResourceNotFoundException.java
+    ├── ResourceNotFoundException.java
+    └── Validator.java                — static guard-clause utility (isTrue/isFalse/notNull/isNull/notFound);
+                                           collapses the repeated if(!condition){throw ...} shape reactor-wide;
+                                           see docs/CHANGELOG.md's [Unreleased] entry
 ```
 
 Category/Tag/ContentItem/ContentItemTag/QuestionAnswer/Article entities and their enums

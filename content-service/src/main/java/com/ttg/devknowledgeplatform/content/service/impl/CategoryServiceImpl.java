@@ -1,7 +1,6 @@
 package com.ttg.devknowledgeplatform.content.service.impl;
 
-import com.ttg.devknowledgeplatform.common.exception.ApiException;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.content.entity.Category;
 import com.ttg.devknowledgeplatform.content.exception.ContentErrorCode;
 import com.ttg.devknowledgeplatform.content.repository.CategoryRepository;
@@ -37,9 +36,7 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     public Category create(String name, Integer parentId) {
         String normalizedName = normalizeName(name);
-        if (categoryRepository.existsByNameIgnoreCase(normalizedName)) {
-            throw new ApiException(ContentErrorCode.CATEGORY_NAME_CONFLICT, normalizedName);
-        }
+        Validator.isFalse(categoryRepository.existsByNameIgnoreCase(normalizedName), ContentErrorCode.CATEGORY_NAME_CONFLICT, normalizedName);
         Category parent = resolveParent(parentId);
         String slug = slugService.generateUniqueSlug(normalizedName, categoryRepository::existsBySlug, ContentErrorCode.CATEGORY_SLUG_CONFLICT);
 
@@ -60,9 +57,7 @@ public class CategoryServiceImpl implements CategoryService {
         String normalizedName = normalizeName(name);
 
         if (!category.getName().equalsIgnoreCase(normalizedName)) {
-            if (categoryRepository.existsByNameIgnoreCaseAndIdNot(normalizedName, id)) {
-                throw new ApiException(ContentErrorCode.CATEGORY_NAME_CONFLICT, normalizedName);
-            }
+            Validator.isFalse(categoryRepository.existsByNameIgnoreCaseAndIdNot(normalizedName, id), ContentErrorCode.CATEGORY_NAME_CONFLICT, normalizedName);
             category.setName(normalizedName);
             category.setSlug(slugService.generateUniqueSlug(normalizedName, categoryRepository::existsBySlugAndIdNot, id, ContentErrorCode.CATEGORY_SLUG_CONFLICT));
         }
@@ -118,37 +113,27 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     public void delete(Integer id) {
         Category category = findById(id);
-        if (categoryRepository.existsByParentId(id)) {
-            throw new ApiException(ContentErrorCode.CATEGORY_HAS_CHILDREN, id);
-        }
-        if (contentItemRepository.existsByCategoryId(id)) {
-            throw new ApiException(ContentErrorCode.CATEGORY_IN_USE, id);
-        }
+        Validator.isFalse(categoryRepository.existsByParentId(id), ContentErrorCode.CATEGORY_HAS_CHILDREN, id);
+        Validator.isFalse(contentItemRepository.existsByCategoryId(id), ContentErrorCode.CATEGORY_IN_USE, id);
         categoryRepository.delete(category);
         log.info("Deleted category id={}", id);
     }
 
     private static void validateListFilters(Integer parentId, Boolean rootOnly) {
-        if (Boolean.TRUE.equals(rootOnly) && parentId != null) {
-            throw new ApiException(
-                    ContentErrorCode.CATEGORY_LIST_FILTER_CONFLICT,
-                    "Use only one of rootOnly=true or parentId=...");
-        }
+        Validator.isFalse(Boolean.TRUE.equals(rootOnly) && parentId != null,
+                ContentErrorCode.CATEGORY_LIST_FILTER_CONFLICT,
+                "Use only one of rootOnly=true or parentId=...");
     }
 
     private Category findById(Integer id) {
-        return categoryRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.CATEGORY_NOT_FOUND, id));
+        return Validator.notFound(categoryRepository.findById(id), ContentErrorCode.CATEGORY_NOT_FOUND, id);
     }
 
     private Category resolveParent(Integer parentId) {
         if (parentId == null) {
             return null;
         }
-        return categoryRepository.findById(parentId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.CATEGORY_NOT_FOUND, parentId));
+        return Validator.notFound(categoryRepository.findById(parentId), ContentErrorCode.CATEGORY_NOT_FOUND, parentId);
     }
 
     /**
@@ -158,18 +143,12 @@ public class CategoryServiceImpl implements CategoryService {
         if (newParent == null) {
             return;
         }
-        if (newParent.getId().equals(category.getId())) {
-            throw new ApiException(
-                    ContentErrorCode.CATEGORY_CYCLIC_PARENT,
-                    "A category cannot be its own parent");
-        }
+        Validator.isFalse(newParent.getId().equals(category.getId()),
+                ContentErrorCode.CATEGORY_CYCLIC_PARENT, "A category cannot be its own parent");
         Category walk = newParent;
         while (walk != null) {
-            if (walk.getId().equals(category.getId())) {
-                throw new ApiException(
-                        ContentErrorCode.CATEGORY_CYCLIC_PARENT,
-                        "Cannot set parent to a descendant category");
-            }
+            Validator.isFalse(walk.getId().equals(category.getId()),
+                    ContentErrorCode.CATEGORY_CYCLIC_PARENT, "Cannot set parent to a descendant category");
             walk = walk.getParent();
         }
     }

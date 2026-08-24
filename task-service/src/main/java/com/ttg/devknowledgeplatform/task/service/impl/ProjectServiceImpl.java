@@ -5,7 +5,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.task.entity.Project;
 import com.ttg.devknowledgeplatform.task.enums.ProjectStatus;
 import com.ttg.devknowledgeplatform.task.exception.TaskErrorCode;
@@ -65,11 +65,8 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     private Project resolveOwnedProject(String ownerUuid, Integer projectId) {
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new ResourceNotFoundException(TaskErrorCode.PROJECT_NOT_FOUND));
-        if (!project.getOwnerUuid().equals(ownerUuid)) {
-            throw new ResourceNotFoundException(TaskErrorCode.PROJECT_NOT_FOUND);
-        }
+        Project project = Validator.notFound(projectRepository.findById(projectId), TaskErrorCode.PROJECT_NOT_FOUND);
+        Validator.isTrue(project.getOwnerUuid().equals(ownerUuid), TaskErrorCode.PROJECT_NOT_FOUND);
         return project;
     }
 }

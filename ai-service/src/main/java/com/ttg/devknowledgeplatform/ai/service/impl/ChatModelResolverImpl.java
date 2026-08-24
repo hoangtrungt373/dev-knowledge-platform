@@ -3,7 +3,7 @@ package com.ttg.devknowledgeplatform.ai.service.impl;
 import com.ttg.devknowledgeplatform.ai.config.ChatModelsConfig;
 import com.ttg.devknowledgeplatform.ai.exception.AiErrorCode;
 import com.ttg.devknowledgeplatform.ai.service.ChatModelResolver;
-import com.ttg.devknowledgeplatform.common.exception.BusinessException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import lombok.RequiredArgsConstructor;
@@ -29,21 +29,13 @@ public class ChatModelResolverImpl implements ChatModelResolver {
     @Override
     public ChatLanguageModel resolveBlocking(String modelId) {
         String resolvedId = resolveModelId(modelId);
-        ChatLanguageModel model = chatLanguageModels.get(resolvedId);
-        if (model == null) {
-            throw new BusinessException(AiErrorCode.AI_MODEL_UNSUPPORTED, modelId);
-        }
-        return model;
+        return Validator.notNull(chatLanguageModels.get(resolvedId), AiErrorCode.AI_MODEL_UNSUPPORTED, modelId);
     }
 
     @Override
     public StreamingChatLanguageModel resolveStreaming(String modelId) {
         String resolvedId = resolveModelId(modelId);
-        StreamingChatLanguageModel model = streamingChatLanguageModels.get(resolvedId);
-        if (model == null) {
-            throw new BusinessException(AiErrorCode.AI_MODEL_UNSUPPORTED, modelId);
-        }
-        return model;
+        return Validator.notNull(streamingChatLanguageModels.get(resolvedId), AiErrorCode.AI_MODEL_UNSUPPORTED, modelId);
     }
 
     @Override

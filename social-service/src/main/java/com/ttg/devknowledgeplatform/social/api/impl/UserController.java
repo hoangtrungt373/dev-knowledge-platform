@@ -5,7 +5,7 @@ import java.util.Set;
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.social.api.UserApi;
 import com.ttg.devknowledgeplatform.social.dto.friend.UserInfoResponse;
 import com.ttg.devknowledgeplatform.social.dto.friend.UserSearchResultResponse;
@@ -47,9 +47,8 @@ public class UserController implements UserApi {
 
     @Override
     public ResponseEntity<UserInfoResponse> getPublicProfile(CustomOAuth2User principal, String userUuid) {
-        SocialProfile user = socialProfileRepository.findByProfileUuid(userUuid)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        CommonErrorCode.USER_NOT_FOUND, "User not found: " + userUuid));
+        SocialProfile user = Validator.notFound(
+                socialProfileRepository.findByProfileUuid(userUuid), CommonErrorCode.USER_NOT_FOUND, "User not found: " + userUuid);
         UserInfoResponse response = friendMapper.toUserInfo(user);
 
         if (principal != null) {
@@ -86,8 +85,7 @@ public class UserController implements UserApi {
     }
 
     private Integer resolveCurrentUserId(CustomOAuth2User principal) {
-        return socialProfileRepository.findByEmail(principal.getEmail())
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND))
+        return Validator.notFound(socialProfileRepository.findByEmail(principal.getEmail()), CommonErrorCode.USER_NOT_FOUND)
                 .getId();
     }
 }

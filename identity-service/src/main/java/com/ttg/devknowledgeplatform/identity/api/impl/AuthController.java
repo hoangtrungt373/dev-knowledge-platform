@@ -1,10 +1,11 @@
 package com.ttg.devknowledgeplatform.identity.api.impl;
 
+import java.util.Optional;
+
 import com.ttg.devknowledgeplatform.identity.api.AuthApi;
 import com.ttg.devknowledgeplatform.identity.entity.User;
-import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.identity.dto.UserInfoResponse;
 import com.ttg.devknowledgeplatform.identity.dto.auth.RegisterRequest;
@@ -33,10 +34,7 @@ public class AuthController implements AuthApi {
 
     @Override
     public ResponseEntity<UserInfoResponse> getCurrentUser(CustomOAuth2User principal) {
-        User user = userService.findByEmail(principal.getEmail());
-        if (user == null) {
-            throw new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND);
-        }
+        User user = Validator.notFound(Optional.ofNullable(userService.findByEmail(principal.getEmail())), CommonErrorCode.USER_NOT_FOUND);
         return ResponseEntity.ok(userMapper.toUserInfo(user));
     }
 
@@ -49,13 +47,8 @@ public class AuthController implements AuthApi {
 
     @Override
     public ResponseEntity<Void> resendVerificationEmail(CustomOAuth2User principal) {
-        User user = userService.findByEmail(principal.getEmail());
-        if (user == null) {
-            throw new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND);
-        }
-        if (Boolean.TRUE.equals(user.getEmailVerified())) {
-            throw new BusinessException(IdentityErrorCode.EMAIL_ALREADY_VERIFIED);
-        }
+        User user = Validator.notFound(Optional.ofNullable(userService.findByEmail(principal.getEmail())), CommonErrorCode.USER_NOT_FOUND);
+        Validator.isFalse(Boolean.TRUE.equals(user.getEmailVerified()), IdentityErrorCode.EMAIL_ALREADY_VERIFIED);
         keycloakAdminService.resendVerificationEmail(user.getKeycloakSubjectId());
         return ResponseEntity.noContent().build();
     }

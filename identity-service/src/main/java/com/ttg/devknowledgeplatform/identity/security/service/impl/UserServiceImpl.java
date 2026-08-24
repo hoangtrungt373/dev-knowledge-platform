@@ -7,9 +7,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.common.dto.CustomOAuth2User;
 import com.ttg.devknowledgeplatform.identity.entity.User;
 import com.ttg.devknowledgeplatform.identity.enums.UserRole;
@@ -105,8 +104,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public User resolveCurrentUser(CustomOAuth2User principal) {
-        return userRepository.findByEmail(principal.getEmail())
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND));
+        return Validator.notFound(userRepository.findByEmail(principal.getEmail()), CommonErrorCode.USER_NOT_FOUND);
     }
 
     @Override
@@ -132,16 +130,14 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public User updateProfile(String email, String firstName, String lastName, String username) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND));
+        User user = Validator.notFound(userRepository.findByEmail(email), CommonErrorCode.USER_NOT_FOUND);
         user.setFirstName(firstName != null ? firstName.trim() : user.getFirstName());
         user.setLastName(lastName != null ? lastName.trim() : user.getLastName());
         if (username != null) {
             String trimmed = username.trim().toLowerCase();
             if (!trimmed.equals(user.getUsername())) {
-                if (userRepository.existsByUsernameAndIdNot(trimmed, user.getId())) {
-                    throw new ApiException(CommonErrorCode.USER_USERNAME_ALREADY_EXISTS, trimmed);
-                }
+                Validator.isFalse(userRepository.existsByUsernameAndIdNot(trimmed, user.getId()),
+                        CommonErrorCode.USER_USERNAME_ALREADY_EXISTS, trimmed);
                 // Keycloak owns preferred_username and re-syncs it into this row on every request
                 // (see findOrCreateFromKeycloak) — renaming locally first would just get reverted
                 // on the caller's next request, so Keycloak must be updated first. Called only on
@@ -155,8 +151,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public User updateAvatar(String email, String objectKey) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND));
+        User user = Validator.notFound(userRepository.findByEmail(email), CommonErrorCode.USER_NOT_FOUND);
         user.setProfilePicture(objectKey);
         return userRepository.save(user);
     }

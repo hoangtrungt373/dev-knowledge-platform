@@ -9,7 +9,7 @@ import org.springframework.stereotype.Controller;
 
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.social.api.DmMessagingApi;
 import com.ttg.devknowledgeplatform.social.dto.messaging.DmMessageResponse;
 import com.ttg.devknowledgeplatform.social.dto.messaging.SendMessageRequest;
@@ -64,8 +64,8 @@ public class DmMessagingController implements DmMessagingApi {
         DmMessageResponse response = messagingMapper.toDmMessageResponse(message);
 
         messagingTemplate.convertAndSendToUser(principal.getName(), DM_QUEUE, response);
-        String recipientUsername = socialProfileRepository.findByProfileUuid(recipientUuid)
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND))
+        String recipientUsername = Validator.notFound(
+                        socialProfileRepository.findByProfileUuid(recipientUuid), CommonErrorCode.USER_NOT_FOUND)
                 .getUsername();
         messagingTemplate.convertAndSendToUser(recipientUsername, DM_QUEUE, response);
     }

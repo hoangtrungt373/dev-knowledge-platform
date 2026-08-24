@@ -10,10 +10,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.ttg.devknowledgeplatform.common.exception.ApiException;
-import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.social.entity.FriendRequest;
 import com.ttg.devknowledgeplatform.social.entity.Friendship;
 import com.ttg.devknowledgeplatform.social.entity.SocialProfile;
@@ -50,20 +48,16 @@ public class FriendServiceImpl implements FriendService {
         SocialProfile requester = resolveUser(requesterId);
         SocialProfile addressee = resolveVisibleTarget(requester, addresseeUuid);
 
-        if (requester.getId().equals(addressee.getId())) {
-            throw new BusinessException(SocialErrorCode.CANNOT_FRIEND_SELF);
-        }
-        if (userBlockRepository.existsByBlockerAndBlocked(requester, addressee)) {
-            throw new BusinessException(SocialErrorCode.USER_ALREADY_BLOCKED, "You have blocked this user — unblock them first");
-        }
+        Validator.isFalse(requester.getId().equals(addressee.getId()), SocialErrorCode.CANNOT_FRIEND_SELF);
+        Validator.isFalse(userBlockRepository.existsByBlockerAndBlocked(requester, addressee),
+                SocialErrorCode.USER_ALREADY_BLOCKED, "You have blocked this user — unblock them first");
 
         SocialProfile[] pair = canonicalize(requester, addressee);
-        if (friendshipRepository.existsByUser1AndUser2(pair[0], pair[1])) {
-            throw new BusinessException(SocialErrorCode.ALREADY_FRIENDS, "You are already friends with this user");
-        }
-        if (friendRequestRepository.findByRequesterAndAddresseeAndStatus(requester, addressee, FriendRequestStatus.PENDING).isPresent()) {
-            throw new BusinessException(SocialErrorCode.FRIEND_REQUEST_ALREADY_EXISTS, "A pending request to this user already exists");
-        }
+        Validator.isFalse(friendshipRepository.existsByUser1AndUser2(pair[0], pair[1]),
+                SocialErrorCode.ALREADY_FRIENDS, "You are already friends with this user");
+        Validator.isFalse(
+                friendRequestRepository.findByRequesterAndAddresseeAndStatus(requester, addressee, FriendRequestStatus.PENDING).isPresent(),
+                SocialErrorCode.FRIEND_REQUEST_ALREADY_EXISTS, "A pending request to this user already exists");
 
         var reverseRequest = friendRequestRepository.findByRequesterAndAddresseeAndStatus(
                 addressee, requester, FriendRequestStatus.PENDING);
@@ -107,11 +101,8 @@ public class FriendServiceImpl implements FriendService {
 
     @Override
     public FriendRequest cancelRequest(Integer requestId, Integer actingUserId) {
-        FriendRequest request = friendRequestRepository.findById(requestId)
-                .orElseThrow(() -> new ResourceNotFoundException(SocialErrorCode.FRIEND_REQUEST_NOT_FOUND));
-        if (!request.getRequester().getId().equals(actingUserId)) {
-            throw new ResourceNotFoundException(SocialErrorCode.FRIEND_REQUEST_NOT_FOUND);
-        }
+        FriendRequest request = Validator.notFound(friendRequestRepository.findById(requestId), SocialErrorCode.FRIEND_REQUEST_NOT_FOUND);
+        Validator.isTrue(request.getRequester().getId().equals(actingUserId), SocialErrorCode.FRIEND_REQUEST_NOT_FOUND);
         requirePending(request);
         request.setStatus(FriendRequestStatus.CANCELLED);
         log.info("User {} cancelled friend request {}", actingUserId, requestId);
@@ -123,9 +114,8 @@ public class FriendServiceImpl implements FriendService {
         SocialProfile user = resolveUser(userId);
         SocialProfile other = resolveVisibleTarget(user, otherUserUuid);
         SocialProfile[] pair = canonicalize(user, other);
-        if (!friendshipRepository.existsByUser1AndUser2(pair[0], pair[1])) {
-            throw new BusinessException(SocialErrorCode.NOT_FRIENDS, "You are not friends with this user");
-        }
+        Validator.isTrue(friendshipRepository.existsByUser1AndUser2(pair[0], pair[1]),
+                SocialErrorCode.NOT_FRIENDS, "You are not friends with this user");
         friendshipRepository.deleteByUser1AndUser2(pair[0], pair[1]);
         log.info("User {} unfriended user {}", userId, other.getId());
     }
@@ -134,12 +124,8 @@ public class FriendServiceImpl implements FriendService {
     public UserBlock block(Integer blockerId, String blockedUuid) {
         SocialProfile blocker = resolveUser(blockerId);
         SocialProfile blocked = resolveUserByUuid(blockedUuid);
-        if (blocker.getId().equals(blocked.getId())) {
-            throw new BusinessException(SocialErrorCode.CANNOT_BLOCK_SELF);
-        }
-        if (userBlockRepository.existsByBlockerAndBlocked(blocker, blocked)) {
-            throw new BusinessException(SocialErrorCode.USER_ALREADY_BLOCKED);
-        }
+        Validator.isFalse(blocker.getId().equals(blocked.getId()), SocialErrorCode.CANNOT_BLOCK_SELF);
+        Validator.isFalse(userBlockRepository.existsByBlockerAndBlocked(blocker, blocked), SocialErrorCode.USER_ALREADY_BLOCKED);
 
         SocialProfile[] pair = canonicalize(blocker, blocked);
         friendshipRepository.deleteByUser1AndUser2(pair[0], pair[1]);
@@ -229,11 +215,8 @@ public class FriendServiceImpl implements FriendService {
     }
 
     private FriendRequest findPendingRequestAsAddressee(Integer requestId, Integer actingUserId) {
-        FriendRequest request = friendRequestRepository.findById(requestId)
-                .orElseThrow(() -> new ResourceNotFoundException(SocialErrorCode.FRIEND_REQUEST_NOT_FOUND));
-        if (!request.getAddressee().getId().equals(actingUserId)) {
-            throw new ResourceNotFoundException(SocialErrorCode.FRIEND_REQUEST_NOT_FOUND);
-        }
+        FriendRequest request = Validator.notFound(friendRequestRepository.findById(requestId), SocialErrorCode.FRIEND_REQUEST_NOT_FOUND);
+        Validator.isTrue(request.getAddressee().getId().equals(actingUserId), SocialErrorCode.FRIEND_REQUEST_NOT_FOUND);
         requirePending(request);
         return request;
     }
@@ -248,9 +231,7 @@ public class FriendServiceImpl implements FriendService {
             case PENDING -> true;
             case ACCEPTED, REJECTED, CANCELLED -> false;
         };
-        if (!actionable) {
-            throw new ApiException(SocialErrorCode.FRIEND_REQUEST_NOT_FOUND, "Friend request is no longer pending");
-        }
+        Validator.isTrue(actionable, SocialErrorCode.FRIEND_REQUEST_NOT_FOUND, "Friend request is no longer pending");
     }
 
     private SocialProfile[] canonicalize(SocialProfile a, SocialProfile b) {
@@ -258,13 +239,12 @@ public class FriendServiceImpl implements FriendService {
     }
 
     private SocialProfile resolveUser(Integer userId) {
-        return socialProfileRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND));
+        return Validator.notFound(socialProfileRepository.findById(userId), CommonErrorCode.USER_NOT_FOUND);
     }
 
     private SocialProfile resolveUserByUuid(String userUuid) {
-        return socialProfileRepository.findByProfileUuid(userUuid)
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found: " + userUuid));
+        return Validator.notFound(
+                socialProfileRepository.findByProfileUuid(userUuid), CommonErrorCode.USER_NOT_FOUND, "User not found: " + userUuid);
     }
 
     /**
@@ -274,9 +254,8 @@ public class FriendServiceImpl implements FriendService {
      */
     private SocialProfile resolveVisibleTarget(SocialProfile viewer, String targetUuid) {
         SocialProfile target = resolveUserByUuid(targetUuid);
-        if (userBlockRepository.existsByBlockerAndBlocked(target, viewer)) {
-            throw new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found: " + targetUuid);
-        }
+        Validator.isFalse(userBlockRepository.existsByBlockerAndBlocked(target, viewer),
+                CommonErrorCode.USER_NOT_FOUND, "User not found: " + targetUuid);
         return target;
     }
 }

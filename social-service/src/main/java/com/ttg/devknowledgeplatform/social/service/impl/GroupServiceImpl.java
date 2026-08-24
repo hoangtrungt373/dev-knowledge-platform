@@ -7,9 +7,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.social.entity.Channel;
 import com.ttg.devknowledgeplatform.social.entity.ChannelMessage;
 import com.ttg.devknowledgeplatform.social.entity.Group;
@@ -72,15 +71,12 @@ public class GroupServiceImpl implements GroupService {
         requireManagementRole(actingRole);
 
         SocialProfile target = resolveUserByUuid(targetUserUuid);
-        GroupMember targetMembership = groupMemberRepository.findByGroupAndUser(group, target)
-                .orElseThrow(() -> new ResourceNotFoundException(SocialErrorCode.GROUP_MEMBER_NOT_FOUND));
+        GroupMember targetMembership = Validator.notFound(
+                groupMemberRepository.findByGroupAndUser(group, target), SocialErrorCode.GROUP_MEMBER_NOT_FOUND);
 
-        if (targetMembership.getRole() == GroupMemberRole.OWNER) {
-            throw new BusinessException(SocialErrorCode.CANNOT_REMOVE_OWNER);
-        }
-        if (targetMembership.getRole() == GroupMemberRole.ADMIN && actingRole != GroupMemberRole.OWNER) {
-            throw new BusinessException(SocialErrorCode.INSUFFICIENT_GROUP_ROLE, "Only the owner can remove an admin");
-        }
+        Validator.isFalse(targetMembership.getRole() == GroupMemberRole.OWNER, SocialErrorCode.CANNOT_REMOVE_OWNER);
+        Validator.isFalse(targetMembership.getRole() == GroupMemberRole.ADMIN && actingRole != GroupMemberRole.OWNER,
+                SocialErrorCode.INSUFFICIENT_GROUP_ROLE, "Only the owner can remove an admin");
 
         groupMemberRepository.delete(targetMembership);
         log.info("User {} removed user {} from group {}", actingUserId, target.getId(), groupId);
@@ -90,9 +86,7 @@ public class GroupServiceImpl implements GroupService {
     public void leaveGroup(Integer userId, Integer groupId) {
         Group group = resolveGroup(groupId);
         GroupMember membership = resolveMembership(group, resolveUser(userId));
-        if (membership.getRole() == GroupMemberRole.OWNER) {
-            throw new BusinessException(SocialErrorCode.OWNER_CANNOT_LEAVE_GROUP);
-        }
+        Validator.isFalse(membership.getRole() == GroupMemberRole.OWNER, SocialErrorCode.OWNER_CANNOT_LEAVE_GROUP);
         groupMemberRepository.delete(membership);
         log.info("User {} left group {}", userId, groupId);
     }
@@ -101,19 +95,14 @@ public class GroupServiceImpl implements GroupService {
     public GroupMember changeRole(Integer actingUserId, Integer groupId, String targetUserUuid, GroupMemberRole newRole) {
         Group group = resolveGroup(groupId);
         GroupMemberRole actingRole = resolveMembership(group, resolveUser(actingUserId)).getRole();
-        if (actingRole != GroupMemberRole.OWNER) {
-            throw new BusinessException(SocialErrorCode.INSUFFICIENT_GROUP_ROLE, "Only the owner can change member roles");
-        }
-        if (newRole == GroupMemberRole.OWNER) {
-            throw new BusinessException(SocialErrorCode.CANNOT_CHANGE_OWNER_ROLE);
-        }
+        Validator.isTrue(actingRole == GroupMemberRole.OWNER,
+                SocialErrorCode.INSUFFICIENT_GROUP_ROLE, "Only the owner can change member roles");
+        Validator.isFalse(newRole == GroupMemberRole.OWNER, SocialErrorCode.CANNOT_CHANGE_OWNER_ROLE);
 
         SocialProfile target = resolveUserByUuid(targetUserUuid);
-        GroupMember targetMembership = groupMemberRepository.findByGroupAndUser(group, target)
-                .orElseThrow(() -> new ResourceNotFoundException(SocialErrorCode.GROUP_MEMBER_NOT_FOUND));
-        if (targetMembership.getRole() == GroupMemberRole.OWNER) {
-            throw new BusinessException(SocialErrorCode.CANNOT_CHANGE_OWNER_ROLE);
-        }
+        GroupMember targetMembership = Validator.notFound(
+                groupMemberRepository.findByGroupAndUser(group, target), SocialErrorCode.GROUP_MEMBER_NOT_FOUND);
+        Validator.isFalse(targetMembership.getRole() == GroupMemberRole.OWNER, SocialErrorCode.CANNOT_CHANGE_OWNER_ROLE);
 
         targetMembership.setRole(newRole);
         GroupMember saved = groupMemberRepository.save(targetMembership);
@@ -126,9 +115,7 @@ public class GroupServiceImpl implements GroupService {
         Group group = resolveGroup(groupId);
         requireManagementRole(resolveMembership(group, resolveUser(actingUserId)).getRole());
 
-        if (channelRepository.existsByGroupAndName(group, name)) {
-            throw new BusinessException(SocialErrorCode.CHANNEL_NAME_ALREADY_EXISTS);
-        }
+        Validator.isFalse(channelRepository.existsByGroupAndName(group, name), SocialErrorCode.CHANNEL_NAME_ALREADY_EXISTS);
         Channel saved = channelRepository.save(Channel.builder().group(group).name(name).build());
         log.info("User {} created channel {} ({}) in group {}", actingUserId, saved.getId(), name, groupId);
         return saved;
@@ -136,9 +123,8 @@ public class GroupServiceImpl implements GroupService {
 
     @Override
     public ChannelMessage postMessage(Integer senderId, Integer channelId, String content, MessageAttachmentInput attachment) {
-        if ((content == null || content.isBlank()) && attachment == null) {
-            throw new BusinessException(CommonErrorCode.VALIDATION_FIELD_INVALID, "Message must have text or an attachment");
-        }
+        Validator.isFalse((content == null || content.isBlank()) && attachment == null,
+                CommonErrorCode.VALIDATION_FIELD_INVALID, "Message must have text or an attachment");
 
         Channel channel = resolveChannel(channelId);
         SocialProfile sender = resolveUser(senderId);
@@ -196,14 +182,11 @@ public class GroupServiceImpl implements GroupService {
             case OWNER, ADMIN -> true;
             case MEMBER -> false;
         };
-        if (!canManage) {
-            throw new BusinessException(SocialErrorCode.INSUFFICIENT_GROUP_ROLE);
-        }
+        Validator.isTrue(canManage, SocialErrorCode.INSUFFICIENT_GROUP_ROLE);
     }
 
     private GroupMember resolveMembership(Group group, SocialProfile user) {
-        return groupMemberRepository.findByGroupAndUser(group, user)
-                .orElseThrow(() -> new BusinessException(SocialErrorCode.NOT_GROUP_MEMBER));
+        return Validator.notFound(groupMemberRepository.findByGroupAndUser(group, user), SocialErrorCode.NOT_GROUP_MEMBER);
     }
 
     private static MessageType resolveMessageType(MessageAttachmentInput attachment) {
@@ -216,22 +199,19 @@ public class GroupServiceImpl implements GroupService {
     }
 
     private Group resolveGroup(Integer groupId) {
-        return groupRepository.findById(groupId)
-                .orElseThrow(() -> new ResourceNotFoundException(SocialErrorCode.GROUP_NOT_FOUND));
+        return Validator.notFound(groupRepository.findById(groupId), SocialErrorCode.GROUP_NOT_FOUND);
     }
 
     private Channel resolveChannel(Integer channelId) {
-        return channelRepository.findById(channelId)
-                .orElseThrow(() -> new ResourceNotFoundException(SocialErrorCode.CHANNEL_NOT_FOUND));
+        return Validator.notFound(channelRepository.findById(channelId), SocialErrorCode.CHANNEL_NOT_FOUND);
     }
 
     private SocialProfile resolveUser(Integer userId) {
-        return socialProfileRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND));
+        return Validator.notFound(socialProfileRepository.findById(userId), CommonErrorCode.USER_NOT_FOUND);
     }
 
     private SocialProfile resolveUserByUuid(String userUuid) {
-        return socialProfileRepository.findByProfileUuid(userUuid)
-                .orElseThrow(() -> new ResourceNotFoundException(CommonErrorCode.USER_NOT_FOUND, "User not found: " + userUuid));
+        return Validator.notFound(
+                socialProfileRepository.findByProfileUuid(userUuid), CommonErrorCode.USER_NOT_FOUND, "User not found: " + userUuid);
     }
 }

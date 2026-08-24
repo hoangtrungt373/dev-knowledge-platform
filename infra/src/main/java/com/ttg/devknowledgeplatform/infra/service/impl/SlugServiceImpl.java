@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.ttg.devknowledgeplatform.common.exception.ApiException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.common.exception.ErrorCode;
 import com.ttg.devknowledgeplatform.infra.service.SlugService;
 
@@ -37,9 +37,7 @@ public class SlugServiceImpl implements SlugService {
         String slug = baseSlug;
         int counter = 1;
         while (exists.test(slug)) {
-            if (counter > MAX_SLUG_ATTEMPTS) {
-                throw new ApiException(conflictCode, input);
-            }
+            Validator.isFalse(counter > MAX_SLUG_ATTEMPTS, conflictCode, input);
             slug = baseSlug + "-" + counter++;
         }
         return slug;
@@ -52,9 +50,7 @@ public class SlugServiceImpl implements SlugService {
         String slug = baseSlug;
         int counter = 1;
         while (existsExcluding.test(slug, excludeId)) {
-            if (counter > MAX_SLUG_ATTEMPTS) {
-                throw new ApiException(conflictCode, input);
-            }
+            Validator.isFalse(counter > MAX_SLUG_ATTEMPTS, conflictCode, input);
             slug = baseSlug + "-" + counter++;
         }
         return slug;

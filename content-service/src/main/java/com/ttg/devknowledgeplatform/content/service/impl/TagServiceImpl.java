@@ -1,7 +1,6 @@
 package com.ttg.devknowledgeplatform.content.service.impl;
 
-import com.ttg.devknowledgeplatform.common.exception.ApiException;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.content.entity.Tag;
 import com.ttg.devknowledgeplatform.content.enums.TagStatus;
 import com.ttg.devknowledgeplatform.content.exception.ContentErrorCode;
@@ -31,9 +30,7 @@ public class TagServiceImpl implements TagService {
     @Override
     public Tag create(String name, TagStatus status) {
         String normalizedName = normalizeName(name);
-        if (tagRepository.existsByNameIgnoreCase(normalizedName)) {
-            throw new ApiException(ContentErrorCode.TAG_NAME_CONFLICT, normalizedName);
-        }
+        Validator.isFalse(tagRepository.existsByNameIgnoreCase(normalizedName), ContentErrorCode.TAG_NAME_CONFLICT, normalizedName);
         String slug = slugService.generateUniqueSlug(normalizedName, tagRepository::existsBySlug, ContentErrorCode.TAG_SLUG_CONFLICT);
 
         Tag tag = new Tag();
@@ -52,9 +49,7 @@ public class TagServiceImpl implements TagService {
         String normalizedName = normalizeName(name);
 
         if (!tag.getName().equalsIgnoreCase(normalizedName)) {
-            if (tagRepository.existsByNameIgnoreCaseAndIdNot(normalizedName, id)) {
-                throw new ApiException(ContentErrorCode.TAG_NAME_CONFLICT, normalizedName);
-            }
+            Validator.isFalse(tagRepository.existsByNameIgnoreCaseAndIdNot(normalizedName, id), ContentErrorCode.TAG_NAME_CONFLICT, normalizedName);
             tag.setName(normalizedName);
             tag.setSlug(slugService.generateUniqueSlug(normalizedName, tagRepository::existsBySlugAndIdNot, id, ContentErrorCode.TAG_SLUG_CONFLICT));
         }
@@ -82,17 +77,13 @@ public class TagServiceImpl implements TagService {
     @Override
     public void delete(Integer id) {
         Tag tag = findById(id);
-        if (contentItemTagRepository.existsByTagId(id)) {
-            throw new ApiException(ContentErrorCode.TAG_IN_USE, id);
-        }
+        Validator.isFalse(contentItemTagRepository.existsByTagId(id), ContentErrorCode.TAG_IN_USE, id);
         tagRepository.delete(tag);
         log.info("Deleted tag id={}", id);
     }
 
     private Tag findById(Integer id) {
-        return tagRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.TAG_NOT_FOUND, id));
+        return Validator.notFound(tagRepository.findById(id), ContentErrorCode.TAG_NOT_FOUND, id);
     }
 
     private static String normalizeName(String name) {

@@ -3,7 +3,7 @@ package com.ttg.devknowledgeplatform.content.service.impl;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.common.enums.ContentType;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.content.dto.internal.InternalContentItemResponse;
 import com.ttg.devknowledgeplatform.content.entity.Article;
 import com.ttg.devknowledgeplatform.content.entity.ContentItem;
@@ -70,9 +70,7 @@ public class InternalContentServiceImpl implements InternalContentService {
     }
 
     private ContentItem findById(Integer id) {
-        return contentItemRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        ContentErrorCode.CONTENT_ITEM_NOT_FOUND, id));
+        return Validator.notFound(contentItemRepository.findById(id), ContentErrorCode.CONTENT_ITEM_NOT_FOUND, id);
     }
 
     private InternalContentItemResponse toResponse(ContentItem item) {

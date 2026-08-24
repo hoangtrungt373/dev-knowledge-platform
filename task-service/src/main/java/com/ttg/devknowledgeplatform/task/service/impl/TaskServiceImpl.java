@@ -6,9 +6,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.ttg.devknowledgeplatform.common.exception.ApiException;
-import com.ttg.devknowledgeplatform.common.exception.BusinessException;
-import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.task.entity.Project;
 import com.ttg.devknowledgeplatform.task.entity.Task;
 import com.ttg.devknowledgeplatform.task.enums.TaskStatus;
@@ -91,9 +89,7 @@ public class TaskServiceImpl implements TaskService {
     @Override
     public Task changeStatus(String ownerUuid, Integer taskId, TaskStatus newStatus) {
         Task task = resolveOwnedTask(ownerUuid, taskId);
-        if (!task.getStatus().canTransitionTo(newStatus)) {
-            throw new BusinessException(TaskErrorCode.TASK_INVALID_STATUS_TRANSITION);
-        }
+        Validator.isTrue(task.getStatus().canTransitionTo(newStatus), TaskErrorCode.TASK_INVALID_STATUS_TRANSITION);
         task.setStatus(newStatus);
         log.info("User {} moved task {} to {}", ownerUuid, taskId, newStatus);
         return taskRepository.save(task);
@@ -107,11 +103,8 @@ public class TaskServiceImpl implements TaskService {
     }
 
     private Task resolveOwnedTask(String ownerUuid, Integer taskId) {
-        Task task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new ResourceNotFoundException(TaskErrorCode.TASK_NOT_FOUND));
-        if (!task.getOwnerUuid().equals(ownerUuid)) {
-            throw new ResourceNotFoundException(TaskErrorCode.TASK_NOT_FOUND);
-        }
+        Task task = Validator.notFound(taskRepository.findById(taskId), TaskErrorCode.TASK_NOT_FOUND);
+        Validator.isTrue(task.getOwnerUuid().equals(ownerUuid), TaskErrorCode.TASK_NOT_FOUND);
         return task;
     }
 
@@ -124,11 +117,8 @@ public class TaskServiceImpl implements TaskService {
         if (projectId == null) {
             return null;
         }
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new ResourceNotFoundException(TaskErrorCode.PROJECT_NOT_FOUND));
-        if (!project.getOwnerUuid().equals(ownerUuid)) {
-            throw new ResourceNotFoundException(TaskErrorCode.PROJECT_NOT_FOUND);
-        }
+        Project project = Validator.notFound(projectRepository.findById(projectId), TaskErrorCode.PROJECT_NOT_FOUND);
+        Validator.isTrue(project.getOwnerUuid().equals(ownerUuid), TaskErrorCode.PROJECT_NOT_FOUND);
         return project;
     }
 
@@ -136,11 +126,8 @@ public class TaskServiceImpl implements TaskService {
         if (parentTaskId == null) {
             return null;
         }
-        Task parent = taskRepository.findById(parentTaskId)
-                .orElseThrow(() -> new ResourceNotFoundException(TaskErrorCode.TASK_NOT_FOUND));
-        if (!parent.getOwnerUuid().equals(ownerUuid)) {
-            throw new ResourceNotFoundException(TaskErrorCode.TASK_NOT_FOUND);
-        }
+        Task parent = Validator.notFound(taskRepository.findById(parentTaskId), TaskErrorCode.TASK_NOT_FOUND);
+        Validator.isTrue(parent.getOwnerUuid().equals(ownerUuid), TaskErrorCode.TASK_NOT_FOUND);
         return parent;
     }
 
@@ -153,14 +140,10 @@ public class TaskServiceImpl implements TaskService {
         if (newParent == null) {
             return;
         }
-        if (newParent.getId() != null && newParent.getId().equals(task.getId())) {
-            throw new ApiException(TaskErrorCode.TASK_INVALID_PARENT, "A task cannot be its own parent");
-        }
-        if (newParent.getParentTask() != null) {
-            throw new ApiException(TaskErrorCode.TASK_INVALID_PARENT, "Chosen parent is itself a subtask");
-        }
-        if (!task.getSubtasks().isEmpty()) {
-            throw new ApiException(TaskErrorCode.TASK_INVALID_PARENT, "This task already has its own subtasks");
-        }
+        Validator.isFalse(newParent.getId() != null && newParent.getId().equals(task.getId()),
+                TaskErrorCode.TASK_INVALID_PARENT, "A task cannot be its own parent");
+        Validator.isNull(newParent.getParentTask(), TaskErrorCode.TASK_INVALID_PARENT, "Chosen parent is itself a subtask");
+        Validator.isTrue(task.getSubtasks().isEmpty(),
+                TaskErrorCode.TASK_INVALID_PARENT, "This task already has its own subtasks");
     }
 }
