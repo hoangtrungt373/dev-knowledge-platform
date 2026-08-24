@@ -30,25 +30,12 @@ public class CartMapper {
 
         List<CartLineResponse> resolvedLines = new ArrayList<>();
         for (CartLine line : cart.lines()) {
-            CartLineResponse.CartLineResponseBuilder builder = CartLineResponse.builder()
-                    .variantId(line.variantId())
-                    .quantity(line.quantity())
-                    .available(line.available());
+            CartLineResponse response = toLineResponse(line);
             if (line.available()) {
-                ProductVariant variant = line.variant();
-                Product product = variant.getProduct();
-                BigDecimal lineTotal = variant.getPrice().multiply(BigDecimal.valueOf(line.quantity()));
-                builder.sku(variant.getSku())
-                        .productId(product.getId())
-                        .productName(product.getName())
-                        .productSlug(product.getSlug())
-                        .attributes(variant.getAttributes())
-                        .unitPrice(variant.getPrice())
-                        .lineTotal(lineTotal);
-                subtotal = subtotal.add(lineTotal);
+                subtotal = subtotal.add(response.getLineTotal());
                 itemCount += line.quantity();
             }
-            resolvedLines.add(builder.build());
+            resolvedLines.add(response);
         }
 
         return CartResponse.builder()
@@ -56,5 +43,31 @@ public class CartMapper {
                 .subtotal(subtotal)
                 .itemCount(itemCount)
                 .build();
+    }
+
+    /**
+     * Maps one {@link CartLine} in isolation — extracted so {@code CheckoutMapper} can reuse the
+     * exact same "unavailable → every field but variantId/quantity stays null" shape for the lines
+     * it surfaces (checkout preview, and any lines silently dropped at confirm time) instead of
+     * duplicating this branching.
+     */
+    public CartLineResponse toLineResponse(CartLine line) {
+        CartLineResponse.CartLineResponseBuilder builder = CartLineResponse.builder()
+                .variantId(line.variantId())
+                .quantity(line.quantity())
+                .available(line.available());
+        if (line.available()) {
+            ProductVariant variant = line.variant();
+            Product product = variant.getProduct();
+            BigDecimal lineTotal = variant.getPrice().multiply(BigDecimal.valueOf(line.quantity()));
+            builder.sku(variant.getSku())
+                    .productId(product.getId())
+                    .productName(product.getName())
+                    .productSlug(product.getSlug())
+                    .attributes(variant.getAttributes())
+                    .unitPrice(variant.getPrice())
+                    .lineTotal(lineTotal);
+        }
+        return builder.build();
     }
 }

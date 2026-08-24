@@ -21,6 +21,11 @@ app:
       # duration format, same style as OutboxRelay's own app.ecommerce.outbox.relay.poll-interval.
       ttl: ${CART_TTL:P30D}
 
+    checkout:
+      # Flat-rate shipping only for v1 (docs/user-stories/02-cart-checkout.md) — externalized
+      # rather than a hardcoded constant, same convention as app.ecommerce.cart.ttl above.
+      flat-shipping-fee: ${CHECKOUT_FLAT_SHIPPING_FEE:5.00}
+
 spring:
   application:
     name: ecommerce-service

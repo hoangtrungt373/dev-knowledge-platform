@@ -1385,9 +1385,9 @@ of the monolith**. Full scope/rationale for all five epics lives in `docs/user-s
 **Epic 1 (Catalog & Search)** is fully built (all 7 user stories): admin
 CRUD for `ProductCategory`/`Product` including independent variant/image add-remove-reorder, the
 outbox relay, and a public browse/search/detail surface with attribute-value filtering.
-**Epic 2 (Cart & Checkout) is in progress** — the cart half (US-2.1–2.4) is built, showcasing this
-epic's own locked pattern (Redis as a *primary* store, not a cache); checkout (US-2.5–2.7,
-`Address`/`Order` creation) is not yet.
+**Epic 2 (Cart & Checkout) is now fully built** — the cart half (US-2.1–2.4), showcasing this
+epic's own locked pattern (Redis as a *primary* store, not a cache), and checkout (US-2.5–2.7,
+`Address`/`Order`/`OrderLine`/`CheckoutService`) on top of it.
 
 **Extraction (done):** own `EcommerceServiceApplication` entry point, own `ecommerce` Postgres
 schema (same `dev-premier` database as the monolith, not a separate database instance —
@@ -1441,27 +1441,43 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                              Product; SEARCH_VECTOR (tsvector) is DB-generated from SEARCH_TEXT
 │   │                              and deliberately not mapped as a Java field; written only by
 │   │                              ProductChangedOutboxEventHandler (service/impl/, below)
-│   └── OutboxEvent.java        — shared transactional-outbox table every future epic will reuse;
-│                                  status (OutboxEventStatus: PENDING/PROCESSING/PROCESSED/FAILED)
-│                                  is the relay's claim/dispatch signal, attemptCount/lastError
-│                                  make a poison message diagnosable; aggregateType is an enum
-│                                  (OutboxAggregateType, DB CHECK-backed — small, slow-growing set);
-│                                  eventType stays a plain string — one Java field can only be one
-│                                  enum type, and every future epic keeps adding its own event
-│                                  types to this same shared table
+│   ├── OutboxEvent.java        — shared transactional-outbox table every future epic will reuse;
+│   │                              status (OutboxEventStatus: PENDING/PROCESSING/PROCESSED/FAILED)
+│   │                              is the relay's claim/dispatch signal, attemptCount/lastError
+│   │                              make a poison message diagnosable; aggregateType is an enum
+│   │                              (OutboxAggregateType, DB CHECK-backed — small, slow-growing set);
+│   │                              eventType stays a plain string — one Java field can only be one
+│   │                              enum type, and every future epic keeps adding its own event
+│   │                              types to this same shared table
+│   ├── Address.java            — @Embeddable value object (fullName/line1/line2/city/state/
+│   │                              postalCode/country), embedded on Order — no standalone table;
+│   │                              Epic 2 locked "single inline address, no saved address book"
+│   ├── Order.java               — table CUSTOMER_ORDER, not ORDER (a reserved SQL keyword in
+│   │                              PostgreSQL, same reason social-service's Group maps to
+│   │                              MESSAGE_GROUP); ownerUuid is a plain claims-based column, never
+│   │                              a User FK; shippingAddress/subtotal/shippingFee/total are all
+│   │                              snapshotted at creation; lines cascades ALL/orphanRemoval
+│   └── OrderLine.java           — productVariantId is a plain column, deliberately not a
+│                                   ProductVariant FK (ProductServiceImpl.removeVariant can
+│                                   hard-delete a variant outright); sku/productName/unitPrice are
+│                                   copied at purchase time for the same reason; no stored
+│                                   lineTotal — derived at read time by CheckoutMapper
 ├── enums/
 │   ├── OutboxEventStatus.java     — PENDING, PROCESSING, PROCESSED, FAILED
-│   └── OutboxAggregateType.java   — PRODUCT (widen only when a later epic adds an aggregate root)
+│   ├── OutboxAggregateType.java   — PRODUCT (widen only when a later epic adds an aggregate root)
+│   └── OrderStatus.java           — only PENDING today; Epic 2's own scope ends at order creation,
+│                                      Epic 3/4 add further values when they're actually built
 ├── exception/
-│   └── EcommerceErrorCode.java  — PRODUCT_CATEGORY_*/PRODUCT_*/PRODUCT_VARIANT_*/PRODUCT_IMAGE_*
-│                                    codes, implements common's ErrorCode interface
+│   └── EcommerceErrorCode.java  — PRODUCT_CATEGORY_*/PRODUCT_*/PRODUCT_VARIANT_*/PRODUCT_IMAGE_*/
+│                                    CART_*/CHECKOUT_* codes, implements common's ErrorCode interface
 ├── repository/
 │   ├── ProductCategoryRepository.java / ProductRepository.java / ProductVariantRepository.java
 │   │   / ProductImageRepository.java / OutboxEventRepository.java (findIdsByStatus + an atomic
 │   │   claim(id, from, to) conditional UPDATE) / ProductSearchViewRepository.java
 │   │   (findByProductId/deleteByProductId + a native search() query — tsvector+trgm keyword
 │   │   match, category/price-range/inStock filters, all via the "(:param IS NULL OR ...)" idiom
-│   │   for one static query covering every optional-filter combination)
+│   │   for one static query covering every optional-filter combination) / OrderRepository.java
+│   │   (plain JpaRepository — no findByOwnerUuid/"list my orders" query yet, out of Epic 2's scope)
 │   └── spec/
 │       └── ProductCategorySpecification.java / ProductSpecification.java
 ├── outbox/                      — generic outbox mechanism, reusable by every future epic
@@ -1515,10 +1531,16 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │           has no active column of its own
 ├── service/{Cart,CartLine,CartService}.java — Epic 2's cart (US-2.1–2.4): Cart/CartLine are plain
 │   │   domain records, not entities (no table backs a cart — it lives entirely in Redis)
-│   └── impl/CartServiceImpl.java — one Redis hash per cart (cart:{userUuid}, variantId->quantity
-│       via StringRedisTemplate); addItem increments (HINCRBY, not read-then-write); setQuantity's
-│       0 branch removes the line and skips availability validation; 30-day TTL refreshed on every
-│       mutation, never a read (US-2.4's deliberate abandoned-cart cleanup)
+│   ├── impl/CartServiceImpl.java — one Redis hash per cart (cart:{userUuid}, variantId->quantity
+│   │   via StringRedisTemplate); addItem increments (HINCRBY, not read-then-write); setQuantity's
+│   │   0 branch removes the line and skips availability validation; 30-day TTL refreshed on every
+│   │   mutation, never a read (US-2.4's deliberate abandoned-cart cleanup)
+│   └── {CheckoutCommands,CheckoutPreview,CheckoutResult,CheckoutService}.java — Epic 2's checkout
+│       half (US-2.5–2.7), a two-step preview+confirm flow on top of CartService; impl/
+│       CheckoutServiceImpl.java re-validates fresh on confirm (never trusts a client-cached
+│       preview), shares one requireCheckoutableCart guard (empty cart / all-lines-unavailable)
+│       between preview and confirm, and clears the Redis cart only after orderRepository.save
+│       succeeds; flatShippingFee externalized via app.ecommerce.checkout.flat-shipping-fee
 ├── service/seed/                — starter sample catalog (developer-swag theme), gated by
 │   │                                app.seed.enabled
 │   ├── ProductCategorySeeder.java  — extends infra's CsvSeeder<ProductCategory>; idempotency key
@@ -1550,7 +1572,11 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │                                    would have nothing but an unusable private MinIO key to render)
 │                                    / CartMapper (hand-written, not MapStruct — computes
 │                                    subtotal/itemCount across only the available lines, real
-│                                    aggregation logic MapStruct's per-field model doesn't fit)
+│                                    aggregation logic MapStruct's per-field model doesn't fit;
+│                                    toLineResponse(CartLine) extracted as its own public method
+│                                    so CheckoutMapper can reuse it) / CheckoutMapper (also
+│                                    hand-written, injects CartMapper for every cart-line shape it
+│                                    surfaces — a preview's lines, and any lines dropped at confirm)
 ├── api/                         — REST layer
 │   ├── ProductCategoryApi.java / ProductApi.java — admin CRUD (/api/v1/admin/**), incl.
 │   │                                 POST/DELETE .../variants/{id} and
@@ -1570,11 +1596,15 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                 SecurityConfig rule needed (falls under the existing default
 │   │                                 anyRequest().authenticated()); every mutating method returns
 │   │                                 the freshly-resolved CartResponse, not just 200
+│   ├── CheckoutApi.java          — /api/v1/checkout (US-2.5–2.7), authenticated-only, same rule as
+│   │                                 CartApi; GET /preview (review) + POST /confirm (creates the
+│   │                                 order, 201)
 │   └── impl/                    — ProductCategoryController / ProductController (admin-gated
 │                                    automatically via this module's own security/SecurityConfig
 │                                    /api/v1/admin/** rule) / ProductSearchController /
 │                                    PublicProductCategoryController (both public via that same
-│                                    config's /api/v1/public/** rule) / CartController
+│                                    config's /api/v1/public/** rule) / CartController /
+│                                    CheckoutController
 └── dto/                         — ProductCategoryResponse/CreateProductCategoryRequest/
                                      UpdateProductCategoryRequest, ProductResponse/
                                      CreateProductRequest/UpdateProductRequest,
@@ -1582,26 +1612,31 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
                                      ProductImageRequest/ProductImageResponse,
                                      CartResponse/CartLineResponse/AddCartItemRequest/
                                      UpdateCartItemRequest,
+                                     AddressRequest/AddressResponse/OrderLineResponse/
+                                     CheckoutPreviewResponse/CheckoutConfirmResponse,
                                      UpdateProductImageSortOrderRequest,
                                      ProductSearchResponse
 ```
 
-Liquibase migration: `ecommerce-service/.../database/sql/2026/0.0.2/202608040001__0.0.2__DKP-0023__add_ecommerce_catalog_tables.sql`
+Liquibase migrations: `ecommerce-service/.../database/sql/2026/0.0.2/202608040001__0.0.2__DKP-0023__add_ecommerce_catalog_tables.sql`
 under this module's **own** changelog tree now (not `gateway`'s) — `PRODUCT_CATEGORY`, `PRODUCT`,
 `PRODUCT_IMAGE`, `PRODUCT_VARIANT`, `PRODUCT_SEARCH_VIEW`, `OUTBOX_EVENT` (with its
 `STATUS`/`ATTEMPT_COUNT`/`LAST_ERROR` columns), plus `CREATE SCHEMA ecommerce`, the `pg_trgm`
 extension, and GIN indexes for `tsvector`/trigram/JSONB containment search on
-`PRODUCT_SEARCH_VIEW`. Applied via the consolidated `services-liquibase` job in
+`PRODUCT_SEARCH_VIEW`; and `202608240001__0.0.2__DKP-0034__add_ecommerce_order_tables.sql` —
+`CUSTOMER_ORDER` (named to dodge the `ORDER` reserved keyword, with the embedded `Address`
+columns inline) and `ORDER_LINE`. Both applied via the consolidated `services-liquibase` job in
 `docker-compose.apps.yml` — see the Liquibase note above.
 
-Not yet built: `ProductCategory` delete and Epics 2–5. The `gateway`-side HTTP proxy and
-variant/image add/remove/reorder endpoints (an earlier revision of this section listed both as
-not yet built) are both done — see above.
+Not yet built: `ProductCategory` delete and Epics 3–5. The `gateway`-side HTTP proxy,
+variant/image add/remove/reorder endpoints, and Epic 2's checkout half (all listed as not yet
+built in earlier revisions of this section) are all done now — see above.
 
-**Test suite (new):** `src/test/java/.../service/impl/` (`ProductCategoryServiceImplTest`,
-`ProductServiceImplTest`, `ProductSearchServiceImplTest`, `ProductChangedOutboxEventHandlerTest`)
-and `src/test/java/.../outbox/` (`OutboxEventDispatcherTest`, `OutboxEventProcessorTest`) — plain
-JUnit 5/Mockito/AssertJ unit tests, 73 passing, no Docker needed. Plus
+**Test suite:** `src/test/java/.../service/impl/` (`ProductCategoryServiceImplTest`,
+`ProductServiceImplTest`, `ProductSearchServiceImplTest`, `ProductChangedOutboxEventHandlerTest`,
+`CheckoutServiceImplTest`) and `src/test/java/.../outbox/` (`OutboxEventDispatcherTest`,
+`OutboxEventProcessorTest`) — plain JUnit 5/Mockito/AssertJ unit tests, 80 passing, no Docker
+needed. Plus
 `src/test/java/.../repository/ProductSearchViewRepositoryIT` — a real Postgres Testcontainers
 integration test for US-1.3/1.4's native `tsvector`/`pg_trgm`/JSONB-containment search matching,
 which a mock can't verify. See `ecommerce-service/CLAUDE.md`'s test-suite note for the full

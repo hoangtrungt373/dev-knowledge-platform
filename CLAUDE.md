@@ -281,9 +281,11 @@ than one service and only disambiguate one segment deeper:
 Every other path maps to exactly one service by its own resource prefix — `/api/v1/auth/**` →
 `identity-service`, `/api/v1/projects/**`/`/api/v1/tasks/**` → `task-service`,
 `/api/v1/dms/**`/`/friends/**`/`/groups/**`/`/channels/**` → `social-service`,
-`/api/v1/chat/sessions/**` → `ai-service`, `/api/v1/cart/**` → `ecommerce-service` (Epic 2's
-authenticated-only shopper cart — the app's first genuinely new top-level prefix, no shared-prefix
-disambiguation needed since nothing else owns any part of it). See `GatewayRoutesConfig`'s own Javadoc for the
+`/api/v1/chat/sessions/**` → `ai-service`, `/api/v1/cart/**`/`/api/v1/checkout/**` →
+`ecommerce-service` (Epic 2's authenticated-only shopper cart/checkout — `/api/v1/cart/**` was the
+app's first genuinely new top-level prefix, no shared-prefix disambiguation needed since nothing
+else owns any part of it; `/api/v1/checkout/**` followed the same shape once Epic 2's checkout half
+was built). See `GatewayRoutesConfig`'s own Javadoc for the
 complete, current table — this section is a summary, not the source of truth; re-derive it from
 the actual `@RequestMapping`s (via a reactor-wide grep) rather than trusting either copy if a
 service's routes ever change.

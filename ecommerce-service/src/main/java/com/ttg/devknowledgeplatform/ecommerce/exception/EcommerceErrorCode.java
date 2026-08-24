@@ -7,8 +7,9 @@ import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
 /**
- * Error codes owned by {@code ecommerce-service} — product categories, products, and variants
- * today; orders/payments/reviews codes will be added here as later epics are built.
+ * Error codes owned by {@code ecommerce-service} — product categories/products/variants (Epic 1)
+ * and cart/checkout (Epic 2) today; payments/reviews codes will be added here as later epics are
+ * built.
  *
  * <p>Format: MODULE_ACTION_ERROR, mirroring {@code content-service}'s {@code ContentErrorCode}.
  */
@@ -46,7 +47,12 @@ public enum EcommerceErrorCode implements ErrorCode {
 
     // Cart Errors (CART_*) — Epic 2
     CART_VARIANT_UNAVAILABLE("CART_001",
-            "Variant {0} is no longer available (its product has been deactivated)", HttpStatus.CONFLICT);
+            "Variant {0} is no longer available (its product has been deactivated)", HttpStatus.CONFLICT),
+
+    // Checkout Errors (CHECKOUT_*) — Epic 2
+    CHECKOUT_CART_EMPTY("CHECKOUT_001", "Your cart is empty", HttpStatus.BAD_REQUEST),
+    CHECKOUT_NO_VALID_ITEMS("CHECKOUT_002",
+            "None of the items in your cart are currently available", HttpStatus.CONFLICT);
 
     private final String code;
     private final String message;

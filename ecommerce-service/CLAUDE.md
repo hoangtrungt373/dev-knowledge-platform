@@ -14,8 +14,9 @@ part of the domain; it captures the scope decisions and trade-offs behind what's
 (`docs/user-stories/01-catalog-search.md`) have working code: admin CRUD for
 `ProductCategory`/`Product` including independent variant/image mutation, the outbox relay, and a
 public browse/search/detail surface with attribute-value filtering — see below. **Epic 2 (Cart &
-Checkout) is in progress** — the cart half (US-2.1–2.4) is built (see `service/Cart*`/`api/CartApi`
-below); checkout (US-2.5–2.7, `Address`/`Order` creation) is not yet.
+Checkout) is now fully built** — both the cart half (US-2.1–2.4, `service/Cart*`/`api/CartApi`)
+and checkout (US-2.5–2.7, `Address`/`Order`/`OrderLine`/`CheckoutService`/`api/CheckoutApi`) — see
+below.
 
 **This module is now a standalone Spring Boot application, not part of the monolith** — see the
 `project-ecommerce-service-module` memory for the full extraction history. Concretely: its own
@@ -106,7 +107,10 @@ are gone — see `docs/CHANGELOG.md`'s Keycloak migration entries (Phase 3) for 
   short: `aggregateType`'s set barely grows, `eventType`'s grows with every future epic's business
   events, and a single Java field can only ever be backed by one enum type).
 
-Liquibase migration: `ecommerce-service/.../database/sql/2026/0.0.2/202608040001__0.0.2__DKP-0023__add_ecommerce_catalog_tables.sql`
+Liquibase migrations: `ecommerce-service/.../database/sql/2026/0.0.2/202608040001__0.0.2__DKP-0023__add_ecommerce_catalog_tables.sql`
+(Epic 1 — categories/products/variants/images/search view/outbox) and
+`202608240001__0.0.2__DKP-0034__add_ecommerce_order_tables.sql` (Epic 2's checkout half —
+`CUSTOMER_ORDER`/`ORDER_LINE`; see the entity Javadoc above for why the table isn't named `ORDER`),
 under this module's **own** changelog tree (`database/sql/ecommerce-service.xml` +
 `2026/0.0.2/*.sql`) — no longer under `gateway`'s, now that this module migrates its own schema. A
 short-lived `DKP-0027__add_ecommerce_user_table.sql` existed briefly alongside `identity-service`'s
@@ -338,7 +342,10 @@ backs a cart at all.
   line.
 - `mapper/CartMapper` — **hand-written, not MapStruct**, unlike every other mapper in this module:
   it computes `subtotal`/`itemCount` by accumulating across only the `available` lines, which
-  doesn't fit MapStruct's per-field object-mapping model at all.
+  doesn't fit MapStruct's per-field object-mapping model at all. `toLineResponse(CartLine)` is
+  extracted as its own public method (used both by `toResponse`'s own loop and by
+  `CheckoutMapper`, below) so the "unavailable line → every field but `variantId`/`quantity` stays
+  null" branching lives in exactly one place.
 - `dto/{CartResponse,CartLineResponse,AddCartItemRequest,UpdateCartItemRequest}` — an unavailable
   line's response has only `variantId`/`quantity`/`available=false`; every other field is omitted
   (`@JsonInclude(NON_NULL)`), not zeroed out, so a GUI can't mistake "no data" for "priced at $0."
@@ -350,29 +357,97 @@ backs a cart at all.
   `GatewayRoutesConfig` gained a new `/api/v1/cart/**` route — the app's first genuinely new
   top-level prefix (no shared-prefix disambiguation needed, unlike `/api/v1/public`/`/api/v1/admin`).
 
+**Epic 2's checkout half (US-2.5–2.7) is built on top of the cart above.**
+
+- `entity/Address` — a plain JPA `@Embeddable` value object (`fullName`/`line1`/`line2`/`city`/
+  `state`/`postalCode`/`country`), embedded directly on `Order` rather than its own table/entity —
+  this epic locked "single inline address, no saved address book" (US-2.5), so there's no
+  independent lifecycle or reuse to justify a standalone entity; it's captured fresh at checkout
+  and snapshotted onto whichever order used it, the same "frozen at purchase time" treatment
+  applied to price below.
+- `entity/Order` — **table is `CUSTOMER_ORDER`, not `ORDER`** (a reserved SQL keyword in
+  PostgreSQL — same reason `social-service`'s `Group` maps to `MESSAGE_GROUP` instead of `GROUP`).
+  `ownerUuid` is a plain column (the Keycloak JWT's `sub` claim), never a `@ManyToOne User` FK —
+  same claims-based "Option C" shape every other module in this reactor already follows.
+  `shippingAddress`/`subtotal`/`shippingFee`/`total` are all snapshotted at creation, never
+  re-derived later — a flat shipping fee read from config today could change after this order was
+  placed, so the order itself, not `CheckoutServiceImpl`'s config value, is the source of truth for
+  what a given order actually cost. `lines` cascades `ALL`/`orphanRemoval = true` (an order and its
+  lines are created together, in one transaction, and never independently).
+- `enums/OrderStatus` — **only `PENDING` exists today**, deliberately: this epic's own
+  responsibility ends at order creation (US-2.6); Epic 3's reservation step and Epic 4's payment
+  step will each add the status values they need when they're actually built, rather than
+  speculatively added now (mirrors `OutboxAggregateType`'s own "one value per epic" growth pattern).
+- `entity/OrderLine` — **`productVariantId` is a plain column, deliberately not a `@ManyToOne` FK**
+  onto `ProductVariant`: `ProductServiceImpl.removeVariant` can hard-delete a variant outright, and
+  an already-placed order must stay valid/displayable regardless. `sku`/`productName`/`unitPrice`
+  are copied from the variant/product at the moment of purchase for the same reason — this row
+  must keep telling the truth about what was bought even if the catalog changes afterward. No
+  stored `lineTotal` column — `unitPrice × quantity` is derived at read time by `CheckoutMapper`,
+  the same way `CartMapper` already derives a cart line's total, rather than persisting a value
+  that could only ever drift from its own inputs.
+- `repository/OrderRepository` — plain `JpaRepository<Order, Integer>`. **No
+  `findByOwnerUuid`/"list my orders" query yet** — this epic's scope is checkout (order creation)
+  only; a shopper-facing order-history view belongs to a later epic, added here when that's
+  actually built rather than speculatively now.
+- `service/{CheckoutCommands,CheckoutPreview,CheckoutResult,CheckoutService,impl/CheckoutServiceImpl}`
+  — a **two-step preview + confirm flow** on top of `CartService`, not a single call: `preview`
+  revalidates the current cart (reusing `CartService.getCart`'s own existence/`active` check —
+  US-2.7's revalidation is exactly that check, already built for the cart) and returns what
+  confirming right now would produce; `confirm` **re-validates fresh rather than trusting a
+  client-cached preview** (guards the short window between the two calls, e.g. an admin
+  deactivating a variant moments before the shopper clicks "place order") and only then creates the
+  `Order`. Both calls share one `requireCheckoutableCart` guard: an empty cart
+  (`EcommerceErrorCode.CHECKOUT_CART_EMPTY`) or a cart where every line failed revalidation
+  (`CHECKOUT_NO_VALID_ITEMS`) rejects before anything is computed. `confirm` deletes the Redis cart
+  key **only after** `orderRepository.save` succeeds, never before (US-2.6) — verified in
+  `CheckoutServiceImplTest` via `Mockito.inOrder`. `flatShippingFee` is externalized via
+  `app.ecommerce.checkout.flat-shipping-fee` (`CHECKOUT_FLAT_SHIPPING_FEE` env var, default
+  `5.00`), same `@Value`-on-a-field convention `CartServiceImpl`'s own `cartTtl` already
+  established for a tunable business value — flat-rate shipping only, per this epic's locked
+  decisions.
+- `mapper/CheckoutMapper` — **hand-written, not MapStruct**, and injects `CartMapper` to reuse
+  `toLineResponse` for every cart-line shape this mapper surfaces (a preview's lines, and any lines
+  silently dropped at confirm time) rather than duplicating that branching a second time.
+- `dto/{AddressRequest,AddressResponse,OrderLineResponse,CheckoutPreviewResponse,CheckoutConfirmResponse}`.
+- `api/CheckoutApi`+`Controller` at `/api/v1/checkout` — **authenticated-only, same as `CartApi`,
+  no new `SecurityConfig` rule needed.** `GET /preview` (US-2.6's "review... before confirming") and
+  `POST /confirm` (creates the order, `201`). `gateway`'s `GatewayRoutesConfig` gained a matching
+  `/api/v1/checkout/**` route alongside its existing `/api/v1/cart/**` one.
+- `exception/EcommerceErrorCode` gained `CHECKOUT_CART_EMPTY`/`CHECKOUT_NO_VALID_ITEMS` (`CHECKOUT_*`
+  namespace, mirroring the `CART_*` one `CartServiceImpl` already established for Epic 2).
+- **`CheckoutServiceImplTest`** covers both guards (empty cart, all-lines-unavailable) for
+  `preview`/`confirm` alike, the subtotal/shipping/total computation, the save-then-clear ordering,
+  and that a dropped line is reported but never included in the created order's own `lines`.
+- **Deliberately not built as part of this pass**: an outbox event on order creation (nothing
+  consumes it until Epic 3's reservation step exists — publishing one now would just sit `PENDING`/
+  fail with "no handler registered," the same failure `OutboxEventProcessor` already logs for an
+  unregistered event type in its own test fixture; add `OutboxAggregateType.ORDER` + a real handler
+  when Epic 3 actually needs one), and any "list/view my orders" endpoint (no query for it exists
+  in `OrderRepository` either — see above).
+
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"
-independently, not "one variant with both together" — see `ProductSearchView`'s Javadoc), Epic 2's
-checkout half (`Address`, `Order`/`OrderLine`, checkout service — US-2.5–2.7), and everything for
-Epics 3–5. Check `docs/CHANGELOG.md`'s `[Unreleased]` entry and this file's own
+independently, not "one variant with both together" — see `ProductSearchView`'s Javadoc), and
+everything for Epics 3–5 (stock reservation, order-status transitions beyond `PENDING`, payments,
+reviews/recommendations). Check `docs/CHANGELOG.md`'s `[Unreleased]` entry and this file's own
 freshness before assuming more exists than what's listed above. **Compiles cleanly** (verified via
-a targeted `-pl ecommerce-service -am compile` after the image-upload/`ProductMapper` changes, and
-the full reactor including the extraction changes compiles too, `./mvnw -pl gateway -am compile`;
-needs `JAVA_HOME` pointed at a JDK 21 install, see the `reference-jdk21-location` memory) but has
-**not** been run: the app hasn't been booted against a real Postgres, so the Liquibase migration
-against the new `ecommerce` schema, Hibernate's `ddl-auto: validate` check against it, the native
-SQL in `ProductSearchViewRepository.search`, the JWT verification path, and the new `app.storage.*`
-MinIO wiring (bucket auto-creation, `uploadImage`, presigned-URL resolution) are all still
-unverified at runtime. A new `Dockerfile` + `docker-compose.apps.yml` (repo root) exist to run this
-module in a container for the first time — see root `CLAUDE.md`'s Build & Run Commands — which
-will be the first real exercise of all of the above. Container datasource config is supplied via
-plain `SPRING_DATASOURCE_URL`/`_USERNAME`/`_PASSWORD`/`_DRIVER_CLASS_NAME` environment variables in
-that compose file (this module still has no base-profile `spring.datasource` block and no
-`application-docker.yml` — don't add one for this; env vars are the deliberate choice here). The
-new `app.storage.*` block, by contrast, *does* live in this module's base `application.yml` (not a
-docker-only file) — same `${VAR:default}` placeholder convention this file's own
-`issuer-uri` property already used, and the same shape `identity-service`'s own `app.storage`
-block follows.
+a targeted `-pl ecommerce-service,gateway -am compile`/`test`; needs `JAVA_HOME` pointed at a JDK
+21 install, see the `reference-jdk21-location` memory) but has **not** been run: the app hasn't
+been booted against a real Postgres, so the Liquibase migration against the new `ecommerce` schema
+(including the new `CUSTOMER_ORDER`/`ORDER_LINE` tables), Hibernate's `ddl-auto: validate` check
+against it, the native SQL in `ProductSearchViewRepository.search`, the JWT verification path, and
+the `app.storage.*` MinIO wiring (bucket auto-creation, `uploadImage`, presigned-URL resolution)
+are all still unverified at runtime. A new `Dockerfile` + `docker-compose.apps.yml` (repo root)
+exist to run this module in a container for the first time — see root `CLAUDE.md`'s Build & Run
+Commands — which will be the first real exercise of all of the above. Container datasource config
+is supplied via plain `SPRING_DATASOURCE_URL`/`_USERNAME`/`_PASSWORD`/`_DRIVER_CLASS_NAME`
+environment variables in that compose file (this module still has no base-profile
+`spring.datasource` block and no `application-docker.yml` — don't add one for this; env vars are
+the deliberate choice here). The `app.storage.*` block, by contrast, *does* live in this module's
+base `application.yml` (not a docker-only file) — same `${VAR:default}` placeholder convention
+this file's own `issuer-uri` property already used, and the same shape `identity-service`'s own
+`app.storage` block follows.
 
 **`gui`'s admin GUI for this module's Epic 1 now exists** — a `@ecommerce` feature folder
 (`ProductCategoryListPage`/`FormDialog`, `ProductListPage`/`FormPage` +
@@ -448,8 +523,11 @@ block follows.
   (only the service's own blank-`q`/attribute-JSON-building/unsorted-`Pageable` logic — see
   below), `ProductChangedOutboxEventHandlerTest` (the projection logic behind US-1.5/1.7),
   `outbox/OutboxEventDispatcherTest`, `outbox/OutboxEventProcessorTest` (the generic claim-
-  dispatch-mark mechanism, independent of any one handler). 73 tests, all passing, no Docker
-  needed for any of them.
+  dispatch-mark mechanism, independent of any one handler), `CheckoutServiceImplTest` (Epic 2's
+  checkout half — both guards on `preview`/`confirm` alike, subtotal/shipping/total computation,
+  the save-then-clear ordering via `Mockito.inOrder`, and that a dropped line is reported but never
+  included in the created order's own lines). 80 tests, all passing, no Docker needed for any of
+  them.
   - **`repository/ProductSearchViewRepositoryIT` is the one exception — a real Postgres
     Testcontainers integration test, not a unit test**, because US-1.3's `tsvector`/`pg_trgm`
     ranking and US-1.4's price-range/JSONB-containment filtering are native SQL
