@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.ecommerce.service;
 
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
+import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -34,6 +35,17 @@ public interface OrderService {
      *                   ordering a shopper's own order history needs
      */
     Page<Order> listOrders(String callerUuid, Pageable pageable);
+
+    /**
+     * Paginated list of orders for admin fulfillment (US-3.7/3.8), optionally filtered by
+     * {@code status} — e.g. {@code CONFIRMED} for "ready to ship", {@code SHIPPED} for "ready to
+     * mark delivered". Unlike {@link #listOrders}, this is <b>not</b> restricted to any one
+     * caller's own orders — admin-only, enforced at the REST layer, not by an ownership check here.
+     *
+     * @param status   optional status filter; {@code null} returns every order regardless of status
+     * @param pageable page/size — callers own the sort (this method doesn't impose one)
+     */
+    Page<Order> listAllOrders(OrderStatus status, Pageable pageable);
 
     /**
      * Cancels {@code orderId} on the caller's behalf (US-3.6) — the compensating action (release

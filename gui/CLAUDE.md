@@ -17,8 +17,10 @@ gui/src/
 │   ├── ai/             — ai-service admin/monitoring screens (pipeline metrics, embeddings index)
 │   ├── tasks/           — personal task/project management, fronting task-service
 │   └── ecommerce/        — ecommerce-service admin screens (Product Categories, Products incl.
-│                            variant/image gallery management) + pages/shop/ (the public
-│                            storefront: browse/search/filter, product detail)
+│                            variant/image gallery management, Order Fulfillment) + pages/shop/
+│                            (the public storefront: browse/search/filter, product detail) +
+│                            pages/cart/, pages/checkout/ (Epic 2) + pages/orders/ (Epic 3's
+│                            shopper-facing order history/detail, US-3.3/3.5/3.6)
 ├── app/          — app shell: App.tsx (routes), main.tsx, theme.ts, NavBar, GuestRoute/PrivateRoute,
 │                    admin-shell/ (AdminLayout, AdminDashboard — the admin nav frame + landing page)
 └── shared/        — httpClient, common.types-equivalent (types.ts, incl. PagedResponse), the
@@ -668,6 +670,95 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       type from Phase B/admin (same `ProductResponse` shape); `search` uses a **new**
       `ProductSearchResult` type (mirrors `ProductSearchResponse` — a genuinely different,
       denormalized shape, not reusable with `Product`).
+  - **`pages/orders/OrderHistoryPage.tsx` + `OrderDetailPage.tsx` — Epic 3's shopper-facing GUI
+    (US-3.3/3.5/3.6), both `PrivateRoute`-gated (`/orders`, `/orders/:id`), same audience/rule as
+    Cart/Checkout above. This pass is deliberately shopper-facing only — the admin ship/deliver
+    screen (US-3.7/3.8) is a follow-up, since `AdminOrderApi` only has `POST /{id}/ship`/
+    `POST /{id}/deliver` today, no admin "list orders" endpoint to build a fulfillment queue
+    against; that's new backend work, not just GUI work.** No named UI template/kit was used (there
+    is none anywhere in this app) — `OrderHistoryPage` mirrors `CartPage`'s "`Stack` of `Paper`
+    rows" shopper-facing style (discussed and chosen over a dense admin-style `Table` +
+    `TablePagination`, which was the alternative considered), and `OrderDetailPage` mirrors
+    `CheckoutPage`'s "stacked `Paper` sections" shape almost exactly (Order Summary/Shipping To
+    sections copied near-verbatim, since both pages render the same underlying `Order`-shaped data).
+    - `api/orderApi.ts` — `list(page, size)`/`getById(id)`/`cancel(id)`/`pay(id)`, mirroring
+      `cartApi.ts`'s shape; `cancel`/`pay` both return the freshly-resolved `Order`, same
+      "mutating endpoint returns the updated resource" contract the backend already established.
+    - `types.ts` gained `OrderStatus` (the backend's full 8-value union),
+      `OrderStatusHistoryEntry`, and `Order` — the latter two reuse the *existing* `OrderLine`/
+      `Address` types from Epic 2 as-is, since both already field-match `OrderResponse`'s nested
+      shapes exactly; nothing Epic-3-specific needed modeling for a line item or address.
+    - New `utils/orderStatus.ts` — `ORDER_STATUS_LABELS`/`ORDER_STATUS_COLORS` (shared so a status
+      never reads differently between the list and detail views), `isCancellable` (mirrors the
+      backend's own cancellable-status set: `PENDING`/`PAYMENT_PROCESSING`/`CONFIRMED`, never
+      `SHIPPED`/terminal), and `formatOrderDate`/`formatOrderDateTime`.
+    - `OrderHistoryPage.tsx` — one `Paper` card per order (id, placed date from
+      `statusHistory[0].occurredAt`, item count, total, a status `Chip`, a "View Details" button);
+      MUI `Pagination` below the list (only rendered when `totalPages > 1`) rather than
+      `TablePagination` — this page has no table to attach page-size/row-count chrome to, unlike
+      `ProductListPage`'s admin table.
+    - `OrderDetailPage.tsx` — status `Chip` in the header, Items/Shipping-To sections (structurally
+      identical to `CheckoutPage`'s own, since both render an order's lines/address), and a
+      hand-built **Order Timeline** section from `statusHistory` (a `Stack` of plain rows — no
+      `@mui/lab` `Timeline` component, which would be a new dependency this app doesn't have and
+      has no other use for). **Pay Now** renders only when `status === 'PENDING'`, calling
+      `orderApi.pay` via `useSubmitGuard` and branching the resulting notification on the new
+      status (`CONFIRMED` → success toast, `FAILED` → error toast, still `PAYMENT_PROCESSING` →
+      no extra toast, the status chip already reflects it — a real gateway may not resolve
+      instantly, unlike today's `NoOpPaymentGatewayPort`). **Cancel Order** renders when
+      `isCancellable(status) && !cancelRequested`, routed through the existing
+      `@shared/components/ConfirmDialog` (same component `ProductListPage`'s deactivate action
+      already uses) rather than a new one; a `PAYMENT_PROCESSING` order with `cancelRequested`
+      already `true` shows an informational banner instead of a second button, since clicking it
+      again would just re-set an already-set flag.
+    - **`CheckoutPage.tsx`'s successful `confirm` now `navigate`s straight to `/orders/:id`**
+      instead of swapping in an inline `OrderConfirmationView` — that component (and the now-dead
+      `CheckCircleOutlineIcon` import) was deleted outright. It existed only because no "get order
+      by id" endpoint existed yet when Cart & Checkout were built (see that section's own note
+      above); now that Epic 3 built one, showing the real page — with a working **Pay Now** button
+      — is strictly better than re-deriving a read-only summary from the checkout response alone.
+      `OrderConfirmation`'s own type (`lines`/`address`/`droppedLines` etc.) is untouched and still
+      used for the dropped-lines warning `CheckoutPage` shows *before* confirming — only the
+      post-confirm view changed.
+    - `NavBar.tsx` gained an "Orders" button (`ReceiptLongIcon`, no badge — unlike Cart's
+      item-count badge, there's no obviously-right count to show, e.g. "orders needing payment" vs.
+      "orders in transit" would be arbitrary choices) next to Cart, same `isActive`/
+      `location.pathname.startsWith` highlighting convention as every other nav entry.
+    - **Verified**: `tsc --noEmit` clean (only the pre-existing `App.test.tsx`/`reportWebVitals.ts`
+      dead-code errors and two unrelated `@chat` unused-import warnings, all already documented
+      above) and a successful `vite build`; the dev server boots without console errors. **No
+      interactive browser testing was possible in this environment** — no Docker available to run
+      the backend stack (Postgres/Keycloak/`gateway`/`ecommerce-service`), so the actual
+      order-history → detail → pay/cancel click-through is still unverified by a human.
+  - **`pages/AdminOrderListPage.tsx` (`/admin/orders`, nested under `AdminLayout`) — the admin
+    fulfillment screen (US-3.7/3.8), a follow-up built once the backend's admin list-orders
+    endpoint existed.** Mirrors `ProductListPage.tsx`'s admin-`Table` template near-verbatim
+    (`Table`/`TablePagination`/row action `IconButton`s under `AdminLayout`), not the shopper-facing
+    `Stack`-of-cards style `OrderHistoryPage` uses above — this is the admin audience, same
+    reasoning that split `OrderHistoryPage`/`OrderDetailPage` from this page in the first place.
+    - New `api/adminOrderApi.ts` — `list(status, page, size)`/`ship(id)`/`deliver(id)`, a separate
+      file from `orderApi.ts` (shopper-facing), mirroring the backend's own `AdminOrderApi`/
+      `OrderApi` split. `ship`/`deliver` both return the freshly-resolved `Order`, same contract as
+      every other mutation in this feature.
+    - The status filter (`Select`, same shape as `ProductListPage`'s category/active filters)
+      **defaults to `CONFIRMED`** — "ready to ship" is this queue's whole reason to exist, not an
+      arbitrary first option; switching to `SHIPPED` shows "ready to mark delivered," and "All
+      statuses" browses everything (using the same `ORDER_STATUS_LABELS` map `OrderHistoryPage`/
+      `OrderDetailPage` already share via `utils/orderStatus.ts`).
+    - Each row's Ship/Deliver `IconButton`s are disabled unless the row's own `status` is
+      `CONFIRMED`/`SHIPPED` respectively (`LocalShippingIcon`/`AssignmentTurnedInIcon`) — correct
+      regardless of the current filter, e.g. still correctly all-disabled if an admin picks "All
+      statuses" and scrolls past a `CANCELLED` row. Both actions route through the existing
+      `@shared/components/ConfirmDialog` (one shared dialog, keyed by a local
+      `{ order, action: 'ship' | 'deliver' }` state) rather than acting immediately on click — a
+      real shipping/delivery notification can go out to the customer as a side effect of either
+      action on a real gateway integration later, so a confirm step matters here even though
+      neither action is destructive the way `ProductListPage`'s deactivate is.
+    - `AdminLayout.tsx` gained an "Order Fulfillment" sidebar entry (`LocalShippingIcon`) next to
+      Products, same `NAV_ITEMS` shape as every other admin section.
+    - **Verified** the same way as `OrderHistoryPage`/`OrderDetailPage` above: clean `tsc --noEmit`
+      (no new errors) and a successful `vite build`; no interactive browser testing was possible in
+      this environment (no Docker to run the backend stack).
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's
@@ -728,6 +819,19 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   `VITE_KEYCLOAK_REALM` env vars (`vite-env.d.ts`) back both. `@auth/api/authApi.ts`'s dead `login`
   method was removed outright (no remaining callers once `Login.tsx` switched to
   `authService.loginWithPassword`).
+  **`/admin/login` used to be visible to an already-logged-in non-admin user — fixed.**
+  `AdminLogin.tsx`'s own redirect effect only ever handled "already authenticated as admin → go to
+  `/admin/dashboard`"; a regular user hitting `/admin/login` directly (or getting bounced there by
+  `PrivateRoute requireRole="ADMIN"` off any real `/admin/**` page) just saw the normal Admin Login
+  form, unredirected — every actual admin *page* was already correctly unreachable for them
+  (`PrivateRoute`), but the login page itself wasn't. Fixed by adding an `else if
+  (authService.isAuthenticated())` branch to that same effect, sending a non-admin to `/dashboard`
+  instead. **Deliberately not solved by wrapping the route in `GuestRoute`** (`Login.tsx`'s own
+  equivalent guard): `GuestRoute` only supports one fixed redirect target for *any* authenticated
+  visitor, but this page's two "already signed in" destinations genuinely differ by role — using it
+  here with a single target would either send a non-admin into a redirect loop (bounced from
+  `/admin/dashboard` by `PrivateRoute` straight back to `/admin/login`) or send an admin to the
+  wrong dashboard, depending on which target got picked.
   **`SignUp.tsx` is fixed too** — `authApi.register` now calls a real, revived
   `identity-service` endpoint that creates the Keycloak account server-side via the Admin REST API
   (see that module's `CLAUDE.md`'s `KeycloakAdminService` note and `docs/CHANGELOG.md`'s

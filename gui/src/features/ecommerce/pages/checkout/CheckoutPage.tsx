@@ -11,12 +11,11 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import { useCart } from '../../context/CartContext';
 import { checkoutApi } from '../../api/checkoutApi';
-import { Address, CheckoutPreview, OrderConfirmation } from '../../types';
+import { Address, CheckoutPreview } from '../../types';
 
 function formatPrice(value: number): string {
   return `$${value.toFixed(2)}`;
@@ -44,7 +43,6 @@ export default function CheckoutPage(): JSX.Element {
   const [preview, setPreview] = useState<CheckoutPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(true);
-  const [confirmation, setConfirmation] = useState<OrderConfirmation | null>(null);
 
   const [address, setAddress] = useState<Address>(EMPTY_ADDRESS);
   const [errors, setErrors] = useState<AddressFormErrors>({});
@@ -75,17 +73,15 @@ export default function CheckoutPage(): JSX.Element {
     guard(async () => {
       try {
         const result = await checkoutApi.confirm(address);
-        setConfirmation(result);
         refreshCart(); // backend clears the cart on successful confirm — resync the badge/context
+        // Order Detail (Epic 3) is now the canonical "here's your order" view — it has the real
+        // Pay Now button this page's own former inline confirmation never could.
+        navigate(`/orders/${result.orderId}`);
       } catch (err) {
         showError(err instanceof Error ? err.message : 'Could not place your order. Please try again.');
       }
     });
   };
-
-  if (confirmation) {
-    return <OrderConfirmationView confirmation={confirmation} />;
-  }
 
   if (previewLoading) {
     return (
@@ -221,74 +217,6 @@ export default function CheckoutPage(): JSX.Element {
           </Button>
         </Stack>
       </Paper>
-    </Box>
-  );
-}
-
-function OrderConfirmationView({ confirmation }: { confirmation: OrderConfirmation }): JSX.Element {
-  const navigate = useNavigate();
-  return (
-    <Box sx={{ p: 3, maxWidth: 600, mx: 'auto', mt: 4 }}>
-      <Box sx={{ textAlign: 'center', mb: 3 }}>
-        <CheckCircleOutlineIcon sx={{ fontSize: 64, color: 'success.main', mb: 1 }} />
-        <Typography variant="h5" fontWeight={700}>Order placed!</Typography>
-        <Typography variant="body2" color="text.secondary">Order #{confirmation.orderId}</Typography>
-      </Box>
-
-      {confirmation.droppedLines.length > 0 && (
-        <Box sx={{ mb: 2 }}>
-          {confirmation.droppedLines.map(line => (
-            <Chip
-              key={line.variantId}
-              label={`Variant #${line.variantId} became unavailable and was not included`}
-              size="small"
-              color="warning"
-              variant="outlined"
-              sx={{ mb: 0.5 }}
-            />
-          ))}
-        </Box>
-      )}
-
-      <Paper variant="outlined" sx={{ p: 2.5, mb: 2 }}>
-        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>Items</Typography>
-        <Stack spacing={1}>
-          {confirmation.lines.map(line => (
-            <Stack key={line.variantId} direction="row" justifyContent="space-between">
-              <Typography variant="body2">{line.productName} × {line.quantity}</Typography>
-              <Typography variant="body2">{formatPrice(line.lineTotal)}</Typography>
-            </Stack>
-          ))}
-        </Stack>
-        <Divider sx={{ my: 1.5 }} />
-        <Stack direction="row" justifyContent="space-between">
-          <Typography variant="body2" color="text.secondary">Subtotal</Typography>
-          <Typography variant="body2">{formatPrice(confirmation.subtotal)}</Typography>
-        </Stack>
-        <Stack direction="row" justifyContent="space-between">
-          <Typography variant="body2" color="text.secondary">Shipping</Typography>
-          <Typography variant="body2">{formatPrice(confirmation.shippingFee)}</Typography>
-        </Stack>
-        <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
-          <Typography variant="subtitle1" fontWeight={700}>Total</Typography>
-          <Typography variant="subtitle1" fontWeight={700}>{formatPrice(confirmation.total)}</Typography>
-        </Stack>
-      </Paper>
-
-      <Paper variant="outlined" sx={{ p: 2.5, mb: 3 }}>
-        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Shipping To</Typography>
-        <Typography variant="body2">{confirmation.address.fullName}</Typography>
-        <Typography variant="body2">{confirmation.address.line1}</Typography>
-        {confirmation.address.line2 && <Typography variant="body2">{confirmation.address.line2}</Typography>}
-        <Typography variant="body2">
-          {confirmation.address.city}, {confirmation.address.state} {confirmation.address.postalCode}
-        </Typography>
-        <Typography variant="body2">{confirmation.address.country}</Typography>
-      </Paper>
-
-      <Box sx={{ textAlign: 'center' }}>
-        <Button variant="contained" onClick={() => navigate('/shop')}>Continue Shopping</Button>
-      </Box>
     </Box>
   );
 }

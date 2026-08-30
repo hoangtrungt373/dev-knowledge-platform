@@ -6,6 +6,7 @@ import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -13,9 +14,12 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Repository for {@link Order}.
+ * Repository for {@link Order}. {@link JpaSpecificationExecutor} backs the admin fulfillment
+ * queue's optional status filter (US-3.7/3.8 — a post-Epic-3 follow-up, added once the GUI work
+ * actually needed it) — see {@code repository.spec.OrderSpecification}, this module's usual
+ * Specification-pattern home for dynamic filtering (never a hand-built JPQL string).
  */
-public interface OrderRepository extends JpaRepository<Order, Integer> {
+public interface OrderRepository extends JpaRepository<Order, Integer>, JpaSpecificationExecutor<Order> {
 
     /**
      * A shopper's own orders, most recent first (US-3.5, Epic 3 Phase 5) — backed by

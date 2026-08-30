@@ -21,6 +21,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -29,6 +30,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -110,6 +112,26 @@ class OrderServiceImplTest {
             when(orderRepository.findByOwnerUuidOrderByIdDesc(OWNER_UUID, pageable)).thenReturn(page);
 
             var result = service.listOrders(OWNER_UUID, pageable);
+
+            assertThat(result).isSameAs(page);
+        }
+    }
+
+    @Nested
+    class ListAllOrders {
+
+        @Test
+        void delegatesToTheRepositoryWithASpecificationBuiltFromStatus() {
+            Pageable pageable = PageRequest.of(0, 20);
+            Page<Order> page = new PageImpl<>(List.of(orderOwnedBy(OWNER_UUID)));
+            // The Specification itself is a fresh lambda built inside listAllOrders — never equal
+            // by reference/value to one built here, so this only verifies delegation (page/filter
+            // wiring), not the Specification's own filtering logic (same reasoning
+            // ProductSpecification/ProductCategorySpecification are left to their own devices,
+            // untested at the unit level, in this module).
+            when(orderRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
+
+            Page<Order> result = service.listAllOrders(OrderStatus.CONFIRMED, pageable);
 
             assertThat(result).isSameAs(page);
         }

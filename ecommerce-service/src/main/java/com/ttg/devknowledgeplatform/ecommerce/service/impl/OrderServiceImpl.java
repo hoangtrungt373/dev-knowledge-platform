@@ -2,12 +2,14 @@ package com.ttg.devknowledgeplatform.ecommerce.service.impl;
 
 import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
+import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.OrderStatusHandlerRegistry;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentHandoffService;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentOutcome;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
+import com.ttg.devknowledgeplatform.ecommerce.repository.spec.OrderSpecification;
 import com.ttg.devknowledgeplatform.ecommerce.service.OrderService;
 
 import lombok.RequiredArgsConstructor;
@@ -52,6 +54,12 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public Page<Order> listOrders(String callerUuid, Pageable pageable) {
         return orderRepository.findByOwnerUuidOrderByIdDesc(callerUuid, pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<Order> listAllOrders(OrderStatus status, Pageable pageable) {
+        return orderRepository.findAll(OrderSpecification.withFilters(status), pageable);
     }
 
     @Override

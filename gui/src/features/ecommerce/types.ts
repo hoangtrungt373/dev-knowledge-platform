@@ -159,3 +159,39 @@ export interface OrderConfirmation {
   /** Any cart line dropped at this final revalidation — normally empty. */
   droppedLines: CartLine[];
 }
+
+// ── Orders (Epic 3) ──────────────────────────────────────────────────────────
+// Mirrors ecommerce-service's OrderResponse/OrderStatusHistoryResponse. Reuses OrderLine/Address
+// above (Epic 2) as-is — both already field-match the backend's nested shapes exactly, so there's
+// nothing Epic-3-specific about a line item or a shipping address to model separately.
+
+export type OrderStatus =
+  | 'PENDING'
+  | 'PAYMENT_PROCESSING'
+  | 'CONFIRMED'
+  | 'EXPIRED'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'SHIPPED'
+  | 'DELIVERED';
+
+/** One entry in an order's timeline (US-3.5) — fromStatus is null only for the very first entry. */
+export interface OrderStatusHistoryEntry {
+  fromStatus: OrderStatus | null;
+  toStatus: OrderStatus;
+  reason: string | null;
+  occurredAt: string;
+}
+
+export interface Order {
+  id: number;
+  status: OrderStatus;
+  cancelRequested: boolean;
+  shippingAddress: Address;
+  subtotal: number;
+  shippingFee: number;
+  total: number;
+  lines: OrderLine[];
+  /** Oldest first, per the backend's own @OrderBy("id ASC") — read top-to-bottom as a timeline. */
+  statusHistory: OrderStatusHistoryEntry[];
+}

@@ -15,10 +15,13 @@ import EmbeddingsPage from '@ai/pages/EmbeddingsPage';
 import ProductCategoryListPage from '@ecommerce/pages/ProductCategoryListPage';
 import ProductListPage from '@ecommerce/pages/ProductListPage';
 import ProductFormPage from '@ecommerce/pages/ProductFormPage';
+import AdminOrderListPage from '@ecommerce/pages/AdminOrderListPage';
 import ShopPage from '@ecommerce/pages/shop/ShopPage';
 import ProductDetailPage from '@ecommerce/pages/shop/ProductDetailPage';
 import CartPage from '@ecommerce/pages/cart/CartPage';
 import CheckoutPage from '@ecommerce/pages/checkout/CheckoutPage';
+import OrderHistoryPage from '@ecommerce/pages/orders/OrderHistoryPage';
+import OrderDetailPage from '@ecommerce/pages/orders/OrderDetailPage';
 import { NotificationProvider } from '@shared/contexts/NotificationContext';
 import { CartProvider } from '@ecommerce/context/CartContext';
 import { StompConnectionProvider } from '@messaging/context/StompConnectionContext';
@@ -103,6 +106,19 @@ function App() {
               </PrivateRoute>
             } />
 
+            {/* Order History & Detail — Epic 3 (US-3.3/3.5/3.6), authenticated-only like Cart/Checkout */}
+            <Route path="/orders" element={
+              <PrivateRoute>
+                <OrderHistoryPage />
+              </PrivateRoute>
+            } />
+
+            <Route path="/orders/:id" element={
+              <PrivateRoute>
+                <OrderDetailPage />
+              </PrivateRoute>
+            } />
+
             {/* Chat — full-page layout, NavBar is hidden on these routes */}
             <Route path="/chat" element={
               <PrivateRoute>
@@ -153,6 +169,7 @@ function App() {
               <Route path="products" element={<ProductListPage />} />
               <Route path="products/new" element={<ProductFormPage />} />
               <Route path="products/:id/edit" element={<ProductFormPage />} />
+              <Route path="orders" element={<AdminOrderListPage />} />
               <Route index element={<Navigate to="dashboard" replace />} />
             </Route>
 

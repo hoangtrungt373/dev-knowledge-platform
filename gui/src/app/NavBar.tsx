@@ -8,6 +8,7 @@ import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import StorefrontIcon from '@mui/icons-material/Storefront';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { authService } from '@auth/services/authService';
 import { useFriendRequestsCount } from '@friends/hooks/useFriendRequestsCount';
@@ -170,6 +171,20 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
               }}
             >
               Cart
+            </Button>
+
+            <Button
+              color="inherit"
+              size="small"
+              startIcon={<ReceiptLongIcon fontSize="small" />}
+              onClick={() => navigate('/orders')}
+              sx={{
+                backgroundColor: location.pathname.startsWith('/orders')
+                  ? 'action.selected'
+                  : 'transparent',
+              }}
+            >
+              Orders
             </Button>
 
             <Button color="inherit" size="small" onClick={handleLogout}>

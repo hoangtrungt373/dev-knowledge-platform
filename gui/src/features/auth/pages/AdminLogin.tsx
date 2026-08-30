@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Paper, Typography, Button, CircularProgress, Alert } from '@mui/material';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { adminAuthService } from '../services/adminAuthService';
+import { authService } from '../services/authService';
 import { useNotification } from '@shared/contexts/NotificationContext';
 
 export default function AdminLogin(): JSX.Element {
@@ -16,9 +17,21 @@ export default function AdminLogin(): JSX.Element {
   // harmless-looking, React anti-pattern. GuestRoute (Login.tsx's own equivalent guard) avoids it
   // by returning a <Navigate> element instead; this page can't do the same since it always
   // renders its own form, so an effect is the correct fix here instead.
+  //
+  // Deliberately not GuestRoute itself: this page's two "already signed in" destinations differ
+  // by role (an admin belongs at /admin/dashboard, a regular user at /dashboard), and GuestRoute
+  // only supports one fixed redirect target for any authenticated visitor — using it here with a
+  // single target would either send a non-admin into a redirect loop (PrivateRoute's own
+  // requireRole="ADMIN" check on /admin/dashboard would just bounce them straight back here) or
+  // send an admin to the wrong dashboard, depending on which target was picked.
   useEffect(() => {
     if (adminAuthService.isAuthenticated()) {
       navigate('/admin/dashboard', { replace: true });
+    } else if (authService.isAuthenticated()) {
+      // Logged in, but not as an admin — this page's own form has nothing to offer them either;
+      // same "don't show a login page to someone already logged in" reasoning GuestRoute applies
+      // to /login, just resolved to their own (non-admin) home instead.
+      navigate('/dashboard', { replace: true });
     }
   }, [navigate]);
 

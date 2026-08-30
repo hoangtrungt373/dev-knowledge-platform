@@ -1498,10 +1498,14 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │   for one static query covering every optional-filter combination) / OrderRepository.java
 │   │   (plain JpaRepository plus findIdsByStatusAndDteCreationBefore/
 │   │   findIdsByStatusAndPaymentProcessingStartedAtBefore, the expiry/reconciliation jobs' own
-│   │   poll queries (Epic 3 Phases 3–4), and, since Phase 5, findByOwnerUuidOrderByIdDesc — "list
-│   │   my orders", backed by a new IDX_CUSTOMER_ORDER_OWNER_UUID index)
+│   │   poll queries (Epic 3 Phases 3–4), findByOwnerUuidOrderByIdDesc since Phase 5 — "list
+│   │   my orders", backed by a new IDX_CUSTOMER_ORDER_OWNER_UUID index — and, since a post-Epic-3
+│   │   follow-up, JpaSpecificationExecutor<Order> for the admin fulfillment queue's optional
+│   │   status filter)
 │   └── spec/
-│       └── ProductCategorySpecification.java / ProductSpecification.java
+│       └── ProductCategorySpecification.java / ProductSpecification.java / OrderSpecification.java
+│           (withFilters(OrderStatus) — the admin order-fulfillment queue's own dynamic filtering,
+│           US-3.7/3.8, same single-optional-filter shape as ProductCategorySpecification's own)
 ├── outbox/                      — generic outbox mechanism, reusable by every future epic
 │   ├── OutboxEventHandler.java     — Strategy interface: eventType() + handle(OutboxEvent)
 │   ├── OutboxEventDispatcher.java  — Map<String, OutboxEventHandler> built from every handler bean
@@ -1614,7 +1618,10 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │   transactional steps around a payment.PaymentGatewayPort.charge call; deliberately not
 │   │   itself @Transactional (a class-level annotation would let a crash mid-gateway-call roll
 │   │   back the PAYMENT_PROCESSING marker OrderReconciliationJob depends on). Phase 5 added
-│   │   getOrder(orderId, callerUuid)/listOrders(callerUuid, pageable), both @Transactional(readOnly)
+│   │   getOrder(orderId, callerUuid)/listOrders(callerUuid, pageable), both @Transactional(readOnly).
+│   │   A post-Epic-3 follow-up added listAllOrders(status, pageable) — the admin fulfillment
+│   │   queue's own query (repository.spec.OrderSpecification-backed, no ownership check, unlike
+│   │   listOrders)
 ├── service/seed/                — starter sample catalog (developer-swag theme), gated by
 │   │                                app.seed.enabled
 │   ├── ProductCategorySeeder.java  — extends infra's CsvSeeder<ProductCategory>; idempotency key
@@ -1687,7 +1694,12 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                 POST /{id}/ship, POST /{id}/deliver — a separate interface
 │   │                                 from OrderApi, mirroring the ProductCategoryApi/
 │   │                                 PublicProductCategoryApi split (same resource, different
-│   │                                 audience/security rule)
+│   │                                 audience/security rule). GET (list, optional ?status= filter,
+│   │                                 sorted oldest-first) added as a post-Epic-3 follow-up once the
+│   │                                 admin fulfillment GUI needed a way to find orders to act on —
+│   │                                 no gateway change needed, /api/v1/admin/orders/** already
+│   │                                 covers the bare GET the same way /api/v1/admin/products/**
+│   │                                 already covers ProductApi.list
 │   └── impl/                    — ProductCategoryController / ProductController (admin-gated
 │                                    automatically via this module's own security/SecurityConfig
 │                                    /api/v1/admin/** rule) / ProductSearchController /
@@ -1738,13 +1750,17 @@ section) are all done now — see above.
 **Test suite:** `src/test/java/.../service/impl/` (`ProductCategoryServiceImplTest`,
 `ProductServiceImplTest`, `ProductSearchServiceImplTest`, `ProductChangedOutboxEventHandlerTest`,
 `CheckoutServiceImplTest`) and `src/test/java/.../outbox/` (`OutboxEventDispatcherTest`,
-`OutboxEventProcessorTest`) — plain JUnit 5/Mockito/AssertJ unit tests, 130 passing (Epic 3 Phase 2
+`OutboxEventProcessorTest`) — plain JUnit 5/Mockito/AssertJ unit tests, 137 passing (Epic 3 Phase 2
 added stock-reservation cases to `CheckoutServiceImplTest`; Phase 3 added a full `orderstatus/`
 package test suite — one class per handler, plus registry/expiry-job/`OrderServiceImpl` tests;
 Phase 4 added `payment/`'s own tests plus `PaymentHandoffServiceTest`/`OrderReconciliationJobTest`
 and more cases on the Phase 3 handler/registry/`OrderServiceImpl` tests; Phase 5 added
 `GetOrder`/`ListOrders` cases to `OrderServiceImplTest`, no dedicated mapper/controller tests —
-matches this module's existing convention), no Docker
+matches this module's existing convention; Phase 6 added
+`orderstatus/OrderLifecycleIntegrationTest`, driving the real `OrderStatusHandlerRegistry` wired
+with every real handler through 6 multi-step scenarios — the one gap every other test's
+one-handler-at-a-time isolation couldn't cover; a post-Epic-3 follow-up added
+`OrderServiceImplTest.ListAllOrders` for the admin fulfillment queue), no Docker
 needed. Plus
 `src/test/java/.../repository/ProductSearchViewRepositoryIT` — a real Postgres Testcontainers
 integration test for US-1.3/1.4's native `tsvector`/`pg_trgm`/JSONB-containment search matching,
