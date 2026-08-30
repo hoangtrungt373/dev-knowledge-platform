@@ -22,14 +22,15 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * A shopper's order, created at checkout (Epic 2, US-2.6) from whatever cart lines were still
- * available at confirm time. This epic's own responsibility ends here — {@link OrderStatus} has
- * only {@link OrderStatus#PENDING} today; Epic 3's reservation step and Epic 4's payment step pick
- * up from this row once they're built (see that enum's own Javadoc).
+ * available at confirm time. Epic 3 (see {@code docs/user-stories/03-order-lifecycle-inventory.md})
+ * drives this row through the rest of its life — reservation, payment handoff, cancellation,
+ * shipment, delivery — via {@link OrderStatus}'s full state machine (see that enum's own Javadoc).
  *
  * <p><b>Table is {@code CUSTOMER_ORDER}, not {@code ORDER}</b> — {@code ORDER} is a reserved SQL
  * keyword in PostgreSQL, the same reason {@code social-service}'s {@code Group} entity maps to
@@ -43,6 +44,17 @@ import java.util.List;
  * catalog as it stood then) — {@link #subtotal}/{@link #shippingFee}/{@link #total} are stored
  * here for the same reason, rather than re-derived from current {@link OrderLine} data on every
  * read, since a flat shipping fee read from config could change after this order was placed.
+ *
+ * <p>{@link #idempotencyKey} (US-3.3) is stamped once, immediately before the {@code PENDING} →
+ * {@code PAYMENT_PROCESSING} transition, so a crash between "payment succeeded" and "order
+ * confirmed" can be recovered by re-querying the gateway for this same key rather than risking a
+ * double charge — nullable, since it has no meaning until that transition happens.
+ * {@link #paymentProcessingStartedAt} is the reconciliation job's (US-3.4) own "how long has this
+ * been stuck" clock, separate from {@link com.ttg.devknowledgeplatform.common.entity.AbstractEntity#getDteCreation()}
+ * since an order can sit {@code PENDING} for a while before payment is ever attempted.
+ * {@link #cancelRequested} implements the state machine's queued-cancel rule: a shopper cancelling
+ * mid-{@code PAYMENT_PROCESSING} can't jump straight to {@code CANCELLED} (a gateway call is
+ * literally in flight), so this flag is set instead and consulted once that call resolves.
  */
 @Entity
 @Table(name = "CUSTOMER_ORDER", schema = "ecommerce")
@@ -50,8 +62,8 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(callSuper = true, exclude = {"lines"})
-@ToString(exclude = {"lines"})
+@EqualsAndHashCode(callSuper = true, exclude = {"lines", "statusHistory"})
+@ToString(exclude = {"lines", "statusHistory"})
 public class Order extends AbstractEntity {
 
     @Column(name = "OWNER_UUID", length = 36, nullable = false)
@@ -73,7 +85,20 @@ public class Order extends AbstractEntity {
     @Column(name = "TOTAL", nullable = false, precision = 12, scale = 2)
     private BigDecimal total;
 
+    @Column(name = "IDEMPOTENCY_KEY", length = 64)
+    private String idempotencyKey;
+
+    @Column(name = "PAYMENT_PROCESSING_STARTED_AT")
+    private Instant paymentProcessingStartedAt;
+
+    @Column(name = "CANCEL_REQUESTED", nullable = false)
+    private Boolean cancelRequested = false;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @OrderBy("id ASC")
     private List<OrderLine> lines = new ArrayList<>();
+
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OrderBy("id ASC")
+    private List<OrderStatusHistory> statusHistory = new ArrayList<>();
 }

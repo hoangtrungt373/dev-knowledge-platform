@@ -26,6 +26,22 @@ app:
       # rather than a hardcoded constant, same convention as app.ecommerce.cart.ttl above.
       flat-shipping-fee: ${CHECKOUT_FLAT_SHIPPING_FEE:5.00}
 
+    order:
+      # US-3.2: how long a PENDING order's stock reservation survives with no payment attempted
+      # before OrderReservationExpiryJob releases it — same ISO-8601 duration convention as
+      # app.ecommerce.cart.ttl above.
+      reservation-timeout: ${ORDER_RESERVATION_TIMEOUT:PT15M}
+      expiry-check:
+        # How often OrderReservationExpiryJob polls for abandoned reservations — same
+        # fixedDelayString convention as outbox.OutboxRelay's own poll-interval.
+        poll-interval: ${ORDER_EXPIRY_CHECK_POLL_INTERVAL:PT1M}
+
+      reconciliation:
+        # US-3.4: how long an order may sit PAYMENT_PROCESSING before OrderReconciliationJob
+        # re-queries the gateway for it, and how often that job polls.
+        grace-period: ${ORDER_RECONCILIATION_GRACE_PERIOD:PT2M}
+        poll-interval: ${ORDER_RECONCILIATION_POLL_INTERVAL:PT1M}
+
 spring:
   application:
     name: ecommerce-service

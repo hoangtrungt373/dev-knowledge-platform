@@ -1,0 +1,77 @@
+package com.ttg.devknowledgeplatform.ecommerce.service.impl;
+
+import com.ttg.devknowledgeplatform.common.exception.Validator;
+import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
+import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
+import com.ttg.devknowledgeplatform.ecommerce.orderstatus.OrderStatusHandlerRegistry;
+import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentHandoffService;
+import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
+import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentOutcome;
+import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
+import com.ttg.devknowledgeplatform.ecommerce.service.OrderService;
+
+import lombok.RequiredArgsConstructor;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * Implementation of {@link OrderService}.
+ *
+ * <p>{@link #cancel} hides ownership the same way {@code ProductService.getActiveBySlug} hides a
+ * deactivated product's slug: an order that doesn't exist and an order that exists but belongs to
+ * someone else both surface as {@code ORDER_NOT_FOUND}, never a distinguishable "forbidden" — a
+ * caller has no legitimate reason to learn that an order id they don't own exists at all.
+ *
+ * <p>{@link #initiatePayment} is deliberately <b>not</b> itself {@code @Transactional} — see
+ * {@link PaymentHandoffService}'s own Javadoc for why the durable-commit/gateway-call/
+ * durable-commit sequence needs two independent transactions rather than one wrapping the whole
+ * method (which would let a crash mid-gateway-call silently roll back the very
+ * {@code PAYMENT_PROCESSING} marker US-3.4's reconciliation job depends on existing).
+ */
+@Service
+@RequiredArgsConstructor
+public class OrderServiceImpl implements OrderService {
+
+    private final OrderRepository orderRepository;
+    private final OrderStatusHandlerRegistry orderStatusHandlerRegistry;
+    private final PaymentHandoffService paymentHandoffService;
+    private final PaymentGatewayPort paymentGatewayPort;
+
+    @Override
+    @Transactional(rollbackFor = Throwable.class)
+    public Order cancel(Integer orderId, String callerUuid) {
+        Order order = Validator.notFound(
+                orderRepository.findById(orderId).filter(o -> o.getOwnerUuid().equals(callerUuid)),
+                EcommerceErrorCode.ORDER_NOT_FOUND, orderId);
+        orderStatusHandlerRegistry.cancel(order);
+        return orderRepository.save(order);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Throwable.class)
+    public Order ship(Integer orderId) {
+        Order order = findOrder(orderId);
+        orderStatusHandlerRegistry.ship(order);
+        return orderRepository.save(order);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Throwable.class)
+    public Order deliver(Integer orderId) {
+        Order order = findOrder(orderId);
+        orderStatusHandlerRegistry.deliver(order);
+        return orderRepository.save(order);
+    }
+
+    @Override
+    public Order initiatePayment(Integer orderId, String callerUuid) {
+        Order pending = paymentHandoffService.startPaymentProcessing(orderId, callerUuid);
+        PaymentOutcome outcome = paymentGatewayPort.charge(pending.getIdempotencyKey(), pending.getTotal());
+        return paymentHandoffService.resolvePayment(orderId, outcome);
+    }
+
+    private Order findOrder(Integer orderId) {
+        return Validator.notFound(orderRepository.findById(orderId), EcommerceErrorCode.ORDER_NOT_FOUND, orderId);
+    }
+}

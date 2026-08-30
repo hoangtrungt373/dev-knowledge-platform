@@ -14,9 +14,12 @@ part of the domain; it captures the scope decisions and trade-offs behind what's
 (`docs/user-stories/01-catalog-search.md`) have working code: admin CRUD for
 `ProductCategory`/`Product` including independent variant/image mutation, the outbox relay, and a
 public browse/search/detail surface with attribute-value filtering — see below. **Epic 2 (Cart &
-Checkout) is now fully built** — both the cart half (US-2.1–2.4, `service/Cart*`/`api/CartApi`)
+Checkout) is fully built** — both the cart half (US-2.1–2.4, `service/Cart*`/`api/CartApi`)
 and checkout (US-2.5–2.7, `Address`/`Order`/`OrderLine`/`CheckoutService`/`api/CheckoutApi`) — see
-below.
+below. **Epic 3 (Order Lifecycle & Inventory,
+`docs/user-stories/03-order-lifecycle-inventory.md`) is in progress — Phase 1 (the data-model
+foundation) is built; US-3.1–3.8's actual service/API logic is not yet** — see the dedicated Epic 3
+section below.
 
 **This module is now a standalone Spring Boot application, not part of the monolith** — see the
 `project-ecommerce-service-module` memory for the full extraction history. Concretely: its own
@@ -108,10 +111,11 @@ are gone — see `docs/CHANGELOG.md`'s Keycloak migration entries (Phase 3) for 
   events, and a single Java field can only ever be backed by one enum type).
 
 Liquibase migrations: `ecommerce-service/.../database/sql/2026/0.0.2/202608040001__0.0.2__DKP-0023__add_ecommerce_catalog_tables.sql`
-(Epic 1 — categories/products/variants/images/search view/outbox) and
+(Epic 1 — categories/products/variants/images/search view/outbox),
 `202608240001__0.0.2__DKP-0034__add_ecommerce_order_tables.sql` (Epic 2's checkout half —
 `CUSTOMER_ORDER`/`ORDER_LINE`; see the entity Javadoc above for why the table isn't named `ORDER`),
-under this module's **own** changelog tree (`database/sql/ecommerce-service.xml` +
+and `202608300001__0.0.2__DKP-0035__add_order_reservation_and_status_history.sql` (Epic 3 Phase 1
+— see the dedicated Epic 3 section below), under this module's **own** changelog tree (`database/sql/ecommerce-service.xml` +
 `2026/0.0.2/*.sql`) — no longer under `gateway`'s, now that this module migrates its own schema. A
 short-lived `DKP-0027__add_ecommerce_user_table.sql` existed briefly alongside `identity-service`'s
 extraction (an `ecommerce.USER` table, added when this module was thought to need a persisted
@@ -381,11 +385,15 @@ backs a cart at all.
   re-derived later — a flat shipping fee read from config today could change after this order was
   placed, so the order itself, not `CheckoutServiceImpl`'s config value, is the source of truth for
   what a given order actually cost. `lines` cascades `ALL`/`orphanRemoval = true` (an order and its
-  lines are created together, in one transaction, and never independently).
-- `enums/OrderStatus` — **only `PENDING` exists today**, deliberately: this epic's own
-  responsibility ends at order creation (US-2.6); Epic 3's reservation step and Epic 4's payment
-  step will each add the status values they need when they're actually built, rather than
-  speculatively added now (mirrors `OutboxAggregateType`'s own "one value per epic" growth pattern).
+  lines are created together, in one transaction, and never independently). **Epic 3 Phase 1** (see
+  below) added `idempotencyKey`/`paymentProcessingStartedAt`/`cancelRequested` plus a
+  `statusHistory` collection (same cascade/orphanRemoval/`@OrderBy("id ASC")` shape as `lines`).
+- `enums/OrderStatus` — **now the full 8-value Epic 3 state machine**
+  (`PENDING`/`PAYMENT_PROCESSING`/`CONFIRMED`/`EXPIRED`/`FAILED`/`CANCELLED`/`SHIPPED`/`DELIVERED`),
+  added in one pass rather than incrementally — see the Epic 3 section below and this enum's own
+  Javadoc for why that's different from `OutboxAggregateType`'s "one value per epic" growth pattern
+  (this whole state machine is fully specified by one epic's user stories, not something that grows
+  over the app's entire lifetime).
 - `entity/OrderLine` — **`productVariantId` is a plain column, deliberately not a `@ManyToOne` FK**
   onto `ProductVariant`: `ProductServiceImpl.removeVariant` can hard-delete a variant outright, and
   an already-placed order must stay valid/displayable regardless. `sku`/`productName`/`unitPrice`
@@ -434,17 +442,184 @@ backs a cart at all.
   when Epic 3 actually needs one), and any "list/view my orders" endpoint (no query for it exists
   in `OrderRepository` either — see above).
 
+**Epic 3 (Order Lifecycle & Inventory, `docs/user-stories/03-order-lifecycle-inventory.md`) —
+Phases 1–4 are built (data model, US-3.1, US-3.2/3.6/3.7/3.8's state-machine logic, and US-3.3/3.4's
+payment handoff/reconciliation behind a stub gateway); only the REST surface (Phase 5) is not yet.**
+This epic is being built in phases (Phase 1: data model; Phase 2: US-3.1 reserve-at-checkout;
+Phase 3: State-pattern skeleton + US-3.2/3.6/3.7/3.8; Phase 4: US-3.3/3.4 payment handoff +
+reconciliation behind a `PaymentGatewayPort` stub; Phase 5: REST surface; Phase 6: tests+docs):
+
+- `enums/OrderStatus` widened to all 8 values (see above) in one migration rather than
+  incrementally, since the full state machine is already specified by this epic's own user stories.
+- `entity/Order` gained `idempotencyKey` (US-3.3, nullable — has no meaning before the
+  `PENDING`→`PAYMENT_PROCESSING` transition Phase 4 will add), `paymentProcessingStartedAt`
+  (US-3.4's reconciliation-job clock), `cancelRequested` (US-3.6's queued-cancel-mid-payment flag),
+  and a `statusHistory` collection.
+- New `entity/OrderStatusHistory` (US-3.5's audit trail) — `order` FK, nullable `fromStatus`
+  (null only for the very first row), `toStatus`, optional `reason`. No dedicated repository;
+  writers populate it via `order.getStatusHistory().add(...)`, relying on `Order.statusHistory`'s
+  `cascade = ALL` the same way `OrderLine` already does — add a direct
+  `OrderStatusHistoryRepository` only if a later phase genuinely needs to query it independently of
+  its parent `Order`. `CheckoutServiceImpl.confirm` (Phase 2, below) is the first real writer,
+  appending the very first row (`fromStatus = null`, `toStatus = PENDING`) at order creation.
+- `repository/ProductVariantRepository` gained three atomic conditional `@Modifying` updates —
+  `reserve`/`release`/`confirmSale` — the concurrency-safe mechanism US-3.1's "two shoppers can
+  never oversell the same limited stock" requirement actually needs: each is a single `UPDATE ...
+  WHERE` statement re-checking availability in the same statement as the write, the identical
+  claim-style shape `OutboxEventRepository.claim` already established in this module, rather than a
+  separate read-then-write that a second transaction could interleave with under Postgres's default
+  READ COMMITTED isolation, or pessimistic row locking. `release`/`confirmSale` aren't called from
+  anywhere yet — that's Phase 3/4's job.
+- Migration `202608300001__0.0.2__DKP-0035__add_order_reservation_and_status_history.sql`: widens
+  `CKC_CUSTOMER_ORDER_STATUS`, adds the three new `CUSTOMER_ORDER` columns plus a partial unique
+  index on `IDEMPOTENCY_KEY` (`WHERE IDEMPOTENCY_KEY IS NOT NULL` — most orders never reach payment
+  and so never get one), a `(STATUS, DTE_CREATION)` index for Phase 3/4's scheduled-job poll
+  queries, and the new `ORDER_STATUS_HISTORY` table/sequence.
+- **Phase 2 (US-3.1) — stock reservation wired into checkout.**
+  `CheckoutServiceImpl.confirm` now calls `ProductVariantRepository.reserve` for every available
+  cart line **before** the `Order` is ever built, inside the same `@Transactional` method checkout
+  already runs in: an insufficient-stock line throws
+  `EcommerceErrorCode.ORDER_INSUFFICIENT_STOCK` (`ORDER_001`, `409 CONFLICT`), and since nothing has
+  committed yet, the surrounding transaction rolls back both the new order and every reservation
+  already claimed by an earlier line in the same request — genuinely atomic "create the order and
+  reserve stock" per this epic's own locked decision (a single local ACID transaction, not a saga).
+  `confirm` also appends the order's first `OrderStatusHistory` row (see above). New private
+  `CheckoutServiceImpl.reserveStock(CartLine)` helper wraps the `reserve` call +
+  `Validator.isTrue` guard. `CheckoutServiceImplTest` gained cases for: the reservation succeeding
+  (asserting call order `reserve` → `save` → `clear`, and the new status-history row), a dropped
+  (unavailable) line never being a reservation candidate, a single-line insufficient-stock rejection
+  (no save/clear), and a multi-line request where an earlier line's reservation is claimed before a
+  later line fails (documented as the real DB transaction's job to undo, not something a mocked-repo
+  unit test can exercise) — 2 new test methods, 82 unit tests total (up from 80), all still passing
+  without Docker.
+- **Phase 3 (US-3.2, 3.6–3.8) — the GoF State-pattern skeleton, all wired up.** New
+  `orderstatus/` package (mirrors `outbox/`'s own self-contained-mechanism shape):
+  - `OrderStatusHandler` — the Strategy interface (`status()` + `expire`/`cancel`/`ship`/`deliver`,
+    each defaulting to a rejection via `EcommerceErrorCode.ORDER_INVALID_STATUS_TRANSITION`
+    (`ORDER_003`) so a concrete handler only needs to override what's actually valid from its own
+    status).
+  - `PendingOrderStatusHandler` (`expire`/`cancel`, both release-only — nothing was sold from a
+    `PENDING` order), `PaymentProcessingOrderStatusHandler` (`cancel` only sets
+    `Order.cancelRequested`, doesn't transition — a gateway call is in flight),
+    `ConfirmedOrderStatusHandler` (`cancel` restocks — stock here was already sold via
+    `confirmSale`, so undoing it means giving stock back, not releasing a reservation that no
+    longer exists; `ship` — no inventory action), `ShippedOrderStatusHandler` (`deliver` only —
+    deliberately doesn't override `cancel`, so the interface's own default rejection enforces
+    "blocked once shipped" for free). **No handler classes for the terminal statuses**
+    (`EXPIRED`/`FAILED`/`CANCELLED`/`DELIVERED`, none of which have any outgoing transition) — see
+    `OrderStatusHandlerRegistry`'s Javadoc for why that's a deliberate design choice, not a gap.
+  - `OrderStatusTransitions` — static helpers (`releaseReservations`/`restockSoldLines`/
+    `transitionTo`) shared by the handlers above; plain static methods rather than a shared
+    abstract base class, since `PaymentProcessingOrderStatusHandler` doesn't need
+    `ProductVariantRepository` at all and forcing it to accept one anyway would be exactly the
+    unnecessary-dependency smell this module's own conventions warn against.
+  - `OrderStatusHandlerRegistry` — builds a `Map<OrderStatus, OrderStatusHandler>` from every
+    handler bean (same registry shape as `outbox.OutboxEventDispatcher`) and dispatches
+    `expire`/`cancel`/`ship`/`deliver` through it; a status with no registered handler falls back to
+    a handler with no overrides at all, so "no handler for this status" and "handler exists but
+    doesn't support this action" both reject identically, for free.
+  - `OrderReservationExpiryJob`/`OrderReservationExpiryProcessor` (US-3.2) — same
+    poller/single-item-processor split as `outbox.OutboxRelay`/`OutboxEventProcessor`, for the
+    identical self-invocation-bypasses-`@Transactional` reason. Polls
+    `OrderRepository.findIdsByStatusAndDteCreationBefore(PENDING, now - reservation-timeout)`
+    (new query, mirrors `OutboxEventRepository.findIdsByStatus`), re-checks each order is still
+    `PENDING` after loading (a defensive guard against a stale id in the poll batch, e.g. the
+    shopper cancelled it themselves in the gap — **not** a distributed-concurrency mechanism; this
+    reactor runs exactly one instance of each service today, so no `OrderRepository.claim`-style
+    atomic `UPDATE` was added, unlike `OutboxEventRepository.claim` — add one first if this job is
+    ever run with more than one instance). New `app.ecommerce.order.reservation-timeout`
+    (`ORDER_RESERVATION_TIMEOUT`, default `PT15M`) and
+    `app.ecommerce.order.expiry-check.poll-interval` (`ORDER_EXPIRY_CHECK_POLL_INTERVAL`, default
+    `PT1M`) properties.
+  - New `service/OrderService`/`impl/OrderServiceImpl` — thin `cancel(orderId, callerUuid)` /
+    `ship(orderId)` / `deliver(orderId)` wrappers around the registry (find-or-404, dispatch, save).
+    `cancel` hides ownership the same way `ProductService.getActiveBySlug` hides a deactivated
+    product's slug: an order that doesn't exist and one that belongs to someone else both surface
+    as `ORDER_NOT_FOUND` (`ORDER_002`, new). No REST layer yet — Phase 5's job; these are the exact
+    seam Phase 5's `OrderApi`/`OrderController` will call.
+  - Tests: one test class per handler (`PendingOrderStatusHandlerTest`,
+    `PaymentProcessingOrderStatusHandlerTest`, `ConfirmedOrderStatusHandlerTest`,
+    `ShippedOrderStatusHandlerTest`), `OrderStatusHandlerRegistryTest` (dispatch-by-status,
+    terminal-status fallback, mirrors `OutboxEventDispatcherTest`),
+    `OrderReservationExpiryProcessorTest` (vanished/no-longer-`PENDING`/real-expiry cases, mirrors
+    `OutboxEventProcessorTest`'s shape), and `OrderServiceImplTest`. 25 new test methods, 107 unit
+    tests total (up from 82), all still passing without Docker.
+- **Phase 4 (US-3.3, 3.4) — payment handoff + reconciliation, behind a stub gateway.** New
+  `payment/` package (Epic 4's eventual home, seeded now since Epic 3 needs a seam to call):
+  - `PaymentGatewayPort` — GoF **Adapter** (Structural): `charge(idempotencyKey, amount)` /
+    `checkStatus(idempotencyKey)`, both returning `PaymentOutcome` (`SUCCEEDED`/`DECLINED`/
+    `PENDING`). The rest of Epic 3 depends on this interface only, never a concrete gateway SDK, so
+    Epic 4 can swap the implementation below for a real one without touching anything in
+    `orderstatus/`.
+  - `NoOpPaymentGatewayPort` — the only implementation today: always returns `SUCCEEDED`
+    instantly, logging a warning each call. Exists purely so the mechanism below has something
+    real to call end-to-end; **delete it outright once Epic 4 adds a real adapter** (or gate both
+    behind profiles if a fake gateway stays useful for local/test envs) rather than leaving two
+    ambiguous candidates for the same interface.
+  - `OrderStatusHandler` gained `startPaymentProcessing`/`confirmPayment`/`failPayment` (same
+    default-rejects shape as the Phase 3 methods). `PendingOrderStatusHandler.startPaymentProcessing`
+    stamps `idempotencyKey` (the order's own id — "a reasonable default" per this epic's own
+    decisions) and `paymentProcessingStartedAt`, transitions to `PAYMENT_PROCESSING`,
+    no inventory action. `PaymentProcessingOrderStatusHandler.confirmPayment`/`failPayment`
+    resolve the in-flight attempt (`confirmSale`/`release` respectively) — both check
+    `Order.getCancelRequested()` first: **a queued cancel wins over whatever the gateway
+    answered**, ending the order `CANCELLED` either way (restocking if payment had actually
+    succeeded, since money was captured and stock was sold, if only for a moment — refund
+    deferred to Epic 4, same as `ConfirmedOrderStatusHandler.cancel`; the release path needed no
+    change since `FAILED`'s own compensation was already identical, only the final label changes).
+    New `OrderStatusTransitions.confirmSaleForLines` helper alongside the Phase 3 ones.
+  - New `orderstatus/PaymentHandoffService` — the two independent `@Transactional` steps US-3.3
+    needs: `startPaymentProcessing(orderId, callerUuid)` (durably commits
+    `PENDING -> PAYMENT_PROCESSING` **before** any gateway call) and
+    `resolvePayment(orderId, outcome)` (applies the verdict afterward, in a second transaction).
+    Deliberately two transactions, not one wrapping the whole handoff: a crash between the gateway
+    call and applying its result must leave the order durably `PAYMENT_PROCESSING` with its
+    idempotency key intact (exactly what `OrderReconciliationJob` below exists to recover), not
+    silently roll back the whole attempt and risk a double charge on retry.
+  - New `orderstatus/OrderReconciliationJob` (US-3.4, `@Scheduled`) — polls a new
+    `OrderRepository.findIdsByStatusAndPaymentProcessingStartedAtBefore` query for orders stuck in
+    `PAYMENT_PROCESSING` past `app.ecommerce.order.reconciliation.grace-period` (default `PT2M`),
+    re-checks each is still stuck after loading (same defensive-guard reasoning as
+    `OrderReservationExpiryProcessor`), calls `PaymentGatewayPort.checkStatus` for the ground
+    truth, and applies it via `PaymentHandoffService.resolvePayment` — **never assumes an outcome**.
+    No separate `@Transactional` processor bean needed (unlike the Phase 3 expiry job) since this
+    job never calls a `@Transactional` method on itself — `PaymentHandoffService` is a different
+    bean, so the call already goes through Spring's proxy correctly. One poison order's exception
+    is caught and logged per-order so it doesn't stop the rest of the batch from reconciling. New
+    `app.ecommerce.order.reconciliation.poll-interval` (default `PT1M`).
+  - `service/OrderServiceImpl` gained `initiatePayment(orderId, callerUuid)` — the orchestrator:
+    calls `PaymentHandoffService.startPaymentProcessing`, then `PaymentGatewayPort.charge`
+    (outside any transaction), then `PaymentHandoffService.resolvePayment`. Deliberately **not**
+    itself `@Transactional` (the class-level annotation from Phases 2–3 moved to individual methods
+    for exactly this reason) — if the gateway call throws, the order is left `PAYMENT_PROCESSING`
+    on purpose, for `OrderReconciliationJob` to resolve later, rather than force-failed here.
+  - Tests: `NoOpPaymentGatewayPortTest`, `PaymentHandoffServiceTest`, `OrderReconciliationJobTest`
+    (stuck/vanished/already-resolved/one-poison-order-doesn't-block-the-batch cases, mirrors
+    `OrderReservationExpiryProcessorTest`'s shape), plus new cases on
+    `PendingOrderStatusHandlerTest`/`PaymentProcessingOrderStatusHandlerTest`/
+    `OrderStatusHandlerRegistryTest`/`OrderServiceImplTest`. 19 new test methods, 126 unit tests
+    total (up from 107), all passing, no Docker needed — **verified via a real
+    `mvn test` run in this session**, not just claimed.
+- **Not built yet** (do not assume these exist): the shopper/admin `OrderApi` REST surface plus
+  `OrderRepository.findByOwnerUuid` (Phase 5) — `cancel`/`ship`/`deliver`/`initiatePayment` are only
+  reachable today via `OrderService` directly (unit-tested, not yet exposed over HTTP). A real
+  payment gateway adapter (replacing `NoOpPaymentGatewayPort`) and everything else in Epic 4 beyond
+  what Epic 3 needed as a seam.
+
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"
-independently, not "one variant with both together" — see `ProductSearchView`'s Javadoc), and
-everything for Epics 3–5 (stock reservation, order-status transitions beyond `PENDING`, payments,
-reviews/recommendations). Check `docs/CHANGELOG.md`'s `[Unreleased]` entry and this file's own
-freshness before assuming more exists than what's listed above. **Compiles cleanly** (verified via
+independently, not "one variant with both together" — see `ProductSearchView`'s Javadoc), the rest
+of Epic 3 (the shopper/admin REST surface, Phase 5 — see immediately above), and Epics 4–5 (a real
+payment gateway adapter and everything else in Payments beyond Epic 3's own seam, plus
+reviews/recommendations). Check
+`docs/CHANGELOG.md`'s `[Unreleased]` entry and this file's own freshness before assuming more
+exists than what's listed above. **Compiles cleanly** (verified via
 a targeted `-pl ecommerce-service,gateway -am compile`/`test`; needs `JAVA_HOME` pointed at a JDK
 21 install, see the `reference-jdk21-location` memory) but has **not** been run: the app hasn't
-been booted against a real Postgres, so the Liquibase migration against the new `ecommerce` schema
-(including the new `CUSTOMER_ORDER`/`ORDER_LINE` tables), Hibernate's `ddl-auto: validate` check
-against it, the native SQL in `ProductSearchViewRepository.search`, the JWT verification path, and
+been booted against a real Postgres, so the Liquibase migrations against the new `ecommerce` schema
+(including the `CUSTOMER_ORDER`/`ORDER_LINE`/`ORDER_STATUS_HISTORY` tables), Hibernate's
+`ddl-auto: validate` check against it, the native SQL in `ProductSearchViewRepository.search`, the
+new `ProductVariantRepository` conditional updates, the JWT verification path, and
 the `app.storage.*` MinIO wiring (bucket auto-creation, `uploadImage`, presigned-URL resolution)
 are all still unverified at runtime. A new `Dockerfile` + `docker-compose.apps.yml` (repo root)
 exist to run this module in a container for the first time — see root `CLAUDE.md`'s Build & Run
@@ -534,7 +709,10 @@ this file's own `issuer-uri` property already used, and the same shape `identity
   dispatch-mark mechanism, independent of any one handler), `CheckoutServiceImplTest` (Epic 2's
   checkout half — both guards on `preview`/`confirm` alike, subtotal/shipping/total computation,
   the save-then-clear ordering via `Mockito.inOrder`, and that a dropped line is reported but never
-  included in the created order's own lines). 80 tests, all passing, no Docker needed for any of
+  included in the created order's own lines, plus Epic 3 Phase 2's stock-reservation cases — see
+  that epic's own section above; Epic 3 Phase 3 added a full `orderstatus/` test suite on top, and
+  Phase 4 extended it with the payment-handoff/reconciliation mechanism's own tests — see that
+  epic's own section). 126 tests, all passing, no Docker needed for any of
   them.
   - **`repository/ProductSearchViewRepositoryIT` is the one exception — a real Postgres
     Testcontainers integration test, not a unit test**, because US-1.3's `tsvector`/`pg_trgm`

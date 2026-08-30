@@ -52,7 +52,14 @@ public enum EcommerceErrorCode implements ErrorCode {
     // Checkout Errors (CHECKOUT_*) — Epic 2
     CHECKOUT_CART_EMPTY("CHECKOUT_001", "Your cart is empty", HttpStatus.BAD_REQUEST),
     CHECKOUT_NO_VALID_ITEMS("CHECKOUT_002",
-            "None of the items in your cart are currently available", HttpStatus.CONFLICT);
+            "None of the items in your cart are currently available", HttpStatus.CONFLICT),
+
+    // Order Errors (ORDER_*) — Epic 3
+    ORDER_INSUFFICIENT_STOCK("ORDER_001",
+            "Not enough stock available for ''{0}'' — someone else may have just bought the last of it",
+            HttpStatus.CONFLICT),
+    ORDER_NOT_FOUND("ORDER_002", "Order not found: {0}", HttpStatus.NOT_FOUND),
+    ORDER_INVALID_STATUS_TRANSITION("ORDER_003", "Cannot {0} an order in status {1}", HttpStatus.CONFLICT);
 
     private final String code;
     private final String message;

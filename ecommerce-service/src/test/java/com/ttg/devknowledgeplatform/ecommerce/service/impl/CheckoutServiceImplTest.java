@@ -4,8 +4,10 @@ import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductVariant;
+import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
+import com.ttg.devknowledgeplatform.ecommerce.repository.ProductVariantRepository;
 import com.ttg.devknowledgeplatform.ecommerce.service.Cart;
 import com.ttg.devknowledgeplatform.ecommerce.service.CartLine;
 import com.ttg.devknowledgeplatform.ecommerce.service.CartService;
@@ -50,6 +52,8 @@ class CheckoutServiceImplTest {
     private CartService cartService;
     @Mock
     private OrderRepository orderRepository;
+    @Mock
+    private ProductVariantRepository productVariantRepository;
 
     @InjectMocks
     private CheckoutServiceImpl service;
@@ -121,6 +125,7 @@ class CheckoutServiceImplTest {
         void createsOrderFromAvailableLinesAndClearsCartOnlyAfterSaving() {
             CartLine available = availableLine(1, 2, new BigDecimal("10.00"));
             when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(available)));
+            when(productVariantRepository.reserve(1, 2)).thenReturn(1);
             when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
                 Order saved = invocation.getArgument(0);
                 saved.setId(100);
@@ -143,7 +148,13 @@ class CheckoutServiceImplTest {
             assertThat(order.getLines().get(0).getQuantity()).isEqualTo(2);
             assertThat(result.droppedLines()).isEmpty();
 
-            InOrder ordering = inOrder(orderRepository, cartService);
+            // US-3.5: order creation writes the very first status-history row (no "from" state).
+            assertThat(order.getStatusHistory()).hasSize(1);
+            assertThat(order.getStatusHistory().get(0).getFromStatus()).isNull();
+            assertThat(order.getStatusHistory().get(0).getToStatus()).isEqualTo(OrderStatus.PENDING);
+
+            InOrder ordering = inOrder(productVariantRepository, orderRepository, cartService);
+            ordering.verify(productVariantRepository).reserve(1, 2);
             ordering.verify(orderRepository).save(any(Order.class));
             ordering.verify(cartService).clear(USER_UUID);
         }
@@ -153,12 +164,52 @@ class CheckoutServiceImplTest {
             CartLine available = availableLine(1, 1, new BigDecimal("10.00"));
             CartLine unavailable = unavailableLine(2, 3);
             when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(available, unavailable)));
+            when(productVariantRepository.reserve(1, 1)).thenReturn(1);
             when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
             CheckoutResult result = service.confirm(USER_UUID, address);
 
             assertThat(result.order().getLines()).hasSize(1);
             assertThat(result.droppedLines()).containsExactly(unavailable);
+            // A dropped (unavailable) line was never a candidate for reservation in the first place.
+            verify(productVariantRepository, never()).reserve(eq(2), any(Integer.class));
+        }
+
+        @Test
+        void rejectsWhenStockReservationFailsAndNeverSavesOrClears() {
+            CartLine available = availableLine(1, 5, new BigDecimal("10.00"));
+            when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(available)));
+            when(productVariantRepository.reserve(1, 5)).thenReturn(0);
+
+            assertThatThrownBy(() -> service.confirm(USER_UUID, address))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.ORDER_INSUFFICIENT_STOCK);
+
+            verify(orderRepository, never()).save(any());
+            verify(cartService, never()).clear(eq(USER_UUID));
+        }
+
+        @Test
+        void rollsBackEarlierReservationsInTheSameRequestWhenALaterLineFails() {
+            CartLine first = availableLine(1, 2, new BigDecimal("10.00"));
+            CartLine second = availableLine(2, 3, new BigDecimal("15.00"));
+            when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(first, second)));
+            when(productVariantRepository.reserve(1, 2)).thenReturn(1);
+            when(productVariantRepository.reserve(2, 3)).thenReturn(0);
+
+            assertThatThrownBy(() -> service.confirm(USER_UUID, address))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.ORDER_INSUFFICIENT_STOCK);
+
+            // The first line's reservation was claimed before the second line failed — this test
+            // documents that undoing it is the surrounding @Transactional rollback's job (a real
+            // DB transaction abort), not something this service method does by hand; a unit test
+            // with a mocked repository has no transaction to actually roll back.
+            verify(productVariantRepository).reserve(1, 2);
+            verify(orderRepository, never()).save(any());
+            verify(cartService, never()).clear(eq(USER_UUID));
         }
 
         @Test
