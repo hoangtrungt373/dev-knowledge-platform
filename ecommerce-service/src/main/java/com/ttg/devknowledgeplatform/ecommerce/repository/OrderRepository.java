@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.ecommerce.repository;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -12,11 +13,16 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Repository for {@link Order}. No {@code findByOwnerUuid}/"list my orders" query yet — that's
- * Epic 3 Phase 5's (the shopper-facing REST surface) job, added here when it's actually built
- * rather than speculatively now.
+ * Repository for {@link Order}.
  */
 public interface OrderRepository extends JpaRepository<Order, Integer> {
+
+    /**
+     * A shopper's own orders, most recent first (US-3.5, Epic 3 Phase 5) — backed by
+     * {@code IDX_CUSTOMER_ORDER_OWNER_UUID} (added alongside this query, per the "add the index
+     * when the query is actually built" note this repository used to carry).
+     */
+    Page<Order> findByOwnerUuidOrderByIdDesc(String ownerUuid, Pageable pageable);
 
     /**
      * Ids of every order in {@code status} created before {@code cutoff} — the reservation-expiry

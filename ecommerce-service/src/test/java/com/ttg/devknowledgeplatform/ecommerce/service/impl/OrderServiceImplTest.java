@@ -17,8 +17,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -29,11 +34,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for {@link OrderServiceImpl} — US-3.6's ownership-checked cancel, US-3.7/3.8's admin
- * ship/deliver (all thin wrappers around a mocked {@link OrderStatusHandlerRegistry}), and
- * US-3.3's {@link OrderServiceImpl#initiatePayment} orchestration (mocked {@link PaymentHandoffService}/
- * {@link PaymentGatewayPort} — the two durable steps and the gateway call are each covered by
- * their own dedicated test class, not re-verified here).
+ * Unit tests for {@link OrderServiceImpl} — US-3.5's ownership-checked get/list, US-3.6's
+ * ownership-checked cancel, US-3.7/3.8's admin ship/deliver (all thin wrappers around a mocked
+ * {@link OrderStatusHandlerRegistry}), and US-3.3's {@link OrderServiceImpl#initiatePayment}
+ * orchestration (mocked {@link PaymentHandoffService}/{@link PaymentGatewayPort} — the two durable
+ * steps and the gateway call are each covered by their own dedicated test class, not re-verified
+ * here).
  */
 @ExtendWith(MockitoExtension.class)
 class OrderServiceImplTest {
@@ -59,6 +65,54 @@ class OrderServiceImplTest {
         order.setOwnerUuid(ownerUuid);
         order.setStatus(OrderStatus.PENDING);
         return order;
+    }
+
+    @Nested
+    class GetOrder {
+
+        @Test
+        void returnsTheOrderWhenTheCallerOwnsIt() {
+            Order order = orderOwnedBy(OWNER_UUID);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+
+            assertThat(service.getOrder(1, OWNER_UUID)).isSameAs(order);
+        }
+
+        @Test
+        void rejectsAsNotFoundWhenTheOrderBelongsToSomeoneElse() {
+            Order order = orderOwnedBy(OWNER_UUID);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.getOrder(1, OTHER_UUID))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.ORDER_NOT_FOUND);
+        }
+
+        @Test
+        void rejectsAsNotFoundWhenTheOrderDoesNotExist() {
+            when(orderRepository.findById(1)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.getOrder(1, OWNER_UUID))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.ORDER_NOT_FOUND);
+        }
+    }
+
+    @Nested
+    class ListOrders {
+
+        @Test
+        void delegatesToTheRepositoryMostRecentFirst() {
+            Pageable pageable = PageRequest.of(0, 20);
+            Page<Order> page = new PageImpl<>(List.of(orderOwnedBy(OWNER_UUID)));
+            when(orderRepository.findByOwnerUuidOrderByIdDesc(OWNER_UUID, pageable)).thenReturn(page);
+
+            var result = service.listOrders(OWNER_UUID, pageable);
+
+            assertThat(result).isSameAs(page);
+        }
     }
 
     @Nested

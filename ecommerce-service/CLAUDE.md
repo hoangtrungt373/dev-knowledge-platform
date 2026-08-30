@@ -442,12 +442,12 @@ backs a cart at all.
   when Epic 3 actually needs one), and any "list/view my orders" endpoint (no query for it exists
   in `OrderRepository` either — see above).
 
-**Epic 3 (Order Lifecycle & Inventory, `docs/user-stories/03-order-lifecycle-inventory.md`) —
-Phases 1–4 are built (data model, US-3.1, US-3.2/3.6/3.7/3.8's state-machine logic, and US-3.3/3.4's
-payment handoff/reconciliation behind a stub gateway); only the REST surface (Phase 5) is not yet.**
-This epic is being built in phases (Phase 1: data model; Phase 2: US-3.1 reserve-at-checkout;
-Phase 3: State-pattern skeleton + US-3.2/3.6/3.7/3.8; Phase 4: US-3.3/3.4 payment handoff +
-reconciliation behind a `PaymentGatewayPort` stub; Phase 5: REST surface; Phase 6: tests+docs):
+**Epic 3 (Order Lifecycle & Inventory, `docs/user-stories/03-order-lifecycle-inventory.md`) — all
+6 phases are now built, including the REST surface (Phase 5).** This epic was built in phases
+(Phase 1: data model; Phase 2: US-3.1 reserve-at-checkout; Phase 3: State-pattern skeleton +
+US-3.2/3.6/3.7/3.8; Phase 4: US-3.3/3.4 payment handoff + reconciliation behind a
+`PaymentGatewayPort` stub; Phase 5: REST surface; this file's own documentation across all phases
+doubles as Phase 6):
 
 - `enums/OrderStatus` widened to all 8 values (see above) in one migration rather than
   incrementally, since the full state machine is already specified by this epic's own user stories.
@@ -600,18 +600,57 @@ reconciliation behind a `PaymentGatewayPort` stub; Phase 5: REST surface; Phase 
     `OrderStatusHandlerRegistryTest`/`OrderServiceImplTest`. 19 new test methods, 126 unit tests
     total (up from 107), all passing, no Docker needed — **verified via a real
     `mvn test` run in this session**, not just claimed.
-- **Not built yet** (do not assume these exist): the shopper/admin `OrderApi` REST surface plus
-  `OrderRepository.findByOwnerUuid` (Phase 5) — `cancel`/`ship`/`deliver`/`initiatePayment` are only
-  reachable today via `OrderService` directly (unit-tested, not yet exposed over HTTP). A real
-  payment gateway adapter (replacing `NoOpPaymentGatewayPort`) and everything else in Epic 4 beyond
-  what Epic 3 needed as a seam.
+- **Phase 5 (US-3.5, plus exposing 3.3/3.6/3.7/3.8 over HTTP) — the REST surface.**
+  `repository/OrderRepository` gained `findByOwnerUuidOrderByIdDesc` (a fully-derived query — the
+  sort is baked into the method name, since "most recent first" is the only ordering a shopper's
+  own order history needs), backed by a new `IDX_CUSTOMER_ORDER_OWNER_UUID` index (migration
+  `202608300002__0.0.2__DKP-0036__add_customer_order_owner_uuid_index.sql` — this index was
+  deliberately deferred until this exact query needed it, per the note this repository used to
+  carry). `OrderService` gained `getOrder(orderId, callerUuid)` (US-3.5, same ownership-hiding
+  shape as `cancel`) and `listOrders(callerUuid, pageable)`.
+  - New `dto/OrderStatusHistoryResponse`/`OrderResponse` (the latter reused for both the list-mine
+    and get-by-id endpoints — same "one response DTO for list and detail" convention
+    `ProductResponse` already established, since an order's lines/history are always small,
+    unlike a product's variant/image gallery only being a genuine concern at that larger scale).
+  - New `mapper/OrderMapper` — hand-written, not MapStruct (matches `CartMapper`/`CheckoutMapper`
+    in this package). `toOrderLineResponse`/`toAddressResponse` are `public static` so
+    `CheckoutMapper` can reuse them for its own `CheckoutConfirmResponse` — `OrderMapper` is now
+    the canonical owner of that mapping, since Epic 3 Phase 5 is the second caller;
+    `CheckoutMapper`'s own private copies were deleted. `OrderMapper.toResponse` reads
+    `Order.getLines()`/`getStatusHistory()`, both lazy collections — this only works because
+    `spring.jpa.open-in-view` is left at Spring Boot's default `true` in this module (unchanged),
+    keeping the Hibernate session open for the whole request; `ProductMapper` already relies on
+    the identical behavior for `Product.variants`/`images`.
+  - New `api/OrderApi`+`Controller` at `/api/v1/orders` — **authenticated-only, same as
+    `CartApi`/`CheckoutApi`, no new `SecurityConfig` rule needed.** `GET` (list mine, paginated,
+    most recent first), `GET /{id}` (US-3.5's detail view with full status timeline),
+    `POST /{id}/cancel` (US-3.6), `POST /{id}/pay` (US-3.3's `initiatePayment` — not in the
+    originally-scoped Phase 5 plan, added since Phase 4 had already built the capability and
+    leaving it REST-unreachable would defeat the point of this phase).
+  - New `api/AdminOrderApi`+`Controller` at `/api/v1/admin/orders` — `POST /{id}/ship` (US-3.7),
+    `POST /{id}/deliver` (US-3.8). **A separate interface from `OrderApi`, not folded together** —
+    mirrors this module's existing `ProductCategoryApi`/`PublicProductCategoryApi` split (same
+    underlying resource, genuinely different audience/security rule). Admin-gated automatically via
+    the existing `/api/v1/admin/**` rule, no `SecurityConfig` change needed either.
+  - `gateway`'s `GatewayRoutesConfig.ecommerceServiceRoutes()` gained `/api/v1/orders/**` (a new
+    top-level prefix, no shared-prefix disambiguation needed — same shape `/api/v1/cart/**` was)
+    and `/api/v1/admin/orders/**` (joining the existing shared `/api/v1/admin/**` prefix's
+    resource-specific routes alongside `/products/**`/`/product-categories/**`). See root
+    `CLAUDE.md`'s Routing section.
+  - `OrderServiceImplTest` gained `GetOrder`/`ListOrders` nested test classes — 4 new test methods,
+    130 unit tests total (up from 126), all passing, no Docker needed; verified via a real
+    `mvn test` run in this session. No dedicated `OrderMapperTest`/controller tests — matches this
+    module's existing convention of not unit-testing thin hand-written mappers or controllers
+    directly (`CartMapper`/`CheckoutMapper` have none either).
+- **Not built yet** (do not assume these exist): a real payment gateway adapter (replacing
+  `NoOpPaymentGatewayPort`) and everything else in Epic 4 beyond what Epic 3 needed as a seam.
 
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"
-independently, not "one variant with both together" — see `ProductSearchView`'s Javadoc), the rest
-of Epic 3 (the shopper/admin REST surface, Phase 5 — see immediately above), and Epics 4–5 (a real
-payment gateway adapter and everything else in Payments beyond Epic 3's own seam, plus
-reviews/recommendations). Check
+independently, not "one variant with both together" — see `ProductSearchView`'s Javadoc). **Epic 3
+(Order Lifecycle & Inventory) is now fully built, all 6 phases** — see its own section above.
+Epics 4–5 (a real payment gateway adapter and everything else in Payments beyond Epic 3's own seam,
+plus reviews/recommendations) are not built. Check
 `docs/CHANGELOG.md`'s `[Unreleased]` entry and this file's own freshness before assuming more
 exists than what's listed above. **Compiles cleanly** (verified via
 a targeted `-pl ecommerce-service,gateway -am compile`/`test`; needs `JAVA_HOME` pointed at a JDK
@@ -710,9 +749,10 @@ this file's own `issuer-uri` property already used, and the same shape `identity
   checkout half — both guards on `preview`/`confirm` alike, subtotal/shipping/total computation,
   the save-then-clear ordering via `Mockito.inOrder`, and that a dropped line is reported but never
   included in the created order's own lines, plus Epic 3 Phase 2's stock-reservation cases — see
-  that epic's own section above; Epic 3 Phase 3 added a full `orderstatus/` test suite on top, and
-  Phase 4 extended it with the payment-handoff/reconciliation mechanism's own tests — see that
-  epic's own section). 126 tests, all passing, no Docker needed for any of
+  that epic's own section above; Epic 3 Phase 3 added a full `orderstatus/` test suite on top,
+  Phase 4 extended it with the payment-handoff/reconciliation mechanism's own tests, and Phase 5
+  added `GetOrder`/`ListOrders` cases to `OrderServiceImplTest` — see that epic's own section).
+  130 tests, all passing, no Docker needed for any of
   them.
   - **`repository/ProductSearchViewRepositoryIT` is the one exception — a real Postgres
     Testcontainers integration test, not a unit test**, because US-1.3's `tsvector`/`pg_trgm`

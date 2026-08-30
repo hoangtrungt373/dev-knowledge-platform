@@ -1399,8 +1399,11 @@ section wrongly claimed one existed; only `task-service`/`social-service` have t
 single-service compose file, see root `CLAUDE.md`'s Database Conventions section). `gateway` no
 longer has a Maven dependency on this module, but **does now proxy external client traffic to it**
 — `GatewayRoutesConfig`'s `ecommerceServiceRoutes()` bean routes `/api/v1/admin/products/**`,
-`/api/v1/admin/product-categories/**`, and `/api/v1/public/products/**` (an earlier revision of
-this section said this proxy wasn't built yet; it is).
+`/api/v1/admin/product-categories/**`, `/api/v1/admin/orders/**`, `/api/v1/public/products/**`,
+`/api/v1/public/product-categories/**`, `/api/v1/cart/**`, `/api/v1/checkout/**`, and
+`/api/v1/orders/**` (an earlier revision of this section said this proxy wasn't built yet, and a
+later one only listed the first three routes; all eight exist now — see root `CLAUDE.md`'s Routing
+section and `GatewayRoutesConfig`'s own Javadoc for the current, authoritative list).
 
 **Compiles cleanly** (full reactor including the extraction changes; needs `JAVA_HOME` pointed at
 a JDK 21 install) but hasn't been run against a real Postgres yet — the Liquibase migration
@@ -1493,9 +1496,10 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │   (findByProductId/deleteByProductId + a native search() query — tsvector+trgm keyword
 │   │   match, category/price-range/inStock filters, all via the "(:param IS NULL OR ...)" idiom
 │   │   for one static query covering every optional-filter combination) / OrderRepository.java
-│   │   (plain JpaRepository plus, since Epic 3 Phase 3, findIdsByStatusAndDteCreationBefore — the
-│   │   reservation-expiry job's poll query; still no findByOwnerUuid/"list my orders" query,
-│   │   planned for Phase 5 alongside the shopper-facing order API)
+│   │   (plain JpaRepository plus findIdsByStatusAndDteCreationBefore/
+│   │   findIdsByStatusAndPaymentProcessingStartedAtBefore, the expiry/reconciliation jobs' own
+│   │   poll queries (Epic 3 Phases 3–4), and, since Phase 5, findByOwnerUuidOrderByIdDesc — "list
+│   │   my orders", backed by a new IDX_CUSTOMER_ORDER_OWNER_UUID index)
 │   └── spec/
 │       └── ProductCategorySpecification.java / ProductSpecification.java
 ├── outbox/                      — generic outbox mechanism, reusable by every future epic
@@ -1602,15 +1606,15 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │       before building the Order, in the same transaction — insufficient stock throws
 │       ORDER_INSUFFICIENT_STOCK and rolls back the whole request; confirm also appends the
 │       order's first OrderStatusHistory row (fromStatus null, toStatus PENDING)
-├── service/OrderService.java / impl/OrderServiceImpl.java — Epic 3 Phases 3–4 (US-3.6–3.8, 3.3):
-│   │   thin cancel(orderId, callerUuid)/ship(orderId)/deliver(orderId) wrappers around
+├── service/OrderService.java / impl/OrderServiceImpl.java — Epic 3 Phases 3–5 (US-3.6–3.8, 3.3,
+│   │   3.5): thin cancel(orderId, callerUuid)/ship(orderId)/deliver(orderId) wrappers around
 │   │   orderstatus.OrderStatusHandlerRegistry (find-or-404, dispatch, save); cancel hides
 │   │   ownership the same way ProductService.getActiveBySlug hides a deactivated slug. Also
 │   │   initiatePayment(orderId, callerUuid) — orchestrates orderstatus.PaymentHandoffService's two
 │   │   transactional steps around a payment.PaymentGatewayPort.charge call; deliberately not
 │   │   itself @Transactional (a class-level annotation would let a crash mid-gateway-call roll
-│   │   back the PAYMENT_PROCESSING marker OrderReconciliationJob depends on). No REST layer yet —
-│   │   Phase 5's job
+│   │   back the PAYMENT_PROCESSING marker OrderReconciliationJob depends on). Phase 5 added
+│   │   getOrder(orderId, callerUuid)/listOrders(callerUuid, pageable), both @Transactional(readOnly)
 ├── service/seed/                — starter sample catalog (developer-swag theme), gated by
 │   │                                app.seed.enabled
 │   ├── ProductCategorySeeder.java  — extends infra's CsvSeeder<ProductCategory>; idempotency key
@@ -1646,7 +1650,13 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │                                    toLineResponse(CartLine) extracted as its own public method
 │                                    so CheckoutMapper can reuse it) / CheckoutMapper (also
 │                                    hand-written, injects CartMapper for every cart-line shape it
-│                                    surfaces — a preview's lines, and any lines dropped at confirm)
+│                                    surfaces — a preview's lines, and any lines dropped at confirm;
+│                                    Epic 3 Phase 5 moved its OrderLine/Address mapping logic into
+│                                    OrderMapper's public statics instead of a private copy)
+│                                    / OrderMapper (Epic 3 Phase 5, hand-written — toResponse reads
+│                                    Order.lines/statusHistory, relying on the default
+│                                    spring.jpa.open-in-view=true the same way ProductMapper relies
+│                                    on it for Product.variants/images)
 ├── api/                         — REST layer
 │   ├── ProductCategoryApi.java / ProductApi.java — admin CRUD (/api/v1/admin/**), incl.
 │   │                                 POST/DELETE .../variants/{id} and
@@ -1669,12 +1679,22 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   ├── CheckoutApi.java          — /api/v1/checkout (US-2.5–2.7), authenticated-only, same rule as
 │   │                                 CartApi; GET /preview (review) + POST /confirm (creates the
 │   │                                 order, 201)
+│   ├── OrderApi.java             — /api/v1/orders (Epic 3 Phase 5, US-3.3/3.5/3.6), authenticated-
+│   │                                 only, same rule as CartApi; GET (list mine, paginated, most
+│   │                                 recent first), GET /{id} (full status timeline),
+│   │                                 POST /{id}/cancel, POST /{id}/pay (initiatePayment)
+│   ├── AdminOrderApi.java        — /api/v1/admin/orders (Epic 3 Phase 5, US-3.7/3.8);
+│   │                                 POST /{id}/ship, POST /{id}/deliver — a separate interface
+│   │                                 from OrderApi, mirroring the ProductCategoryApi/
+│   │                                 PublicProductCategoryApi split (same resource, different
+│   │                                 audience/security rule)
 │   └── impl/                    — ProductCategoryController / ProductController (admin-gated
 │                                    automatically via this module's own security/SecurityConfig
 │                                    /api/v1/admin/** rule) / ProductSearchController /
 │                                    PublicProductCategoryController (both public via that same
 │                                    config's /api/v1/public/** rule) / CartController /
-│                                    CheckoutController
+│                                    CheckoutController / OrderController / AdminOrderController
+│                                    (admin-gated the same way ProductController is)
 └── dto/                         — ProductCategoryResponse/CreateProductCategoryRequest/
                                      UpdateProductCategoryRequest, ProductResponse/
                                      CreateProductRequest/UpdateProductRequest,
@@ -1685,7 +1705,8 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
                                      AddressRequest/AddressResponse/OrderLineResponse/
                                      CheckoutPreviewResponse/CheckoutConfirmResponse,
                                      UpdateProductImageSortOrderRequest,
-                                     ProductSearchResponse
+                                     ProductSearchResponse,
+                                     OrderStatusHistoryResponse/OrderResponse (Epic 3 Phase 5)
 ```
 
 Liquibase migrations: `ecommerce-service/.../database/sql/2026/0.0.2/202608040001__0.0.2__DKP-0023__add_ecommerce_catalog_tables.sql`
@@ -1700,25 +1721,30 @@ columns inline) and `ORDER_LINE`; and (Epic 3 Phase 1)
 `CUSTOMER_ORDER.STATUS`'s `CHECK` to the full 8-value state machine, adds `IDEMPOTENCY_KEY`
 (partial-unique-indexed)/`PAYMENT_PROCESSING_STARTED_AT`/`CANCEL_REQUESTED`, a
 `(STATUS, DTE_CREATION)` index for the Phase-2 expiry/reconciliation jobs' poll queries, and the
-new `ORDER_STATUS_HISTORY` table. All three applied via the consolidated `services-liquibase` job
+new `ORDER_STATUS_HISTORY` table; and (Epic 3 Phase 5)
+`202608300002__0.0.2__DKP-0036__add_customer_order_owner_uuid_index.sql` — adds
+`IDX_CUSTOMER_ORDER_OWNER_UUID`, deferred until the "list my orders" query that actually needs it
+was built. All four applied via the consolidated `services-liquibase` job
 in `docker-compose.apps.yml` — see the Liquibase note above.
 
-Not yet built: `ProductCategory` delete, and the rest of Epic 3 (the shopper/admin `OrderApi` REST
-surface, Phase 5 — Phases 1–4 above already cover the data model, US-3.1's reservation,
-US-3.2/3.6/3.7/3.8's state-machine logic, and US-3.3/3.4's payment handoff/reconciliation behind a
-stub gateway, all reachable today only via direct service calls, not HTTP) plus a real payment
-gateway adapter and the rest of Epic 4, plus Epic 5. The `gateway`-side HTTP proxy, variant/image
-add/remove/reorder endpoints, and Epic 2's checkout half (all listed as not yet built in earlier
-revisions of this section) are all done now — see above.
+**Epic 3 (Order Lifecycle & Inventory) is now fully built — all 6 phases**, including the REST
+surface (`OrderApi`/`AdminOrderApi`, Phase 5) — see `ecommerce-service/CLAUDE.md`'s own Epic 3
+section for the full phase-by-phase detail. Not yet built: `ProductCategory` delete, a real payment
+gateway adapter and the rest of Epic 4 beyond Epic 3's own seam, and Epic 5
+(reviews/recommendations). The `gateway`-side HTTP proxy, variant/image add/remove/reorder
+endpoints, and Epic 2's checkout half (all listed as not yet built in earlier revisions of this
+section) are all done now — see above.
 
 **Test suite:** `src/test/java/.../service/impl/` (`ProductCategoryServiceImplTest`,
 `ProductServiceImplTest`, `ProductSearchServiceImplTest`, `ProductChangedOutboxEventHandlerTest`,
 `CheckoutServiceImplTest`) and `src/test/java/.../outbox/` (`OutboxEventDispatcherTest`,
-`OutboxEventProcessorTest`) — plain JUnit 5/Mockito/AssertJ unit tests, 126 passing (Epic 3 Phase 2
+`OutboxEventProcessorTest`) — plain JUnit 5/Mockito/AssertJ unit tests, 130 passing (Epic 3 Phase 2
 added stock-reservation cases to `CheckoutServiceImplTest`; Phase 3 added a full `orderstatus/`
 package test suite — one class per handler, plus registry/expiry-job/`OrderServiceImpl` tests;
 Phase 4 added `payment/`'s own tests plus `PaymentHandoffServiceTest`/`OrderReconciliationJobTest`
-and more cases on the Phase 3 handler/registry/`OrderServiceImpl` tests), no Docker
+and more cases on the Phase 3 handler/registry/`OrderServiceImpl` tests; Phase 5 added
+`GetOrder`/`ListOrders` cases to `OrderServiceImplTest`, no dedicated mapper/controller tests —
+matches this module's existing convention), no Docker
 needed. Plus
 `src/test/java/.../repository/ProductSearchViewRepositoryIT` — a real Postgres Testcontainers
 integration test for US-1.3/1.4's native `tsvector`/`pg_trgm`/JSONB-containment search matching,

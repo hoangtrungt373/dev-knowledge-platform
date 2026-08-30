@@ -2,14 +2,38 @@ package com.ttg.devknowledgeplatform.ecommerce.service;
 
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
 /**
- * Order lifecycle actions available to a shopper or admin (Epic 3, US-3.6–3.8) — thin wrappers
- * around {@code orderstatus.OrderStatusHandlerRegistry} that add the "find the order (and, for
- * {@link #cancel}, confirm the caller owns it)" step around each transition. US-3.2's reservation
- * expiry has no method here since nothing but the scheduled job (not a caller) ever triggers it —
- * see {@code orderstatus.OrderReservationExpiryJob}.
+ * Order lifecycle actions available to a shopper or admin (Epic 3, US-3.6–3.8), plus US-3.5's
+ * read surface — thin wrappers around {@code orderstatus.OrderStatusHandlerRegistry} that add the
+ * "find the order (and, for shopper-facing methods, confirm the caller owns it)" step around each
+ * transition. US-3.2's reservation expiry has no method here since nothing but the scheduled job
+ * (not a caller) ever triggers it — see {@code orderstatus.OrderReservationExpiryJob}.
  */
 public interface OrderService {
+
+    /**
+     * Returns a single order, restricted to ones the caller owns (US-3.5) — the detail view behind
+     * "view order status with history"; {@link Order#getStatusHistory()} carries the timeline.
+     *
+     * @param orderId    the order to look up
+     * @param callerUuid the caller's Keycloak UUID — the order must belong to this caller
+     * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException if the order
+     *         doesn't exist or doesn't belong to {@code callerUuid} (the two are indistinguishable
+     *         to the caller — see {@code OrderServiceImpl}'s Javadoc)
+     */
+    Order getOrder(Integer orderId, String callerUuid);
+
+    /**
+     * Paginated list of the caller's own orders, most recent first (US-3.5).
+     *
+     * @param callerUuid the caller's Keycloak UUID
+     * @param pageable   page/size — no configurable sort, since "most recent first" is the only
+     *                   ordering a shopper's own order history needs
+     */
+    Page<Order> listOrders(String callerUuid, Pageable pageable);
 
     /**
      * Cancels {@code orderId} on the caller's behalf (US-3.6) — the compensating action (release

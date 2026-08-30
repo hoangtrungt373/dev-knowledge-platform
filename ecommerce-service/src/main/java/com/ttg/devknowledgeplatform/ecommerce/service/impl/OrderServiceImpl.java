@@ -12,6 +12,8 @@ import com.ttg.devknowledgeplatform.ecommerce.service.OrderService;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +39,20 @@ public class OrderServiceImpl implements OrderService {
     private final OrderStatusHandlerRegistry orderStatusHandlerRegistry;
     private final PaymentHandoffService paymentHandoffService;
     private final PaymentGatewayPort paymentGatewayPort;
+
+    @Override
+    @Transactional(readOnly = true)
+    public Order getOrder(Integer orderId, String callerUuid) {
+        return Validator.notFound(
+                orderRepository.findById(orderId).filter(o -> o.getOwnerUuid().equals(callerUuid)),
+                EcommerceErrorCode.ORDER_NOT_FOUND, orderId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<Order> listOrders(String callerUuid, Pageable pageable) {
+        return orderRepository.findByOwnerUuidOrderByIdDesc(callerUuid, pageable);
+    }
 
     @Override
     @Transactional(rollbackFor = Throwable.class)
