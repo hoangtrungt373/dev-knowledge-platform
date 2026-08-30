@@ -27,4 +27,6 @@ public class CartLineResponse {
     private BigDecimal lineTotal;
     /** Time-limited presigned GET URL for the product's first gallery image (by sortOrder); null if the product has no images yet. */
     private String primaryImageUrl;
+    /** Units currently available to buy for this line's variant ({@code stockQuantity - reservedQuantity}) — null when {@link #available} is false, same as every field above it. Lets the GUI cap a quantity picker and show a low-stock nudge without a second round trip to the product detail endpoint. */
+    private Integer availableQuantity;
 }

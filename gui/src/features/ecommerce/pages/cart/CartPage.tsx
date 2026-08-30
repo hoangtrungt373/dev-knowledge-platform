@@ -22,6 +22,7 @@ import { useCart } from '../../context/CartContext';
 import { shopApi } from '../../api/shopApi';
 import VariantSelector from '../../components/shop/VariantSelector';
 import { CartLine, ProductVariant } from '../../types';
+import { isLowStock, lowStockMessage } from '../../utils/stock';
 
 function formatPrice(value: number): string {
   return `$${value.toFixed(2)}`;
@@ -268,6 +269,11 @@ function CartLineRow({ line, pending, onQuantityChange, onRemove, onVariantChang
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             {formatPrice(line.unitPrice ?? 0)} each
           </Typography>
+          {isLowStock(line.availableQuantity) && (
+            <Typography variant="caption" color="warning.main" fontWeight={600} sx={{ display: 'block', mt: 0.25 }}>
+              {lowStockMessage(line.availableQuantity as number)}
+            </Typography>
+          )}
         </Box>
       </Link>
 
@@ -316,7 +322,11 @@ function CartLineRow({ line, pending, onQuantityChange, onRemove, onVariantChang
           <RemoveIcon fontSize="small" />
         </IconButton>
         <Typography sx={{ width: 28, textAlign: 'center' }}>{line.quantity}</Typography>
-        <IconButton size="small" disabled={pending} onClick={() => onQuantityChange(line.quantity + 1)}>
+        <IconButton
+          size="small"
+          disabled={pending || (line.availableQuantity !== undefined && line.quantity >= line.availableQuantity)}
+          onClick={() => onQuantityChange(line.quantity + 1)}
+        >
           <AddIcon fontSize="small" />
         </IconButton>
       </Stack>

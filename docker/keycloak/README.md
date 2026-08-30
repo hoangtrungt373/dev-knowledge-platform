@@ -32,6 +32,28 @@ real credentials can't be committed to the repo. To enable one:
 Step 3 is external to this repo and can't be automated — it has to be done once per environment
 wherever the provider's own app registration lives.
 
+## Login page: registration and Google hidden on purpose
+
+`registrationAllowed: false` and the `google` identity provider's `hideOnLoginPage: true` both
+exist so Keycloak's own bare hosted login page — the one `AdminLogin.tsx` redirects to (it never
+passes `kc_idp_hint`, unlike the regular flow below) — doesn't show a "Register" link or a
+"Continue with Google" button that would just lead a non-admin down a dead end (the callback
+rejects anyone without the `ADMIN` realm role regardless). Neither setting affects the app's
+regular, non-admin flows:
+
+- `SignUp.tsx` never reaches Keycloak's own hosted registration page at all — it calls
+  `identity-service`'s own endpoint, which creates the Keycloak account server-side via the Admin
+  REST API. `registrationAllowed` only gates the "Register" link on Keycloak's *own* login form,
+  which nothing in this app's real sign-up path relies on.
+- `Login.tsx`'s own "Continue with Google" button passes `kc_idp_hint=google` when it redirects,
+  which sends the browser straight to Google — it never renders Keycloak's account-chooser page at
+  all, so `hideOnLoginPage` (which only controls whether the button appears *on that page*) has no
+  effect on it.
+
+If a future admin-facing flow ever needs registration or social login back on Keycloak's own login
+page, flip these back per-setting rather than assuming both need to move together — they're
+independent toggles that happened to need the same fix for the same underlying reason here.
+
 ## Smoke-test user
 
 `kc-smoke-test@devknowledge.local` / `smoke-test-password` (`USER`+`ADMIN` roles) exists purely to

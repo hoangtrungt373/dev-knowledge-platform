@@ -530,13 +530,80 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       there's no "every attribute value in this category" endpoint, so switching pages can reveal
       different facet options. A known, page-scoped approximation, not a bug; don't "fix" it by
       assuming a missing facet means that value doesn't exist anywhere in the category.
-    - `ProductDetailPage.tsx` — image gallery (main + thumbnail strip) + `VariantSelector.tsx` +
-      a quantity stepper and **Add to Cart** button (now that Epic 2 is built — see below). Resets
-      the quantity back to 1 whenever the selected variant changes (a quantity picked for a
-      different variant shouldn't silently carry over). Renders "Log in to buy" instead when
-      `authService.isAuthenticated()` is false — Epic 2 is authenticated-only, no guest cart, so
-      this avoids ever attempting the call at all rather than relying on `httpClient`'s 401
-      fallback (same reasoning `useFriendRequestsCount`'s own auth guard already documents).
+    - **`ProductDetailPage.tsx`** — the gallery+info row sits in its own `bgcolor:
+      'background.paper'` card (`borderRadius: 2, p: 3`), per request, distinct from the page's own
+      grey `background.default` behind it — `background.paper` rather than a hardcoded white so a
+      future dark theme gets the right dark surface color automatically instead of a stuck-white
+      box. Image gallery (main + thumbnail strip) on the left, **`flex: '1
+      1 calc(45% - 12.8px)'`**; on the right, a Shopee-referenced info panel (explicitly modeled on
+      that layout, per request — this app still has no purchased/named template, this is just the
+      closest real-world reference point for this one page's arrangement), **`flex: '1 1
+      calc(55% - 19.2px)'`** — a fix per request, wider than the gallery since the info column
+      (price box, row-layout variant picker, two large buttons) needs more horizontal room than an
+      even split gave it; both sides keep `minWidth: 320` so the parent's `flexWrap: 'wrap'` still
+      stacks them on a narrow viewport. **The `calc()` subtraction is load-bearing, not
+      decoration**: the parent's `gap: 4` (32px) sits on top of the flex-basis sum, and
+      flex-wrap's line-breaking decision is made against each item's *hypothetical* (pre-shrink)
+      basis size — so bare percentages summing to 100% plus the 32px gap always overflow the line
+      and force an unwanted wrap to two rows, regardless of how much the items could actually
+      shrink to fit. The two `calc()` subtractions (12.8px / 19.2px) sum to exactly 32px, so the
+      pre-shrink total comes back down to `100% - 32px`, matching the space the gap actually
+      consumes — the two columns lay out side-by-side and only wrap once `minWidth: 320` genuinely
+      can't fit both. Don't "simplify" this back to bare percentages — it reintroduces the
+      always-wraps bug. **The category chip and product description are deliberately not shown
+      here anymore** — a fix per request; both move to a future "article" section rendered below
+      the info panel instead (not yet built — see the `product.description`/`categoryName` fields
+      still on `Product`, just unused on this page for now). Panel content, top to bottom: title
+      (`h5 fontWeight={400}`) → **a rating/sold-count/report row** (below, new) → price box → 
+      divider → `VariantSelector` (`layout="row"` — see below) → a `Quantity` label/stepper/
+      availability-text row → an `Add to Cart` + `Buy Now` button row.
+      - **The rating/sold-count/report row is entirely faked data, per explicit request** — a
+        module-level `FAKE_RATING = 4.9` / `FAKE_RATING_COUNT = 79` / `FAKE_SOLD_COUNT = 1000`,
+        identical on every product, standing in for a real reviews/order-analytics backend that
+        doesn't exist yet (Epic 5). Renders `{rating} <MUI Rating readOnly precision={0.1}>` |
+        `{ratingCount} Ratings` | `{soldCount} Sold` (`Divider orientation="vertical" flexItem`
+        between each), then a right-aligned (`flexGrow: 1` spacer) `Report` button —
+        `startIcon={<FlagOutlinedIcon>}`, `disabled` with a "Coming soon" tooltip, same
+        not-a-working-shortcut treatment as `Buy Now` below, since no report flow exists either.
+        **When real ratings/sold-count land, replace the three constants with real
+        `product`-sourced values — don't leave the fake numbers behind once real data exists.**
+      - **Price box** — still a distinct, higher-emphasis block below that row, Shopee-style: a
+        full-width `bgcolor: 'action.hover'` box (a fix per request — was `display: 'inline-block'`
+        sized to the price text; `Box`'s default `display: 'block'` already fills the panel's width
+        once `inline-block` is dropped) holding the price in `h4 fontWeight={400} color="error.main"`
+        — bigger than the `h5` title, red, but not bold (a fix per request; both this and the title
+        used to be much heavier, `700`/`800`, and read as too bold).
+      - **Availability text lives in the quantity row, immediately after the stepper, not next to
+        the price** — a fix per request (briefly tried right-aligned via a `flexGrow: 1` spacer,
+        reverted to sitting right next to the stepper per follow-up). Three states: before a
+        variant is resolved, a plain **"IN STOCK"**/"Out of stock" (`inStockDisplay`'s "any variant
+        in stock" fallback — different variants have independent stock, so nothing more specific is
+        knowable yet); once resolved, "N items available" or `utils/stock.ts`'s shared
+        warning-colored "Only N left in stock!" (`isLowStock`/`lowStockMessage`,
+        `LOW_STOCK_THRESHOLD = 5`, shared with `CartPage` below so the threshold/wording can't
+        drift between the two places a shopper sees remaining stock), or "Out of stock" if that
+        exact variant has none left. No separate binary in-stock/out-of-stock chip exists anymore,
+        this replaced it.
+      - **The quantity stepper's `+` button and manual entry both cap at the selected variant's own
+        `stockQuantity - reservedQuantity`** — a fix; it used to have no upper bound at all,
+        letting a shopper pick a quantity the backend would only ever reject at checkout confirm
+        time via `ORDER_INSUFFICIENT_STOCK`, a much later and worse point to find out. Resets to 1
+        whenever the selected variant changes (a quantity picked for a different variant shouldn't
+        silently carry over). Its `TextField` (`variant="standard"`, `disableUnderline`) sets
+        `inputProps.style.padding: 0` on the raw `<input>` — a fix; the standard variant's default
+        input padding is asymmetric top/bottom, which visibly shifted the number a bit higher than
+        the flanking `−`/`+` `IconButton`s' centered glyphs.
+      - **`Add to Cart` is `size="large"` plus explicit `px`/`py`/`fontSize` padding** — a fix; the
+        default button read as too small to be the page's primary action. `Buy Now` sits next to it
+        (`variant="outlined"`, same large sizing) but is **`disabled` with a "Coming soon" tooltip**
+        — no "skip the cart, go straight to checkout" flow exists yet; it's rendered per the
+        Shopee-style layout's own two-button row rather than omitted, but deliberately not left
+        looking like a working shortcut that silently does nothing. Wrapped in a `<span>` per MUI's
+        own requirement for a `Tooltip` on a `disabled` button. Renders "Log in to buy" as a single
+        button in this row's place instead of both, unchanged, when
+        `authService.isAuthenticated()` is false — Epic 2 is authenticated-only, no guest cart, so
+        this avoids ever attempting the call at all rather than relying on `httpClient`'s 401
+        fallback (same reasoning `useFriendRequestsCount`'s own auth guard already documents).
     - `api/shopApi.ts` — a separate file from `ecommerceApi.ts` (admin CRUD), mirroring the
       backend's own `ProductSearchApi`/`ProductApi` split. `getBySlug` reuses the existing `Product`
       type from Phase B/admin (same `ProductResponse` shape); `search` uses a **new**
@@ -599,8 +666,15 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       network round trip, only smooth over it. Quantity
       +/- buttons call `updateItem` directly (immediate mutation, no local staging) — the "−"
       button disables at quantity 1 rather than silently removing the line on decrement, since a
-      dedicated Remove button already covers that action explicitly. A per-row `pending` flag
-      (keyed by `variantId`) disables only the row with an in-flight mutation, not the whole page.
+      dedicated Remove button already covers that action explicitly. **The "+" button also disables
+      once `line.quantity` reaches `line.availableQuantity`** (a fix — it used to have no upper
+      bound, same gap `ProductDetailPage`'s own stepper had, see above) — `availableQuantity` is a
+      new, nullable `CartLineResponse` field (`stockQuantity - reservedQuantity` for that line's
+      variant, added specifically for this; omitted, like every other field beyond
+      `variantId`/`quantity`, when the line is unavailable) — and a low-stock line reuses the same
+      `utils/stock.ts` helpers `ProductDetailPage` does, rendered as a caption under the unit-price
+      line. A per-row `pending` flag (keyed by `variantId`) disables only the row with an in-flight
+      mutation, not the whole page.
       The thumbnail + name/attributes block (not the whole row) links to `/shop/${line.productSlug}`
       — react-router-dom's own `Link` (a real `<a href>`, not a `Box`/`onClick`+`navigate()` the way
       `ProductCard.tsx`'s `CardActionArea` does it), specifically so the browser's native
@@ -664,7 +738,17 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       variant has size M" and "some variant has color Black" independently, per
       `ProductSearchView`'s own documented limitation on the backend). A product with no
       attributes at all (a single variant, e.g. "This Is Fine" decal) renders no picker — the
-      component auto-selects that sole variant instead.
+      component auto-selects that sole variant instead. **Gained a `layout?: 'stacked' | 'row'`
+      prop** (default `'stacked'`, its original and only shape) so `ProductDetailPage`'s
+      Shopee-style redesign could opt into a label-left/chips-right row per attribute (`Size  M L`)
+      without disturbing `CartPage`'s own reuse of this component inside its narrow (`minWidth:
+      240`) inline variant-switcher `Popover`, below — that one keeps the original `'stacked'`
+      label-above-chips shape, which fits a narrow popover better than a wide label/value row
+      would. Both layouts share the same chip-rendering logic (`chipsFor(key)`), just arranged
+      differently, so the two never drift in what they actually render, only how. **Chips render
+      with `sx={{ borderRadius: 1 }}`** — a fix per request, squaring off MUI `Chip`'s default
+      fully-rounded pill shape into a rectangle with a small corner radius instead (`Chip` has no
+      shape prop of its own; overriding `borderRadius` via `sx` is the supported way).
     - `api/shopApi.ts` — a separate file from `ecommerceApi.ts` (admin CRUD), mirroring the
       backend's own `ProductSearchApi`/`ProductApi` split. `getBySlug` reuses the existing `Product`
       type from Phase B/admin (same `ProductResponse` shape); `search` uses a **new**

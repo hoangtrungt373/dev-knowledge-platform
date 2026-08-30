@@ -79,7 +79,8 @@ public class CartMapper {
                     .attributes(variant.getAttributes())
                     .unitPrice(variant.getPrice())
                     .lineTotal(lineTotal)
-                    .primaryImageUrl(resolvePrimaryImageUrl(product));
+                    .primaryImageUrl(resolvePrimaryImageUrl(product))
+                    .availableQuantity(variant.getStockQuantity() - variant.getReservedQuantity());
         }
         return builder.build();
     }

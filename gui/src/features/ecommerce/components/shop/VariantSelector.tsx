@@ -9,6 +9,11 @@ interface Props {
    * starting blank — used by `CartPage`'s inline variant switcher so the popover opens already
    * showing what's in the cart today, not an empty picker. */
   initialAttributes?: Record<string, string>;
+  /** `'stacked'` (default) renders each attribute's label above its chip row — compact, fits
+   * `CartPage`'s narrow inline-switcher popover. `'row'` renders the label to the left of one
+   * horizontal chip row instead (Shopee-style label/value table) — used by `ProductDetailPage`'s
+   * wider layout, where there's room for it. */
+  layout?: 'stacked' | 'row';
 }
 
 /**
@@ -18,7 +23,7 @@ interface Props {
  * limitation), this component has the product's real, full variant list, so it can require an
  * exact match across every attribute key rather than an approximation.
  */
-export default function VariantSelector({ variants, onSelect, initialAttributes }: Props): JSX.Element | null {
+export default function VariantSelector({ variants, onSelect, initialAttributes, layout = 'stacked' }: Props): JSX.Element | null {
   const attributeKeys = useMemo(
     () => (variants.length > 0 ? Object.keys(variants[0].attributes) : []),
     [variants],
@@ -60,30 +65,49 @@ export default function VariantSelector({ variants, onSelect, initialAttributes 
 
   const selectionComplete = attributeKeys.every(key => selections[key]);
 
+  const chipsFor = (key: string) => valuesByKey[key].map(value => (
+    <Chip
+      key={value}
+      label={value}
+      clickable
+      size="small"
+      color={selections[key] === value ? 'primary' : 'default'}
+      variant={selections[key] === value ? 'filled' : 'outlined'}
+      onClick={() => setSelections(prev => ({ ...prev, [key]: value }))}
+      sx={{ borderRadius: 1 }}
+    />
+  ));
+
   return (
-    <Stack spacing={2}>
+    <Stack spacing={layout === 'row' ? 1.5 : 2}>
       {attributeKeys.map(key => (
-        <Box key={key}>
-          <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'capitalize' }}>
-            {key}
-          </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 0.5 }}>
-            {valuesByKey[key].map(value => (
-              <Chip
-                key={value}
-                label={value}
-                clickable
-                size="small"
-                color={selections[key] === value ? 'primary' : 'default'}
-                variant={selections[key] === value ? 'filled' : 'outlined'}
-                onClick={() => setSelections(prev => ({ ...prev, [key]: value }))}
-              />
-            ))}
+        layout === 'row' ? (
+          <Stack key={key} direction="row" alignItems="center" spacing={2}>
+            <Typography
+              variant="body1"
+              color="text.secondary"
+              fontWeight={600}
+              sx={{ minWidth: 72, flexShrink: 0, textTransform: 'capitalize' }}
+            >
+              {key}
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+              {chipsFor(key)}
+            </Box>
+          </Stack>
+        ) : (
+          <Box key={key}>
+            <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'capitalize' }}>
+              {key}
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 0.5 }}>
+              {chipsFor(key)}
+            </Box>
           </Box>
-        </Box>
+        )
       ))}
       {selectionComplete && !resolvedVariant && (
-        <Typography variant="body2" color="error">
+        <Typography variant="body1" color="error">
           Not available in this combination.
         </Typography>
       )}

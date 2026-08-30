@@ -110,6 +110,9 @@ export interface CartLine {
   lineTotal?: number;
   /** Time-limited presigned GET URL for the product's first gallery image; null if it has none yet. */
   primaryImageUrl?: string | null;
+  /** Units currently available for this line's variant (stockQuantity - reservedQuantity) — lets
+   * the cart cap the quantity stepper and show a low-stock nudge without a second round trip. */
+  availableQuantity?: number;
 }
 
 export interface Cart {

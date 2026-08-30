@@ -3,18 +3,20 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   Box,
   Button,
-  Chip,
   CircularProgress,
   Divider,
   IconButton,
+  Rating,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ImageNotSupportedIcon from '@mui/icons-material/ImageNotSupported';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
+import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { authService } from '@auth/services/authService';
 import { useNotification } from '@shared/contexts/NotificationContext';
@@ -22,6 +24,7 @@ import { useCart } from '../../context/CartContext';
 import { Product, ProductVariant } from '../../types';
 import { shopApi } from '../../api/shopApi';
 import VariantSelector from '../../components/shop/VariantSelector';
+import { isLowStock, lowStockMessage } from '../../utils/stock';
 
 function formatPriceRange(variants: ProductVariant[]): string {
   const prices = variants.map(v => v.price);
@@ -29,6 +32,11 @@ function formatPriceRange(variants: ProductVariant[]): string {
   const max = Math.max(...prices);
   return min === max ? `$${min.toFixed(2)}` : `$${min.toFixed(2)} – $${max.toFixed(2)}`;
 }
+
+// Faked pending a real reviews/order-analytics backend (Epic 5) — same number on every product.
+const FAKE_RATING = 4.9;
+const FAKE_RATING_COUNT = 79;
+const FAKE_SOLD_COUNT = 1000;
 
 export default function ProductDetailPage(): JSX.Element {
   const { slug } = useParams<{ slug: string }>();
@@ -93,8 +101,14 @@ export default function ProductDetailPage(): JSX.Element {
   const priceDisplay = selectedVariant
     ? `$${selectedVariant.price.toFixed(2)}`
     : formatPriceRange(product.variants);
+  // Only meaningful once a specific variant is picked — different variants have independent
+  // stock, so there's no single sensible "remaining" number to show before that (the chip below
+  // falls back to a plain any-variant-in-stock check in that case, same as before).
+  const availableForSelectedVariant = selectedVariant
+    ? selectedVariant.stockQuantity - selectedVariant.reservedQuantity
+    : undefined;
   const inStockDisplay = selectedVariant
-    ? selectedVariant.stockQuantity - selectedVariant.reservedQuantity > 0
+    ? (availableForSelectedVariant ?? 0) > 0
     : product.variants.some(v => v.stockQuantity - v.reservedQuantity > 0);
 
   return (
@@ -103,10 +117,10 @@ export default function ProductDetailPage(): JSX.Element {
         Back to Shop
       </Button>
 
-      <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+      <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap', bgcolor: 'background.paper', borderRadius: 2, p: 3 }}>
 
         {/* ── Image gallery ── */}
-        <Box sx={{ flex: '1 1 400px', minWidth: 320 }}>
+        <Box sx={{ flex: '1 1 calc(45% - 12.8px)', minWidth: 320 }}>
           <Box
             sx={{
               height: 400,
@@ -149,60 +163,148 @@ export default function ProductDetailPage(): JSX.Element {
         </Box>
 
         {/* ── Info ── */}
-        <Box sx={{ flex: '1 1 320px', minWidth: 280 }}>
-          <Chip label={product.categoryName} size="small" variant="outlined" sx={{ mb: 1.5 }} />
-          <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>{product.name}</Typography>
-          <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2 }}>
-            <Typography variant="h6" fontWeight={700}>{priceDisplay}</Typography>
-            <Chip
-              label={inStockDisplay ? 'In stock' : 'Out of stock'}
-              size="small"
-              color={inStockDisplay ? 'success' : 'default'}
-              variant="outlined"
-            />
+        <Box sx={{ flex: '1 1 calc(55% - 19.2px)', minWidth: 320 }}>
+          <Typography variant="h5" fontWeight={400} sx={{ mb: 2 }}>{product.name}</Typography>
+
+          {/* Rating / sold-count / report row — faked pending a real reviews/order-analytics
+              backend (Epic 5); same numbers on every product until that lands. */}
+          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2, flexWrap: 'wrap' }}>
+            <Stack direction="row" alignItems="center" spacing={0.5}>
+              <Typography variant="body1" fontWeight={600}>{FAKE_RATING.toFixed(1)}</Typography>
+              <Rating value={FAKE_RATING} precision={0.1} readOnly size="small" />
+            </Stack>
+            <Divider orientation="vertical" flexItem />
+            <Typography variant="body1" color="text.secondary">{FAKE_RATING_COUNT} Ratings</Typography>
+            <Divider orientation="vertical" flexItem />
+            <Typography variant="body1" color="text.secondary">{FAKE_SOLD_COUNT} Sold</Typography>
+            <Box sx={{ flexGrow: 1 }} />
+            {/* Not implemented yet — disabled rather than silently doing nothing on click. */}
+            <Tooltip title="Coming soon">
+              <span>
+                <Button
+                  size="small"
+                  color="inherit"
+                  disabled
+                  startIcon={<FlagOutlinedIcon fontSize="small" />}
+                  sx={{ textTransform: 'none' }}
+                >
+                  Report
+                </Button>
+              </span>
+            </Tooltip>
           </Stack>
 
-          {product.description && (
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3, whiteSpace: 'pre-wrap' }}>
-              {product.description}
+          {/* Price — a distinct, higher-emphasis block than the title above it, Shopee-style:
+              gray-filled box, red highlight, and a bigger type size than the h5 title. */}
+          <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, px: 2, py: 1.25, mb: 3 }}>
+            <Typography variant="h4" fontWeight={400} color="error.main">
+              {priceDisplay}
             </Typography>
-          )}
+          </Box>
+
+          {/* Category and description move to an "article" section below the info panel in a
+              later phase — not shown here anymore. */}
 
           <Divider sx={{ mb: 3 }} />
 
-          <VariantSelector variants={product.variants} onSelect={setSelectedVariant} />
+          <VariantSelector variants={product.variants} onSelect={setSelectedVariant} layout="row" />
 
-          <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 3 }}>
-            <Stack direction="row" alignItems="center" sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-              <IconButton size="small" onClick={() => setQuantity(q => Math.max(1, q - 1))} disabled={quantity <= 1}>
-                <RemoveIcon fontSize="small" />
-              </IconButton>
-              <TextField
-                value={quantity}
-                onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                variant="standard"
-                InputProps={{ disableUnderline: true }}
-                inputProps={{ style: { textAlign: 'center', width: 32 } }}
-              />
-              <IconButton size="small" onClick={() => setQuantity(q => q + 1)}>
-                <AddIcon fontSize="small" />
-              </IconButton>
+          <Stack spacing={2.5} sx={{ mt: 3 }}>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Typography
+                variant="body1"
+                color="text.secondary"
+                fontWeight={600}
+                sx={{ minWidth: 72, flexShrink: 0 }}
+              >
+                Quantity
+              </Typography>
+              <Stack direction="row" alignItems="center" sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                <IconButton size="small" onClick={() => setQuantity(q => Math.max(1, q - 1))} disabled={quantity <= 1}>
+                  <RemoveIcon fontSize="small" />
+                </IconButton>
+                <TextField
+                  value={quantity}
+                  onChange={(e) => {
+                    const parsed = Math.max(1, parseInt(e.target.value, 10) || 1);
+                    setQuantity(availableForSelectedVariant !== undefined ? Math.min(parsed, availableForSelectedVariant) : parsed);
+                  }}
+                  variant="standard"
+                  InputProps={{ disableUnderline: true }}
+                  inputProps={{ style: { textAlign: 'center', width: 32, padding: 0 } }}
+                />
+                <IconButton
+                  size="small"
+                  disabled={availableForSelectedVariant !== undefined && quantity >= availableForSelectedVariant}
+                  onClick={() => setQuantity(q => (availableForSelectedVariant !== undefined ? Math.min(q + 1, availableForSelectedVariant) : q + 1))}
+                >
+                  <AddIcon fontSize="small" />
+                </IconButton>
+              </Stack>
+
+              {/* Before a variant is resolved, only "any variant in stock" is known (per-variant
+                  stock is independent) — a plain IN STOCK/Out of stock. Once resolved, the exact
+                  count takes over, with the low-stock warning replacing it under the threshold. */}
+              {!selectedVariant ? (
+                <Typography variant="body1" color={inStockDisplay ? 'text.secondary' : 'text.disabled'} fontWeight={600}>
+                  {inStockDisplay ? 'IN STOCK' : 'Out of stock'}
+                </Typography>
+              ) : isLowStock(availableForSelectedVariant) ? (
+                <Typography variant="body1" color="warning.main" fontWeight={600}>
+                  {lowStockMessage(availableForSelectedVariant as number)}
+                </Typography>
+              ) : inStockDisplay ? (
+                <Typography variant="body1" color="text.secondary">
+                  {availableForSelectedVariant} item{availableForSelectedVariant === 1 ? '' : 's'} available
+                </Typography>
+              ) : (
+                <Typography variant="body1" color="text.disabled">
+                  Out of stock
+                </Typography>
+              )}
             </Stack>
 
-            {authService.isAuthenticated() ? (
-              <Button
-                variant="contained"
-                startIcon={<ShoppingCartIcon />}
-                disabled={!selectedVariant || !inStockDisplay || addingToCart}
-                onClick={handleAddToCart}
-              >
-                {addingToCart ? 'Adding…' : 'Add to Cart'}
-              </Button>
-            ) : (
-              <Button variant="contained" onClick={() => navigate('/login')}>
-                Log in to buy
-              </Button>
-            )}
+            <Stack direction="row" spacing={2}>
+              {authService.isAuthenticated() ? (
+                <>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    startIcon={<ShoppingCartIcon />}
+                    disabled={!selectedVariant || !inStockDisplay || addingToCart}
+                    onClick={handleAddToCart}
+                    sx={{ px: 4, py: 1.25, fontSize: '1rem', fontWeight: 600 }}
+                  >
+                    {addingToCart ? 'Adding…' : 'Add to Cart'}
+                  </Button>
+                  {/* Buy Now: not implemented yet (no "skip cart, go straight to checkout" flow
+                      exists) — kept visible per the Shopee-style layout this page follows, but
+                      disabled with a tooltip rather than silently omitted, so it doesn't read as
+                      a working shortcut that just does nothing. */}
+                  <Tooltip title="Coming soon">
+                    <span>
+                      <Button
+                        variant="outlined"
+                        size="large"
+                        disabled
+                        sx={{ px: 4, py: 1.25, fontSize: '1rem', fontWeight: 600 }}
+                      >
+                        Buy Now
+                      </Button>
+                    </span>
+                  </Tooltip>
+                </>
+              ) : (
+                <Button
+                  variant="contained"
+                  size="large"
+                  onClick={() => navigate('/login')}
+                  sx={{ px: 4, py: 1.25, fontSize: '1rem', fontWeight: 600 }}
+                >
+                  Log in to buy
+                </Button>
+              )}
+            </Stack>
           </Stack>
         </Box>
       </Box>

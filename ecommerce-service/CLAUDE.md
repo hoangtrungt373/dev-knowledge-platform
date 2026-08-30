@@ -356,11 +356,16 @@ backs a cart at all.
   `sortOrder` entry — null if the product has no images yet, same nullable shape
   `ProductSearchViewMapper.resolvePrimaryImageUrl` already uses for the storefront grid's own
   thumbnail. `Product.images` carries no `@OrderBy` of its own, so this picks the minimum by
-  `sortOrder` explicitly rather than trusting collection order.
+  `sortOrder` explicitly rather than trusting collection order. **A post-Epic-2 GUI-driven
+  follow-up** added `availableQuantity` (`variant.getStockQuantity() - variant.getReservedQuantity()`)
+  to `toLineResponse` — the GUI had no way to cap a quantity picker at real stock or show a
+  "only N left" nudge, since `CartLineResponse` only ever carried a boolean `available`, never a
+  number; `ProductVariantResponse` already exposed both raw columns for the product detail page,
+  so this just extends the same idea to the cart.
 - `dto/{CartResponse,CartLineResponse,AddCartItemRequest,UpdateCartItemRequest}` — an unavailable
   line's response has only `variantId`/`quantity`/`available=false`; every other field
-  (`primaryImageUrl` included) is omitted (`@JsonInclude(NON_NULL)`), not zeroed out, so a GUI
-  can't mistake "no data" for "priced at $0."
+  (`primaryImageUrl`/`availableQuantity` included) is omitted (`@JsonInclude(NON_NULL)`), not
+  zeroed out, so a GUI can't mistake "no data" for "priced at $0" (or "zero left").
 - `api/CartApi`+`Controller` at `/api/v1/cart` — **authenticated-only, no new `SecurityConfig` rule
   needed** (no `/public/**`/`/admin/**` prefix, so it falls under the existing default
   `anyRequest().authenticated()` rule). Every mutating endpoint (`addItem`/`updateItem`/`removeItem`)
