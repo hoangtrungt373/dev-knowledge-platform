@@ -16,6 +16,7 @@ import {
 import { ProductCategory, ProductCategoryTreeNode, CreateProductCategoryPayload, UpdateProductCategoryPayload } from '../types';
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import { flattenCategoryTree } from '../utils/categoryTree';
 
 interface Props {
   open: boolean;
@@ -23,22 +24,6 @@ interface Props {
   treeNodes: ProductCategoryTreeNode[];
   onClose: () => void;
   onSaved: () => void;
-}
-
-interface FlatOption {
-  id: number;
-  name: string;
-  depth: number;
-}
-
-function flattenTree(nodes: ProductCategoryTreeNode[], depth = 0, excludeIds: Set<number> = new Set()): FlatOption[] {
-  const result: FlatOption[] = [];
-  for (const node of nodes) {
-    if (excludeIds.has(node.id)) continue;
-    result.push({ id: node.id, name: node.name, depth });
-    result.push(...flattenTree(node.children, depth + 1, excludeIds));
-  }
-  return result;
 }
 
 function collectSubtreeIds(node: ProductCategoryTreeNode, result: Set<number>): void {
@@ -77,7 +62,7 @@ export default function ProductCategoryFormDialog({ open, category, treeNodes, o
 
   // A category can't become its own descendant's child — exclude its own subtree from the picker.
   const excludeIds = isEdit ? getSubtreeIds(treeNodes, category.id) : new Set<number>();
-  const flatOptions = flattenTree(treeNodes, 0, excludeIds);
+  const flatOptions = flattenCategoryTree(treeNodes, 0, excludeIds);
 
   const validate = (): boolean => {
     if (!name.trim()) {

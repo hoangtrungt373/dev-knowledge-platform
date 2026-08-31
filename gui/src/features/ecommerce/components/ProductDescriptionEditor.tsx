@@ -189,7 +189,7 @@ export default function ProductDescriptionEditor({ value, onChange }: Props): JS
   return (
     <Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>Description</Typography>
-      <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
+      <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden', bgcolor: 'background.paper' }}>
         <Stack
           direction="row"
           alignItems="center"

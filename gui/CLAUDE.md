@@ -508,12 +508,20 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   only the tree to build an id→name lookup for a new "Parent" column (`category.parentId ?
   parentNameMap[...] : '—'`) — same `buildNameMap` helper as `@content`'s page, walking the tree
   once rather than re-deriving ancestry per row. The form dialog gained a "Parent category" `Select`
-  (byte-identical `flattenTree`/`getSubtreeIds`/`collectSubtreeIds` helpers to `@content`'s
-  `CategoryFormDialog`) — indented by depth, "None (root category)" for a root, and excluding the
-  category's own subtree so an edit can't assign one of its own descendants as its new parent (the
-  cycle guard the backend also enforces server-side; the GUI's exclusion is a UX nicety, not the
-  actual guard). **Still no delete action** — unlike `@content`'s page, which does have one (its
-  backend supports it) — this follow-up only added hierarchy, not delete; don't assume one exists.
+  (byte-identical `getSubtreeIds`/`collectSubtreeIds` helpers to `@content`'s `CategoryFormDialog`)
+  — indented by depth, "None (root category)" for a root, and excluding the category's own subtree
+  so an edit can't assign one of its own descendants as its new parent (the cycle guard the backend
+  also enforces server-side; the GUI's exclusion is a UX nicety, not the actual guard). **Still no
+  delete action** — unlike `@content`'s page, which does have one (its backend supports it) — this
+  follow-up only added hierarchy, not delete; don't assume one exists.
+  - **The depth-indentation logic itself (`flattenTree`) moved out to a shared
+    `utils/categoryTree.ts` (`flattenCategoryTree`/`FlatCategoryOption`), per a later follow-up**
+    once `ProductFormPage.tsx`'s own Category picker needed the identical "flat list, indented by
+    depth" shape — see that page's own note below. `ProductCategoryFormDialog.tsx` still owns
+    `getSubtreeIds`/`collectSubtreeIds` (the "exclude this category's own subtree" concern is
+    specific to reassigning a category's parent, not to `ProductFormPage`'s plain "pick this
+    product's category" use, which has no cycle risk at all) and just calls the shared
+    `flattenCategoryTree(treeNodes, 0, excludeIds)` instead of a local copy.
   `types.ts`'s `ProductCategory` gained `parentId: number | null`, and a new
   `ProductCategoryTreeNode` type mirrors `@content`'s `CategoryTreeNode` exactly.
   `pages/ProductListPage.tsx` + `pages/ProductFormPage.tsx` mirror `@content`'s
@@ -522,11 +530,47 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   - **Create mode**: variants are staged locally (a `DisplayVariant[]` with locally-generated
     string ids, not yet persisted) and submitted together with the basic fields in one
     `createProduct` call, since the backend requires ≥1 variant to create a product at all (US-1.6)
-    — there's no way to create a variant-less product and add variants after the fact. Images
-    can't be added yet either — uploading needs a real `productId`, which doesn't exist until
-    after creation — so the create form shows a "save this product first" notice in the image
-    gallery's place and, on success, navigates straight to the new product's own edit page rather
-    than back to the list, so the natural next step (add images) is one click away.
+    — there's no way to create a variant-less product and add variants after the fact. On success,
+    navigates straight to the new product's own edit page rather than back to the list.
+    - **Images used to require "save first, come back later" — no longer, per request.** Asked
+      directly why that flow existed (the answer: `ProductServiceImpl.uploadImage` needs a real
+      `productId` to look the product up and to namespace the storage key under
+      `products/{productId}/...`, and nothing else in this reactor can turn a file into a
+      `storageKey` without that lookup — even though `CreateProductRequest.images`/
+      `ProductCommands.Create.images` already exist and are wired end-to-end on the backend, the
+      GUI never had a way to populate them at create time). Landed on the user's own proposed fix
+      over a heavier one (a new backend staging-upload endpoint) once it became clear it needed
+      **zero backend changes**: `createProduct` already returns the new id, so the create form
+      just does the image upload itself, one call per queued file, immediately after — the exact
+      same `ecommerceApi.uploadImage` edit mode already uses, just invoked automatically instead of
+      manually.
+      - New `components/ProductImageStager.tsx` (+ exported `StagedImage` type) — a **separate**
+        component from `ProductImageGallery.tsx`, not a shared/extended one. Every one of that
+        component's own handlers fires a real backend call the instant something happens (upload
+        on file pick, `DELETE` on remove, a 3-step scratch-sort-order dance on reorder to route
+        around the `PRODUCT_IMAGE` table's `UNIQUE(PRODUCT_ID, SORT_ORDER)` constraint) — none of
+        that applies to files that aren't attached to any product yet, so add/remove/reorder here
+        are all synchronous local-array edits, no network call, mirroring `ProductVariantEditor`'s
+        own draft/live split (`handleAddDraftVariant`/`handleAddLiveVariant`) rather than
+        `ProductImageGallery`'s single hardcoded-API-calls shape.
+      - `handleSubmit`'s create branch: after `createProduct` resolves, loops through
+        `stagedImages` **sequentially** (not `Promise.all` — keeps `sortOrder` assignment
+        deterministic via the loop index, and avoids N simultaneous multipart uploads), calling
+        `ecommerceApi.uploadImage(created.id, file, index, showError)` per file. **Best-effort, not
+        all-or-nothing** — the product already exists by this point, so one bad file (wrong type,
+        too large) doesn't undo the product creation or block the rest of the queue; the final
+        `showSuccess` message reflects the actual outcome (`"Product created with N images"` / `"…
+        X of Y images uploaded; you can retry the rest below"` / the original "add images below"
+        message when nothing was queued), and the admin still lands on the real edit-mode gallery
+        either way, where anything that failed can be retried through the normal upload button.
+      - Preview thumbnails are local `URL.createObjectURL(file)` blob URLs, not server-resolved
+        presigned ones (there's no server object yet). **Explicitly revoked in two places** to
+        avoid leaking blob URLs across this SPA's client-side navigation (no full page reload to
+        release them for free): once per file right after its own upload attempt in `handleSubmit`
+        (success or failure, either way it's no longer needed), and via a `stagedImagesRef`-backed
+        unmount-cleanup `useEffect` for the abandon-the-form case (Cancel, back button, navigating
+        away without ever submitting) — the ref exists specifically so that cleanup closure sees
+        the *current* staged list at unmount time rather than whatever was staged on first render.
   - **Edit mode**: variant add/remove and image upload/remove/reorder are independent, immediate
     API calls (`ecommerceApi.addVariant`/`removeVariant`/`uploadImage`/`removeImage`/
     `updateImageSortOrder`, each followed by a refetch of the whole product) — separate from the
@@ -539,19 +583,41 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     question before building (two-column Shopify-admin-style vs. just widening the single column)
     — two-column was chosen. Root container's `maxWidth: 900` is gone entirely (was capping the
     *whole* page, description editor included); a new `Box sx={{ display: 'flex', gap: 3 }}` row
-    holds a **Basic Info** column (`flex: '1 1 calc(68% - 12px)'`, `minWidth: 420` — Name +
-    `ProductDescriptionEditor`, which is what actually needed the room) and a new, separate
+    holds a **main** column (`flex: '1 1 calc(68% - 12px)'`, `minWidth: 420`) and a new, separate
     **Organization** column (`flex: '1 1 calc(32% - 12px)'`, `minWidth: 260` — just the Category
     `Select`, pulled out of the old single "Basic Info" `Paper`). Same `calc()`-gap-compensation
     flex technique `ProductDetailPage.tsx`'s own two-column gallery+info split already established
     (see that page's own note and `gui/CLAUDE.md`'s general note on why bare percentages plus a
     `gap` always over-wrap) — the two subtractions (`12px`/`12px`) sum to exactly the `gap: 3`
-    (24px) between the columns. Variants and the Image Gallery/placeholder stay full-width **below**
-    both columns, not squeezed into either one — matches the approved layout exactly, since neither
-    component is a simple field that fits a sidebar-width column. **This needed a matching change to
-    the shared shell, not just this page** — see `AdminLayout.tsx`'s new collapsible sidebar note
-    below; the two changes were requested and built together, since a wider form and a narrower
-    sidebar are the same underlying "give the form more room" goal.
+    (24px) between the columns. **This needed a matching change to the shared shell, not just this
+    page** — see `AdminLayout.tsx`'s new collapsible sidebar note below; the two changes were
+    requested and built together, since a wider form and a narrower sidebar are the same underlying
+    "give the form more room" goal.
+    - **Main column order is Name → Variants → Images → Description, per a later follow-up
+      request** (originally Variants/Images sat full-width *below* both columns instead — see the
+      superseded note in git history/`docs/CHANGELOG.md` if picking through the layout's own
+      evolution). Asked directly at the time whether to move both up together, and specifically
+      **deferred moving Images** until the create-mode "save first" placeholder was replaced with a
+      real `ProductImageStager` (see below) — moving an inert "come back later" block right after
+      Name, before the description, would have read oddly; once that placeholder was gone, moving
+      both together had no remaining downside. Variants/Images are still each their own `Paper`,
+      just reordered within the same left-column `Stack spacing={3}` rather than squeezed into the
+      "Basic Info" card — `ProductDescriptionEditor` (no separate `Paper` wrapper of its own; its
+      own bordered content box is sufficient framing) is now the *last* item in that stack instead
+      of living inside "Basic Info" alongside Name.
+    - **The "Organization" Category `Select` used to render every category flat, with no
+      indentation reflecting the hierarchy — caught by direct question, then fixed.** It fetched
+      `ecommerceApi.listProductCategories` (the flat-list endpoint) and rendered a bare
+      `categories.map(c => <MenuItem>{c.name}</MenuItem>)`, so a root category and a deeply nested
+      one looked identical in the dropdown — the one place in the app that hadn't been updated
+      when `ProductCategory` gained hierarchy support, unlike `ProductCategoryFormDialog.tsx`'s own
+      parent-picker and `ProductCategoryListPage.tsx`'s "Parent" column, both of which already
+      handled it correctly. Now fetches `ecommerceApi.getProductCategoryTree` instead, and renders
+      `flattenCategoryTree(categoryTree)`'s flat, depth-annotated options the same
+      `paddingLeft: opt.depth * 16` way `ProductCategoryFormDialog.tsx` already does (see that
+      component's own note above for the shared `utils/categoryTree.ts` this pulled both onto). No
+      `excludeIds` here — unlike that dialog's parent-picker, picking a product's own category has
+      no self-reference/cycle concern at all.
   - **`components/ProductDescriptionEditor.tsx` — new, replacing the plain multiline `TextField`
     both create/edit modes used for `description`, per request (Phase 2 of the accepted
     sanitized-HTML plan — see `ecommerce-service/CLAUDE.md`'s `ProductDescriptionSanitizer` note
@@ -653,6 +719,17 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       inside a scrollbar — which is also the standard pattern real WYSIWYG editors use in a form
       (Shopify's product description, Notion, Google Docs), not just a stopgap. `minHeight: 160`
       is unchanged, still guarantees a reasonable empty-state click target.
+    - **Further follow-up: the outer bordered wrapper (toolbar + content area together) gained an
+      explicit `bgcolor: 'background.paper'`, per request ("white in light mode").** Previously
+      unset, so it just showed through to whatever `Paper`/`Box` happened to sit behind it.
+      **Deliberately the theme token, not a literal `'#fff'`/`'white'`** — this app has a real
+      light/dark theme toggle (`app/theme.ts`'s `lightTheme`/`darkTheme`, `BRAND_COLORS`), and
+      `background.paper` resolves to `#ffffff` in light mode (confirmed in
+      `shared/constants/colors.ts`, satisfying the request exactly) while automatically becoming
+      the correct dark surface color (`#161b22`) in dark mode — a hardcoded white would have looked
+      right today and been a visible bug the moment dark mode is toggled. Same reasoning
+      `ProductDetailPage.tsx`'s own gallery+info card already documents for choosing
+      `background.paper` over a literal white.
   - `components/ProductVariantEditor.tsx` + `ProductVariantDialog.tsx` — the add-variant dialog's
     attribute key/value editor locks its key set to whatever the product's first variant already
     uses once one exists, enforcing US-1.6's "every variant shares the same attribute keys" rule
