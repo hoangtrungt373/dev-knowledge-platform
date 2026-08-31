@@ -400,7 +400,9 @@ export default function ProductDetailPage(): JSX.Element {
 
       {sanitizedDescription && (
         <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, p: 3, mt: 3 }}>
-          <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>Product Details</Typography>
+          <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, px: 2, py: 1, mb: 6 }}>
+            <Typography variant="h6" fontWeight={400}>Product Description</Typography>
+          </Box>
           <Box
             // Sanitized twice by the time this renders — ProductDescriptionSanitizer on the
             // backend at write time, DOMPurify just above at read time (defense in depth, see
@@ -408,7 +410,7 @@ export default function ProductDetailPage(): JSX.Element {
             dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
             sx={{
               color: 'text.primary',
-              '& p': { m: 0, mb: 1.5 },
+              '& p': { m: 0, mb: 1.5, ml: 1.5 },
               '& p:last-child': { mb: 0 },
               '& h1, & h2, & h3, & h4, & h5, & h6': { mt: 2, mb: 1, fontWeight: 600, '&:first-of-type': { mt: 0 } },
               '& ul, & ol': { pl: 3, mb: 1.5 },

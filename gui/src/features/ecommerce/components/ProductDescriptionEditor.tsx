@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
-import { Box, Divider, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import { ChangeEvent, useEffect, useRef, useState } from 'react';
+import { Box, CircularProgress, Divider, IconButton, Stack, Tooltip, Typography } from '@mui/material';
 import { useEditor, EditorContent } from '@tiptap/react';
+import { EditorView } from '@tiptap/pm/view';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
@@ -17,6 +18,8 @@ import ImageIcon from '@mui/icons-material/Image';
 import UndoIcon from '@mui/icons-material/Undo';
 import RedoIcon from '@mui/icons-material/Redo';
 import TitleIcon from '@mui/icons-material/Title';
+import { ecommerceApi } from '../api/ecommerceApi';
+import { useNotification } from '@shared/contexts/NotificationContext';
 
 interface Props {
   value: string;
@@ -46,9 +49,64 @@ interface Props {
  * callback, don't feed it back in as a prop" shape `ProductVariantEditor`/`ProductImageGallery`
  * already use for their own non-trivial child state.
  *
+ * <p>The "Image" toolbar button uploads a real file (via `ecommerceApi.uploadDescriptionImage`,
+ * a permanent URL — never a presigned one, which would silently expire once baked into stored
+ * description HTML that's never re-resolved on read; see `ecommerce-service`'s
+ * `ProductDescriptionImageService` for the full reasoning) rather than prompting for a URL —
+ * per request, replacing the URL-only v1. A hidden `&lt;input type="file"&gt;` is triggered by the
+ * toolbar button itself (clicking a styled `IconButton` and clicking a native file input look the
+ * same to the user, but only the real `&lt;input&gt;` can open the OS file picker) — this needs
+ * no product id, unlike the gallery's own upload, so it works in create mode too, before the
+ * product is ever saved.
+ *
+ * <p><strong>Pasting or dragging-and-dropping an image file works too, per request</strong> —
+ * `editorProps.handlePaste`/`handleDrop` (plain ProseMirror hooks TipTap passes straight through;
+ * see `@tiptap/pm/view`'s {@code EditorView}) intercept a clipboard paste or an OS file drop that
+ * carries at least one {@code image/*} file, upload it through the exact same
+ * `ecommerceApi.uploadDescriptionImage` path the toolbar button uses, and insert it directly via
+ * a raw `view.dispatch`/`tr.insert` — not `editor.chain().setImage(...)`, since these handlers
+ * only receive the ProseMirror `view`, not the higher-level `editor` instance (referencing `editor`
+ * here would be a chicken-and-egg problem: it doesn't exist yet while this `useEditor(...)` call is
+ * still being constructed). Both handlers return `false` for anything that isn't an image file —
+ * paste a normal Google-Docs-style HTML/text or drag-reorder existing content within the editor
+ * (`handleDrop`'s own `moved` flag), and ProseMirror's default handling takes over unchanged, same
+ * as before this existed. **Does not intercept an `&lt;img src="https://external.com/...">`
+ * arriving as part of pasted HTML** (e.g. right-click-copying an image from a webpage, which some
+ * browsers represent as HTML with a live external URL rather than an actual file blob) — that
+ * external URL is left as-is, subject to the same `LINKS`/`IMAGES` protocol check
+ * `ecommerce-service`'s sanitizer already applies to any other pasted `&lt;a&gt;`/`&lt;img&gt;`.
+ * Re-hosting an arbitrary external image would need a server-side fetch-and-reupload proxy —
+ * a real, separate feature, not built here.
+ *
+ * <p>Confirmed once, precisely, why this needed a real upload at all rather than just letting a
+ * pasted image sit as a base64 `data:` URI: `ProductDescriptionSanitizerTest
+ * .stripsDataUriImageSourcesEntirely` shows the backend strips a `data:` `src` down to nothing on
+ * save (`data:` isn't an allowed protocol under either `LINKS` or `IMAGES`) — so even before this
+ * paste/drop handling existed, a `data:`-URI image could never have survived being saved anyway.
+ *
  * @author ttg
  */
 export default function ProductDescriptionEditor({ value, onChange }: Props): JSX.Element {
+  const { showError } = useNotification();
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Shared by the toolbar button (see handleImageFileSelected below) and the paste/drop handlers
+  // in editorProps — inserts via a raw ProseMirror transaction, not editor.chain(), since
+  // handlePaste/handleDrop only ever receive `view`, never the higher-level `editor` instance.
+  const uploadAndInsertImageAt = async (view: EditorView, pos: number, file: File): Promise<void> => {
+    setUploadingImage(true);
+    try {
+      const { url } = await ecommerceApi.uploadDescriptionImage(file, showError);
+      const node = view.state.schema.nodes.image.create({ src: url });
+      view.dispatch(view.state.tr.insert(pos, node));
+    } catch {
+      // showError already called
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -64,6 +122,30 @@ export default function ProductDescriptionEditor({ value, onChange }: Props): JS
     ],
     content: value,
     onUpdate: ({ editor: e }) => onChange(e.getHTML()),
+    editorProps: {
+      handlePaste: (view, event) => {
+        const files = Array.from(event.clipboardData?.files ?? []);
+        const imageFile = files.find(f => f.type.startsWith('image/'));
+        if (!imageFile) return false; // let normal text/HTML paste through unchanged
+
+        event.preventDefault();
+        void uploadAndInsertImageAt(view, view.state.selection.from, imageFile);
+        return true;
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        if (moved) return false; // an internal drag-reorder within the editor, not a file drop
+        const files = Array.from(event.dataTransfer?.files ?? []);
+        const imageFile = files.find(f => f.type.startsWith('image/'));
+        if (!imageFile) return false;
+
+        const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        if (!coords) return false;
+
+        event.preventDefault();
+        void uploadAndInsertImageAt(view, coords.pos, imageFile);
+        return true;
+      },
+    },
   });
 
   // Edit mode loads the product asynchronously after the editor has already mounted with an empty
@@ -91,10 +173,17 @@ export default function ProductDescriptionEditor({ value, onChange }: Props): JS
     editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
   };
 
-  const addImage = (): void => {
-    const url = window.prompt('Image URL');
-    if (!url) return;
-    editor.chain().focus().setImage({ src: url }).run();
+  const handleImageButtonClick = (): void => {
+    imageFileInputRef.current?.click();
+  };
+
+  const handleImageFileSelected = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file next time
+    if (!file) return;
+
+    editor.chain().focus().run(); // ensure the editor (not the file input) owns the selection first
+    await uploadAndInsertImageAt(editor.view, editor.state.selection.from, file);
   };
 
   return (
@@ -190,11 +279,20 @@ export default function ProductDescriptionEditor({ value, onChange }: Props): JS
               <LinkIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Image">
-            <IconButton size="small" onClick={addImage}>
-              <ImageIcon fontSize="small" />
-            </IconButton>
+          <Tooltip title="Upload image">
+            <span>
+              <IconButton size="small" disabled={uploadingImage} onClick={handleImageButtonClick}>
+                {uploadingImage ? <CircularProgress size={16} /> : <ImageIcon fontSize="small" />}
+              </IconButton>
+            </span>
           </Tooltip>
+          <input
+            ref={imageFileInputRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={handleImageFileSelected}
+          />
 
           <Box sx={{ flexGrow: 1 }} />
 

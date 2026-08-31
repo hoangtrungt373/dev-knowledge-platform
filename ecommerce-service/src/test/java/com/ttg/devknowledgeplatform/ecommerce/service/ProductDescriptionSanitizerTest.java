@@ -155,4 +155,23 @@ class ProductDescriptionSanitizerTest {
         assertThat(sanitizer.sanitize("<u>underline</u>")).isEqualTo("<u>underline</u>");
         assertThat(sanitizer.sanitize("<blockquote>quoted</blockquote>")).isEqualTo("<blockquote>quoted</blockquote>");
     }
+
+    /**
+     * If a browser's default paste behavior (or a future custom paste handler) ever inserted a
+     * pasted image as an inline base64 {@code data:} URI rather than uploading it, this is what
+     * would happen to it at save time: the {@code src} is stripped entirely (only {@code alt}
+     * survives), since neither {@code LINKS} nor {@code IMAGES} allows the {@code data:} protocol
+     * — {@code Sanitizers.IMAGES}/{@code LINKS} both restrict to real network URL protocols only.
+     * Documents why "the editor's Image button uploads a real file" (see
+     * {@code gui}'s `ProductDescriptionEditor.tsx`) isn't just a UX preference — a {@code data:}
+     * URI could never have survived being saved anyway, even if something let it into the editor.
+     */
+    @Test
+    void stripsDataUriImageSourcesEntirely() {
+        String html = "<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=\" alt=\"pasted\">";
+
+        String result = sanitizer.sanitize(html);
+
+        assertThat(result).doesNotContain("data:", "base64").contains("alt=\"pasted\"");
+    }
 }

@@ -549,8 +549,59 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     not addressed here (code-splitting this page's editor behind a dynamic `import()` would be the
     fix, flagged as a follow-up, not done as part of this feature). Verified via a clean
     `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so this hasn't
-    been exercised in a real browser; test the golden path (typing, each toolbar button, an
-    image-by-URL insert, save, reload) before trusting it end-to-end.
+    been exercised in a real browser; test the golden path (typing, each toolbar button, a real
+    image upload, save, reload) before trusting it end-to-end.
+    - **Post-Phase-3 follow-up: the "Image" toolbar button uploads a real file instead of
+      prompting for a URL, per request.** A hidden `<input type="file" accept="image/*">`
+      (`imageFileInputRef`), triggered by the toolbar `IconButton`'s own click (styling a native
+      file input directly is awkward across browsers, so the visible button just proxies a click
+      to a hidden real one) — `handleImageFileSelected` uploads via the new
+      `ecommerceApi.uploadDescriptionImage(file)` and inserts the returned **permanent** URL;
+      `uploadingImage` state disables the button and swaps its icon for a small `CircularProgress`
+      while the request is in flight, and `showError` (added to this component for the first time
+      — it had no error path before) surfaces an upload failure the same way every other admin-GUI
+      upload does. Deliberately **replaces** the old `window.prompt('Image URL')` flow rather than
+      offering both — that's how the request ("not pass the image url") was read. This needed a
+      matching backend piece: `ecommerce-service`'s new
+      `POST /api/v1/admin/products/description-images/upload` returns a **permanent** URL, not the
+      gallery upload's presigned one — see `ecommerce-service/CLAUDE.md`'s
+      `ProductDescriptionImageService` note and `infra/CLAUDE.md`'s `StorageService.uploadPublicImage`
+      note for the full reasoning (a presigned URL baked into stored description HTML would
+      silently expire, since nothing re-resolves `description` on read the way `ProductMapper`
+      re-resolves gallery images) — this was worked through with the user in detail, including why
+      the product gallery itself deliberately stays presigned-only, before building it.
+    - **Further follow-up: pasting or dragging-and-dropping an image file into the editor now
+      works too, per request** (asked directly: "does it work if the user copy paste the image" —
+      answer was no, verified rather than assumed, then built). New
+      `useEditor`'s `editorProps.handlePaste`/`handleDrop` — plain ProseMirror hooks TipTap passes
+      straight through (`@tiptap/pm/view`'s `EditorView`), not a TipTap-specific API. Both check
+      for at least one `image/*` file on the clipboard/drop event; if none, return `false` and let
+      ProseMirror's default handling take over completely unchanged (a normal paste, or
+      `handleDrop`'s own `moved` flag for an internal drag-reorder within the editor, both pass
+      through exactly as before this existed). When there is an image file, both upload it through
+      the identical `ecommerceApi.uploadDescriptionImage` path the toolbar button uses, via a new
+      shared `uploadAndInsertImageAt(view, pos, file)` helper — **inserted via a raw
+      `view.dispatch(view.state.tr.insert(pos, node))`, not `editor.chain().setImage(...)`**,
+      because `handlePaste`/`handleDrop` only ever receive the low-level ProseMirror `view`, not
+      the higher-level `editor` instance (referencing `editor` from inside the very `useEditor(...)`
+      call that constructs it would be a chicken-and-egg problem — it doesn't exist yet). The
+      toolbar button's own `handleImageFileSelected` was refactored onto this same shared helper
+      too, so there's exactly one upload-and-insert code path now, not two. **Deliberately doesn't
+      intercept an externally-hosted `<img src="https://...">` arriving as part of pasted HTML**
+      (e.g. right-click-copying an image from a webpage, which some browsers represent as HTML
+      with a live external URL rather than an actual file) — that URL is left as-is, subject to
+      the same `LINKS`/`IMAGES` protocol check the sanitizer already applies to any other pasted
+      link/image; re-hosting an arbitrary external image would need a real server-side
+      fetch-and-reupload proxy, a separate feature not built here. Before building this, confirmed
+      *why* it mattered by testing what happens if a pasted image ever did reach the editor as an
+      inline base64 `data:` URI with no upload involved: new
+      `ProductDescriptionSanitizerTest.stripsDataUriImageSourcesEntirely` (`ecommerce-service`, now
+      165 unit tests total) shows the backend strips a `data:` `src` down to nothing on save — so a
+      `data:`-URI image could never have survived being saved anyway, confirming this needed a real
+      upload path and not just "let the browser's default paste behavior do something." Verified
+      via a clean `tsc --noEmit` and a successful `vite build` only, same caveat as everything else
+      in this feature — no Docker in this sandbox, so the actual paste/drop interaction hasn't been
+      exercised in a real browser.
   - `components/ProductVariantEditor.tsx` + `ProductVariantDialog.tsx` — the add-variant dialog's
     attribute key/value editor locks its key set to whatever the product's first variant already
     uses once one exists, enforcing US-1.6's "every variant shares the same attribute keys" rule

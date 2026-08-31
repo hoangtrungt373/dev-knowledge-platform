@@ -18,6 +18,7 @@ import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
+import io.minio.SetBucketPolicyArgs;
 import io.minio.http.Method;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,14 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Transactional(rollbackFor = Throwable.class)
 public class StorageServiceImpl implements StorageService {
+
+    /**
+     * The only bucket prefix ever granted anonymous read access (see {@link #ensurePublicReadPolicy}) —
+     * everything else in the bucket stays fully private, presigned-URL-only. {@link #uploadPublicImage}
+     * always writes under this prefix regardless of the caller's own {@code keyPrefix}, so this is the
+     * single source of truth both sides (the policy grant and the upload path) agree on.
+     */
+    static final String PUBLIC_IMAGE_PREFIX = "description-images/";
 
     private final MinioClient minioClient;
     private final StorageProperties props;
@@ -43,6 +52,39 @@ public class StorageServiceImpl implements StorageService {
             }
         } catch (Exception e) {
             log.error("Failed to ensure MinIO bucket '{}' exists: {}", props.getBucket(), e.getMessage());
+        }
+        ensurePublicReadPolicy();
+    }
+
+    /**
+     * Grants anonymous {@code s3:GetObject} on {@link #PUBLIC_IMAGE_PREFIX} only — every other
+     * object in the bucket (product galleries, avatars, etc.) is unaffected and stays reachable
+     * only via {@link #getPresignedUrl}. Runs on every startup, not just first bucket creation
+     * (setting the same policy document twice is a no-op) — a bucket that already existed before
+     * this prefix was introduced would otherwise never pick up the grant.
+     *
+     * <p>{@code setBucketPolicy} replaces the bucket's entire policy document rather than adding to
+     * it, but that's fine here — this is the only place in the reactor that ever sets one, so there
+     * is nothing to clobber.
+     */
+    private void ensurePublicReadPolicy() {
+        String policy = """
+                {
+                  "Version": "2012-10-17",
+                  "Statement": [
+                    {
+                      "Effect": "Allow",
+                      "Principal": {"AWS": ["*"]},
+                      "Action": ["s3:GetObject"],
+                      "Resource": ["arn:aws:s3:::%s/%s*"]
+                    }
+                  ]
+                }
+                """.formatted(props.getBucket(), PUBLIC_IMAGE_PREFIX);
+        try {
+            minioClient.setBucketPolicy(SetBucketPolicyArgs.builder().bucket(props.getBucket()).config(policy).build());
+        } catch (Exception e) {
+            log.error("Failed to set public-read policy on '{}/{}': {}", props.getBucket(), PUBLIC_IMAGE_PREFIX, e.getMessage());
         }
     }
 
@@ -87,6 +129,12 @@ public class StorageServiceImpl implements StorageService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate presigned URL: " + e.getMessage(), e);
         }
+    }
+
+    @Override
+    public String uploadPublicImage(String keyPrefix, MultipartFile file) {
+        String objectKey = uploadImage(PUBLIC_IMAGE_PREFIX + keyPrefix, file);
+        return props.getEndpoint() + "/" + props.getBucket() + "/" + objectKey;
     }
 
     @Override

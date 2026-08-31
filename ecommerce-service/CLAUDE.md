@@ -229,6 +229,30 @@ The minimal admin vertical slice now built on top of those entities:
     now built too** — `ProductDetailPage.tsx`'s "Product Details" section, with a client-side
     DOMPurify pass as defense in depth on top of this class's own on-write sanitization — see
     `gui/CLAUDE.md`. This closes out all 3 phases of the accepted plan for this feature.
+  - **Post-Phase-3 follow-up: real image *upload* for the description editor (was URL-paste-only),
+    per request.** New `service/ProductDescriptionImageService`/`Impl` — deliberately **not** a
+    method on `ProductService`, since it touches zero `Product` state (no `productId`, no
+    `ProductImage` row; the description is a plain HTML string, and an image referenced inside it
+    is an asset of the content, not a gallery photo). Delegates to `infra`'s new
+    `StorageService.uploadPublicImage` (see `infra/CLAUDE.md`) rather than the presigned
+    `uploadImage`/`getPresignedUrl` pair `ProductServiceImpl`'s gallery upload uses — a presigned
+    URL baked once into stored `description` HTML would silently expire, since (unlike a gallery
+    image, re-resolved fresh by `ProductMapper` on every read) nothing ever re-processes
+    `description` to mint a new one; this was worked through in detail with the user before
+    building it, including *why* the product gallery itself deliberately stays presigned-only
+    (see `infra/CLAUDE.md`'s `StorageService` note for the full asymmetry). New
+    `api/ProductDescriptionImageApi`+`Controller` at
+    `POST /api/v1/admin/products/description-images/upload` — a separate resource from
+    `ProductApi`'s own gallery upload, nested under `/api/v1/admin/products` purely so `gateway`'s
+    existing `/api/v1/admin/products/**` route already covers it, not because it's part of that
+    resource. **Needs no existing product — works in create mode too**, unlike the gallery upload
+    (which needs a real `productId` first). New `dto/ProductDescriptionImageResponse` (`url` only).
+    New `ProductDescriptionImageServiceImplTest`. A further follow-up (answering "does copy-paste
+    work?") added `ProductDescriptionSanitizerTest.stripsDataUriImageSourcesEntirely` — confirms a
+    `data:` URI `<img src>` is stripped entirely (only `alt` survives), since neither `LINKS` nor
+    `IMAGES` allows that protocol; documents that even if a pasted image somehow reached the
+    editor as a base64 data URI, it could never have survived being saved anyway. 165 unit tests
+    total (up from 163).
 - `mapper/` — `ProductCategoryMapper` (gained `toTreeNodeResponse(ProductCategoryTreeNode)` and a
   `parent.id -> parentId` mapping on `toResponse`, mirroring `content-service`'s `CategoryMapper`),
   `ProductMapper`. **`ProductMapper` is an abstract class, not
@@ -1031,8 +1055,11 @@ this file's own `issuer-uri` property already used, and the same shape `identity
   above. A further follow-up added `ProductDescriptionSanitizerTest` (11 cases, including a
   verified-not-assumed Google-Docs-paste trace and the `<hr>`/`<pre>` coverage that shaped the
   `gui` TipTap toolbar's design) plus 2 more `ProductServiceImplTest` cases for the
-  `Product.description` HTML-sanitization support above.
-  163 tests, all passing, no Docker needed for any of
+  `Product.description` HTML-sanitization support above, a post-Phase-3 follow-up added
+  `ProductDescriptionImageServiceImplTest` for the real-upload description-image support above,
+  and a further follow-up added `ProductDescriptionSanitizerTest.stripsDataUriImageSourcesEntirely`
+  (confirms a pasted-as-base64 image's `src` would be stripped entirely on save either way).
+  165 tests, all passing, no Docker needed for any of
   them (this count was independently re-verified per test class in this session — treat it, not
   any earlier figure quoted elsewhere in this file's own history, as authoritative if the two ever
   disagree).

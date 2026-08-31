@@ -113,4 +113,17 @@ export const ecommerceApi = {
   ): Promise<ProductImage> {
     return httpClient.patch(`/api/v1/admin/products/${productId}/images/${imageId}`, { sortOrder }, showError);
   },
+
+  // ── Description images ──────────────────────────────────────────────────────
+  // A separate resource from the gallery uploadImage above — no productId, since an image
+  // embedded inline in a description isn't a ProductImage row at all (see
+  // ecommerce-service/CLAUDE.md's ProductDescriptionImageService note); the returned url is
+  // permanent (never expires), unlike ProductImage.url's presigned one, which is why this can't
+  // just reuse uploadImage's endpoint.
+
+  uploadDescriptionImage(file: File, showError?: ShowError): Promise<{ url: string }> {
+    const form = new FormData();
+    form.append('file', file);
+    return httpClient.postForm('/api/v1/admin/products/description-images/upload', form, showError);
+  },
 };

@@ -75,7 +75,29 @@ Module-local guidance for `infra`. Read alongside the root `CLAUDE.md`.
 - `service/StorageService` (+ `impl`) — MinIO upload/presigned-URL/delete, moved here from `gateway`
   since both `social-service` (`FriendMapper`/`MessagingMapper`, avatar presigned URLs) and
   `identity-service` (`UserMapper`, avatar upload) need it and neither can depend on the other —
-  same reasoning as `SlugService` above, just discovered later.
+  same reasoning as `SlugService` above, just discovered later. **Gained `uploadPublicImage`, per
+  `ecommerce-service`'s request** (its own `ProductDescriptionImageService` is the first caller) —
+  every other method here (`upload`/`uploadImage`/`getPresignedUrl`) only ever produces a
+  *time-limited* presigned URL, correct for content re-resolved fresh on every read (a product's
+  gallery, an avatar) but wrong for content that gets embedded once into a stored document and
+  never revisited (an image inside a rich-text field's saved HTML) — that presigned URL would
+  silently expire and break with nothing left to regenerate it. `uploadPublicImage` uploads under
+  a fixed `description-images/` prefix (`StorageServiceImpl.PUBLIC_IMAGE_PREFIX`, forced
+  regardless of the caller's own `keyPrefix` — a caller can't accidentally publish outside it) and
+  returns a permanent, unsigned URL built directly from `endpoint`/`bucket`/`objectKey`, no
+  signature involved at all. That URL only actually resolves because
+  `StorageServiceImpl.ensurePublicReadPolicy` (called from the existing `@PostConstruct
+  ensureBucketExists`, on every startup — not just first bucket creation, since an
+  already-existing bucket from before this prefix existed would otherwise never pick up the
+  grant) sets a bucket policy granting anonymous `s3:GetObject` on that one prefix via MinIO's
+  `setBucketPolicy` — every other object in the bucket (product galleries, avatars) is
+  unaffected and stays reachable only through `getPresignedUrl`. **Deliberately not applied to
+  the product gallery itself** — `ProductImage` rows can belong to a not-yet-published/deactivated
+  product, so the presigned mechanism is real (if modest) access control worth keeping; a
+  permanent public URL would make a deactivated product's photos reachable by link forever, bypassing
+  the fact that the product itself is hidden. This was a real, deliberate asymmetry discussed with
+  the user, not an oversight — don't "fix" it by making the gallery public too without revisiting
+  that discussion.
 - `config/storage/{StorageConfig,StorageProperties}` — `MinioClient` bean + `app.storage.*`
   properties, moved here alongside `StorageService` for the same reason.
 - **No `config/cache/{CacheNames,CacheTtlProperties}` here anymore — deleted outright, not moved,
