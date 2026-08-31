@@ -5,19 +5,21 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Builder;
 import lombok.Data;
 
-import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
-/** REST response shape for {@code ProductCategory}. */
+/** REST response shape for one node of {@code ProductCategory}'s hierarchy — see {@code ProductCategoryApi#tree}. */
 @Data
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class ProductCategoryResponse {
+public class ProductCategoryTreeNodeResponse {
 
     private Integer id;
     private String name;
     private String slug;
     /** Null for a root category. */
     private Integer parentId;
-    private Instant createdAt;
-    private Instant updatedAt;
+
+    @Builder.Default
+    private List<ProductCategoryTreeNodeResponse> children = new ArrayList<>();
 }

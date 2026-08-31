@@ -1,7 +1,7 @@
 import { httpClient } from '@shared/api/httpClient';
 import { PagedResponse } from '@shared/types';
 import {
-  ProductCategory, CreateProductCategoryPayload, UpdateProductCategoryPayload,
+  ProductCategory, ProductCategoryTreeNode, CreateProductCategoryPayload, UpdateProductCategoryPayload,
   Product, CreateProductPayload, UpdateProductPayload,
   ProductVariant, ProductVariantInput, ProductImage,
 } from '../types';
@@ -33,6 +33,10 @@ export const ecommerceApi = {
 
   listProductCategories(q?: string, showError?: ShowError): Promise<ProductCategory[]> {
     return httpClient.get(`/api/v1/admin/product-categories${buildQuery({ q })}`, showError);
+  },
+
+  getProductCategoryTree(showError?: ShowError): Promise<ProductCategoryTreeNode[]> {
+    return httpClient.get('/api/v1/admin/product-categories/tree', showError);
   },
 
   createProductCategory(

@@ -78,11 +78,21 @@ are gone — see `docs/CHANGELOG.md`'s Keycloak migration entries (Phase 3) for 
 
 `entity/`:
 
-- `ProductCategory` — flat product taxonomy (table `PRODUCT_CATEGORY`). Deliberately not named
+- `ProductCategory` — product taxonomy (table `PRODUCT_CATEGORY`). Deliberately not named
   `Category` and not reusing `content-service`'s `Category` — same `product` schema, unrelated
   domain (product taxonomy vs. knowledge-base taxonomy); reusing it would also violate module
   boundaries (`content-service` owns `Category`, and this module doesn't depend on
-  `content-service`).
+  `content-service`). **Now supports an optional parent/child hierarchy** (per request, migration
+  `DKP-0037`) — a self-referential `parent`/`children` adjacency list (`@ManyToOne parent` +
+  `@OneToMany(mappedBy = "parent") children`, both excluded from `equals`/`hashCode`/`toString`),
+  mirroring `content-service`'s own `Category` shape exactly, chosen over a materialized-path or
+  closure-table representation for the same reason `content-service` picked it: this taxonomy is
+  shallow (a handful of levels) and read-light enough that the extra `N`-deep parent walk a cycle
+  check does (`ProductCategoryServiceImpl.validateParentAssignment`) is cheap, so the simpler
+  adjacency list beats a representation that pays a write-time cost (materialized path) or a
+  schema/query-complexity cost (closure table) for read patterns this taxonomy doesn't have. The
+  entity's own Javadoc used to say "Flat by design" — no longer true, and callers should not
+  assume the old ceiling.
 - `Product` — always has ≥1 `ProductVariant` (no variant-less products); `active` soft-deletes.
 - `ProductImage` — ordered gallery (`sortOrder` unique per product); references a MinIO object key
   via `infra`'s `StorageService`, never file bytes directly.
@@ -114,8 +124,10 @@ Liquibase migrations: `ecommerce-service/.../database/sql/2026/0.0.2/20260804000
 (Epic 1 — categories/products/variants/images/search view/outbox),
 `202608240001__0.0.2__DKP-0034__add_ecommerce_order_tables.sql` (Epic 2's checkout half —
 `CUSTOMER_ORDER`/`ORDER_LINE`; see the entity Javadoc above for why the table isn't named `ORDER`),
-and `202608300001__0.0.2__DKP-0035__add_order_reservation_and_status_history.sql` (Epic 3 Phase 1
-— see the dedicated Epic 3 section below), under this module's **own** changelog tree (`database/sql/ecommerce-service.xml` +
+`202608300001__0.0.2__DKP-0035__add_order_reservation_and_status_history.sql` (Epic 3 Phase 1
+— see the dedicated Epic 3 section below), and `202608310001__0.0.2__DKP-0037__add_product_category_parent_id.sql`
+(adds `PRODUCT_CATEGORY`'s nullable, self-referential `PARENT_CATEGORY_ID` FK + index — see the
+entity note above), under this module's **own** changelog tree (`database/sql/ecommerce-service.xml` +
 `2026/0.0.2/*.sql`) — no longer under `gateway`'s, now that this module migrates its own schema. A
 short-lived `DKP-0027__add_ecommerce_user_table.sql` existed briefly alongside `identity-service`'s
 extraction (an `ecommerce.USER` table, added when this module was thought to need a persisted
@@ -134,7 +146,8 @@ The minimal admin vertical slice now built on top of those entities:
 
 - `exception/EcommerceErrorCode` — `PRODUCT_CATEGORY_*`/`PRODUCT_*`/`PRODUCT_VARIANT_*`/
   `PRODUCT_IMAGE_*` codes, implementing `common`'s `ErrorCode`, mirroring `content-service`'s
-  `ContentErrorCode`.
+  `ContentErrorCode`. Gained `PRODUCT_CATEGORY_CYCLIC_PARENT` (`PRODUCT_CATEGORY_004`) alongside
+  the hierarchy support below.
 - `repository/` — `ProductCategoryRepository`, `ProductRepository`, `ProductVariantRepository`,
   `ProductImageRepository` (plain Spring Data JPA) + `repository/spec/` —
   `ProductCategorySpecification`, `ProductSpecification` (dynamic filtering, per this repo's
@@ -145,6 +158,19 @@ The minimal admin vertical slice now built on top of those entities:
   (create/update input records, mirroring `content-service`'s `QuestionAnswerCommands`) is how
   `api/impl` passes multi-field input (including nested variant/image lists) into `ProductService`
   without threading REST DTOs into the service layer.
+  - **`ProductCategoryService.create`/`.update` are now `parentId`-aware** (per request) and the
+    interface gained `listTree()` — returns `List<ProductCategoryTreeNode>` (a new
+    `service/ProductCategoryTreeNode` record, `category` + resolved `children`, byte-identical
+    shape to `content-service`'s own `CategoryTreeNode`). `ProductCategoryServiceImpl` mirrors
+    `content-service`'s `CategoryServiceImpl` exactly for the hierarchy mechanics:
+    `resolveParent`/`validateParentAssignment` (rejects self-parent and any assignment where
+    walking `newParent.getParent()` upward reaches the category being edited — a cycle guard, not
+    a depth limit) and `listTree`'s two-pass build (index every row into a `Map<Integer,
+    ProductCategoryTreeNode>` by id, then re-walk assigning each into its parent's `children` or,
+    for a root/orphaned row, into the result list — an orphaned child, whose parent id doesn't
+    resolve to a node in the map, is defensively treated as a root rather than silently dropped).
+    Chosen over a materialized-path/closure-table representation for the same reason
+    `content-service` picked adjacency-list originally — see the entity note above.
   - `ProductServiceImpl.create` enforces: at least one variant, no duplicate SKU/sort-order
     *within the same request*, no SKU conflicting with an existing variant, and every variant
     sharing the same attribute-key set (US-1.6) — all as friendly `ApiException`s raised before
@@ -156,7 +182,9 @@ The minimal admin vertical slice now built on top of those entities:
     time, so a lazy re-fetch isn't guaranteed to see rows inserted moments later in the same unit
     of work. Keep this pattern for any future bidirectional create-with-children flow in this
     module.
-- `mapper/` — `ProductCategoryMapper`, `ProductMapper`. **`ProductMapper` is an abstract class, not
+- `mapper/` — `ProductCategoryMapper` (gained `toTreeNodeResponse(ProductCategoryTreeNode)` and a
+  `parent.id -> parentId` mapping on `toResponse`, mirroring `content-service`'s `CategoryMapper`),
+  `ProductMapper`. **`ProductMapper` is an abstract class, not
   a plain interface** — it injects `infra`'s `StorageService` (`@Autowired protected`) so an
   `@AfterMapping` step (`resolveImageUrl`) can resolve each `ProductImage.storageKey` into a
   time-limited presigned `url` field on `ProductImageResponse`, the field the admin GUI actually
@@ -165,12 +193,16 @@ The minimal admin vertical slice now built on top of those entities:
   source field on the entity; the `@AfterMapping` step fills it in afterward. `ProductMapper` also
   maps `ProductVariant`→`ProductVariantResponse` and `ProductImage`→`ProductImageResponse` for the
   nested lists on `ProductResponse`.
-- `dto/` — `ProductCategoryResponse`/`CreateProductCategoryRequest`/`UpdateProductCategoryRequest`,
+- `dto/` — `ProductCategoryResponse`/`CreateProductCategoryRequest`/`UpdateProductCategoryRequest`
+  (all three now carry/accept `parentId`) plus `ProductCategoryTreeNodeResponse` (`id`/`name`/
+  `slug`/`parentId`/nested `children`, mirroring `content-service`'s `CategoryTreeNodeResponse`),
   `ProductResponse`/`CreateProductRequest`/`UpdateProductRequest`,
   `ProductVariantRequest`/`ProductVariantResponse`,
   `ProductImageRequest`/`ProductImageResponse` (the latter now also carries `url`, see above).
 - `api/` (+ `api/impl/`) — `ProductCategoryApi`/`Controller` (`/api/v1/admin/product-categories`:
-  create/update/getById/list — no delete yet), `ProductApi`/`Controller`
+  create/update (both `parentId`-aware now)/getById/list/`GET /tree` (roots with nested `children`,
+  sorted by name at each level, mirroring `content-service`'s `CategoryApi#tree`) — still no
+  delete), `ProductApi`/`Controller`
   (`/api/v1/admin/products`: create-with-variants-and-images/update-basic-fields/
   `PATCH .../deactivate`/getById/paginated-list, plus **independent variant/image mutation**
   (US-1.6) — `POST`/`DELETE .../variants/{variantId}` (removing the last remaining variant is
@@ -271,15 +303,23 @@ stickers, office, accessories), gated by `app.seed.enabled` (`${APP_SEED_ENABLED
 in `docker-compose.apps.yml`'s `ecommerce-service` block) same shape as `content-service`'s/
 `social-service`'s own seeders:
 
-- `ProductCategorySeeder` (`data/csv/product_categories.csv`, column: `name`) — extends `infra`'s
-  `CsvSeeder<ProductCategory>`, same Template Method shape as `content-service`'s `CategorySeeder`.
-  **Idempotency key is `name` itself, not a decoupled `seedId` column** — unlike
-  `content-service`'s seeders, which persist a permanent `seedId` specifically so a category's
-  display name stays freely editable across re-seeds. This is a small, fixed sample dataset, not
-  long-lived content coexisting with user edits, so that decoupling wasn't judged worth a schema
-  migration for a first pass; renaming a seeded category through the admin GUI would make a
-  re-run treat the CSV row as new. Revisit with a real `seedId` column if this outgrows "fixed
-  sample catalog."
+- `ProductCategorySeeder` (`data/csv/product_categories.csv`, columns: `name`, `parentName`) —
+  extends `infra`'s `CsvSeeder<ProductCategory>`, same Template Method shape as `content-service`'s
+  `CategorySeeder`. **Idempotency key — and parent reference — is `name` itself, not a decoupled
+  `seedId` column** — unlike `content-service`'s seeders, which persist a permanent `seedId`
+  specifically so a category's display name stays freely editable across re-seeds. This is a small,
+  fixed sample dataset, not long-lived content coexisting with user edits, so that decoupling
+  wasn't judged worth a schema migration, including when hierarchy support (below) was added;
+  renaming a seeded category through the admin GUI would make a re-run treat the CSV row as new
+  (and orphan any child row's `parentName` reference). Revisit with a real `seedId` column if this
+  outgrows "fixed sample catalog." **`parentName` (blank for a root category) added once
+  `ProductCategory` gained hierarchy support, per request** — resolved via
+  `productCategoryRepository.findByNameIgnoreCase`, same "parent rows must appear before their
+  children" ordering requirement as `content-service`'s `CategorySeeder` (`CsvSeeder` persists each
+  row in file order before moving to the next), just keyed by name instead of `seedId`. The seed
+  data itself now nests the 5 original leaf categories under 2 new root categories — `Wearables`
+  (→ `Apparel`) and `Desk & Drinkware` (→ `Drinkware`/`Stickers`/`Office`/`Accessories`) — with
+  `products.csv` untouched, since products still reference the same 5 leaf category names.
 - `ProductSeeder` (`data/csv/products.csv` joined with `data/csv/product_variants.csv` by product
   name) — **implements `infra`'s `Seeder` directly, not `CsvSeeder<T>`**, for two reasons: it needs
   every matching variant row before it can build one create command, and it routes through
@@ -790,8 +830,8 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
   `OrderServiceImplTest$ListOrders` gained a second case (the existing one updated to assert
   delegation via a mocked `Specification` instead of the deleted derived query, same "verify
   delegation, not the Specification's own filtering logic" precedent `ListAllOrders` already
-  established); 143 unit tests total, all passing, no Docker needed, verified via a real
-  `mvn test` run in this session. See `gui/CLAUDE.md`'s `OrderHistoryPage.tsx` note for the tab
+  established); 143 unit tests total at the time, all passing, no Docker needed, verified via a
+  real `mvn test` run in that session. See `gui/CLAUDE.md`'s `OrderHistoryPage.tsx` note for the tab
   grouping itself and the GUI-side wiring.
 
 - **Post-Epic-3 follow-up: `OrderHistoryPage` redesign — per-line product image + variant info,
@@ -810,6 +850,20 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
     The GUI's `OrderLineRow` component (below) was extracted into a shared component once both
     `OrderHistoryPage` and `OrderDetailPage` needed byte-identical rendering of it, including the
     new link — see `gui/CLAUDE.md`'s `components/orders/OrderLineRow.tsx` note.
+
+- **Post-Epic-3 follow-up: `ProductCategory` parent/child hierarchy support, per request.** See the
+  `entity/ProductCategory` and `service/`/`mapper/`/`dto/`/`api/` bullets above for the full detail
+  (self-referential adjacency list, `DKP-0037`, `GET /tree`, cycle-guarded `create`/`update`). The
+  admin GUI's `ProductCategoryListPage.tsx`/`ProductCategoryFormDialog.tsx` were rebuilt to match
+  `content-service`'s own hierarchical `CategoryListPage.tsx`/`CategoryFormDialog.tsx` — a "Parent"
+  column (resolved via the fetched tree, not a second lookup per row) and an indented parent-picker
+  `Select` that excludes the category's own subtree (can't become its own descendant's child) — see
+  `gui/CLAUDE.md`'s note. **Deliberately not touched by this follow-up**: `ProductCategoryApi` still
+  has no delete endpoint (unrelated to hierarchy — see below), and `ShopPage`'s storefront category
+  filter was not rewired to walk the new hierarchy (still a flat, single-select sidebar list) — a
+  natural follow-up now that the data model supports it, not done here. **`ProductDetailPage`'s
+  breadcrumb *was* deepened to a real root→leaf ancestor trail in a later follow-up** — see
+  `gui/CLAUDE.md`'s `ProductDetailPage.tsx` note (`utils/categoryPath.ts`).
 
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"
@@ -923,8 +977,12 @@ this file's own `issuer-uri` property already used, and the same shape `identity
   follow-up — this module's first test of `CartServiceImpl` itself, covering only the new
   `removeItems` bulk-delete path; `CheckoutServiceImplTest` gained the same follow-up's Phase 2
   `selectedVariantIds` cases — see above for both), and `OrderServiceImplTest$ListOrders` (the
-  shopper-facing order-history status-tabs follow-up, above).
-  143 tests, all passing, no Docker needed for any of
+  shopper-facing order-history status-tabs follow-up, above). A post-Epic-3 follow-up added 7 more
+  cases to `ProductCategoryServiceImplTest` (`Create`/`Update` gained parent-assignment and
+  cycle-rejection cases, and a new `ListTree` nested class covers the tree-building/sorting logic
+  and the orphaned-child-becomes-root defensive case) for the `ProductCategory` hierarchy support
+  above.
+  150 tests, all passing, no Docker needed for any of
   them (this count was independently re-verified per test class in this session — treat it, not
   any earlier figure quoted elsewhere in this file's own history, as authoritative if the two ever
   disagree).

@@ -20,6 +20,8 @@ public enum EcommerceErrorCode implements ErrorCode {
     PRODUCT_CATEGORY_NOT_FOUND("PRODUCT_CATEGORY_001", "Product category not found: {0}", HttpStatus.NOT_FOUND),
     PRODUCT_CATEGORY_NAME_CONFLICT("PRODUCT_CATEGORY_002", "A product category with name ''{0}'' already exists", HttpStatus.CONFLICT),
     PRODUCT_CATEGORY_SLUG_CONFLICT("PRODUCT_CATEGORY_003", "Unable to generate a unique slug for product category ''{0}''", HttpStatus.CONFLICT),
+    PRODUCT_CATEGORY_CYCLIC_PARENT("PRODUCT_CATEGORY_004",
+            "Invalid parent: would create a cycle in the category tree", HttpStatus.BAD_REQUEST),
 
     // Product Errors (PRODUCT_*)
     PRODUCT_NOT_FOUND("PRODUCT_001", "Product not found: {0}", HttpStatus.NOT_FOUND),

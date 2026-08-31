@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.ecommerce.api.impl;
 import com.ttg.devknowledgeplatform.ecommerce.api.ProductCategoryApi;
 import com.ttg.devknowledgeplatform.ecommerce.dto.CreateProductCategoryRequest;
 import com.ttg.devknowledgeplatform.ecommerce.dto.ProductCategoryResponse;
+import com.ttg.devknowledgeplatform.ecommerce.dto.ProductCategoryTreeNodeResponse;
 import com.ttg.devknowledgeplatform.ecommerce.dto.UpdateProductCategoryRequest;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategory;
 import com.ttg.devknowledgeplatform.ecommerce.mapper.ProductCategoryMapper;
@@ -30,13 +31,13 @@ public class ProductCategoryController implements ProductCategoryApi {
 
     @Override
     public ResponseEntity<ProductCategoryResponse> create(CreateProductCategoryRequest request) {
-        ProductCategory category = productCategoryService.create(request.getName());
+        ProductCategory category = productCategoryService.create(request.getName(), request.getParentId());
         return ResponseEntity.status(HttpStatus.CREATED).body(productCategoryMapper.toResponse(category));
     }
 
     @Override
     public ResponseEntity<ProductCategoryResponse> update(Integer id, UpdateProductCategoryRequest request) {
-        ProductCategory category = productCategoryService.update(id, request.getName());
+        ProductCategory category = productCategoryService.update(id, request.getName(), request.getParentId());
         return ResponseEntity.ok(productCategoryMapper.toResponse(category));
     }
 
@@ -51,5 +52,13 @@ public class ProductCategoryController implements ProductCategoryApi {
                 .map(productCategoryMapper::toResponse)
                 .toList();
         return ResponseEntity.ok(categories);
+    }
+
+    @Override
+    public ResponseEntity<List<ProductCategoryTreeNodeResponse>> tree() {
+        List<ProductCategoryTreeNodeResponse> tree = productCategoryService.listTree().stream()
+                .map(productCategoryMapper::toTreeNodeResponse)
+                .toList();
+        return ResponseEntity.ok(tree);
     }
 }

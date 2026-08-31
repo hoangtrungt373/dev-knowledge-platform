@@ -1430,8 +1430,11 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │                                       UserRepository (see above), and default scanning already
 │                                       covers this module's own entity/repository packages
 ├── entity/
-│   ├── ProductCategory.java    — flat taxonomy (table PRODUCT_CATEGORY, not CATEGORY — avoids
-│   │                              colliding with content-service's Category in the shared schema)
+│   ├── ProductCategory.java    — taxonomy (table PRODUCT_CATEGORY, not CATEGORY — avoids colliding
+│   │                              with content-service's Category in the shared schema); supports
+│   │                              an optional parent/child hierarchy (self-referential parent/
+│   │                              children, DKP-0037) — same adjacency-list shape as
+│   │                              content-service's own Category
 │   ├── Product.java            — name/description/slug/active; ManyToOne ProductCategory; always
 │   │                              has ≥1 ProductVariant
 │   ├── ProductImage.java       — ordered gallery; storageKey references a MinIO object (infra's
@@ -1625,8 +1628,12 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 ├── service/seed/                — starter sample catalog (developer-swag theme), gated by
 │   │                                app.seed.enabled
 │   ├── ProductCategorySeeder.java  — extends infra's CsvSeeder<ProductCategory>; idempotency key
-│   │                                    is name itself (not a decoupled seedId like content-service's
-│   │                                    seeders — a fixed-sample-dataset simplification)
+│   │                                    (and parent reference) is name itself (not a decoupled
+│   │                                    seedId like content-service's seeders — a fixed-sample-
+│   │                                    dataset simplification); CSV gained an optional
+│   │                                    parentName column once ProductCategory gained hierarchy
+│   │                                    support — seed data nests the 5 original categories under
+│   │                                    2 new roots (Wearables, Desk & Drinkware)
 │   ├── ProductSeeder.java          — implements Seeder directly (joins products.csv +
 │   │                                    product_variants.csv by name); routes through
 │   │                                    ProductService.create/deactivate, not a bare repository
@@ -1666,6 +1673,8 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │                                    on it for Product.variants/images)
 ├── api/                         — REST layer
 │   ├── ProductCategoryApi.java / ProductApi.java — admin CRUD (/api/v1/admin/**), incl.
+│   │                                 GET /tree (roots with nested children, sorted by name —
+│   │                                 mirrors content-service's CategoryApi#tree), plus
 │   │                                 POST/DELETE .../variants/{id} and
 │   │                                 POST/DELETE/PATCH .../images/{id} for independent
 │   │                                 variant/image mutation (US-1.6), plus
@@ -1708,7 +1717,8 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │                                    CheckoutController / OrderController / AdminOrderController
 │                                    (admin-gated the same way ProductController is)
 └── dto/                         — ProductCategoryResponse/CreateProductCategoryRequest/
-                                     UpdateProductCategoryRequest, ProductResponse/
+                                     UpdateProductCategoryRequest/ProductCategoryTreeNodeResponse
+                                     (all now parentId-aware), ProductResponse/
                                      CreateProductRequest/UpdateProductRequest,
                                      ProductVariantRequest/ProductVariantResponse,
                                      ProductImageRequest/ProductImageResponse,
@@ -1736,8 +1746,10 @@ columns inline) and `ORDER_LINE`; and (Epic 3 Phase 1)
 new `ORDER_STATUS_HISTORY` table; and (Epic 3 Phase 5)
 `202608300002__0.0.2__DKP-0036__add_customer_order_owner_uuid_index.sql` — adds
 `IDX_CUSTOMER_ORDER_OWNER_UUID`, deferred until the "list my orders" query that actually needs it
-was built. All four applied via the consolidated `services-liquibase` job
-in `docker-compose.apps.yml` — see the Liquibase note above.
+was built; and `202608310001__0.0.2__DKP-0037__add_product_category_parent_id.sql` — adds a
+nullable, self-referential `PARENT_CATEGORY_ID` FK (+ index) to `PRODUCT_CATEGORY`, the
+adjacency-list hierarchy support described above. All five applied via the consolidated
+`services-liquibase` job in `docker-compose.apps.yml` — see the Liquibase note above.
 
 **Epic 3 (Order Lifecycle & Inventory) is now fully built — all 6 phases**, including the REST
 surface (`OrderApi`/`AdminOrderApi`, Phase 5) — see `ecommerce-service/CLAUDE.md`'s own Epic 3

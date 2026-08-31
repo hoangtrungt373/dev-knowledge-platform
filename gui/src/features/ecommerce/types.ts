@@ -1,21 +1,34 @@
 // ── Product Categories ──────────────────────────────────────────────────────
-// Flat taxonomy (no parent tree, unlike @content's Category) — fronts ecommerce-service's
-// ProductCategory, deliberately distinct from content-service's own Category (unrelated domain).
+// Fronts ecommerce-service's ProductCategory, deliberately distinct from content-service's own
+// Category (unrelated domain — product taxonomy vs. knowledge-base taxonomy). Supports an optional
+// parent/child hierarchy (self-referential parentId), mirroring @content's own Category/
+// CategoryTreeNode shape exactly.
 
 export interface ProductCategory {
   id: number;
   name: string;
   slug: string;
+  parentId: number | null;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface ProductCategoryTreeNode {
+  id: number;
+  name: string;
+  slug: string;
+  parentId: number | null;
+  children: ProductCategoryTreeNode[];
+}
+
 export interface CreateProductCategoryPayload {
   name: string;
+  parentId?: number | null;
 }
 
 export interface UpdateProductCategoryPayload {
   name: string;
+  parentId: number | null;
 }
 
 // ── Products ─────────────────────────────────────────────────────────────────

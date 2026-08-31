@@ -1,6 +1,8 @@
-name
-Apparel
-Drinkware
-Stickers
-Office
-Accessories
+name,parentName
+Wearables,
+Desk & Drinkware,
+Apparel,Wearables
+Drinkware,Desk & Drinkware
+Stickers,Desk & Drinkware
+Office,Desk & Drinkware
+Accessories,Desk & Drinkware

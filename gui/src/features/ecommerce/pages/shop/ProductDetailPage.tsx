@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import {
   Box,
+  Breadcrumbs,
   Button,
   CircularProgress,
   Divider,
   IconButton,
+  Link,
   Rating,
   Stack,
   TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
+import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ImageNotSupportedIcon from '@mui/icons-material/ImageNotSupported';
 import AddIcon from '@mui/icons-material/Add';
@@ -23,10 +26,11 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { authService } from '@auth/services/authService';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useCart } from '../../context/CartContext';
-import { Product, ProductVariant } from '../../types';
+import { Product, ProductCategory, ProductVariant } from '../../types';
 import { shopApi } from '../../api/shopApi';
 import VariantSelector from '../../components/shop/VariantSelector';
 import { isLowStock, lowStockMessage } from '../../utils/stock';
+import { buildCategoryPath } from '../../utils/categoryPath';
 
 function formatPriceRange(variants: ProductVariant[]): string {
   const prices = variants.map(v => v.price);
@@ -49,6 +53,7 @@ export default function ProductDetailPage(): JSX.Element {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [quantity, setQuantity] = useState(1);
@@ -60,6 +65,14 @@ export default function ProductDetailPage(): JSX.Element {
     setNotFound(false);
     shopApi.getBySlug(slug).then(setProduct).catch(() => setNotFound(true)).finally(() => setLoading(false));
   }, [slug]);
+
+  // Purely a breadcrumb enhancement (root -> leaf ancestor chain via buildCategoryPath below) — a
+  // fetch failure here shouldn't block the page or surface an error toast for something this
+  // cosmetic; the breadcrumb below just falls back to the single categoryName segment it always
+  // rendered before ProductCategory gained hierarchy support.
+  useEffect(() => {
+    shopApi.listCategories().then(setCategories).catch(() => {});
+  }, []);
 
   // A variant switch invalidates whatever quantity was picked for the previous one — reset rather
   // than silently carrying a stale value into the next add-to-cart call.
@@ -98,6 +111,7 @@ export default function ProductDetailPage(): JSX.Element {
     );
   }
 
+  const categoryPath = buildCategoryPath(categories, product.productCategoryId);
   const sortedImages = [...product.images].sort((a, b) => a.sortOrder - b.sortOrder);
   const activeImage = sortedImages[activeImageIndex];
   const showSlideArrows = sortedImages.length > 1;
@@ -127,9 +141,21 @@ export default function ProductDetailPage(): JSX.Element {
 
   return (
     <Box sx={{ p: 3, width: '80%', mx: 'auto' }}>
-      <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/shop')} sx={{ mb: 2 }}>
-        Back to Shop
-      </Button>
+      <Breadcrumbs separator={<NavigateNextIcon fontSize="small" />} sx={{ mb: 2 }}>
+        <Link component={RouterLink} to="/shop" underline="hover" color="inherit">
+          Shop
+        </Link>
+        {categoryPath.length > 0 ? (
+          categoryPath.map(cat => (
+            <Typography key={cat.id} color="text.secondary">{cat.name}</Typography>
+          ))
+        ) : (
+          // categories hasn't loaded yet (or the fetch failed) — same single-segment fallback this
+          // breadcrumb always rendered before ProductCategory gained hierarchy support.
+          <Typography color="text.secondary">{product.categoryName}</Typography>
+        )}
+        <Typography color="text.primary">{product.name}</Typography>
+      </Breadcrumbs>
 
       <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap', bgcolor: 'background.paper', borderRadius: 2, p: 3 }}>
 

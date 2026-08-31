@@ -476,9 +476,24 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   `/api/v1/admin/products/**`/`/api/v1/admin/product-categories/**`, so this feature uses the same
   `VITE_BACKEND_URL`/`httpClient` every other admin feature does — no third backend-origin
   constant needed, unlike `@messaging`'s direct-to-`social-service` case below).
-  `pages/ProductCategoryListPage.tsx` + `components/ProductCategoryFormDialog.tsx` mirror
-  `@content`'s `TagListPage`/`TagFormDialog` — a flat, unpaginated list (matching
-  `ProductCategoryApi.list`'s own shape), no delete action since the backend exposes none.
+  `pages/ProductCategoryListPage.tsx` + `components/ProductCategoryFormDialog.tsx` — a flat,
+  unpaginated list (matching `ProductCategoryApi.list`'s own shape), no delete action since the
+  backend exposes none. **Rebuilt to mirror `@content`'s hierarchical `CategoryListPage.tsx`/
+  `CategoryFormDialog.tsx` instead of `TagListPage`/`TagFormDialog`** once `ProductCategory` gained
+  parent/child hierarchy support (per request — see `ecommerce-service/CLAUDE.md`'s entity/service
+  notes): the list page fetches both the flat list (`listProductCategories`, still what the table
+  itself renders/searches) and the new `GET /tree` (`getProductCategoryTree`) in parallel, using
+  only the tree to build an id→name lookup for a new "Parent" column (`category.parentId ?
+  parentNameMap[...] : '—'`) — same `buildNameMap` helper as `@content`'s page, walking the tree
+  once rather than re-deriving ancestry per row. The form dialog gained a "Parent category" `Select`
+  (byte-identical `flattenTree`/`getSubtreeIds`/`collectSubtreeIds` helpers to `@content`'s
+  `CategoryFormDialog`) — indented by depth, "None (root category)" for a root, and excluding the
+  category's own subtree so an edit can't assign one of its own descendants as its new parent (the
+  cycle guard the backend also enforces server-side; the GUI's exclusion is a UX nicety, not the
+  actual guard). **Still no delete action** — unlike `@content`'s page, which does have one (its
+  backend supports it) — this follow-up only added hierarchy, not delete; don't assume one exists.
+  `types.ts`'s `ProductCategory` gained `parentId: number | null`, and a new
+  `ProductCategoryTreeNode` type mirrors `@content`'s `CategoryTreeNode` exactly.
   `pages/ProductListPage.tsx` + `pages/ProductFormPage.tsx` mirror `@content`'s
   `QuestionAnswerListPage`/`FormPage`, but variant/image management is genuinely different between
   create and edit mode, not just a smaller version of the same form:
@@ -533,7 +548,37 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     - **`ProductDetailPage.tsx`** — the page container is `width: '80%'` (was a fixed
       `maxWidth: 1100`), per request, alongside the same change on `CartPage.tsx` and the
       `orders/` pages below, so all four ecommerce pages scale with viewport width instead of
-      capping at a fixed pixel value. The gallery+info row sits in its own `bgcolor:
+      capping at a fixed pixel value. **Gained an MUI `Breadcrumbs` trail (`Shop → {categoryName}
+      → {product.name}`), replacing the old plain "Back to Shop" button, per request** — the
+      3-segment "flat" version discussed and chosen over a full multi-level category hierarchy
+      (e.g. `Home & Living > Furniture > Outdoor furniture`): this app's `ProductCategory` is a
+      flat taxonomy (see `ecommerce-service/CLAUDE.md`), a product only ever has *one* category,
+      not a tree, so a deeper breadcrumb isn't something the current data model can produce without
+      first adding real category hierarchy support (a backend data-model change, out of scope
+      here). `Shop` links to `/shop` (`Link component={RouterLink}`); the category segment is
+      **deliberately plain text, not a link** — `Product`/`ProductSearchResult` only carry
+      `categoryName` (a string), never a `categoryId`, and `ShopPage`'s own category filter is
+      driven by id, not name, with no URL-param support to pre-select it either, so there's no
+      route this segment could correctly link to without inventing one; the product name segment
+      is plain text too, being the current page. No new dependency — `Breadcrumbs`/`Link` are both
+      `@mui/material` core. **`ProductCategory` gained real parent/child hierarchy support in a
+      later follow-up** (see `ecommerce-service/CLAUDE.md`), and this breadcrumb was then **deepened
+      to a real root→leaf ancestor trail, per request** — the "flat taxonomy" 3-segment version
+      above is now history. New `utils/categoryPath.ts` (`buildCategoryPath(categories,
+      categoryId)`) walks a flat `ProductCategory[]`'s `parentId` chain client-side (no dedicated
+      "category path" endpoint — the flat list `shopApi.listCategories` already returns carries
+      `parentId` now, so a `Map<id, category>` + upward walk is enough; a `seen` guard makes an
+      unexpected cycle a no-op rather than an infinite loop, defense in depth only since the
+      backend already rejects a cyclic `parentId` on write). The page fetches that flat list via a
+      **second, independent** `useEffect`/`shopApi.listCategories()` call (parallel to the product
+      fetch, not gating the page's own `loading` state) with a **silently swallowed** failure —
+      deliberately no `showError` wired to this call, since the breadcrumb is a cosmetic
+      enhancement and a toast over it would read as a real error to a shopper; a failed/still-
+      loading fetch just falls back to the original single `product.categoryName` segment (the
+      exact fallback this breadcrumb always rendered before hierarchy existed). Each ancestor
+      segment stays **plain text, not a link** — same reasoning as before, unchanged: `ShopPage`'s
+      category filter is still id-driven with no URL-param support to pre-select it, so there's
+      still no route an ancestor segment could correctly link to. The gallery+info row sits in its own `bgcolor:
       'background.paper'` card (`borderRadius: 2, p: 3`), per request, distinct from the page's own
       grey `background.default` behind it — `background.paper` rather than a hardcoded white so a
       future dark theme gets the right dark surface color automatically instead of a stuck-white
@@ -694,7 +739,9 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       Both use the same semantic-token reasoning as `ProductDetailPage`'s card (not a hardcoded
       white, so a future dark theme gets the right dark surface automatically). The "Your Cart"
       title above and the Continue Shopping/Checkout button row below both stay outside either
-      card, same as `ProductDetailPage` keeps its own "Back to Shop" button outside its card.
+      card, same as `ProductDetailPage` keeps its own breadcrumb trail outside its card (that page
+      used to have a plain "Back to Shop" button in this same spot — replaced by the breadcrumb
+      trail, below, since a "Shop" crumb already covers the same "go back" action).
       **The header row's checkbox-to-text `Stack` uses `spacing={2}`, matching each
       `CartLineRow`'s own checkbox-to-thumbnail gap** — a fix per request; it was `spacing={1}`
       (8px), one size down from the 16px gap the per-line `Stack`'s own `spacing={2}` puts between

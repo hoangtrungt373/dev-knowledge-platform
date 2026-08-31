@@ -2,6 +2,7 @@ package com.ttg.devknowledgeplatform.ecommerce.api;
 
 import com.ttg.devknowledgeplatform.ecommerce.dto.CreateProductCategoryRequest;
 import com.ttg.devknowledgeplatform.ecommerce.dto.ProductCategoryResponse;
+import com.ttg.devknowledgeplatform.ecommerce.dto.ProductCategoryTreeNodeResponse;
 import com.ttg.devknowledgeplatform.ecommerce.dto.UpdateProductCategoryRequest;
 
 import jakarta.validation.Valid;
@@ -63,4 +64,8 @@ public interface ProductCategoryApi {
      */
     @GetMapping
     ResponseEntity<List<ProductCategoryResponse>> list(@RequestParam(required = false) String q);
+
+    /** Full tree: roots with nested {@code children}, sorted by name at each level. */
+    @GetMapping("/tree")
+    ResponseEntity<List<ProductCategoryTreeNodeResponse>> tree();
 }
