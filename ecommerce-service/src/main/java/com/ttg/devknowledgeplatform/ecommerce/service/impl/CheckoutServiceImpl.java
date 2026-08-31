@@ -25,7 +25,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Implementation of {@link CheckoutService}.
@@ -58,18 +60,20 @@ public class CheckoutServiceImpl implements CheckoutService {
 
     @Override
     @Transactional(readOnly = true)
-    public CheckoutPreview preview(String userUuid) {
+    public CheckoutPreview preview(String userUuid, List<Integer> selectedVariantIds) {
         Cart cart = cartService.getCart(userUuid);
-        List<CartLine> availableLines = requireCheckoutableCart(cart);
+        List<CartLine> candidateLines = filterBySelection(cart.lines(), selectedVariantIds);
+        List<CartLine> availableLines = requireCheckoutableCart(candidateLines);
         BigDecimal subtotal = computeSubtotal(availableLines);
-        return new CheckoutPreview(cart.lines(), subtotal, flatShippingFee, subtotal.add(flatShippingFee));
+        return new CheckoutPreview(candidateLines, subtotal, flatShippingFee, subtotal.add(flatShippingFee));
     }
 
     @Override
-    public CheckoutResult confirm(String userUuid, CheckoutCommands.AddressInput address) {
+    public CheckoutResult confirm(String userUuid, CheckoutCommands.AddressInput address, List<Integer> selectedVariantIds) {
         Cart cart = cartService.getCart(userUuid);
-        List<CartLine> availableLines = requireCheckoutableCart(cart);
-        List<CartLine> droppedLines = cart.lines().stream().filter(line -> !line.available()).toList();
+        List<CartLine> candidateLines = filterBySelection(cart.lines(), selectedVariantIds);
+        List<CartLine> availableLines = requireCheckoutableCart(candidateLines);
+        List<CartLine> droppedLines = candidateLines.stream().filter(line -> !line.available()).toList();
 
         BigDecimal subtotal = computeSubtotal(availableLines);
         BigDecimal total = subtotal.add(flatShippingFee);
@@ -94,23 +98,44 @@ public class CheckoutServiceImpl implements CheckoutService {
         order.getStatusHistory().add(toInitialStatusHistory(order));
 
         Order saved = orderRepository.save(order);
-        // Only after the order is durably saved — never before (US-2.6).
-        cartService.clear(userUuid);
+        // Only the lines actually ordered leave the cart — never a whole-cart clear() anymore, so
+        // anything excluded by selectedVariantIds (or dropped by this final revalidation) stays in
+        // the cart untouched, only after the order is durably saved (US-2.6).
+        cartService.removeItems(userUuid, availableLines.stream().map(CartLine::variantId).toList());
         log.info("Created order id={} for userUuid={} lineCount={} droppedLineCount={}",
                 saved.getId(), userUuid, availableLines.size(), droppedLines.size());
         return new CheckoutResult(saved, droppedLines);
     }
 
     /**
-     * Rejects an empty cart (US-2.6) and a cart with no currently-available line (every line
-     * failed US-2.7's revalidation) — shared by both {@link #preview} and {@link #confirm} so the
-     * two calls apply identical guards.
+     * Rejects an empty candidate list (US-2.6) and one with no currently-available line (every
+     * line failed US-2.7's revalidation) — shared by both {@link #preview} and {@link #confirm} so
+     * the two calls apply identical guards. {@code candidateLines} is already narrowed to
+     * {@code selectedVariantIds} (if any) by {@link #filterBySelection} — reusing
+     * {@code CHECKOUT_CART_EMPTY} for "the selection matched nothing currently in the cart" rather
+     * than adding a distinct error code for that edge case, since the shopper-facing meaning is the
+     * same either way: nothing to check out.
      */
-    private List<CartLine> requireCheckoutableCart(Cart cart) {
-        Validator.isFalse(cart.lines().isEmpty(), EcommerceErrorCode.CHECKOUT_CART_EMPTY);
-        List<CartLine> availableLines = cart.lines().stream().filter(CartLine::available).toList();
+    private List<CartLine> requireCheckoutableCart(List<CartLine> candidateLines) {
+        Validator.isFalse(candidateLines.isEmpty(), EcommerceErrorCode.CHECKOUT_CART_EMPTY);
+        List<CartLine> availableLines = candidateLines.stream().filter(CartLine::available).toList();
         Validator.isFalse(availableLines.isEmpty(), EcommerceErrorCode.CHECKOUT_NO_VALID_ITEMS);
         return availableLines;
+    }
+
+    /**
+     * Narrows {@code lines} down to just the ids in {@code selectedVariantIds}, or returns
+     * {@code lines} unchanged when {@code selectedVariantIds} is {@code null} — the single seam
+     * both {@link #preview} and {@link #confirm} filter through, so "no selection" and "every line
+     * happens to be selected" both flow through the exact same downstream logic as the original
+     * whole-cart behavior.
+     */
+    private static List<CartLine> filterBySelection(List<CartLine> lines, List<Integer> selectedVariantIds) {
+        if (selectedVariantIds == null) {
+            return lines;
+        }
+        Set<Integer> selected = new HashSet<>(selectedVariantIds);
+        return lines.stream().filter(line -> selected.contains(line.variantId())).toList();
     }
 
     /**

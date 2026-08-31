@@ -88,9 +88,14 @@ public class CartServiceImpl implements CartService {
     }
 
     @Override
-    public void clear(String userUuid) {
-        redisTemplate.delete(cartKey(userUuid));
-        log.info("Cleared cart for userUuid={}", userUuid);
+    public void removeItems(String userUuid, List<Integer> variantIds) {
+        String key = cartKey(userUuid);
+        Object[] hashKeys = variantIds.stream().map(Object::toString).toArray();
+        redisTemplate.opsForHash().delete(key, hashKeys);
+        // Same "refresh unconditionally, even on a removal that empties the hash" reasoning as
+        // setQuantity's removal branch above.
+        redisTemplate.expire(key, cartTtl);
+        log.info("Removed variantIds={} from cart for userUuid={}", variantIds, userUuid);
     }
 
     private CartLine resolveLine(Integer variantId, int quantity) {

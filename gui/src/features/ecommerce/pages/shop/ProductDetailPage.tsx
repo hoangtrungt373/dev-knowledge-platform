@@ -16,6 +16,8 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ImageNotSupportedIcon from '@mui/icons-material/ImageNotSupported';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { authService } from '@auth/services/authService';
@@ -98,6 +100,10 @@ export default function ProductDetailPage(): JSX.Element {
 
   const sortedImages = [...product.images].sort((a, b) => a.sortOrder - b.sortOrder);
   const activeImage = sortedImages[activeImageIndex];
+  const showSlideArrows = sortedImages.length > 1;
+  const slideBy = (delta: number): void => {
+    setActiveImageIndex(prev => (prev + delta + sortedImages.length) % sortedImages.length);
+  };
   const priceDisplay = selectedVariant
     ? `$${selectedVariant.price.toFixed(2)}`
     : formatPriceRange(product.variants);
@@ -112,7 +118,7 @@ export default function ProductDetailPage(): JSX.Element {
     : product.variants.some(v => v.stockQuantity - v.reservedQuantity > 0);
 
   return (
-    <Box sx={{ p: 3, maxWidth: 1100, mx: 'auto' }}>
+    <Box sx={{ p: 3, width: '80%', mx: 'auto' }}>
       <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/shop')} sx={{ mb: 2 }}>
         Back to Shop
       </Button>
@@ -123,6 +129,7 @@ export default function ProductDetailPage(): JSX.Element {
         <Box sx={{ flex: '1 1 calc(45% - 12.8px)', minWidth: 320 }}>
           <Box
             sx={{
+              position: 'relative',
               height: 400,
               bgcolor: 'action.hover',
               display: 'flex',
@@ -142,6 +149,49 @@ export default function ProductDetailPage(): JSX.Element {
               />
             ) : (
               <ImageNotSupportedIcon sx={{ fontSize: 64, color: 'text.disabled' }} />
+            )}
+            {showSlideArrows && (
+              <>
+                <IconButton
+                  aria-label="Previous image"
+                  onClick={() => slideBy(-1)}
+                  sx={{
+                    position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)',
+                    bgcolor: 'background.paper', boxShadow: 1,
+                    '&:hover': { bgcolor: 'background.paper' },
+                  }}
+                >
+                  <ChevronLeftIcon />
+                </IconButton>
+                <IconButton
+                  aria-label="Next image"
+                  onClick={() => slideBy(1)}
+                  sx={{
+                    position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                    bgcolor: 'background.paper', boxShadow: 1,
+                    '&:hover': { bgcolor: 'background.paper' },
+                  }}
+                >
+                  <ChevronRightIcon />
+                </IconButton>
+                <Stack
+                  direction="row"
+                  spacing={0.75}
+                  sx={{ position: 'absolute', bottom: 10, left: '50%', transform: 'translateX(-50%)' }}
+                >
+                  {sortedImages.map((image, index) => (
+                    <Box
+                      key={image.id}
+                      onClick={() => setActiveImageIndex(index)}
+                      sx={{
+                        width: 8, height: 8, borderRadius: '50%', cursor: 'pointer',
+                        bgcolor: index === activeImageIndex ? 'primary.main' : 'background.paper',
+                        boxShadow: 1,
+                      }}
+                    />
+                  ))}
+                </Stack>
+              </>
             )}
           </Box>
           {sortedImages.length > 1 && (

@@ -89,7 +89,7 @@ class CheckoutServiceImplTest {
             CartLine unavailable = unavailableLine(2, 1);
             when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(available, unavailable)));
 
-            CheckoutPreview preview = service.preview(USER_UUID);
+            CheckoutPreview preview = service.preview(USER_UUID, null);
 
             assertThat(preview.subtotal()).isEqualByComparingTo("20.00");
             assertThat(preview.shippingFee()).isEqualByComparingTo(FLAT_SHIPPING_FEE);
@@ -101,7 +101,7 @@ class CheckoutServiceImplTest {
         void rejectsAnEmptyCart() {
             when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of()));
 
-            assertThatThrownBy(() -> service.preview(USER_UUID))
+            assertThatThrownBy(() -> service.preview(USER_UUID, null))
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.CHECKOUT_CART_EMPTY);
@@ -111,10 +111,33 @@ class CheckoutServiceImplTest {
         void rejectsACartWithNoAvailableLines() {
             when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(unavailableLine(2, 1))));
 
-            assertThatThrownBy(() -> service.preview(USER_UUID))
+            assertThatThrownBy(() -> service.preview(USER_UUID, null))
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.CHECKOUT_NO_VALID_ITEMS);
+        }
+
+        @Test
+        void withASelectionOnlyComputesTotalsFromTheSelectedLines() {
+            CartLine selected = availableLine(1, 2, new BigDecimal("10.00"));
+            CartLine notSelected = availableLine(2, 1, new BigDecimal("50.00"));
+            when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(selected, notSelected)));
+
+            CheckoutPreview preview = service.preview(USER_UUID, List.of(1));
+
+            assertThat(preview.subtotal()).isEqualByComparingTo("20.00");
+            assertThat(preview.total()).isEqualByComparingTo("25.00");
+            assertThat(preview.lines()).containsExactly(selected);
+        }
+
+        @Test
+        void rejectsASelectionThatMatchesNothingInTheCart() {
+            when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(availableLine(1, 1, new BigDecimal("10.00")))));
+
+            assertThatThrownBy(() -> service.preview(USER_UUID, List.of(999)))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.CHECKOUT_CART_EMPTY);
         }
     }
 
@@ -122,7 +145,7 @@ class CheckoutServiceImplTest {
     class Confirm {
 
         @Test
-        void createsOrderFromAvailableLinesAndClearsCartOnlyAfterSaving() {
+        void createsOrderFromAvailableLinesAndRemovesOnlyOrderedLinesOnlyAfterSaving() {
             CartLine available = availableLine(1, 2, new BigDecimal("10.00"));
             when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(available)));
             when(productVariantRepository.reserve(1, 2)).thenReturn(1);
@@ -132,7 +155,7 @@ class CheckoutServiceImplTest {
                 return saved;
             });
 
-            CheckoutResult result = service.confirm(USER_UUID, address);
+            CheckoutResult result = service.confirm(USER_UUID, address, null);
 
             Order order = result.order();
             assertThat(order.getId()).isEqualTo(100);
@@ -156,38 +179,41 @@ class CheckoutServiceImplTest {
             InOrder ordering = inOrder(productVariantRepository, orderRepository, cartService);
             ordering.verify(productVariantRepository).reserve(1, 2);
             ordering.verify(orderRepository).save(any(Order.class));
-            ordering.verify(cartService).clear(USER_UUID);
+            ordering.verify(cartService).removeItems(USER_UUID, List.of(1));
         }
 
         @Test
-        void reportsDroppedLinesWithoutIncludingThemInTheOrder() {
+        void reportsDroppedLinesWithoutIncludingThemInTheOrderOrRemovingThemFromTheCart() {
             CartLine available = availableLine(1, 1, new BigDecimal("10.00"));
             CartLine unavailable = unavailableLine(2, 3);
             when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(available, unavailable)));
             when(productVariantRepository.reserve(1, 1)).thenReturn(1);
             when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            CheckoutResult result = service.confirm(USER_UUID, address);
+            CheckoutResult result = service.confirm(USER_UUID, address, null);
 
             assertThat(result.order().getLines()).hasSize(1);
             assertThat(result.droppedLines()).containsExactly(unavailable);
             // A dropped (unavailable) line was never a candidate for reservation in the first place.
             verify(productVariantRepository, never()).reserve(eq(2), any(Integer.class));
+            // Only the ordered line leaves the cart — the dropped line stays, unlike the old
+            // whole-cart clear().
+            verify(cartService).removeItems(USER_UUID, List.of(1));
         }
 
         @Test
-        void rejectsWhenStockReservationFailsAndNeverSavesOrClears() {
+        void rejectsWhenStockReservationFailsAndNeverSavesOrRemoves() {
             CartLine available = availableLine(1, 5, new BigDecimal("10.00"));
             when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(available)));
             when(productVariantRepository.reserve(1, 5)).thenReturn(0);
 
-            assertThatThrownBy(() -> service.confirm(USER_UUID, address))
+            assertThatThrownBy(() -> service.confirm(USER_UUID, address, null))
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.ORDER_INSUFFICIENT_STOCK);
 
             verify(orderRepository, never()).save(any());
-            verify(cartService, never()).clear(eq(USER_UUID));
+            verify(cartService, never()).removeItems(eq(USER_UUID), any());
         }
 
         @Test
@@ -198,7 +224,7 @@ class CheckoutServiceImplTest {
             when(productVariantRepository.reserve(1, 2)).thenReturn(1);
             when(productVariantRepository.reserve(2, 3)).thenReturn(0);
 
-            assertThatThrownBy(() -> service.confirm(USER_UUID, address))
+            assertThatThrownBy(() -> service.confirm(USER_UUID, address, null))
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.ORDER_INSUFFICIENT_STOCK);
@@ -209,33 +235,66 @@ class CheckoutServiceImplTest {
             // with a mocked repository has no transaction to actually roll back.
             verify(productVariantRepository).reserve(1, 2);
             verify(orderRepository, never()).save(any());
-            verify(cartService, never()).clear(eq(USER_UUID));
+            verify(cartService, never()).removeItems(eq(USER_UUID), any());
         }
 
         @Test
-        void rejectsAnEmptyCartAndNeverSavesOrClears() {
+        void rejectsAnEmptyCartAndNeverSavesOrRemoves() {
             when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of()));
 
-            assertThatThrownBy(() -> service.confirm(USER_UUID, address))
+            assertThatThrownBy(() -> service.confirm(USER_UUID, address, null))
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.CHECKOUT_CART_EMPTY);
 
             verify(orderRepository, never()).save(any());
-            verify(cartService, never()).clear(eq(USER_UUID));
+            verify(cartService, never()).removeItems(eq(USER_UUID), any());
         }
 
         @Test
-        void rejectsACartWithNoAvailableLinesAndNeverSavesOrClears() {
+        void rejectsACartWithNoAvailableLinesAndNeverSavesOrRemoves() {
             when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(unavailableLine(2, 1))));
 
-            assertThatThrownBy(() -> service.confirm(USER_UUID, address))
+            assertThatThrownBy(() -> service.confirm(USER_UUID, address, null))
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.CHECKOUT_NO_VALID_ITEMS);
 
             verify(orderRepository, never()).save(any());
-            verify(cartService, never()).clear(eq(USER_UUID));
+            verify(cartService, never()).removeItems(eq(USER_UUID), any());
+        }
+
+        @Test
+        void withASelectionOnlyOrdersAndRemovesTheSelectedLinesLeavingTheRestInTheCart() {
+            CartLine selected = availableLine(1, 2, new BigDecimal("10.00"));
+            CartLine notSelected = availableLine(2, 1, new BigDecimal("50.00"));
+            when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(selected, notSelected)));
+            when(productVariantRepository.reserve(1, 2)).thenReturn(1);
+            when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            CheckoutResult result = service.confirm(USER_UUID, address, List.of(1));
+
+            assertThat(result.order().getLines()).hasSize(1);
+            assertThat(result.order().getLines().get(0).getProductVariantId()).isEqualTo(1);
+            assertThat(result.order().getSubtotal()).isEqualByComparingTo("20.00");
+            assertThat(result.droppedLines()).isEmpty();
+            // The variant not part of this selection was never a candidate for reservation, and
+            // stays in the cart afterward — never passed to removeItems.
+            verify(productVariantRepository, never()).reserve(eq(2), any(Integer.class));
+            verify(cartService).removeItems(USER_UUID, List.of(1));
+        }
+
+        @Test
+        void rejectsASelectionThatMatchesNothingInTheCartAndNeverSavesOrRemoves() {
+            when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(availableLine(1, 1, new BigDecimal("10.00")))));
+
+            assertThatThrownBy(() -> service.confirm(USER_UUID, address, List.of(999)))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.CHECKOUT_CART_EMPTY);
+
+            verify(orderRepository, never()).save(any());
+            verify(cartService, never()).removeItems(eq(USER_UUID), any());
         }
     }
 }

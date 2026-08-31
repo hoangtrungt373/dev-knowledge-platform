@@ -11,6 +11,8 @@ interface CartContextType {
   addItem: (variantId: number, quantity: number) => Promise<void>;
   updateItem: (variantId: number, quantity: number) => Promise<void>;
   removeItem: (variantId: number) => Promise<void>;
+  /** Bulk delete (post-Epic-2 follow-up) — one round trip for however many lines are selected. */
+  removeItems: (variantIds: number[]) => Promise<void>;
   /**
    * Adds `newVariantId` and removes `oldVariantId` as one visible update — unlike calling
    * `addItem`/`removeItem` back to back, this only calls `setCart` once, after both backend calls
@@ -88,6 +90,11 @@ export function CartProvider({ children }: { children: ReactNode }): JSX.Element
     setCart(data);
   }, []);
 
+  const removeItems = useCallback(async (variantIds: number[]): Promise<void> => {
+    const data = await cartApi.removeItems(variantIds);
+    setCart(data);
+  }, []);
+
   const changeVariant = useCallback(async (oldVariantId: number, newVariantId: number, quantity: number): Promise<void> => {
     await cartApi.addItem(newVariantId, quantity);
     // Only this second response's cart is ever rendered — the addItem response above (which still
@@ -101,7 +108,7 @@ export function CartProvider({ children }: { children: ReactNode }): JSX.Element
   }, []);
 
   return (
-    <CartContext.Provider value={{ cart, loading, refresh, addItem, updateItem, removeItem, changeVariant, clear }}>
+    <CartContext.Provider value={{ cart, loading, refresh, addItem, updateItem, removeItem, removeItems, changeVariant, clear }}>
       {children}
     </CartContext.Provider>
   );

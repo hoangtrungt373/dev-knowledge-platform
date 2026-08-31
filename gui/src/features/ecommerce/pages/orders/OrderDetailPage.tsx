@@ -104,7 +104,7 @@ export default function OrderDetailPage(): JSX.Element {
   const cancelPending = order.status === 'PAYMENT_PROCESSING' && order.cancelRequested;
 
   return (
-    <Box sx={{ p: 3, maxWidth: 700, mx: 'auto' }}>
+    <Box sx={{ p: 3, width: '80%', mx: 'auto' }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 3 }}>
         <Tooltip title="Back to Your Orders">
           <IconButton onClick={() => navigate('/orders')} size="small">

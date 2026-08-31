@@ -12,6 +12,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import java.util.List;
 
 /**
  * HTTP contract for checkout (Epic 2, US-2.5–2.7). Authenticated-only, same as {@code CartApi} —
@@ -29,11 +32,15 @@ public interface CheckoutApi {
      * Revalidates the caller's cart and returns what confirming it right now would produce
      * (US-2.6).
      *
-     * @param userUuid the caller's Keycloak UUID
+     * @param userUuid           the caller's Keycloak UUID
+     * @param selectedVariantIds optional subset of variant ids to restrict this preview to
+     *                           (repeated query param, e.g. {@code ?selectedVariantIds=1&selectedVariantIds=2});
+     *                           omitted previews the whole cart
      * @return {@code 200} with the reviewable preview
      */
     @GetMapping("/preview")
-    ResponseEntity<CheckoutPreviewResponse> preview(@CurrentUserId String userUuid);
+    ResponseEntity<CheckoutPreviewResponse> preview(
+            @CurrentUserId String userUuid, @RequestParam(required = false) List<Integer> selectedVariantIds);
 
     /**
      * Creates an order from the caller's currently-available cart lines and the given shipping

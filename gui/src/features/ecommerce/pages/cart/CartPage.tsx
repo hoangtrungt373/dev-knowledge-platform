@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Divider,
@@ -31,10 +32,14 @@ function formatPrice(value: number): string {
 export default function CartPage(): JSX.Element {
   const navigate = useNavigate();
   const { showError } = useNotification();
-  const { cart, loading, refresh, updateItem, removeItem, changeVariant } = useCart();
+  const { cart, loading, refresh, updateItem, removeItem, removeItems, changeVariant } = useCart();
   // Tracks which variantId currently has an in-flight mutation, so only that line's controls
   // disable — a slow updateItem call shouldn't freeze the whole page.
   const [pendingVariantId, setPendingVariantId] = useState<number | null>(null);
+  // Multi-select (post-Epic-2 follow-up): which lines are checked, for bulk delete and/or
+  // "checkout only these" — starts empty on every visit, not persisted/restored across reloads.
+  const [selectedVariantIds, setSelectedVariantIds] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   useEffect(() => {
     refresh();
@@ -80,6 +85,31 @@ export default function CartPage(): JSX.Element {
     }
   };
 
+  const toggleSelect = (variantId: number): void => {
+    setSelectedVariantIds(prev => {
+      const next = new Set(prev);
+      if (next.has(variantId)) next.delete(variantId); else next.add(variantId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (allVariantIds: number[]): void => {
+    setSelectedVariantIds(prev => (prev.size === allVariantIds.length ? new Set() : new Set(allVariantIds)));
+  };
+
+  const handleDeleteSelected = async (): Promise<void> => {
+    if (selectedVariantIds.size === 0) return;
+    setBulkDeleting(true);
+    try {
+      await removeItems([...selectedVariantIds]);
+      setSelectedVariantIds(new Set());
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Could not remove the selected items.');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   if (loading && !cart) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
@@ -104,44 +134,86 @@ export default function CartPage(): JSX.Element {
   }
 
   const hasAvailableLine = lines.some(l => l.available);
+  const allVariantIds = lines.map(l => l.variantId);
+  const selectedAvailableVariantIds = lines
+    .filter(l => l.available && selectedVariantIds.has(l.variantId))
+    .map(l => l.variantId);
+
+  const handleCheckout = (): void => {
+    if (selectedAvailableVariantIds.length > 0) {
+      navigate('/checkout', { state: { selectedVariantIds: selectedAvailableVariantIds } });
+    } else {
+      navigate('/checkout');
+    }
+  };
 
   return (
-    <Box sx={{ p: 3, maxWidth: 800, mx: 'auto' }}>
+    <Box sx={{ p: 3, width: '80%', mx: 'auto' }}>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>Your Cart</Typography>
 
-      <Stack spacing={2} sx={{ mb: 3 }}>
-        {lines.map(line => (
-          <CartLineRow
-            key={line.variantId}
-            line={line}
-            pending={pendingVariantId === line.variantId}
-            onQuantityChange={(q) => handleQuantityChange(line.variantId, q)}
-            onRemove={() => handleRemove(line.variantId)}
-            onVariantChange={(variant) => handleVariantChange(line.variantId, variant, line.quantity)}
-          />
-        ))}
-      </Stack>
+      <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, p: 3, mb: 3 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Checkbox
+              checked={selectedVariantIds.size > 0 && selectedVariantIds.size === allVariantIds.length}
+              indeterminate={selectedVariantIds.size > 0 && selectedVariantIds.size < allVariantIds.length}
+              onChange={() => toggleSelectAll(allVariantIds)}
+            />
+            <Typography variant="body2" color="text.secondary">
+              {selectedVariantIds.size > 0 ? `${selectedVariantIds.size} selected` : 'Select all'}
+            </Typography>
+          </Stack>
+          {selectedVariantIds.size > 0 && (
+            <Button
+              size="small"
+              color="error"
+              startIcon={<DeleteOutlineIcon />}
+              disabled={bulkDeleting}
+              onClick={handleDeleteSelected}
+            >
+              {bulkDeleting ? 'Deleting…' : `Delete Selected (${selectedVariantIds.size})`}
+            </Button>
+          )}
+        </Stack>
 
-      <Divider sx={{ mb: 2 }} />
+        <Stack spacing={2} divider={<Divider />} sx={{ mb: 3 }}>
+          {lines.map(line => (
+            <CartLineRow
+              key={line.variantId}
+              line={line}
+              pending={pendingVariantId === line.variantId}
+              selected={selectedVariantIds.has(line.variantId)}
+              onToggleSelect={() => toggleSelect(line.variantId)}
+              onQuantityChange={(q) => handleQuantityChange(line.variantId, q)}
+              onRemove={() => handleRemove(line.variantId)}
+              onVariantChange={(variant) => handleVariantChange(line.variantId, variant, line.quantity)}
+            />
+          ))}
+        </Stack>
 
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
-        <Typography variant="body2" color="text.secondary">
-          {cart?.itemCount ?? 0} item{cart?.itemCount === 1 ? '' : 's'}
-        </Typography>
-        <Typography variant="h6" fontWeight={700}>
-          Subtotal: {formatPrice(cart?.subtotal ?? 0)}
-        </Typography>
-      </Stack>
+        <Divider sx={{ mb: 2 }} />
+
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Typography variant="body2" color="text.secondary">
+            {cart?.itemCount ?? 0} item{cart?.itemCount === 1 ? '' : 's'}
+          </Typography>
+          <Typography variant="h6" fontWeight={600} color="error.main">
+            Subtotal: {formatPrice(cart?.subtotal ?? 0)}
+          </Typography>
+        </Stack>
+      </Box>
 
       <Stack direction="row" justifyContent="flex-end" spacing={2}>
         <Button onClick={() => navigate('/shop')}>Continue Shopping</Button>
         <Button
           variant="contained"
           size="large"
-          disabled={!hasAvailableLine}
-          onClick={() => navigate('/checkout')}
+          disabled={selectedAvailableVariantIds.length === 0 && !hasAvailableLine}
+          onClick={handleCheckout}
         >
-          Proceed to Checkout
+          {selectedAvailableVariantIds.length > 0
+            ? `Checkout Selected (${selectedAvailableVariantIds.length})`
+            : 'Proceed to Checkout'}
         </Button>
       </Stack>
     </Box>
@@ -151,12 +223,14 @@ export default function CartPage(): JSX.Element {
 interface CartLineRowProps {
   line: CartLine;
   pending: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
   onQuantityChange: (quantity: number) => void;
   onRemove: () => void;
   onVariantChange: (variant: ProductVariant) => void;
 }
 
-function CartLineRow({ line, pending, onQuantityChange, onRemove, onVariantChange }: CartLineRowProps): JSX.Element {
+function CartLineRow({ line, pending, selected, onToggleSelect, onQuantityChange, onRemove, onVariantChange }: CartLineRowProps): JSX.Element {
   const { showError } = useNotification();
   // Fetched lazily on first chip click, not on row mount — most cart lines are never touched, so
   // this avoids one extra shopApi.getBySlug call per line just to render a static row.
@@ -196,9 +270,7 @@ function CartLineRow({ line, pending, onQuantityChange, onRemove, onVariantChang
     closeVariantMenu();
   };
 
-  const variationLabel = line.attributes
-    ? Object.entries(line.attributes).map(([key, value]) => `${key}: ${value}`).join(', ')
-    : '';
+  const variationLabel = line.attributes ? Object.values(line.attributes).join(' ') : '';
 
   if (!line.available) {
     return (
@@ -206,8 +278,9 @@ function CartLineRow({ line, pending, onQuantityChange, onRemove, onVariantChang
         direction="row"
         alignItems="center"
         spacing={2}
-        sx={{ p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider', opacity: 0.6 }}
+        sx={{ py: 2, opacity: 0.6 }}
       >
+        <Checkbox checked={selected} onChange={onToggleSelect} />
         <CartLineThumbnail imageUrl={null} alt="" />
         <Box sx={{ flex: 1 }}>
           <Typography variant="body2">Variant #{line.variantId}</Typography>
@@ -225,8 +298,9 @@ function CartLineRow({ line, pending, onQuantityChange, onRemove, onVariantChang
       direction="row"
       alignItems="center"
       spacing={2}
-      sx={{ p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider' }}
+      sx={{ py: 1 }}
     >
+      <Checkbox checked={selected} onChange={onToggleSelect} />
       <Link
         to={`/shop/${line.productSlug}`}
         style={{
@@ -240,18 +314,21 @@ function CartLineRow({ line, pending, onQuantityChange, onRemove, onVariantChang
         }}
       >
         <CartLineThumbnail imageUrl={line.primaryImageUrl} alt={line.productName ?? ''} />
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="body1" fontWeight={600} sx={{ '&:hover': { textDecoration: 'underline' } }}>
-            {line.productName}
-          </Typography>
+        <Typography
+          variant="body1"
+          fontWeight={500}
+          noWrap
+          sx={{ width: 220, flexShrink: 0, '&:hover': { textDecoration: 'underline' } }}
+        >
+          {line.productName}
+        </Typography>
+        <Box sx={{ width: 300, flexShrink: 0 }}>
           {variationLabel && (
             <Box
               onClick={handleVariationBoxClick}
               sx={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 0.5,
-                mt: 0.5,
+                width: 280,
+                boxSizing: 'border-box',
                 px: 1,
                 py: 0.25,
                 border: '1px solid',
@@ -261,20 +338,17 @@ function CartLineRow({ line, pending, onQuantityChange, onRemove, onVariantChang
                 '&:hover': { bgcolor: 'action.hover' },
               }}
             >
-              <Typography variant="caption" color="text.secondary">Variation:</Typography>
+              <Stack direction="row" alignItems="center" spacing={0.5}>
+                <Typography variant="caption" color="text.secondary">Variation:</Typography>
+                <KeyboardArrowDownIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+              </Stack>
               <Typography variant="caption" fontWeight={600}>{variationLabel}</Typography>
-              <KeyboardArrowDownIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
             </Box>
           )}
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            {formatPrice(line.unitPrice ?? 0)} each
-          </Typography>
-          {isLowStock(line.availableQuantity) && (
-            <Typography variant="caption" color="warning.main" fontWeight={600} sx={{ display: 'block', mt: 0.25 }}>
-              {lowStockMessage(line.availableQuantity as number)}
-            </Typography>
-          )}
         </Box>
+        <Typography variant="body2" color="text.primary" sx={{ width: 90, flexShrink: 0, whiteSpace: 'nowrap' }}>
+          {formatPrice(line.unitPrice ?? 0)}
+        </Typography>
       </Link>
 
       <Popover
@@ -313,25 +387,32 @@ function CartLineRow({ line, pending, onQuantityChange, onRemove, onVariantChang
         </Box>
       </Popover>
 
-      <Stack direction="row" alignItems="center" sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-        <IconButton
-          size="small"
-          disabled={pending || line.quantity <= 1}
-          onClick={() => onQuantityChange(line.quantity - 1)}
-        >
-          <RemoveIcon fontSize="small" />
-        </IconButton>
-        <Typography sx={{ width: 28, textAlign: 'center' }}>{line.quantity}</Typography>
-        <IconButton
-          size="small"
-          disabled={pending || (line.availableQuantity !== undefined && line.quantity >= line.availableQuantity)}
-          onClick={() => onQuantityChange(line.quantity + 1)}
-        >
-          <AddIcon fontSize="small" />
-        </IconButton>
+      <Stack alignItems="center" spacing={0.5}>
+        <Stack direction="row" alignItems="center" sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+          <IconButton
+            size="small"
+            disabled={pending || line.quantity <= 1}
+            onClick={() => onQuantityChange(line.quantity - 1)}
+          >
+            <RemoveIcon fontSize="small" />
+          </IconButton>
+          <Typography sx={{ width: 28, textAlign: 'center' }}>{line.quantity}</Typography>
+          <IconButton
+            size="small"
+            disabled={pending || (line.availableQuantity !== undefined && line.quantity >= line.availableQuantity)}
+            onClick={() => onQuantityChange(line.quantity + 1)}
+          >
+            <AddIcon fontSize="small" />
+          </IconButton>
+        </Stack>
+        {isLowStock(line.availableQuantity) && (
+          <Typography variant="caption" color="warning.main" fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
+            {lowStockMessage(line.availableQuantity as number)}
+          </Typography>
+        )}
       </Stack>
 
-      <Typography variant="body1" fontWeight={700} sx={{ minWidth: 80, textAlign: 'right' }}>
+      <Typography variant="body1" fontWeight={500} color="error.main" sx={{ minWidth: 80, textAlign: 'right' }}>
         {formatPrice(line.lineTotal ?? 0)}
       </Typography>
 

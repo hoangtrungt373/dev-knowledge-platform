@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.ecommerce.api.impl;
 import com.ttg.devknowledgeplatform.ecommerce.api.CartApi;
 import com.ttg.devknowledgeplatform.ecommerce.dto.AddCartItemRequest;
 import com.ttg.devknowledgeplatform.ecommerce.dto.CartResponse;
+import com.ttg.devknowledgeplatform.ecommerce.dto.RemoveCartItemsRequest;
 import com.ttg.devknowledgeplatform.ecommerce.dto.UpdateCartItemRequest;
 import com.ttg.devknowledgeplatform.ecommerce.mapper.CartMapper;
 import com.ttg.devknowledgeplatform.ecommerce.service.CartService;
@@ -42,6 +43,12 @@ public class CartController implements CartApi {
     @Override
     public ResponseEntity<CartResponse> removeItem(String userUuid, Integer variantId) {
         cartService.setQuantity(userUuid, variantId, 0);
+        return ResponseEntity.ok(cartMapper.toResponse(cartService.getCart(userUuid)));
+    }
+
+    @Override
+    public ResponseEntity<CartResponse> removeItems(String userUuid, RemoveCartItemsRequest request) {
+        cartService.removeItems(userUuid, request.getVariantIds());
         return ResponseEntity.ok(cartMapper.toResponse(cartService.getCart(userUuid)));
     }
 }

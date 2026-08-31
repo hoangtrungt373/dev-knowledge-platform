@@ -1,5 +1,7 @@
 package com.ttg.devknowledgeplatform.ecommerce.service;
 
+import java.util.List;
+
 /**
  * Manages a shopper's cart — stored in Redis (a primary store here, not a cache; see
  * {@code docs/user-stories/02-cart-checkout.md}'s "Key decisions locked for this epic"), keyed by
@@ -48,10 +50,14 @@ public interface CartService {
     Cart getCart(String userUuid);
 
     /**
-     * Deletes the caller's entire cart — used by checkout (US-2.6) once an order has been
-     * successfully created from it, never before.
+     * Removes multiple lines from the cart in one call (bulk delete) — same semantics as calling
+     * {@link #setQuantity} with {@code quantity} {@code 0} for each id individually, but as a
+     * single Redis {@code HDEL} rather than N round trips. No validation on the ids being
+     * removed, same reasoning as {@link #setQuantity}'s removal branch: a shopper must always be
+     * able to remove an already-invalid line.
      *
-     * @param userUuid the caller's Keycloak UUID
+     * @param userUuid   the caller's Keycloak UUID
+     * @param variantIds the lines to remove; an id not currently in the cart is silently ignored
      */
-    void clear(String userUuid);
+    void removeItems(String userUuid, List<Integer> variantIds);
 }

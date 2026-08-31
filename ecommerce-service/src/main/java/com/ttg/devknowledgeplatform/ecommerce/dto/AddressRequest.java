@@ -4,7 +4,9 @@ import jakarta.validation.constraints.NotBlank;
 
 import lombok.Data;
 
-/** Request payload for the shipping address supplied at checkout confirm (US-2.5). */
+import java.util.List;
+
+/** Request payload for checkout confirm (US-2.5's shipping address, plus an optional selection). */
 @Data
 public class AddressRequest {
 
@@ -27,4 +29,12 @@ public class AddressRequest {
 
     @NotBlank(message = "Country is required")
     private String country;
+
+    /**
+     * Optional subset of the cart's variant ids to check out — a bolt-on field alongside the
+     * address fields above rather than its own request DTO, same pragmatic-extension precedent as
+     * {@code CartLineResponse.availableQuantity}. Omitted (or {@code null}) checks out the whole
+     * cart, exactly this endpoint's behavior before this field existed.
+     */
+    private List<Integer> selectedVariantIds;
 }

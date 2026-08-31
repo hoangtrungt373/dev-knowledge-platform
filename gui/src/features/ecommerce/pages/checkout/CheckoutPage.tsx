@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -36,9 +36,14 @@ const EMPTY_ADDRESS: Address = {
 
 export default function CheckoutPage(): JSX.Element {
   const navigate = useNavigate();
+  const location = useLocation();
   const { showError } = useNotification();
   const { refresh: refreshCart } = useCart();
   const { loading: submitting, guard } = useSubmitGuard();
+
+  // Set by CartPage's "Checkout Selected" flow (post-Epic-2 follow-up) — undefined for the
+  // ordinary "Proceed to Checkout" flow (whole cart) or a direct navigation to this page.
+  const selectedVariantIds = (location.state as { selectedVariantIds?: number[] } | null)?.selectedVariantIds;
 
   const [preview, setPreview] = useState<CheckoutPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -49,10 +54,11 @@ export default function CheckoutPage(): JSX.Element {
 
   useEffect(() => {
     setPreviewLoading(true);
-    checkoutApi.preview()
+    checkoutApi.preview(selectedVariantIds)
       .then(setPreview)
       .catch((err) => setPreviewError(err instanceof Error ? err.message : 'Could not load your cart.'))
       .finally(() => setPreviewLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const validate = (): boolean => {
@@ -72,8 +78,8 @@ export default function CheckoutPage(): JSX.Element {
     if (!validate()) return;
     guard(async () => {
       try {
-        const result = await checkoutApi.confirm(address);
-        refreshCart(); // backend clears the cart on successful confirm — resync the badge/context
+        const result = await checkoutApi.confirm(address, selectedVariantIds);
+        refreshCart(); // backend removes only the ordered lines on success — resync the badge/context
         // Order Detail (Epic 3) is now the canonical "here's your order" view — it has the real
         // Pay Now button this page's own former inline confirmation never could.
         navigate(`/orders/${result.orderId}`);

@@ -25,4 +25,11 @@ export const cartApi = {
   removeItem(variantId: number, showError?: ShowError): Promise<Cart> {
     return httpClient.delete(`/api/v1/cart/items/${variantId}`, showError);
   },
+
+  /** Bulk delete (post-Epic-2 follow-up) — `POST`, not `DELETE` with a body, matching the backend's
+   * own choice (see `ecommerce-service/CLAUDE.md`): not every HTTP layer reliably forwards a body
+   * on `DELETE`. */
+  removeItems(variantIds: number[], showError?: ShowError): Promise<Cart> {
+    return httpClient.post('/api/v1/cart/items/remove-batch', { variantIds }, showError);
+  },
 };

@@ -530,11 +530,15 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       there's no "every attribute value in this category" endpoint, so switching pages can reveal
       different facet options. A known, page-scoped approximation, not a bug; don't "fix" it by
       assuming a missing facet means that value doesn't exist anywhere in the category.
-    - **`ProductDetailPage.tsx`** — the gallery+info row sits in its own `bgcolor:
+    - **`ProductDetailPage.tsx`** — the page container is `width: '80%'` (was a fixed
+      `maxWidth: 1100`), per request, alongside the same change on `CartPage.tsx` and the
+      `orders/` pages below, so all four ecommerce pages scale with viewport width instead of
+      capping at a fixed pixel value. The gallery+info row sits in its own `bgcolor:
       'background.paper'` card (`borderRadius: 2, p: 3`), per request, distinct from the page's own
       grey `background.default` behind it — `background.paper` rather than a hardcoded white so a
       future dark theme gets the right dark surface color automatically instead of a stuck-white
-      box. Image gallery (main + thumbnail strip) on the left, **`flex: '1
+      box. Image gallery (main image + prev/next slide arrows + thumbnail strip) on the left,
+      **`flex: '1
       1 calc(45% - 12.8px)'`**; on the right, a Shopee-referenced info panel (explicitly modeled on
       that layout, per request — this app still has no purchased/named template, this is just the
       closest real-world reference point for this one page's arrangement), **`flex: '1 1
@@ -550,7 +554,22 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       pre-shrink total comes back down to `100% - 32px`, matching the space the gap actually
       consumes — the two columns lay out side-by-side and only wrap once `minWidth: 320` genuinely
       can't fit both. Don't "simplify" this back to bare percentages — it reintroduces the
-      always-wraps bug. **The category chip and product description are deliberately not shown
+      always-wraps bug. **The main image has prev/next slide arrows, per request** —
+      `ChevronLeftIcon`/`ChevronRightIcon` `IconButton`s absolutely positioned over the image's
+      vertical center (`position: 'relative'` added to the image `Box` to anchor them), calling a
+      `slideBy(delta)` helper that wraps `activeImageIndex` modulo `sortedImages.length` in either
+      direction. Manual-only, no auto-advance — chosen over auto-advance or swipe/drag after asking
+      (auto-advance needs a pause-on-hover timer for a feature product galleries rarely auto-play;
+      swipe/drag needs gesture handling and is less discoverable on desktop) — and the existing
+      thumbnail strip stays alongside it unchanged, still able to jump straight to any image; the
+      arrows only add prev/next stepping over the same `activeImageIndex` state, nothing removed.
+      Both arrows render only when `sortedImages.length > 1`, same guard the thumbnail strip
+      already used. **Also overlaid: a row of small dot indicators, bottom-center of the main
+      image** — one per image, filled `primary.main` for the current `activeImageIndex` and
+      `background.paper` otherwise, clickable to jump straight to that image (same
+      `setActiveImageIndex` the thumbnail strip already calls) — a third, purely visual way to see/
+      change slide position alongside the thumbnails and arrows, sharing the same
+      `sortedImages.length > 1` guard. **The category chip and product description are deliberately not shown
       here anymore** — a fix per request; both move to a future "article" section rendered below
       the info panel instead (not yet built — see the `product.description`/`categoryName` fields
       still on `Product`, just unused on this page for now). Panel content, top to bottom: title
@@ -648,8 +667,45 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       field-for-field (the backend's `@JsonInclude(NON_NULL)` omission of an unavailable line's
       fields beyond `variantId`/`quantity`/`available` is why those fields are optional on
       `CartLine`, not because they're ever optional on an available line).
-    - `CartPage.tsx` — one row per `CartLine`; an unavailable line renders grayed out with a
-      "No longer available" chip and only a Remove control (mirrors the backend's own
+    - `CartPage.tsx` — the page container is `width: '80%'` (was `maxWidth: 800`), per request —
+      see `ProductDetailPage.tsx`'s note above, same change across both pages plus `orders/` below.
+      The lines list + divider + subtotal sit in their own `bgcolor:
+      'background.paper'` card (`borderRadius: 2, p: 3`), per request, matching
+      `ProductDetailPage`'s same treatment (same reasoning: the semantic paper token, not a
+      hardcoded white, so a future dark theme gets the right dark surface automatically). The
+      "Your Cart" title above and the Continue Shopping/Checkout button row below stay outside the
+      card, same as `ProductDetailPage` keeps its own "Back to Shop" button outside its card.
+      **Rows are separated by a horizontal `Divider` instead of each having its own border box** —
+      a fix per request; the lines-list `Stack` now passes `divider={<Divider />}` (MUI's own
+      built-in separator-between-children prop) rather than each `CartLineRow` drawing its own
+      `border: '1px solid', borderColor: 'divider'` box (both the available and unavailable-line
+      variants had one; both dropped it and switched from `p: 2` to `py: 2`, since there's no
+      longer a box edge to pad against horizontally — the card around the whole list already
+      provides that via its own `p: 3`).
+      **Multi-select (post-Epic-2 follow-up, Phase 3 of 3) — bulk delete + "checkout only the
+      selected items," per request; the last of three phases (Phase 1: backend bulk-remove
+      primitive; Phase 2: backend `selectedVariantIds` on checkout; both in
+      `ecommerce-service/CLAUDE.md`).** `selectedVariantIds` is a `Set<number>` in `CartPage`'s own
+      state — starts empty on every visit, not restored/persisted across reloads; every
+      `CartLineRow` (available and unavailable alike, since a bulk *delete* is just as sensible on
+      a stale line as a live one) gets a leading MUI `Checkbox` bound to it. A header row above the
+      list holds a "select all" `Checkbox` (checked when every line is selected, `indeterminate`
+      when some but not all are) plus a "Delete Selected (N)" button that only renders once
+      `selectedVariantIds` is non-empty — calls the new `CartContext.removeItems` (below), clears
+      the selection on success, same per-request `showError` pattern every other mutation here
+      uses. **The "Proceed to Checkout" button becomes "Checkout Selected (N)" once at least one
+      *available* selected line exists** (`selectedAvailableVariantIds` — unavailable lines can be
+      selected for bulk delete but can never be part of a checkout attempt, so they're filtered
+      out here regardless of their checkbox state) — clicking it `navigate`s to `/checkout` with
+      `state: { selectedVariantIds: selectedAvailableVariantIds }`; with nothing selected, the
+      button reads "Proceed to Checkout" and navigates with no state at all, checking out the
+      whole cart exactly as before this feature existed (`CheckoutPage.tsx`'s own note above
+      covers the receiving end). `CartContext` gained `removeItems(variantIds)` — a straight
+      pass-through to the new `cartApi.removeItems` (`POST /api/v1/cart/items/remove-batch`, not
+      `DELETE` with a body — see `ecommerce-service/CLAUDE.md`), same "call the API, `setCart` the
+      response" shape every other `CartContext` mutator already follows. One row per `CartLine`; an unavailable line renders
+      grayed out with a "No longer available" chip and only a Remove control (mirrors the
+      backend's own
       available-flag contract, same shape `CartLineResponse`'s Javadoc documents). Each available
       line renders a 64×64 `CartLineThumbnail` from `CartLine.primaryImageUrl` (a new field —
       `CartMapper` resolves it server-side from the product's own gallery, same presigned-URL
@@ -672,16 +728,49 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       new, nullable `CartLineResponse` field (`stockQuantity - reservedQuantity` for that line's
       variant, added specifically for this; omitted, like every other field beyond
       `variantId`/`quantity`, when the line is unavailable) — and a low-stock line reuses the same
-      `utils/stock.ts` helpers `ProductDetailPage` does, rendered as a caption under the unit-price
-      line. A per-row `pending` flag (keyed by `variantId`) disables only the row with an in-flight
-      mutation, not the whole page.
-      The thumbnail + name/attributes block (not the whole row) links to `/shop/${line.productSlug}`
-      — react-router-dom's own `Link` (a real `<a href>`, not a `Box`/`onClick`+`navigate()` the way
-      `ProductCard.tsx`'s `CardActionArea` does it), specifically so the browser's native
-      right-click "Open link in new tab"/middle-click/ctrl-click all work for free; plain inline
-      `style` (not `sx`, since `Link` isn't a MUI component) resets `color`/`textDecoration` and
-      carries the flex layout. Sibling to the quantity controls/Remove button rather than wrapping
-      them, so no `stopPropagation` juggling is needed the way `TaskRow` needs it in `@tasks`.
+      `utils/stock.ts` helpers `ProductDetailPage` does, rendered as a caption **below the
+      quantity stepper box** (a fix per request — used to sit under the unit-price line instead;
+      the stepper `Stack` is now wrapped in an outer column `Stack` so the caption stacks directly
+      beneath the `−`/qty/`+` box rather than the product-name column). A per-row `pending` flag
+      (keyed by `variantId`) disables only the row with an in-flight mutation, not the whole page.
+      **Colors: per-unit "$X each" price is `color="text.primary"`, the row's right-aligned
+      `lineTotal` is `color="error.main"`** — per request; tried the unit price in `error.main`
+      first (matching `ProductDetailPage`'s red price treatment), moved the red to `lineTotal`
+      instead per follow-up, since that's the number this row actually charges. The page-level
+      Subtotal line (`h6 fontWeight={600}`) is `color="error.main"` too, per the same follow-up
+      request, for the same reason — it's the number the page actually totals.
+      The thumbnail + name/variation/unit-price block (not the whole row) links to
+      `/shop/${line.productSlug}` — react-router-dom's own `Link` (a real `<a href>`, not a
+      `Box`/`onClick`+`navigate()` the way `ProductCard.tsx`'s `CardActionArea` does it),
+      specifically so the browser's native right-click "Open link in new tab"/middle-click/
+      ctrl-click all work for free; plain inline `style` (not `sx`, since `Link` isn't a MUI
+      component) resets `color`/`textDecoration` and carries the flex layout. Sibling to the
+      quantity controls/Remove button rather than wrapping them, so no `stopPropagation` juggling
+      is needed the way `TaskRow` needs it in `@tasks`. **Name/variation chip/unit price sit inline
+      in one row inside the `Link` (not stacked vertically in their own `Box` anymore), as three
+      fixed-width columns** — a fix per request, once the page's wider `80%` container (above) left
+      enough horizontal room to lay them out side by side instead of stacking three lines under
+      the name. **Fixed widths, not just `flexShrink: 0`, per a follow-up fix**: name is
+      `width: 220` with `noWrap` (ellipsis-truncates instead of the row wrapping); the variation
+      chip's outer reserved-slot `Box` is `width: 300` (rendered even when `variationLabel` is
+      empty, so the slot is still reserved — an unlabeled variant and a labeled one still line up
+      in the column beside it); unit price is `width: 90`. Without these fixed widths, the variant
+      chip/unit price positions drifted left/right per row depending on how long that row's own
+      product name (or variation label) happened to be — a bare `flexShrink: 0` keeps an element
+      from being squeezed, but does nothing to stop it from sitting wherever the *previous*
+      sibling's natural width happens to end. **The chip itself (inside that reserved slot) is
+      also a fixed `width: 300` box** (a further fix — briefly tried unbounded/`inline-block`,
+      which sized to content and made the chip's own width drift again independent of the outer
+      slot's fixed width; `boxSizing: 'border-box'` so its `border`/`px` don't push it past that
+      width) → **rendered as two lines**: "Variation:" label + `KeyboardArrowDownIcon` on the first
+      line (a `Stack direction="row"`), `{variationLabel}` on its own line below. **Keeps its
+      `border: '1px solid', borderColor: 'divider'`** — briefly removed per an in-flight request,
+      reverted immediately after per follow-up (kept alongside fixing the chip's own width, not
+      instead of it). **`variationLabel` now joins just the attribute *values*** (`Object.values
+      (line.attributes).join(' ')`, e.g. `"15in Black"`) **instead of `key: value` pairs** (was
+      `Object.entries(...).map(([k, v]) => \`${k}: ${v}\`)`, e.g. `"Size: 15in, Color: Black"`) —
+      per request, a plainer, shorter label now that the "Variation:" word already appears on its
+      own line above it.
       Available lines only: an unavailable line has no `productSlug` at all (the backend's own
       `@JsonInclude(NON_NULL)` omission, per the available-flag contract above), so there's nothing
       to link to and that row stays a plain, unlinked block.
@@ -720,18 +809,24 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       static row. The swap shares the row's existing `pending` flag (keyed by `variantId`, same as
       quantity/remove), so the quantity stepper and Remove button disable during the swap the same
       way they already do for any other mutation.
-    - `CheckoutPage.tsx` — fetches `checkoutApi.preview()` on mount; an empty cart or an
-      all-lines-unavailable cart (both guarded server-side, see `ecommerce-service/CLAUDE.md`)
-      renders a "Can't check out right now" message with a link back to `/cart` instead of the
-      form. The address form is plain `useState` + a `validate()` function + `useSubmitGuard`,
-      the same shape `SignUp.tsx`/`Login.tsx` already establish — no Formik/react-hook-form
-      introduced. On successful `confirm`, swaps to an inline order-confirmation view built
-      straight from the `OrderConfirmation` response (order id, items, address, totals, any
-      dropped lines) rather than navigating to a dedicated order page — there is no backend
-      "get order by id" endpoint to navigate to (see `ecommerce-service/CLAUDE.md`'s
-      `OrderRepository` note), so this is the only place that data will ever be shown. Calls
-      `useCart().refresh()` right after a successful confirm to resync the NavBar badge/context
-      with the now-actually-empty server-side cart, rather than assuming local state.
+    - `CheckoutPage.tsx` — fetches `checkoutApi.preview(selectedVariantIds)` on mount; an empty
+      cart (or empty selection) or an all-lines-unavailable cart (both guarded server-side, see
+      `ecommerce-service/CLAUDE.md`) renders a "Can't check out right now" message with a link back
+      to `/cart` instead of the form. The address form is plain `useState` + a `validate()`
+      function + `useSubmitGuard`, the same shape `SignUp.tsx`/`Login.tsx` already establish — no
+      Formik/react-hook-form introduced. On successful `confirm`, navigates to
+      `/orders/${result.orderId}` — Epic 3's `OrderDetailPage` (below) is now the canonical
+      "here's your order" view, with a real Pay Now button this page's own former inline
+      confirmation view never could have. Calls `useCart().refresh()` right after a successful
+      confirm to resync the NavBar badge/context with the cart's new (post-Phase-2, not
+      necessarily *empty*) server-side state, rather than assuming local state.
+      **`selectedVariantIds` (post-Epic-2 follow-up, Phase 3)** — read from
+      `useLocation().state?.selectedVariantIds`, set by `CartPage`'s "Checkout Selected" flow
+      (below); `undefined` for the ordinary "Proceed to Checkout" flow or a direct navigation to
+      this page, in which case `preview`/`confirm` both fall back to the whole cart, exactly as
+      before this feature existed. Threaded through to both `checkoutApi.preview` (the initial
+      fetch) and `checkoutApi.confirm` (on submit) — never re-derived from `preview`'s own
+      response, since `preview` already reflects whatever selection was passed to it.
     - `components/shop/VariantSelector.tsx` resolves a picked attribute combination (e.g. size=M,
       color=Black) to one exact `ProductVariant` from the product's own real `variants[]` list —
       genuinely combo-accurate, unlike `ShopPage`'s browse-time facets (which only know "some
@@ -765,6 +860,9 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     `TablePagination`, which was the alternative considered), and `OrderDetailPage` mirrors
     `CheckoutPage`'s "stacked `Paper` sections" shape almost exactly (Order Summary/Shipping To
     sections copied near-verbatim, since both pages render the same underlying `Order`-shaped data).
+    **Both pages' containers are `width: '80%'`** (were fixed `maxWidth: 800`/`700` respectively),
+    per request — same change as `ProductDetailPage.tsx`/`CartPage.tsx` above, so all four
+    ecommerce pages scale with viewport width instead of capping at a fixed pixel value.
     - `api/orderApi.ts` — `list(page, size)`/`getById(id)`/`cancel(id)`/`pay(id)`, mirroring
       `cartApi.ts`'s shape; `cancel`/`pay` both return the freshly-resolved `Order`, same
       "mutating endpoint returns the updated resource" contract the backend already established.

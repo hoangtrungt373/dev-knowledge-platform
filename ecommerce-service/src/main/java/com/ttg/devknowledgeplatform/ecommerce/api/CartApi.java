@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.ecommerce.api;
 import com.ttg.devknowledgeplatform.common.annotation.CurrentUserId;
 import com.ttg.devknowledgeplatform.ecommerce.dto.AddCartItemRequest;
 import com.ttg.devknowledgeplatform.ecommerce.dto.CartResponse;
+import com.ttg.devknowledgeplatform.ecommerce.dto.RemoveCartItemsRequest;
 import com.ttg.devknowledgeplatform.ecommerce.dto.UpdateCartItemRequest;
 
 import jakarta.validation.Valid;
@@ -72,4 +73,16 @@ public interface CartApi {
      */
     @DeleteMapping("/items/{variantId}")
     ResponseEntity<CartResponse> removeItem(@CurrentUserId String userUuid, @PathVariable Integer variantId);
+
+    /**
+     * Removes multiple lines from the cart in one call (bulk delete) — a {@code POST} action
+     * endpoint rather than {@code DELETE} with a body, since not every HTTP client/proxy layer
+     * reliably forwards a body on a {@code DELETE} request.
+     *
+     * @param userUuid the caller's Keycloak UUID
+     * @param request  the variant ids to remove
+     * @return {@code 200} with the updated cart
+     */
+    @PostMapping("/items/remove-batch")
+    ResponseEntity<CartResponse> removeItems(@CurrentUserId String userUuid, @Valid @RequestBody RemoveCartItemsRequest request);
 }

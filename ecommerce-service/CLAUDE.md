@@ -374,6 +374,68 @@ backs a cart at all.
   `GatewayRoutesConfig` gained a new `/api/v1/cart/**` route — the app's first genuinely new
   top-level prefix (no shared-prefix disambiguation needed, unlike `/api/v1/public`/`/api/v1/admin`).
 
+**Post-Epic-2 follow-up, all 3 phases now built: multi-select cart (bulk delete + "checkout only the
+selected items"), per request. Researched before building anything**: `CheckoutServiceImpl.confirm`
+used to always operate on the caller's *entire* cart — no variant/line filter existed anywhere in
+it or in `CheckoutApi`'s `AddressRequest` — and the only existing removal path was
+single-`variantId` `DELETE /api/v1/cart/items/{variantId}`. Both halves of the feature reduced to
+one missing primitive: removing an arbitrary set of variantIds from the cart in one call — built
+in Phase 1, then spent by Phase 2.
+
+- **Phase 1 — the primitive.** `CartService.removeItems(userUuid, variantIds)` /
+  `CartServiceImpl.removeItems` — a single Redis `HDEL` across every requested field
+  (`opsForHash().delete(key, variantIds...)`), not N round trips; refreshes the cart's TTL
+  afterward the same way every other mutation does. Same no-availability-validation stance as
+  `setQuantity`'s removal branch — a shopper must always be able to remove an already-invalid line.
+  New `dto/RemoveCartItemsRequest` (`@NotEmpty List<Integer> variantIds`).
+  **`CartApi.removeItems` is `POST /items/remove-batch`, not `DELETE /items` with a body** — asked
+  the user, chose `POST` over `DELETE`-with-a-body because not every HTTP client/proxy layer
+  reliably forwards a body on `DELETE`; a small naming-purity trade-off for avoiding that whole
+  class of transport bug. No `gateway` routing change needed — `/api/v1/cart/**` already covers
+  the new sub-path. New `CartServiceImplTest` — **this module's first test of `CartServiceImpl` at
+  all**, a pre-existing gap this change did not introduce; only the new `removeItems` path is
+  covered, existing untested methods (`addItem`/`setQuantity`/`getCart`/`clear`) weren't
+  retroactively backfilled.
+- **Phase 2 — spending it on checkout.** `CheckoutService.preview`/`.confirm` both gained a
+  `List<Integer> selectedVariantIds` parameter (`null` = the whole cart, exactly the pre-existing
+  behavior — fully backward compatible for every caller that doesn't pass one). New private
+  `CheckoutServiceImpl.filterBySelection(lines, selectedVariantIds)` narrows the cart's lines down
+  to just that set (or returns them unchanged when `null`) — the one seam both methods filter
+  through before the existing `requireCheckoutableCart` empty/no-available-lines guards run
+  (that method's own signature changed from taking a `Cart` to taking the already-filtered
+  candidate `List<CartLine>`), so "no selection" and "every line happens to be selected" both flow
+  through identical downstream logic to before this feature existed.
+  **`confirm`'s final `cartService.clear(userUuid)` is now `cartService.removeItems(userUuid,
+  orderedVariantIds)`** — the actual point of this phase: anything excluded by
+  `selectedVariantIds`, or dropped by `confirm`'s own final revalidation, now stays in the cart
+  afterward instead of being wiped along with whatever was actually ordered. **This changes
+  behavior for the no-selection case too** (a previously-dropped/unavailable line used to get
+  cleared away for free by the whole-cart `clear()` — it no longer does) — flagged and accepted as
+  part of this phase's own plan, not an accidental side effect.
+  `AddressRequest` (the `confirm` request body) gained a `selectedVariantIds` field, bolt-on
+  alongside the address fields rather than its own request DTO — same pragmatic-extension
+  precedent as `CartLineResponse.availableQuantity`. `CheckoutApi.preview` is a `GET` with no body
+  to carry a selection in, so it gained a `@RequestParam(required = false) List<Integer>
+  selectedVariantIds` instead (repeated query param,
+  `?selectedVariantIds=1&selectedVariantIds=2`). A selection matching nothing currently in the
+  cart reuses the existing `CHECKOUT_CART_EMPTY` error code rather than a new one — same
+  shopper-facing meaning either way ("nothing to check out").
+  `CheckoutServiceImplTest` gained 4 new cases (`preview`'s totals/lines correctly narrow to a
+  selection; a selection matching nothing rejects on both `preview` and `confirm`; `confirm`
+  orders/removes only the selected lines, leaving the rest in the cart) plus every existing case's
+  `verify(cartService).clear(...)` assertion updated to `verify(cartService).removeItems(...)`.
+  **`CartService.clear`/`CartServiceImpl.clear` were deleted outright once this left them with zero
+  remaining callers anywhere in production code** — dead code, not kept around for a hypothetical
+  future "empty cart" GUI action; add it back if that ever becomes a real, concrete need. 147 unit
+  tests total (up from 138), all passing, no Docker needed; verified via a real `mvn test` run.
+- **Phase 3 — the `gui` checkbox UI, now built.** Per-row checkboxes (`CartPage.tsx`), "select
+  all," a "Delete Selected" button calling Phase 1's bulk-remove endpoint, and a
+  "Checkout Selected (N)"/"Proceed to Checkout" button that passes the selection through to
+  `/checkout`'s `preview`/`confirm` calls (Phase 2's `selectedVariantIds`) — falling back to the
+  whole cart when nothing is selected, exactly the pre-Phase-2 behavior. See `gui/CLAUDE.md`'s
+  `CartPage.tsx`/`CheckoutPage.tsx` notes for the full detail. This closes out the multi-select
+  cart feature — all 3 planned phases are done.
+
 **Epic 2's checkout half (US-2.5–2.7) is built on top of the cart above.**
 
 - `entity/Address` — a plain JPA `@Embeddable` value object (`fullName`/`line1`/`line2`/`city`/
@@ -798,8 +860,11 @@ this file's own `issuer-uri` property already used, and the same shape `identity
   Phase 4 extended it with the payment-handoff/reconciliation mechanism's own tests, Phase 5
   added `GetOrder`/`ListOrders` cases to `OrderServiceImplTest`, and Phase 6 added
   `OrderLifecycleIntegrationTest` — see that epic's own section; a post-Epic-3 follow-up added
-  `ListAllOrders` for the admin fulfillment queue).
-  137 tests, all passing, no Docker needed for any of
+  `ListAllOrders` for the admin fulfillment queue), and `CartServiceImplTest` (a post-Epic-2
+  follow-up — this module's first test of `CartServiceImpl` itself, covering only the new
+  `removeItems` bulk-delete path; `CheckoutServiceImplTest` gained the same follow-up's Phase 2
+  `selectedVariantIds` cases — see above for both).
+  147 tests, all passing, no Docker needed for any of
   them.
   - **`repository/ProductSearchViewRepositoryIT` is the one exception — a real Postgres
     Testcontainers integration test, not a unit test**, because US-1.3's `tsvector`/`pg_trgm`

@@ -64,7 +64,7 @@ export default function OrderHistoryPage(): JSX.Element {
   }
 
   return (
-    <Box sx={{ p: 3, maxWidth: 800, mx: 'auto' }}>
+    <Box sx={{ p: 3, width: '80%', mx: 'auto' }}>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>Your Orders</Typography>
 
       <Stack spacing={2} sx={{ mb: 3 }}>
