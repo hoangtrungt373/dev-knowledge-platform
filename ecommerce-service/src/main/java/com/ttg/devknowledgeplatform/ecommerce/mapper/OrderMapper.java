@@ -8,20 +8,32 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.Address;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OrderLine;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OrderStatusHistory;
+import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductImage;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductVariant;
+import com.ttg.devknowledgeplatform.ecommerce.repository.ProductVariantRepository;
+import com.ttg.devknowledgeplatform.infra.service.StorageService;
+
+import lombok.RequiredArgsConstructor;
 
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.util.Comparator;
 
 /**
  * Maps {@link Order} (and its {@link OrderLine}/{@link OrderStatusHistory}/{@link Address}
  * children) to REST response shapes (Epic 3 Phase 5, US-3.5).
  *
  * <p>Hand-written, not MapStruct — same as {@link CartMapper}/{@link CheckoutMapper} in this
- * package. {@link #toOrderLineResponse}/{@link #toAddressResponse} are public static so
- * {@link CheckoutMapper} can reuse them for its own {@code CheckoutConfirmResponse} instead of
- * duplicating identical {@code OrderLine}/{@code Address} mapping logic — the same "extract once,
- * share" shape {@link CartMapper#toLineResponse} already established for cart lines.
+ * package. {@link #toOrderLineResponse} is no longer {@code static} (a post-Epic-3 follow-up made
+ * it resolve the purchased variant's current attributes/image live, which needs
+ * {@link ProductVariantRepository}/{@link StorageService} — same live-image-resolution shape
+ * {@link CartMapper#toLineResponse} already uses for cart lines) — {@link CheckoutMapper} now
+ * injects this class instead of calling a static method, so it can still reuse this one method for
+ * its own {@code CheckoutConfirmResponse} instead of duplicating identical {@code OrderLine}
+ * mapping logic. {@link #toAddressResponse} stays {@code public static}, unaffected — it needs no
+ * lookup of its own.
  *
  * <p>{@link #toResponse} reads {@link Order#getLines()}/{@link Order#getStatusHistory()}, both
  * lazy collections — this only works because Spring Boot's {@code spring.jpa.open-in-view} default
@@ -29,7 +41,11 @@ import java.math.BigDecimal;
  * reliance {@code ProductMapper} already has on {@code Product.variants}/{@code images}.
  */
 @Component
+@RequiredArgsConstructor
 public class OrderMapper {
+
+    private final ProductVariantRepository productVariantRepository;
+    private final StorageService storageService;
 
     public OrderResponse toResponse(Order order) {
         return OrderResponse.builder()
@@ -40,20 +56,47 @@ public class OrderMapper {
                 .subtotal(order.getSubtotal())
                 .shippingFee(order.getShippingFee())
                 .total(order.getTotal())
-                .lines(order.getLines().stream().map(OrderMapper::toOrderLineResponse).toList())
+                .lines(order.getLines().stream().map(this::toOrderLineResponse).toList())
                 .statusHistory(order.getStatusHistory().stream().map(OrderMapper::toHistoryResponse).toList())
                 .build();
     }
 
-    public static OrderLineResponse toOrderLineResponse(OrderLine line) {
-        return OrderLineResponse.builder()
+    /**
+     * Maps one {@link OrderLine}, plus a best-effort live lookup of its variant's current
+     * attributes/primary image/product slug by {@link OrderLine#getProductVariantId()} — all
+     * {@code null} if that variant (or its product) no longer exists, since
+     * {@code productVariantId} is a plain column, not a real foreign key (see {@code OrderLine}'s
+     * own Javadoc). {@code productSlug} lets the GUI link the line back to its product page.
+     */
+    public OrderLineResponse toOrderLineResponse(OrderLine line) {
+        OrderLineResponse.OrderLineResponseBuilder builder = OrderLineResponse.builder()
                 .variantId(line.getProductVariantId())
                 .sku(line.getSku())
                 .productName(line.getProductName())
                 .unitPrice(line.getUnitPrice())
                 .quantity(line.getQuantity())
-                .lineTotal(line.getUnitPrice().multiply(BigDecimal.valueOf(line.getQuantity())))
-                .build();
+                .lineTotal(line.getUnitPrice().multiply(BigDecimal.valueOf(line.getQuantity())));
+
+        productVariantRepository.findById(line.getProductVariantId()).ifPresent(variant ->
+                builder.attributes(variant.getAttributes())
+                        .primaryImageUrl(resolvePrimaryImageUrl(variant))
+                        .productSlug(variant.getProduct().getSlug()));
+
+        return builder.build();
+    }
+
+    /**
+     * Resolves the variant's product's first gallery image (by {@code sortOrder}, since
+     * {@code Product.images} carries no {@code @OrderBy} of its own) into a presigned URL — null
+     * if the product has no images yet, same nullable shape {@code CartMapper.resolvePrimaryImageUrl}
+     * uses for a cart line's own thumbnail.
+     */
+    private String resolvePrimaryImageUrl(ProductVariant variant) {
+        Product product = variant.getProduct();
+        return product.getImages().stream()
+                .min(Comparator.comparing(ProductImage::getSortOrder))
+                .map(image -> storageService.getPresignedUrl(image.getStorageKey()))
+                .orElse(null);
     }
 
     public static AddressResponse toAddressResponse(Address address) {

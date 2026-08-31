@@ -604,9 +604,24 @@ slice" benefit without that cost — revisit only if a genuine second deployable
         exact variant has none left. No separate binary in-stock/out-of-stock chip exists anymore,
         this replaced it.
       - **The quantity stepper's `+` button and manual entry both cap at the selected variant's own
-        `stockQuantity - reservedQuantity`** — a fix; it used to have no upper bound at all,
-        letting a shopper pick a quantity the backend would only ever reject at checkout confirm
-        time via `ORDER_INSUFFICIENT_STOCK`, a much later and worse point to find out. Resets to 1
+        `stockQuantity - reservedQuantity`, minus whatever quantity of that exact variant is
+        already in the shopper's own cart** — a fix (the cart-subtraction part; the raw
+        stock/reserved cap already existed). Without it, a shopper who'd already added, say, all
+        14 in-stock units of a variant to their cart could still open this page and add more —
+        add-to-cart never reserves stock against `ProductVariant` (only checkout's `confirm` does,
+        via `reserve`, per this app's own locked Epic 2 design), so `stockQuantity -
+        reservedQuantity` alone doesn't reflect what the *cart* has already claimed. New
+        `quantityAlreadyInCart` reads `useCart().cart?.lines.find(l => l.variantId ===
+        selectedVariant.id)?.quantity ?? 0`; `availableForSelectedVariant` is now
+        `Math.max(0, stockQuantity - reservedQuantity - quantityAlreadyInCart)`. Purely a
+        client-side UX improvement, not a correctness fix at the data layer — the real oversell
+        guard is still `CheckoutServiceImpl.confirm`'s atomic `reserve()` call (see
+        `ecommerce-service/CLAUDE.md`), which this page's cap can never bypass; the point here is
+        just not letting the shopper *think* they can add more than what's really left, only to
+        find out at checkout. **Does not** account for other shoppers' carts (there's no such
+        endpoint — reservedQuantity only tracks Epic 3's actual checkout-time reservations), so
+        this remains a per-shopper approximation, same as `stockQuantity - reservedQuantity`
+        always was. Resets to 1
         whenever the selected variant changes (a quantity picked for a different variant shouldn't
         silently carry over). Its `TextField` (`variant="standard"`, `disableUnderline`) sets
         `inputProps.style.padding: 0` on the raw `<input>` — a fix; the standard variant's default
@@ -669,12 +684,22 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       `CartLine`, not because they're ever optional on an available line).
     - `CartPage.tsx` — the page container is `width: '80%'` (was `maxWidth: 800`), per request —
       see `ProductDetailPage.tsx`'s note above, same change across both pages plus `orders/` below.
-      The lines list + divider + subtotal sit in their own `bgcolor:
-      'background.paper'` card (`borderRadius: 2, p: 3`), per request, matching
-      `ProductDetailPage`'s same treatment (same reasoning: the semantic paper token, not a
-      hardcoded white, so a future dark theme gets the right dark surface automatically). The
-      "Your Cart" title above and the Continue Shopping/Checkout button row below stay outside the
+      **Two separate `bgcolor: 'background.paper'` cards, not one** (`borderRadius: 2`, `mb: 2`/`3`
+      respectively) — the select-all/Delete-Selected header row is its own smaller card (`p: 2`),
+      and the lines list + divider + subtotal is a second, separate card (`p: 3`) below it. A fix
+      per request: these two used to share one card with no visual break between the header row
+      and the first line; splitting them into two lets the page's own grey `background.default`
+      show through the gap between them (the outer page `Box` never had its own paper `bgcolor` to
+      begin with — only the inner content did, so nothing needed removing there, just splitting).
+      Both use the same semantic-token reasoning as `ProductDetailPage`'s card (not a hardcoded
+      white, so a future dark theme gets the right dark surface automatically). The "Your Cart"
+      title above and the Continue Shopping/Checkout button row below both stay outside either
       card, same as `ProductDetailPage` keeps its own "Back to Shop" button outside its card.
+      **The header row's checkbox-to-text `Stack` uses `spacing={2}`, matching each
+      `CartLineRow`'s own checkbox-to-thumbnail gap** — a fix per request; it was `spacing={1}`
+      (8px), one size down from the 16px gap the per-line `Stack`'s own `spacing={2}` puts between
+      its `Checkbox` and the product-image `Link`, so "Select all"/"N selected" sat 8px left of
+      where each line's thumbnail starts. Both now line up on the same left edge.
       **Rows are separated by a horizontal `Divider` instead of each having its own border box** —
       a fix per request; the lines-list `Stack` now passes `divider={<Divider />}` (MUI's own
       built-in separator-between-children prop) rather than each `CartLineRow` drawing its own
@@ -739,16 +764,23 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       instead per follow-up, since that's the number this row actually charges. The page-level
       Subtotal line (`h6 fontWeight={600}`) is `color="error.main"` too, per the same follow-up
       request, for the same reason — it's the number the page actually totals.
-      The thumbnail + name/variation/unit-price block (not the whole row) links to
-      `/shop/${line.productSlug}` — react-router-dom's own `Link` (a real `<a href>`, not a
-      `Box`/`onClick`+`navigate()` the way `ProductCard.tsx`'s `CardActionArea` does it),
-      specifically so the browser's native right-click "Open link in new tab"/middle-click/
-      ctrl-click all work for free; plain inline `style` (not `sx`, since `Link` isn't a MUI
-      component) resets `color`/`textDecoration` and carries the flex layout. Sibling to the
-      quantity controls/Remove button rather than wrapping them, so no `stopPropagation` juggling
-      is needed the way `TaskRow` needs it in `@tasks`. **Name/variation chip/unit price sit inline
-      in one row inside the `Link` (not stacked vertically in their own `Box` anymore), as three
-      fixed-width columns** — a fix per request, once the page's wider `80%` container (above) left
+      **Only the thumbnail + product name link to `/shop/${line.productSlug}`** — a fix per
+      request; the `Link` used to also wrap the variation chip and unit price, making that whole
+      middle stretch of the row (including the gaps between them) clickable-to-navigate, which
+      read as "the whole row navigates." Those two now sit in a plain sibling `Box` (`display:
+      'flex', gap: 2`) alongside the `Link`, not nested inside it — same visual layout/spacing as
+      before, but clicking the variation box or price no longer also navigates.
+      react-router-dom's own `Link` (a real `<a href>`, not a `Box`/`onClick`+`navigate()` the way
+      `ProductCard.tsx`'s `CardActionArea` does it), specifically so the browser's native
+      right-click "Open link in new tab"/middle-click/ctrl-click all work for free; plain inline
+      `style` (not `sx`, since `Link` isn't a MUI component) resets `color`/`textDecoration` and
+      carries the flex layout. Sibling to the quantity controls/Remove button rather than wrapping
+      them, so no `stopPropagation` juggling is needed the way `TaskRow` needs it in `@tasks` —
+      `handleVariationBoxClick`'s own `preventDefault()`/`stopPropagation()` calls (previously
+      needed since the variation box sat *inside* the Link) were removed as part of this fix, now
+      dead code once the box moved outside it.
+      **Name/variation chip/unit price still sit inline in one row, as three fixed-width
+      columns** — a fix per an earlier request, once the page's wider `80%` container (above) left
       enough horizontal room to lay them out side by side instead of stacking three lines under
       the name. **Fixed widths, not just `flexShrink: 0`, per a follow-up fix**: name is
       `width: 220` with `noWrap` (ellipsis-truncates instead of the row wrapping); the variation
@@ -763,10 +795,14 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       which sized to content and made the chip's own width drift again independent of the outer
       slot's fixed width; `boxSizing: 'border-box'` so its `border`/`px` don't push it past that
       width) → **rendered as two lines**: "Variation:" label + `KeyboardArrowDownIcon` on the first
-      line (a `Stack direction="row"`), `{variationLabel}` on its own line below. **Keeps its
-      `border: '1px solid', borderColor: 'divider'`** — briefly removed per an in-flight request,
-      reverted immediately after per follow-up (kept alongside fixing the chip's own width, not
-      instead of it). **`variationLabel` now joins just the attribute *values*** (`Object.values
+      line (a `Stack direction="row"`), `{variationLabel}` on its own line below.
+      **Border and hover `bgcolor` both removed, per a later request** — briefly kept a
+      `border: '1px solid', borderColor: 'divider'` (removed then reverted once already, see the
+      git history around this bullet) plus a `'&:hover': { bgcolor: 'action.hover' }`; both are
+      gone now for good, leaving just `borderRadius`/`cursor: 'pointer'` — a plainer, borderless
+      clickable area. **`{variationLabel}`'s own `Typography` is `variant="body1"`** (was
+      `"caption"`), per the same request — same size as the product name beside it, not smaller.
+      **`variationLabel` now joins just the attribute *values*** (`Object.values
       (line.attributes).join(' ')`, e.g. `"15in Black"`) **instead of `key: value` pairs** (was
       `Object.entries(...).map(([k, v]) => \`${k}: ${v}\`)`, e.g. `"Size: 15in, Color: Black"`) —
       per request, a plainer, shorter label now that the "Variation:" word already appears on its
@@ -774,8 +810,8 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       Available lines only: an unavailable line has no `productSlug` at all (the backend's own
       `@JsonInclude(NON_NULL)` omission, per the available-flag contract above), so there's nothing
       to link to and that row stays a plain, unlinked block.
-    - **Inline variant switching**: a line's attributes render as one bordered "Variation:" box
-      (`Size: M, Color: Blue` inline, plus a `KeyboardArrowDownIcon` chevron) — a Shopee-cart-style
+    - **Inline variant switching**: a line's attributes render as one borderless "Variation:" box
+      (label + chevron, value below — see the two-line/no-border note above) — a Shopee-cart-style
       single unit, not one `Chip` per attribute key (that per-chip design was tried first and
       replaced; each key/value pair is joined into one `variationLabel` string instead). Clicking
       the box opens an MUI `Popover` anchored to it with a full variant picker plus **Cancel**/
@@ -873,17 +909,137 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     - New `utils/orderStatus.ts` — `ORDER_STATUS_LABELS`/`ORDER_STATUS_COLORS` (shared so a status
       never reads differently between the list and detail views), `isCancellable` (mirrors the
       backend's own cancellable-status set: `PENDING`/`PAYMENT_PROCESSING`/`CONFIRMED`, never
-      `SHIPPED`/terminal), and `formatOrderDate`/`formatOrderDateTime`.
-    - `OrderHistoryPage.tsx` — one `Paper` card per order (id, placed date from
-      `statusHistory[0].occurredAt`, item count, total, a status `Chip`, a "View Details" button);
-      MUI `Pagination` below the list (only rendered when `totalPages > 1`) rather than
-      `TablePagination` — this page has no table to attach page-size/row-count chrome to, unlike
-      `ProductListPage`'s admin table.
+      `SHIPPED`/terminal), and `formatOrderDate`/`formatOrderDateTime`. **Gained
+      `ORDER_TAB_GROUPS`** (post-Epic-3 follow-up, per request) — `{ key, label, statuses? }[]`
+      driving `OrderHistoryPage`'s status tabs below; grouped Shopee-style rather than one tab per
+      raw `OrderStatus` (chosen after asking): `All` (`statuses: undefined`, no filter) | `To Pay`
+      (`PENDING`, `PAYMENT_PROCESSING`) | `Processing` (`CONFIRMED`) | `Shipped` (`SHIPPED`) |
+      `Delivered` (`DELIVERED`) | `Cancelled` (`CANCELLED`, `EXPIRED`, `FAILED`). **Also gained
+      `ORDER_HAPPY_PATH`** (per request) — the order lifecycle's one linear path (`PENDING →
+      PAYMENT_PROCESSING → CONFIRMED → SHIPPED → DELIVERED`; `CANCELLED`/`EXPIRED`/`FAILED` are
+      terminal branches off it, not steps on it), driving `OrderDetailPage`'s horizontal `Stepper`
+      — see that page's own note below for the full activeStep/error-step logic. Also
+      `ORDER_HAPPY_PATH_ICONS` (index-aligned with `ORDER_HAPPY_PATH`) — the per-step icon set
+      that page's `Stepper` uses instead of MUI's default numbered circles.
+    - `OrderHistoryPage.tsx` — one `Paper` card per order (placed date from
+      `statusHistory[0].occurredAt`, a status `Chip`, a "View Details" button, every `OrderLine`,
+      and `Order.total`); MUI `Pagination` below the list (only rendered when `totalPages > 1`)
+      rather than `TablePagination` — this page has no table to attach page-size/row-count chrome
+      to, unlike `ProductListPage`'s admin table. **The numeric order id is no longer shown
+      anywhere on this card, per request** — "View Details" still navigates to
+      `/orders/${order.id}`, only the visible `Order #{id}` text was removed (the header row now
+      shows just the placed date and status/action column). **Every `OrderLine` now renders its own
+      row, per request**, via the new shared `components/orders/OrderLineRow.tsx` (below) — a
+      Shopee-style `<image/link> <info> <subtotal>` layout. Lines are `Divider`-separated (MUI's
+      own `divider` prop on the wrapping `Stack`, same idiom `CartPage` uses for its own rows), and
+      `Order.total` (`color="error.main"`, per request) renders once, right-aligned, below all of
+      them — previously this page only showed an aggregate "{itemCount} items · {total}" line and
+      no per-line breakdown at all.
+      **Gained an MUI `Tabs` bar (post-Epic-3 follow-up, per
+      request)**, one `Tab` per `ORDER_TAB_GROUPS` entry, above the order list — `tabKey` is
+      component state (`'all'` default); changing tabs resets `page` to `0` (a filter change can
+      invalidate whatever page number was showing under the old filter) and re-fetches via
+      `orderApi.list(page, PAGE_SIZE, activeGroup.statuses)`.
+      **The `Tabs` bar itself is `bgcolor: 'background.paper'`, `borderRadius: 1`** — a fix per
+      request; a vertical rule between each `Tab` label was tried first (`borderRight` on every
+      `Tab` but the last) and reverted immediately after, replaced with this instead — the
+      semantic paper token, not a hardcoded white, so a future dark theme gets the right dark
+      surface color automatically, same reasoning `ProductDetailPage`/`CartPage`'s own cards use.
+      **Two distinct empty states, not
+      one** — the existing full-page "No orders yet / Go to Shop" takeover now triggers only when
+      the `'all'` tab itself has zero results (a genuinely empty order history); a *filtered* tab
+      with zero matches instead renders the tabs bar plus an inline "No orders in this category."
+      message, so the shopper can still see/switch tabs rather than being shown a "go shop" prompt
+      that would be wrong (they do have orders — just none in this one category).
+      `orderApi.list` gained an optional `statuses?: OrderStatus[]` parameter (sent as a repeated
+      `&statuses=...` query param, matching the backend's own `@RequestParam List<OrderStatus>` —
+      see `ecommerce-service/CLAUDE.md`'s matching note), inserted before the existing trailing
+      `showError` param.
+    - New `components/orders/OrderLineRow.tsx` — extracted from `OrderHistoryPage.tsx`'s own
+      inline version once `OrderDetailPage.tsx` needed byte-identical rendering (per request:
+      "same as OrderHistoryPage"), same reasoning `components/shop/VariantSelector.tsx` already
+      established for a picker shared across pages. Renders `<image/link> <info> <subtotal>`: a
+      64×64 thumbnail (`primaryImageUrl`, same `ImageNotSupportedIcon`-on-`null` fallback as
+      `CartPage`'s own `CartLineThumbnail`, just without its fade-in — this isn't an
+      editable/re-mounting row the way a cart line is, so there's no flicker to smooth over), then
+      three stacked lines (product name → `Variant: {attribute values joined with a space}` (same
+      "values only, no key:" convention `CartPage`'s own `variationLabel` established — omitted
+      entirely when `attributes` is empty/null) → `Quantity: x{n}`), then the line's own
+      `lineTotal` (`color="error.main"`) at the trailing edge. **Only the thumbnail+info block
+      links to `/shop/${productSlug}`, not the whole row, and only when `productSlug` is present
+      at all** — same "don't make the price clickable too" shape `CartPage`'s own cart-line `Link`
+      fix already established, applied here from the start rather than needing a follow-up fix;
+      falls back to a plain (non-linked) `Stack` when `productSlug` is `null` (a since-deleted
+      variant/product). Depends on `OrderLineResponse`'s `attributes`/`primaryImageUrl`/
+      `productSlug` fields (see `ecommerce-service/CLAUDE.md`'s matching `OrderMapper` note) — all
+      nullable on `types.ts`'s `OrderLine`.
     - `OrderDetailPage.tsx` — status `Chip` in the header, Items/Shipping-To sections (structurally
-      identical to `CheckoutPage`'s own, since both render an order's lines/address), and a
-      hand-built **Order Timeline** section from `statusHistory` (a `Stack` of plain rows — no
-      `@mui/lab` `Timeline` component, which would be a new dependency this app doesn't have and
-      has no other use for). **Pay Now** renders only when `status === 'PENDING'`, calling
+      identical to `CheckoutPage`'s own, since both render an order's lines/address). **The Items
+      section now renders each line via the shared `OrderLineRow` (per request — same layout as
+      `OrderHistoryPage`, including the click-through to the product page) instead of a plain
+      "name × qty — price" row**, `Divider`-separated between lines (was a bare `Stack spacing={1}`
+      with no separators). **Subtotal/Shipping/Total values are all `color="error.main"`, per
+      request** (only the values — the "Subtotal"/"Shipping"/"Total" labels stay their existing
+      color/weight). **Horizontal `Stepper` (`@mui/material` core, not `@mui/lab` — no new
+      dependency) for at-a-glance order status, per request** — **its own "Order Status" `Paper`
+      section, positioned right after the header row, per a follow-up "show it at the top of the
+      page" request** (originally landed folded into the "Order Timeline" `Paper` further down;
+      moved out to its own card once asked). The detailed "Order Timeline" list (below, unchanged)
+      stays a separate section — the `Stepper` is a summary, the list is still the source of exact
+      timestamps/reasons. Driven by new `ORDER_HAPPY_PATH` (`utils/orderStatus.ts`): `PENDING →
+      PAYMENT_PROCESSING → CONFIRMED → SHIPPED → DELIVERED`, the order lifecycle's one linear path
+      — `CANCELLED`/`EXPIRED`/`FAILED` are terminal *branches* off it, not steps along it, so they
+      don't get their own step slot. For a happy-path order, `activeStep` is just
+      `ORDER_HAPPY_PATH.indexOf(order.status)` (MUI's own completed/active/upcoming step styling
+      does the rest — `DELIVERED` itself is additionally marked `completed` by hand, since MUI's
+      default only marks steps *before* `activeStep` completed, not the active one). **For an
+      off-path (terminal) order**, `activeStep` instead resolves to the happy-path step the order
+      was *at* when the terminal transition happened — found by scanning `statusHistory` backward
+      for the entry whose `toStatus` matches the order's current terminal status, then taking that
+      entry's own `fromStatus`'s index in `ORDER_HAPPY_PATH` (always resolvable: every terminal
+      transition's `fromStatus` — `PENDING` for `EXPIRED`/a `PENDING`-stage `CANCELLED`,
+      `PAYMENT_PROCESSING` for `FAILED`/a `PAYMENT_PROCESSING`-stage `CANCELLED`, `CONFIRMED` for a
+      `CONFIRMED`-stage `CANCELLED` — is always itself a happy-path status per the backend's own
+      state machine). That step's `StepLabel` gets `error` (its icon/label turn red — see the
+      custom icon note below) plus the actual terminal status label as its `optional` caption,
+      instead of inventing a "Cancelled" step; steps after it stay in their plain unreached state —
+      visually "the process stopped here," not a false promise that Shipped/Delivered are still
+      coming. Each *reached* happy-path step's `optional` caption shows when it was reached
+      (`statusHistory` entry with matching `toStatus`), same `formatOrderDateTime` the list below
+      already uses. **Bigger, and each step has its own icon, per a follow-up request**: new
+      `ORDER_HAPPY_PATH_ICONS` (`utils/orderStatus.ts`, index-aligned with `ORDER_HAPPY_PATH`) —
+      `PendingActionsIcon`/`PaymentIcon`/`CheckCircleIcon`/`LocalShippingIcon`/`Inventory2Icon`, one
+      per happy-path status — fed into a new local `HappyPathStepIcon` component (this page's own
+      `StepIconComponent` override, the standard MUI pattern for a custom step icon that still
+      reacts to `active`/`completed`/`error`) rendering a 48px circle (vs. MUI's default ~24px
+      numbered circle) with that step's icon inside, swapped for a red `ErrorOutlineIcon` when
+      `error` is set regardless of position. **Outlined, not filled, per a follow-up request** — a
+      `2px solid` border plus `bgcolor: 'background.paper'`, both colored by state (`error.main`/
+      `primary.main`/`text.disabled`), with the icon itself carrying that same state color, rather
+      than the first cut's solid-color disc with a white icon. **Border/connector line both
+      thickened further, per a follow-up request** — the icon's own border went from `2px` to
+      `3px`, and the connector line between steps from MUI's default `1px` to `3px` too, so the
+      thicker outline and the thicker connecting line read as one consistent stroke weight.
+      **The connector line's color/positioning were then a bug: two fixes bundled into a new
+      `OrderStatusConnector` (`styled(StepConnector)`, replacing the earlier plain `sx` overrides
+      on `Stepper` for this).** (1) The line's default color came from MUI's own
+      active/completed palette, not the exact `text.disabled`/`primary.main` tokens
+      `HappyPathStepIcon` colors itself with, so the two visibly drifted — `OrderStatusConnector`
+      now targets `stepConnectorClasses.line`/`.active`/`.completed` directly with
+      `theme.palette.text.disabled`/`primary.main`, the identical tokens the icon uses. (2) the
+      line's default horizontal offset (`calc(±50% + 20px)`) is calibrated for MUI's own smaller
+      default icon, so once the icon grew to a 48px (24px-radius) circle the line visibly reached
+      in under its edge instead of stopping at it — offset widened to `calc(±50% + 28px)` (past
+      the 24px radius plus its 3px border, with a small gap to spare) to clear it. `StepLabel`'s own text is also bumped up
+      (`sx` targeting `.MuiStepLabel-label`) and the section's `Paper` gets extra padding
+      (`p: { xs: 2.5, sm: 4 }`) to give the larger icons room. `OrderStatusConnector` also sets
+      `top: 24` on `stepConnectorClasses.alternativeLabel` (a fix — MUI's own default `top` is
+      calibrated for its ~24px icon, so the line sat above center once the icon grew to 48px,
+      before this and the color/offset fixes above were folded into one connector component).
+      A hand-built **Order Timeline**
+      section from `statusHistory` (a `Stack` of plain rows — no `@mui/lab` `Timeline` component,
+      which would be a new dependency this app doesn't have and has no other use for). **Pay Now**
+      renders only when `status === 'PENDING'`, calling
       `orderApi.pay` via `useSubmitGuard` and branching the resulting notification on the new
       status (`CONFIRMED` → success toast, `FAILED` → error toast, still `PAYMENT_PROCESSING` →
       no extra toast, the status chip already reflects it — a real gateway may not resolve

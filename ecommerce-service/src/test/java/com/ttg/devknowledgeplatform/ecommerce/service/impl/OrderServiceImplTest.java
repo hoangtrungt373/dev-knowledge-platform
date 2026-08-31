@@ -106,12 +106,28 @@ class OrderServiceImplTest {
     class ListOrders {
 
         @Test
-        void delegatesToTheRepositoryMostRecentFirst() {
+        void delegatesToTheRepositoryWithASpecificationBuiltFromOwnerAndNoStatusFilter() {
             Pageable pageable = PageRequest.of(0, 20);
             Page<Order> page = new PageImpl<>(List.of(orderOwnedBy(OWNER_UUID)));
-            when(orderRepository.findByOwnerUuidOrderByIdDesc(OWNER_UUID, pageable)).thenReturn(page);
+            // Same reasoning as ListAllOrders below — the Specification is a fresh lambda built
+            // inside listOrders, never equal by reference/value to one built here, so this only
+            // verifies delegation (owner/statuses/page wiring), not the Specification's own
+            // filtering logic.
+            when(orderRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
 
-            var result = service.listOrders(OWNER_UUID, pageable);
+            Page<Order> result = service.listOrders(OWNER_UUID, null, pageable);
+
+            assertThat(result).isSameAs(page);
+        }
+
+        @Test
+        void delegatesToTheRepositoryWithASpecificationBuiltFromOwnerAndAStatusFilter() {
+            Pageable pageable = PageRequest.of(0, 20);
+            Page<Order> page = new PageImpl<>(List.of(orderOwnedBy(OWNER_UUID)));
+            when(orderRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
+
+            Page<Order> result = service.listOrders(
+                    OWNER_UUID, List.of(OrderStatus.PENDING, OrderStatus.PAYMENT_PROCESSING), pageable);
 
             assertThat(result).isSameAs(page);
         }

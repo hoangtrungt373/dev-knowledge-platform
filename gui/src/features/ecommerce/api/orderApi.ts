@@ -1,6 +1,6 @@
 import { httpClient } from '@shared/api/httpClient';
 import { PagedResponse } from '@shared/types';
-import { Order } from '../types';
+import { Order, OrderStatus } from '../types';
 
 type ShowError = (msg: string) => void;
 
@@ -11,8 +11,12 @@ type ShowError = (msg: string) => void;
  * separate refetch needed after either action.
  */
 export const orderApi = {
-  list(page: number, size: number, showError?: ShowError): Promise<PagedResponse<Order>> {
-    return httpClient.get(`/api/v1/orders?page=${page}&size=${size}`, showError);
+  /** `statuses` (post-Epic-3 follow-up, `OrderHistoryPage`'s status tabs) narrows the list to one
+   * or more statuses via a repeated query param, matching `OrderApi.list`'s own
+   * `@RequestParam List<OrderStatus>`; omitted (or empty) returns every status ("All"). */
+  list(page: number, size: number, statuses?: OrderStatus[], showError?: ShowError): Promise<PagedResponse<Order>> {
+    const statusParams = statuses?.length ? statuses.map(s => `&statuses=${s}`).join('') : '';
+    return httpClient.get(`/api/v1/orders?page=${page}&size=${size}${statusParams}`, showError);
   },
 
   getById(id: number, showError?: ShowError): Promise<Order> {

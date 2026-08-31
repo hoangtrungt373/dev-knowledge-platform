@@ -6,6 +6,8 @@ import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Collection;
+
 /**
  * Order lifecycle actions available to a shopper or admin (Epic 3, US-3.6–3.8), plus US-3.5's
  * read surface — thin wrappers around {@code orderstatus.OrderStatusHandlerRegistry} that add the
@@ -28,13 +30,18 @@ public interface OrderService {
     Order getOrder(Integer orderId, String callerUuid);
 
     /**
-     * Paginated list of the caller's own orders, most recent first (US-3.5).
+     * Paginated list of the caller's own orders, most recent first (US-3.5), optionally narrowed
+     * to one of several statuses — the GUI's grouped status tabs (post-Epic-3 follow-up; e.g.
+     * "To Pay" maps to both {@code PENDING} and {@code PAYMENT_PROCESSING}) need an {@code IN}
+     * filter, not a single status.
      *
      * @param callerUuid the caller's Keycloak UUID
-     * @param pageable   page/size — no configurable sort, since "most recent first" is the only
-     *                   ordering a shopper's own order history needs
+     * @param statuses   optional status set to narrow to; {@code null}/empty returns every status
+     *                   ("All")
+     * @param pageable   page/size — callers own the sort (this method doesn't impose one), same as
+     *                   {@link #listAllOrders}
      */
-    Page<Order> listOrders(String callerUuid, Pageable pageable);
+    Page<Order> listOrders(String callerUuid, Collection<OrderStatus> statuses, Pageable pageable);
 
     /**
      * Paginated list of orders for admin fulfillment (US-3.7/3.8), optionally filtered by

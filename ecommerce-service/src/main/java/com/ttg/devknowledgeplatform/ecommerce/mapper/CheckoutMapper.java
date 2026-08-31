@@ -20,13 +20,17 @@ import org.springframework.stereotype.Component;
  * lives in exactly one place. {@link OrderMapper#toOrderLineResponse}/{@link
  * OrderMapper#toAddressResponse} are reused the same way for the confirmed order's own lines/
  * address (Epic 3 Phase 5 introduced {@link OrderMapper} as the canonical owner of that mapping,
- * once a second caller needed it — this class no longer keeps its own copy).
+ * once a second caller needed it — this class no longer keeps its own copy). Injects
+ * {@link OrderMapper} itself now (rather than calling a static method) since
+ * {@code toOrderLineResponse} stopped being {@code static} once it needed a live variant lookup
+ * (post-Epic-3 follow-up) — see {@link OrderMapper}'s own Javadoc.
  */
 @Component
 @RequiredArgsConstructor
 public class CheckoutMapper {
 
     private final CartMapper cartMapper;
+    private final OrderMapper orderMapper;
 
     public CheckoutPreviewResponse toPreviewResponse(CheckoutPreview preview) {
         return CheckoutPreviewResponse.builder()
@@ -43,7 +47,7 @@ public class CheckoutMapper {
                 .orderId(order.getId())
                 .status(order.getStatus())
                 .address(OrderMapper.toAddressResponse(order.getShippingAddress()))
-                .lines(order.getLines().stream().map(OrderMapper::toOrderLineResponse).toList())
+                .lines(order.getLines().stream().map(orderMapper::toOrderLineResponse).toList())
                 .subtotal(order.getSubtotal())
                 .shippingFee(order.getShippingFee())
                 .total(order.getTotal())

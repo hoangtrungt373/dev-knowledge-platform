@@ -673,21 +673,35 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
   own order history needs), backed by a new `IDX_CUSTOMER_ORDER_OWNER_UUID` index (migration
   `202608300002__0.0.2__DKP-0036__add_customer_order_owner_uuid_index.sql` — this index was
   deliberately deferred until this exact query needed it, per the note this repository used to
-  carry). `OrderService` gained `getOrder(orderId, callerUuid)` (US-3.5, same ownership-hiding
+  carry). **This derived query was later deleted outright** once the status-tabs follow-up (see
+  below) needed an optional `IN` filter alongside the ownership check — `listOrders` moved onto
+  `findAll(Specification, Pageable)` instead, with the sort moved to an explicit `Sort` on the
+  `Pageable`; the index still backs the replacement query's `ownerUuid` predicate the same way.
+  `OrderService` gained `getOrder(orderId, callerUuid)` (US-3.5, same ownership-hiding
   shape as `cancel`) and `listOrders(callerUuid, pageable)`.
   - New `dto/OrderStatusHistoryResponse`/`OrderResponse` (the latter reused for both the list-mine
     and get-by-id endpoints — same "one response DTO for list and detail" convention
     `ProductResponse` already established, since an order's lines/history are always small,
     unlike a product's variant/image gallery only being a genuine concern at that larger scale).
   - New `mapper/OrderMapper` — hand-written, not MapStruct (matches `CartMapper`/`CheckoutMapper`
-    in this package). `toOrderLineResponse`/`toAddressResponse` are `public static` so
-    `CheckoutMapper` can reuse them for its own `CheckoutConfirmResponse` — `OrderMapper` is now
-    the canonical owner of that mapping, since Epic 3 Phase 5 is the second caller;
-    `CheckoutMapper`'s own private copies were deleted. `OrderMapper.toResponse` reads
-    `Order.getLines()`/`getStatusHistory()`, both lazy collections — this only works because
-    `spring.jpa.open-in-view` is left at Spring Boot's default `true` in this module (unchanged),
-    keeping the Hibernate session open for the whole request; `ProductMapper` already relies on
-    the identical behavior for `Product.variants`/`images`.
+    in this package). `toOrderLineResponse`/`toAddressResponse` were originally both `public
+    static` so `CheckoutMapper` could reuse them for its own `CheckoutConfirmResponse` —
+    `OrderMapper` is the canonical owner of that mapping, since Epic 3 Phase 5 is the second
+    caller; `CheckoutMapper`'s own private copies were deleted. **`toOrderLineResponse` stopped
+    being `static` in a post-Epic-3 follow-up** (per request: `OrderHistoryPage`'s redesign needed
+    each line's product image/variant attributes, which `OrderLine` never snapshots — see its own
+    Javadoc) — it now injects `ProductVariantRepository`/`infra`'s `StorageService` and does a
+    best-effort live lookup by `OrderLine.productVariantId`, same "resolve a presigned primary
+    image URL, null if the product has none yet" shape `CartMapper.resolvePrimaryImageUrl` already
+    established, with the added twist that the variant itself might no longer exist at all
+    (`productVariantId` is a plain column, not a real FK — both `attributes`/`primaryImageUrl` on
+    `OrderLineResponse` are simply `null` in that case). `CheckoutMapper` now constructor-injects
+    `OrderMapper` and calls `orderMapper::toOrderLineResponse` instead of the old static method
+    reference; `toAddressResponse` is untouched, still `public static` (needs no lookup).
+    `OrderMapper.toResponse` reads `Order.getLines()`/`getStatusHistory()`, both lazy collections —
+    this only works because `spring.jpa.open-in-view` is left at Spring Boot's default `true` in
+    this module (unchanged), keeping the Hibernate session open for the whole request;
+    `ProductMapper` already relies on the identical behavior for `Product.variants`/`images`.
   - New `api/OrderApi`+`Controller` at `/api/v1/orders` — **authenticated-only, same as
     `CartApi`/`CheckoutApi`, no new `SecurityConfig` rule needed.** `GET` (list mine, paginated,
     most recent first), `GET /{id}` (US-3.5's detail view with full status timeline),
@@ -751,6 +765,51 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
   `ProductApi.list`'s equivalent bare `GET`. New `OrderServiceImplTest.ListAllOrders` test — 1 new
   test method, 137 unit tests total (up from 136), all passing, no Docker needed; verified via a
   real `mvn test` run in this session.
+
+- **Post-Epic-3 follow-up: shopper-facing order-history status tabs (`gui`'s `OrderHistoryPage`),
+  per request — grouped Shopee-style ("All | To Pay | Processing | Shipped | Delivered |
+  Cancelled"), chosen over one tab per raw `OrderStatus` after asking.** Grouped tabs mean a
+  status filter that's an `IN` over several statuses (e.g. "To Pay" = `PENDING` +
+  `PAYMENT_PROCESSING`), which `OrderSpecification.withFilters`'s single-equality shape (built for
+  the admin queue above) can't express. New `OrderSpecification.withOwnerAndStatuses(ownerUuid,
+  Collection<OrderStatus>)` — always filters to `ownerUuid` (unlike the admin-only `withFilters`),
+  plus an optional `status IN (...)` when `statuses` is non-empty.
+  `OrderService.listOrders`/`OrderServiceImpl.listOrders` gained a `Collection<OrderStatus>
+  statuses` parameter (`null`/empty = every status, "All") and now delegates to
+  `orderRepository.findAll(OrderSpecification.withOwnerAndStatuses(...), pageable)` instead of a
+  dedicated derived query. **`OrderRepository.findByOwnerUuidOrderByIdDesc` was deleted outright**
+  once this left it with no callers — its "most recent first" ordering is now the caller's own
+  job via an explicit `Sort` on the `Pageable` (`OrderController.list` builds
+  `PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"))`), the same shape
+  `AdminOrderController.list` already used for its own oldest-first sort — `findAll(Specification,
+  Pageable)` has no inherent ordering the way a derived query does, so this had to become explicit
+  once the query moved off one. `OrderApi.list` gained `@RequestParam(required = false)
+  List<OrderStatus> statuses` (repeated query param, e.g.
+  `?statuses=PENDING&statuses=PAYMENT_PROCESSING`) alongside its existing `page`/`size`. No
+  `gateway` change needed — `/api/v1/orders/**` already covers the same bare `GET` path.
+  `OrderServiceImplTest$ListOrders` gained a second case (the existing one updated to assert
+  delegation via a mocked `Specification` instead of the deleted derived query, same "verify
+  delegation, not the Specification's own filtering logic" precedent `ListAllOrders` already
+  established); 143 unit tests total, all passing, no Docker needed, verified via a real
+  `mvn test` run in this session. See `gui/CLAUDE.md`'s `OrderHistoryPage.tsx` note for the tab
+  grouping itself and the GUI-side wiring.
+
+- **Post-Epic-3 follow-up: `OrderHistoryPage` redesign — per-line product image + variant info,
+  order id no longer shown, per request.** `OrderLineResponse` gained `attributes`
+  (`Map<String, String>`) and `primaryImageUrl` (`String`), both resolved live by
+  `OrderMapper.toOrderLineResponse` (see that mapper's own updated note above for the full
+  reasoning — `OrderLine` itself snapshots none of this, only `sku`/`productName`/`unitPrice`/
+  `quantity`). Both fields are `null` when the variant no longer exists — a real possibility since
+  `productVariantId` isn't a foreign key. No new endpoint, no migration — purely additive fields on
+  an existing response, resolved at read time. See `gui/CLAUDE.md`'s `OrderHistoryPage.tsx` note
+  for the new per-line layout these fields feed.
+  - **Follow-up: `OrderLineResponse` gained `productSlug` too**, once `OrderDetailPage` needed the
+    same per-line layout with a click-through to the product page — `OrderMapper` resolves it in
+    the same live variant lookup as `attributes`/`primaryImageUrl`
+    (`variant.getProduct().getSlug()`), `null` under the identical since-deleted-variant condition.
+    The GUI's `OrderLineRow` component (below) was extracted into a shared component once both
+    `OrderHistoryPage` and `OrderDetailPage` needed byte-identical rendering of it, including the
+    new link — see `gui/CLAUDE.md`'s `components/orders/OrderLineRow.tsx` note.
 
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"
@@ -863,9 +922,12 @@ this file's own `issuer-uri` property already used, and the same shape `identity
   `ListAllOrders` for the admin fulfillment queue), and `CartServiceImplTest` (a post-Epic-2
   follow-up — this module's first test of `CartServiceImpl` itself, covering only the new
   `removeItems` bulk-delete path; `CheckoutServiceImplTest` gained the same follow-up's Phase 2
-  `selectedVariantIds` cases — see above for both).
-  147 tests, all passing, no Docker needed for any of
-  them.
+  `selectedVariantIds` cases — see above for both), and `OrderServiceImplTest$ListOrders` (the
+  shopper-facing order-history status-tabs follow-up, above).
+  143 tests, all passing, no Docker needed for any of
+  them (this count was independently re-verified per test class in this session — treat it, not
+  any earlier figure quoted elsewhere in this file's own history, as authoritative if the two ever
+  disagree).
   - **`repository/ProductSearchViewRepositoryIT` is the one exception — a real Postgres
     Testcontainers integration test, not a unit test**, because US-1.3's `tsvector`/`pg_trgm`
     ranking and US-1.4's price-range/JSONB-containment filtering are native SQL

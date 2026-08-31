@@ -3,7 +3,6 @@ package com.ttg.devknowledgeplatform.ecommerce.repository;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -14,19 +13,17 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Repository for {@link Order}. {@link JpaSpecificationExecutor} backs the admin fulfillment
- * queue's optional status filter (US-3.7/3.8 — a post-Epic-3 follow-up, added once the GUI work
- * actually needed it) — see {@code repository.spec.OrderSpecification}, this module's usual
- * Specification-pattern home for dynamic filtering (never a hand-built JPQL string).
+ * Repository for {@link Order}. {@link JpaSpecificationExecutor} backs both the admin fulfillment
+ * queue's optional status filter (US-3.7/3.8) and the shopper-facing order-history status tabs
+ * (post-Epic-3 follow-up) — see {@code repository.spec.OrderSpecification}, this module's usual
+ * Specification-pattern home for dynamic filtering (never a hand-built JPQL string). A shopper's
+ * own orders are backed by {@code IDX_CUSTOMER_ORDER_OWNER_UUID} either way — this repository used
+ * to expose a dedicated {@code findByOwnerUuidOrderByIdDesc} derived query for that case before the
+ * status-tabs feature needed an optional {@code IN} filter alongside the ownership check, at which
+ * point {@code OrderServiceImpl.listOrders} moved onto {@code findAll(Specification, Pageable)}
+ * (same as the admin queue already used) and that derived query was deleted as dead code.
  */
 public interface OrderRepository extends JpaRepository<Order, Integer>, JpaSpecificationExecutor<Order> {
-
-    /**
-     * A shopper's own orders, most recent first (US-3.5, Epic 3 Phase 5) — backed by
-     * {@code IDX_CUSTOMER_ORDER_OWNER_UUID} (added alongside this query, per the "add the index
-     * when the query is actually built" note this repository used to carry).
-     */
-    Page<Order> findByOwnerUuidOrderByIdDesc(String ownerUuid, Pageable pageable);
 
     /**
      * Ids of every order in {@code status} created before {@code cutoff} — the reservation-expiry

@@ -44,7 +44,7 @@ export default function ProductDetailPage(): JSX.Element {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const { showError, showSuccess } = useNotification();
-  const { addItem } = useCart();
+  const { addItem, cart } = useCart();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -110,8 +110,16 @@ export default function ProductDetailPage(): JSX.Element {
   // Only meaningful once a specific variant is picked — different variants have independent
   // stock, so there's no single sensible "remaining" number to show before that (the chip below
   // falls back to a plain any-variant-in-stock check in that case, same as before).
+  // Subtracts whatever quantity of this exact variant is already sitting in the shopper's own
+  // cart — add-to-cart never reserves stock (only checkout does, per this app's own locked
+  // design), so stockQuantity - reservedQuantity alone would let a shopper add more of a variant
+  // than is truly left once their own cart is accounted for (e.g. 14 in stock, 14 already in
+  // cart, this page would otherwise still offer to add up to 14 more).
+  const quantityAlreadyInCart = selectedVariant
+    ? cart?.lines.find(l => l.variantId === selectedVariant.id)?.quantity ?? 0
+    : 0;
   const availableForSelectedVariant = selectedVariant
-    ? selectedVariant.stockQuantity - selectedVariant.reservedQuantity
+    ? Math.max(0, selectedVariant.stockQuantity - selectedVariant.reservedQuantity - quantityAlreadyInCart)
     : undefined;
   const inStockDisplay = selectedVariant
     ? (availableForSelectedVariant ?? 0) > 0

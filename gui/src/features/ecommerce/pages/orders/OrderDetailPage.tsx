@@ -9,16 +9,26 @@ import {
   IconButton,
   Paper,
   Stack,
+  Step,
+  StepLabel,
+  Stepper,
   Tooltip,
   Typography,
 } from '@mui/material';
+import { StepIconProps } from '@mui/material/StepIcon';
+import StepConnector, { stepConnectorClasses } from '@mui/material/StepConnector';
+import { styled } from '@mui/material/styles';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import { orderApi } from '../../api/orderApi';
 import { Order } from '../../types';
+import OrderLineRow from '../../components/orders/OrderLineRow';
 import {
+  ORDER_HAPPY_PATH,
+  ORDER_HAPPY_PATH_ICONS,
   ORDER_STATUS_COLORS,
   ORDER_STATUS_LABELS,
   formatOrderDateTime,
@@ -28,6 +38,71 @@ import {
 function formatPrice(value: number): string {
   return `$${value.toFixed(2)}`;
 }
+
+/**
+ * Custom `StepIconComponent` for `ORDER_HAPPY_PATH`'s `Stepper` — a bigger, outlined circle (48px,
+ * vs. MUI's default numbered ~24px) carrying that step's own semantic icon from
+ * `ORDER_HAPPY_PATH_ICONS` instead of a plain number, per request. `icon` arrives as MUI's default
+ * 1-based step number (no per-`Step` `icon` override set), so `Number(icon) - 1` recovers the
+ * `ORDER_HAPPY_PATH` index. `error` (an off-path order's terminal step) swaps in a red error icon
+ * regardless of position, taking priority over the step's own semantic icon.
+ *
+ * <p>Outlined, not filled, per request — a stroked circle (`border` + `background.paper`, both
+ * colored by state) with the icon itself carrying the state color, rather than a solid-color disc
+ * with a white icon.
+ */
+function HappyPathStepIcon({ active, completed, error, icon }: StepIconProps): JSX.Element {
+  const index = Number(icon) - 1;
+  const StepIconGraphic = error ? ErrorOutlineIcon : ORDER_HAPPY_PATH_ICONS[index];
+  const filled = active || completed || error;
+  const stateColor = error ? 'error.main' : filled ? 'primary.main' : 'text.disabled';
+  return (
+    <Box
+      sx={{
+        width: 48,
+        height: 48,
+        borderRadius: '50%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        border: '3px solid',
+        borderColor: stateColor,
+        bgcolor: 'background.paper',
+        color: stateColor,
+      }}
+    >
+      <StepIconGraphic sx={{ fontSize: 26 }} />
+    </Box>
+  );
+}
+
+/**
+ * Custom `Stepper` connector for `ORDER_HAPPY_PATH` — a fix, two problems with MUI's default
+ * `StepConnector` once `HappyPathStepIcon` grew to a 48px outlined circle: (1) its line color
+ * comes from its own `active`/`completed` palette defaults, which don't reuse the exact
+ * `text.disabled`/`primary.main` tokens `HappyPathStepIcon` colors itself with, so the two visibly
+ * drifted; (2) its horizontal `left`/`right` offset (`calc(±50% + 20px)`) is calibrated for MUI's
+ * own much-smaller default icon, so the line reached in under the bigger circle's edge instead of
+ * stopping at it. Both fixed by explicitly matching the same state-color tokens and widening the
+ * offset past the icon's own 24px radius (plus its 3px border) with a small gap to spare.
+ */
+const OrderStatusConnector = styled(StepConnector)(({ theme }) => ({
+  [`&.${stepConnectorClasses.alternativeLabel}`]: {
+    top: 24,
+    left: 'calc(-50% + 28px)',
+    right: 'calc(50% + 28px)',
+  },
+  [`& .${stepConnectorClasses.line}`]: {
+    borderTopWidth: 3,
+    borderColor: theme.palette.text.disabled,
+  },
+  [`&.${stepConnectorClasses.active} .${stepConnectorClasses.line}`]: {
+    borderColor: theme.palette.primary.main,
+  },
+  [`&.${stepConnectorClasses.completed} .${stepConnectorClasses.line}`]: {
+    borderColor: theme.palette.primary.main,
+  },
+}));
 
 export default function OrderDetailPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
@@ -103,6 +178,19 @@ export default function OrderDetailPage(): JSX.Element {
   const canCancel = isCancellable(order.status) && !order.cancelRequested;
   const cancelPending = order.status === 'PAYMENT_PROCESSING' && order.cancelRequested;
 
+  // Horizontal Stepper (below) drives off these two: happyPathIndex is where a normal
+  // in-progress/delivered order currently sits; for an off-path (terminal) order, errorStepIndex
+  // is instead where it *was* when the terminal transition happened — found via statusHistory,
+  // since CANCELLED/EXPIRED/FAILED aren't steps on the happy path themselves (see
+  // ORDER_HAPPY_PATH's own doc comment).
+  const happyPathIndex = ORDER_HAPPY_PATH.indexOf(order.status);
+  const isOffPath = happyPathIndex === -1;
+  const terminalEntry = isOffPath
+    ? [...order.statusHistory].reverse().find(h => h.toStatus === order.status)
+    : undefined;
+  const errorStepIndex = terminalEntry?.fromStatus ? ORDER_HAPPY_PATH.indexOf(terminalEntry.fromStatus) : -1;
+  const activeStep = isOffPath ? errorStepIndex : happyPathIndex;
+
   return (
     <Box sx={{ p: 3, width: '80%', mx: 'auto' }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 3 }}>
@@ -115,6 +203,42 @@ export default function OrderDetailPage(): JSX.Element {
         <Chip label={ORDER_STATUS_LABELS[order.status]} color={ORDER_STATUS_COLORS[order.status]} size="small" />
       </Stack>
 
+      <Paper variant="outlined" sx={{ p: { xs: 2.5, sm: 4 }, mb: 3 }}>
+        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 3 }}>Order Status</Typography>
+        <Stepper
+          activeStep={activeStep}
+          alternativeLabel
+          connector={<OrderStatusConnector />}
+          sx={{
+            '& .MuiStepLabel-label': { fontSize: '1rem', mt: 1 },
+            '& .MuiStepLabel-label.Mui-active': { fontWeight: 700 },
+          }}
+        >
+          {ORDER_HAPPY_PATH.map((status, index) => {
+            const reachedEntry = order.statusHistory.find(h => h.toStatus === status);
+            const isErrorStep = isOffPath && index === errorStepIndex;
+            const isCompleted = index < happyPathIndex || (index === happyPathIndex && order.status === 'DELIVERED');
+            return (
+              <Step key={status} completed={isCompleted}>
+                <StepLabel
+                  error={isErrorStep}
+                  StepIconComponent={HappyPathStepIcon}
+                  optional={
+                    isErrorStep ? (
+                      <Typography variant="body2" color="error.main">{ORDER_STATUS_LABELS[order.status]}</Typography>
+                    ) : reachedEntry ? (
+                      <Typography variant="body2" color="text.secondary">{formatOrderDateTime(reachedEntry.occurredAt)}</Typography>
+                    ) : undefined
+                  }
+                >
+                  {ORDER_STATUS_LABELS[status]}
+                </StepLabel>
+              </Step>
+            );
+          })}
+        </Stepper>
+      </Paper>
+
       {cancelPending && (
         <Paper variant="outlined" sx={{ p: 2, mb: 3, borderColor: 'warning.main', bgcolor: 'action.hover' }}>
           <Typography variant="body2">
@@ -125,26 +249,23 @@ export default function OrderDetailPage(): JSX.Element {
 
       <Paper variant="outlined" sx={{ p: 2.5, mb: 3 }}>
         <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>Items</Typography>
-        <Stack spacing={1}>
+        <Stack spacing={2} divider={<Divider />} sx={{ mb: 1.5 }}>
           {order.lines.map(line => (
-            <Stack key={line.variantId} direction="row" justifyContent="space-between">
-              <Typography variant="body2">{line.productName} × {line.quantity}</Typography>
-              <Typography variant="body2">{formatPrice(line.lineTotal)}</Typography>
-            </Stack>
+            <OrderLineRow key={line.variantId} line={line} />
           ))}
         </Stack>
         <Divider sx={{ my: 1.5 }} />
         <Stack direction="row" justifyContent="space-between">
           <Typography variant="body2" color="text.secondary">Subtotal</Typography>
-          <Typography variant="body2">{formatPrice(order.subtotal)}</Typography>
+          <Typography variant="body2" color="error.main">{formatPrice(order.subtotal)}</Typography>
         </Stack>
         <Stack direction="row" justifyContent="space-between">
           <Typography variant="body2" color="text.secondary">Shipping</Typography>
-          <Typography variant="body2">{formatPrice(order.shippingFee)}</Typography>
+          <Typography variant="body2" color="error.main">{formatPrice(order.shippingFee)}</Typography>
         </Stack>
         <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
           <Typography variant="subtitle1" fontWeight={700}>Total</Typography>
-          <Typography variant="subtitle1" fontWeight={700}>{formatPrice(order.total)}</Typography>
+          <Typography variant="subtitle1" fontWeight={700} color="error.main">{formatPrice(order.total)}</Typography>
         </Stack>
       </Paper>
 

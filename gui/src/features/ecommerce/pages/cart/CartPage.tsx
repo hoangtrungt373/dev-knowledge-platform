@@ -151,9 +151,9 @@ export default function CartPage(): JSX.Element {
     <Box sx={{ p: 3, width: '80%', mx: 'auto' }}>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>Your Cart</Typography>
 
-      <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, p: 3, mb: 3 }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-          <Stack direction="row" alignItems="center" spacing={1}>
+      <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, p: 1, pl:3, mb: 2 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between">
+          <Stack direction="row" alignItems="center" spacing={2}>
             <Checkbox
               checked={selectedVariantIds.size > 0 && selectedVariantIds.size === allVariantIds.length}
               indeterminate={selectedVariantIds.size > 0 && selectedVariantIds.size < allVariantIds.length}
@@ -175,8 +175,10 @@ export default function CartPage(): JSX.Element {
             </Button>
           )}
         </Stack>
+      </Box>
 
-        <Stack spacing={2} divider={<Divider />} sx={{ mb: 3 }}>
+      <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, p: 3, mb: 3 }}>
+        <Stack spacing={1} divider={<Divider />} sx={{ mb: 3 }}>
           {lines.map(line => (
             <CartLineRow
               key={line.variantId}
@@ -242,8 +244,6 @@ function CartLineRow({ line, pending, selected, onToggleSelect, onQuantityChange
   const [pendingVariant, setPendingVariant] = useState<ProductVariant | null>(null);
 
   const handleVariationBoxClick = async (e: ReactMouseEvent<HTMLElement>): Promise<void> => {
-    e.preventDefault(); // don't follow the enclosing product-detail Link
-    e.stopPropagation();
     setVariantMenuAnchor(e.currentTarget);
     if (productVariants || !line.productSlug) return;
     setLoadingVariants(true);
@@ -301,28 +301,31 @@ function CartLineRow({ line, pending, selected, onToggleSelect, onQuantityChange
       sx={{ py: 1 }}
     >
       <Checkbox checked={selected} onChange={onToggleSelect} />
-      <Link
-        to={`/shop/${line.productSlug}`}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          flex: 1,
-          minWidth: 0,
-          color: 'inherit',
-          textDecoration: 'none',
-        }}
-      >
-        <CartLineThumbnail imageUrl={line.primaryImageUrl} alt={line.productName ?? ''} />
-        <Typography
-          variant="body1"
-          fontWeight={500}
-          noWrap
-          sx={{ width: 220, flexShrink: 0, '&:hover': { textDecoration: 'underline' } }}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, minWidth: 0 }}>
+        {/* Only the thumbnail/name are a real link — the variation box and price below are
+            plain siblings now, not nested inside it, so clicking them doesn't also navigate. */}
+        <Link
+          to={`/shop/${line.productSlug}`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            minWidth: 0,
+            color: 'inherit',
+            textDecoration: 'none',
+          }}
         >
-          {line.productName}
-        </Typography>
-        <Box sx={{ width: 300, flexShrink: 0 }}>
+          <CartLineThumbnail imageUrl={line.primaryImageUrl} alt={line.productName ?? ''} />
+          <Typography
+            variant="body1"
+            fontWeight={500}
+            noWrap
+            sx={{ width: 320, flexShrink: 0, '&:hover': { textDecoration: 'underline' } }}
+          >
+            {line.productName}
+          </Typography>
+        </Link>
+        <Box sx={{ width: 250, flexShrink: 0 }}>
           {variationLabel && (
             <Box
               onClick={handleVariationBoxClick}
@@ -331,25 +334,22 @@ function CartLineRow({ line, pending, selected, onToggleSelect, onQuantityChange
                 boxSizing: 'border-box',
                 px: 1,
                 py: 0.25,
-                border: '1px solid',
-                borderColor: 'divider',
                 borderRadius: 1,
                 cursor: 'pointer',
-                '&:hover': { bgcolor: 'action.hover' },
               }}
             >
               <Stack direction="row" alignItems="center" spacing={0.5}>
                 <Typography variant="caption" color="text.secondary">Variation:</Typography>
                 <KeyboardArrowDownIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
               </Stack>
-              <Typography variant="caption" fontWeight={600}>{variationLabel}</Typography>
+              <Typography variant="body1">{variationLabel}</Typography>
             </Box>
           )}
         </Box>
         <Typography variant="body2" color="text.primary" sx={{ width: 90, flexShrink: 0, whiteSpace: 'nowrap' }}>
           {formatPrice(line.unitPrice ?? 0)}
         </Typography>
-      </Link>
+      </Box>
 
       <Popover
         open={Boolean(variantMenuAnchor)}

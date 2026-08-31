@@ -140,6 +140,13 @@ export interface OrderLine {
   unitPrice: number;
   quantity: number;
   lineTotal: number;
+  /** The purchased variant's current attributes/primary image/product slug, resolved live against
+   * today's catalog by variant id (post-Epic-3 follow-up) — unlike every other field here, which
+   * is a frozen-at-purchase-time snapshot. All null if that variant (or its product) has since
+   * been deleted. `productSlug` links the line back to `/shop/${productSlug}`. */
+  attributes?: Record<string, string> | null;
+  primaryImageUrl?: string | null;
+  productSlug?: string | null;
 }
 
 export interface CheckoutPreview {

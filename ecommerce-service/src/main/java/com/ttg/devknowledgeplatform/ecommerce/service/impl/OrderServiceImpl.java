@@ -19,6 +19,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+
 /**
  * Implementation of {@link OrderService}.
  *
@@ -52,8 +54,8 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<Order> listOrders(String callerUuid, Pageable pageable) {
-        return orderRepository.findByOwnerUuidOrderByIdDesc(callerUuid, pageable);
+    public Page<Order> listOrders(String callerUuid, Collection<OrderStatus> statuses, Pageable pageable) {
+        return orderRepository.findAll(OrderSpecification.withOwnerAndStatuses(callerUuid, statuses), pageable);
     }
 
     @Override
