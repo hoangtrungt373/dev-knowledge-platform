@@ -16,10 +16,7 @@ import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import { useCart } from '../../context/CartContext';
 import { checkoutApi } from '../../api/checkoutApi';
 import { Address, CheckoutPreview } from '../../types';
-
-function formatPrice(value: number): string {
-  return `$${value.toFixed(2)}`;
-}
+import { formatPrice } from '../../utils/format';
 
 interface AddressFormErrors {
   fullName?: string;

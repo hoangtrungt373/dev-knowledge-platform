@@ -732,19 +732,21 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       grayed out with a "No longer available" chip and only a Remove control (mirrors the
       backend's own
       available-flag contract, same shape `CartLineResponse`'s Javadoc documents). Each available
-      line renders a 64×64 `CartLineThumbnail` from `CartLine.primaryImageUrl` (a new field —
-      `CartMapper` resolves it server-side from the product's own gallery, same presigned-URL
-      pattern `ProductCard.tsx`'s storefront thumbnail already uses), falling back to the same
-      `ImageNotSupportedIcon` treatment when a product has no images yet; an unavailable line
-      renders the same thumbnail slot with no image (nothing to show — the line only carries
-      `variantId`/`quantity`), keeping row height consistent either way.
-      **`CartLineThumbnail` fades in on `onLoad`** (`opacity` 0→1, 200ms) rather than popping in the
+      line renders a 64×64 shared `components/Thumbnail.tsx` (below) from `CartLine.primaryImageUrl`
+      (a new field — `CartMapper` resolves it server-side from the product's own gallery, same
+      presigned-URL pattern `ProductCard.tsx`'s storefront thumbnail uses — both now go through
+      this same shared component), falling back to the same `ImageNotSupportedIcon` treatment when
+      a product has no images yet; an unavailable line renders the same thumbnail slot with no
+      image (nothing to show — the line only carries `variantId`/`quantity`), keeping row height
+      consistent either way. **Passes `fade`** (`opacity` 0→1, 200ms) rather than popping in the
       instant the browser finishes decoding — added once the inline variant switcher (below) made
       the underlying blink visible: switching variants remounts the row (keyed by `variantId`), so
       a brand-new `<img>` node mounts every time, and `primaryImageUrl` is a freshly re-signed
       presigned URL on every cart fetch (even for the *same* underlying picture across two variants
       of one product), so the browser can never serve it from cache. The fade can't remove that
-      network round trip, only smooth over it. Quantity
+      network round trip, only smooth over it — `OrderLineRow`'s own use of the shared component
+      doesn't pass `fade`, since its rows don't remount on the same kind of hot-swap this page's
+      variant switcher causes. Quantity
       +/- buttons call `updateItem` directly (immediate mutation, no local staging) — the "−"
       button disables at quantity 1 rather than silently removing the line on decrement, since a
       dedicated Remove button already covers that action explicitly. **The "+" button also disables
@@ -756,7 +758,22 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       `utils/stock.ts` helpers `ProductDetailPage` does, rendered as a caption **below the
       quantity stepper box** (a fix per request — used to sit under the unit-price line instead;
       the stepper `Stack` is now wrapped in an outer column `Stack` so the caption stacks directly
-      beneath the `−`/qty/`+` box rather than the product-name column). A per-row `pending` flag
+      beneath the `−`/qty/`+` box rather than the product-name column). **The quantity column
+      (`sx={{ width: 160, flexShrink: 0 }}`) is now a fixed width — the actual fix, after two
+      narrower attempts.** The column's own `Stack` is shrink-to-fit by default (sized to its
+      widest child); since the low-stock caption only rendered conditionally, a low-stock row's
+      column was wider than a normal row's (caption text vs. nothing), and `alignItems="center"`
+      then centered the narrower stepper box within whatever width the column happened to be that
+      row — shifting it left/right, row to row, exactly matching the mechanism reported. A first
+      pass made the caption always render (`visibility: 'hidden'` with placeholder text when not
+      low stock) to stabilize the column's *height*, and a second tried `alignItems="flex-start"`
+      to stop the stepper re-centering within a still-variable *width* — reverted as insufficient,
+      since the column's width still varied by caption message length (row to row) even once
+      something always rendered, and that variability could also nudge the outer row's own flex
+      distribution among siblings. Pinning the column to a fixed width removes the variability at
+      its source rather than just changing how content aligns within it: `alignItems="center"` and
+      the always-rendered caption were kept, now safe since the box they sit in never resizes.
+      A per-row `pending` flag
       (keyed by `variantId`) disables only the row with an in-flight mutation, not the whole page.
       **Colors: per-unit "$X each" price is `color="text.primary"`, the row's right-aligned
       `lineTotal` is `color="error.main"`** — per request; tried the unit price in `error.main`
@@ -899,6 +916,32 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     **Both pages' containers are `width: '80%'`** (were fixed `maxWidth: 800`/`700` respectively),
     per request — same change as `ProductDetailPage.tsx`/`CartPage.tsx` above, so all four
     ecommerce pages scale with viewport width instead of capping at a fixed pixel value.
+    - **New `utils/format.ts` — `formatPrice`/`formatVariantLabel`** — a post-hoc cleanup, found
+      by an explicit audit request once the long run of small iterative tweaks across this
+      feature folder had left `formatPrice(value: number): string` (`` `$${value.toFixed(2)}` ``)
+      copy-pasted verbatim into six separate files (`CartPage.tsx`, `OrderLineRow.tsx`,
+      `AdminOrderListPage.tsx`, `CheckoutPage.tsx`, `OrderDetailPage.tsx`,
+      `OrderHistoryPage.tsx`) and the variant-attribute-values-join one-liner duplicated in two
+      (`CartPage.tsx`'s `variationLabel`, `OrderLineRow.tsx`'s `variantLabel`). All six/two now
+      import from here instead. **Deliberately not folded in**: `ProductCard.tsx`'s own
+      `formatPrice(min, max)` and `ProductDetailPage.tsx`'s `formatPriceRange` — both format a
+      price *range*, a genuinely different shape from a single value, not just a naming
+      coincidence with this file's `formatPrice`.
+    - **New `components/Thumbnail.tsx`** — a second post-audit cleanup, same session as
+      `utils/format.ts` above: the "show an image, or a centered fallback icon on a muted
+      background if there isn't one" pattern had been implemented four separate times
+      (`CartPage.tsx`'s own `CartLineThumbnail`, `OrderLineRow.tsx`, `ProductCard.tsx`, each with
+      slightly different sizing/fallback-icon-size/fade behavior). `width`/`height`
+      (default `64`), `borderRadius` (default `1`), `fallbackIconSize` (default `28`), and an
+      opt-in `fade` prop (`CartPage`'s own on-load fade, off by default) cover all three call
+      sites' variations — `ProductCard.tsx`'s storefront-grid image now passes
+      `width="100%" height={180} borderRadius={0} fallbackIconSize={40}` instead of keeping its own
+      inline version. **`ProductDetailPage.tsx`'s small gallery thumbnail strip (the row of clickable
+      images below the main product photo) is deliberately not folded into this component** despite
+      resembling it at a glance — it's a different concern entirely (an always-real image,
+      click-to-select-active-image with a border highlight, no fallback-icon state at all since a
+      product's own gallery images are guaranteed to exist), not a duplicate of what this component
+      actually does.
     - `api/orderApi.ts` — `list(page, size)`/`getById(id)`/`cancel(id)`/`pay(id)`, mirroring
       `cartApi.ts`'s shape; `cancel`/`pay` both return the freshly-resolved `Order`, same
       "mutating endpoint returns the updated resource" contract the backend already established.
@@ -958,19 +1001,26 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     - New `components/orders/OrderLineRow.tsx` — extracted from `OrderHistoryPage.tsx`'s own
       inline version once `OrderDetailPage.tsx` needed byte-identical rendering (per request:
       "same as OrderHistoryPage"), same reasoning `components/shop/VariantSelector.tsx` already
-      established for a picker shared across pages. Renders `<image/link> <info> <subtotal>`: a
-      64×64 thumbnail (`primaryImageUrl`, same `ImageNotSupportedIcon`-on-`null` fallback as
-      `CartPage`'s own `CartLineThumbnail`, just without its fade-in — this isn't an
+      established for a picker shared across pages. Renders `<image/link> <info> <subtotal>`: the
+      shared `components/Thumbnail.tsx` (below) via `primaryImageUrl`, no `fade` (this isn't an
       editable/re-mounting row the way a cart line is, so there's no flicker to smooth over), then
-      three stacked lines (product name → `Variant: {attribute values joined with a space}` (same
-      "values only, no key:" convention `CartPage`'s own `variationLabel` established — omitted
-      entirely when `attributes` is empty/null) → `Quantity: x{n}`), then the line's own
-      `lineTotal` (`color="error.main"`) at the trailing edge. **Only the thumbnail+info block
-      links to `/shop/${productSlug}`, not the whole row, and only when `productSlug` is present
-      at all** — same "don't make the price clickable too" shape `CartPage`'s own cart-line `Link`
-      fix already established, applied here from the start rather than needing a follow-up fix;
-      falls back to a plain (non-linked) `Stack` when `productSlug` is `null` (a since-deleted
-      variant/product). Depends on `OrderLineResponse`'s `attributes`/`primaryImageUrl`/
+      three stacked lines (product name → `Variant: {attribute values joined with a space}` (via
+      shared `utils/format.ts`'s `formatVariantLabel` — same "values only, no key:" convention
+      `CartPage`'s own variation label uses — omitted entirely when `attributes` is empty/null) →
+      `Quantity: x{n}`), then the line's own `lineTotal` (`color="error.main"`, via shared
+      `utils/format.ts`'s `formatPrice`) at the trailing edge. **Only the thumbnail and the product
+      name link to `/shop/${productSlug}` — not the variant/quantity lines below the name, and not
+      the price**, and only when `productSlug` is present at all (falls back to plain, non-linked
+      elements when `null` — a since-deleted variant/product). This is a post-audit reconciliation,
+      not this component's original shape — it used to wrap its *entire* info block (name +
+      variant + quantity) in one `Link`, which an audit flagged as accidental drift from
+      `CartPage`'s own cart-line `Link` fix (the identical "only thumbnail+name navigate" rule,
+      settled on after a bug report about its price/variant area being unintentionally clickable).
+      **Two separate `Link`s here (thumbnail, then name), not one wrapping both**, unlike
+      `CartPage`'s side-by-side thumbnail+name — this layout stacks the name *above* the variant/
+      quantity lines rather than beside the thumbnail, so a single `Link` can't cleanly cover both
+      without also covering the non-clickable lines beneath the name; both `Link`s point at the
+      same URL regardless. Depends on `OrderLineResponse`'s `attributes`/`primaryImageUrl`/
       `productSlug` fields (see `ecommerce-service/CLAUDE.md`'s matching `OrderMapper` note) — all
       nullable on `types.ts`'s `OrderLine`.
     - `OrderDetailPage.tsx` — status `Chip` in the header, Items/Shipping-To sections (structurally

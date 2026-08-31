@@ -1,7 +1,7 @@
-import { Box, Card, CardActionArea, CardContent, Chip, Stack, Typography } from '@mui/material';
-import ImageNotSupportedIcon from '@mui/icons-material/ImageNotSupported';
+import { Card, CardActionArea, CardContent, Chip, Stack, Typography } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { ProductSearchResult } from '../../types';
+import Thumbnail from '../Thumbnail';
 
 interface Props {
   product: ProductSearchResult;
@@ -20,27 +20,14 @@ export default function ProductCard({ product }: Props): JSX.Element {
         onClick={() => navigate(`/shop/${product.slug}`)}
         sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
       >
-        <Box
-          sx={{
-            height: 180,
-            bgcolor: 'action.hover',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-          }}
-        >
-          {product.primaryImageUrl ? (
-            <Box
-              component="img"
-              src={product.primaryImageUrl}
-              alt={product.name}
-              sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-          ) : (
-            <ImageNotSupportedIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
-          )}
-        </Box>
+        <Thumbnail
+          imageUrl={product.primaryImageUrl}
+          alt={product.name}
+          width="100%"
+          height={180}
+          borderRadius={0}
+          fallbackIconSize={40}
+        />
         <CardContent sx={{ flex: 1, width: '100%' }}>
           <Stack spacing={0.75}>
             <Typography variant="body2" fontWeight={600} noWrap title={product.name}>

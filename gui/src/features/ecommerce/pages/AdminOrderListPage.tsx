@@ -25,15 +25,12 @@ import ConfirmDialog from '@shared/components/ConfirmDialog';
 import { adminOrderApi } from '../api/adminOrderApi';
 import { Order, OrderStatus } from '../types';
 import { ORDER_STATUS_COLORS, ORDER_STATUS_LABELS, formatOrderDate } from '../utils/orderStatus';
+import { formatPrice } from '../utils/format';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const ALL_STATUSES: OrderStatus[] = [
   'PENDING', 'PAYMENT_PROCESSING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'FAILED', 'EXPIRED',
 ];
-
-function formatPrice(value: number): string {
-  return `$${value.toFixed(2)}`;
-}
 
 interface ActionTarget {
   order: Order;

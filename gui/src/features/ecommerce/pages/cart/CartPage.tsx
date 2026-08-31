@@ -17,17 +17,14 @@ import RemoveIcon from '@mui/icons-material/Remove';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ShoppingCartOutlinedIcon from '@mui/icons-material/ShoppingCartOutlined';
-import ImageNotSupportedIcon from '@mui/icons-material/ImageNotSupported';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useCart } from '../../context/CartContext';
 import { shopApi } from '../../api/shopApi';
 import VariantSelector from '../../components/shop/VariantSelector';
+import Thumbnail from '../../components/Thumbnail';
 import { CartLine, ProductVariant } from '../../types';
 import { isLowStock, lowStockMessage } from '../../utils/stock';
-
-function formatPrice(value: number): string {
-  return `$${value.toFixed(2)}`;
-}
+import { formatPrice, formatVariantLabel } from '../../utils/format';
 
 export default function CartPage(): JSX.Element {
   const navigate = useNavigate();
@@ -270,7 +267,7 @@ function CartLineRow({ line, pending, selected, onToggleSelect, onQuantityChange
     closeVariantMenu();
   };
 
-  const variationLabel = line.attributes ? Object.values(line.attributes).join(' ') : '';
+  const variationLabel = formatVariantLabel(line.attributes);
 
   if (!line.available) {
     return (
@@ -281,7 +278,7 @@ function CartLineRow({ line, pending, selected, onToggleSelect, onQuantityChange
         sx={{ py: 2, opacity: 0.6 }}
       >
         <Checkbox checked={selected} onChange={onToggleSelect} />
-        <CartLineThumbnail imageUrl={null} alt="" />
+        <Thumbnail imageUrl={null} alt="" />
         <Box sx={{ flex: 1 }}>
           <Typography variant="body2">Variant #{line.variantId}</Typography>
           <Chip label="No longer available" size="small" color="warning" variant="outlined" sx={{ mt: 0.5 }} />
@@ -315,7 +312,7 @@ function CartLineRow({ line, pending, selected, onToggleSelect, onQuantityChange
             textDecoration: 'none',
           }}
         >
-          <CartLineThumbnail imageUrl={line.primaryImageUrl} alt={line.productName ?? ''} />
+          <Thumbnail imageUrl={line.primaryImageUrl} alt={line.productName ?? ''} fade />
           <Typography
             variant="body1"
             fontWeight={500}
@@ -387,7 +384,7 @@ function CartLineRow({ line, pending, selected, onToggleSelect, onQuantityChange
         </Box>
       </Popover>
 
-      <Stack alignItems="center" spacing={0.5}>
+      <Stack alignItems="center" spacing={0.5} sx={{ width: 160, flexShrink: 0 }}>
         <Stack direction="row" alignItems="center" sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
           <IconButton
             size="small"
@@ -405,11 +402,14 @@ function CartLineRow({ line, pending, selected, onToggleSelect, onQuantityChange
             <AddIcon fontSize="small" />
           </IconButton>
         </Stack>
-        {isLowStock(line.availableQuantity) && (
-          <Typography variant="caption" color="warning.main" fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
-            {lowStockMessage(line.availableQuantity as number)}
-          </Typography>
-        )}
+        <Typography
+          variant="caption"
+          color="warning.main"
+          fontWeight={600}
+          sx={{ whiteSpace: 'nowrap', visibility: isLowStock(line.availableQuantity) ? 'visible' : 'hidden' }}
+        >
+          {isLowStock(line.availableQuantity) ? lowStockMessage(line.availableQuantity as number) : 'placeholder'}
+        </Typography>
       </Stack>
 
       <Typography variant="body1" fontWeight={500} color="error.main" sx={{ minWidth: 80, textAlign: 'right' }}>
@@ -420,57 +420,5 @@ function CartLineRow({ line, pending, selected, onToggleSelect, onQuantityChange
         <DeleteOutlineIcon />
       </IconButton>
     </Stack>
-  );
-}
-
-/**
- * Same fallback-icon-on-no-image treatment as `ProductCard.tsx`'s storefront-grid thumbnail, plus
- * a fade-in on load. `primaryImageUrl` is a time-limited presigned URL, re-signed on every cart
- * fetch — even switching between two variants of the *same* product (same underlying picture)
- * gets a new URL string, so the browser can't serve it from cache. Combined with `CartLineRow`
- * being keyed by `variantId` (a swap necessarily mounts a brand-new `<img>` node, not just a new
- * `src` on an existing one), that means a real network fetch+decode on every switch — this can't
- * be hidden entirely, but fading in on `onLoad` (rather than popping in abruptly once decoded)
- * reads as a smooth transition instead of a blink.
- */
-function CartLineThumbnail({ imageUrl, alt }: { imageUrl?: string | null; alt: string }): JSX.Element {
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    setLoaded(false);
-  }, [imageUrl]);
-
-  return (
-    <Box
-      sx={{
-        width: 64,
-        height: 64,
-        flexShrink: 0,
-        bgcolor: 'action.hover',
-        borderRadius: 1,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        overflow: 'hidden',
-      }}
-    >
-      {imageUrl ? (
-        <Box
-          component="img"
-          src={imageUrl}
-          alt={alt}
-          onLoad={() => setLoaded(true)}
-          sx={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            opacity: loaded ? 1 : 0,
-            transition: 'opacity 200ms ease-in',
-          }}
-        />
-      ) : (
-        <ImageNotSupportedIcon sx={{ fontSize: 28, color: 'text.disabled' }} />
-      )}
-    </Box>
   );
 }

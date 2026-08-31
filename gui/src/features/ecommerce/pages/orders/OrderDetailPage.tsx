@@ -34,10 +34,7 @@ import {
   formatOrderDateTime,
   isCancellable,
 } from '../../utils/orderStatus';
-
-function formatPrice(value: number): string {
-  return `$${value.toFixed(2)}`;
-}
+import { formatPrice } from '../../utils/format';
 
 /**
  * Custom `StepIconComponent` for `ORDER_HAPPY_PATH`'s `Stepper` — a bigger, outlined circle (48px,

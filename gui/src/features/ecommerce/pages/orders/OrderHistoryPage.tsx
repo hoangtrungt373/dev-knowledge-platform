@@ -19,12 +19,9 @@ import { orderApi } from '../../api/orderApi';
 import { Order } from '../../types';
 import OrderLineRow from '../../components/orders/OrderLineRow';
 import { ORDER_STATUS_COLORS, ORDER_STATUS_LABELS, ORDER_TAB_GROUPS, formatOrderDate } from '../../utils/orderStatus';
+import { formatPrice } from '../../utils/format';
 
 const PAGE_SIZE = 10;
-
-function formatPrice(value: number): string {
-  return `$${value.toFixed(2)}`;
-}
 
 export default function OrderHistoryPage(): JSX.Element {
   const navigate = useNavigate();
