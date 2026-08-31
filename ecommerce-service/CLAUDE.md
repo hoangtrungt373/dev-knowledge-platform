@@ -182,6 +182,53 @@ The minimal admin vertical slice now built on top of those entities:
     time, so a lazy re-fetch isn't guaranteed to see rows inserted moments later in the same unit
     of work. Keep this pattern for any future bidirectional create-with-children flow in this
     module.
+  - **`ProductServiceImpl.create`/`.update` now sanitize `Product.description` before persisting,
+    Phase 1 of a request to give products a real, rich "article" description instead of plain
+    text.** New `service/ProductDescriptionSanitizer` (a plain concrete `@Component`, not an
+    interface+impl split — a single-implementation utility with nothing to swap, same shape as
+    `mapper/CartMapper`/`CheckoutMapper` rather than `ProductCategoryService`/`Impl`) wraps the
+    OWASP Java HTML Sanitizer, composing its own `Sanitizers.BLOCKS.and(FORMATTING).and(LINKS)
+    .and(IMAGES).and(TABLES)` presets rather than a hand-written allowlist. **Chosen over Markdown**
+    (the format `content-service`'s `Article`/`QuestionAnswer` use) **after discussion**: a product
+    description's audience is an end shopper, not a developer, and needs layout Markdown can't
+    produce (inline images beside text, spec callouts) — sanitized HTML authored through a WYSIWYG
+    editor is what real storefronts (Shopify et al.) actually do. Sanitized **on write, not on
+    read** — `Product.description` always holds already-safe HTML, so every reader (the public
+    product API, this module's own seeder, a future admin preview) can render it directly without
+    re-sanitizing. Deliberately **silent stripping, not a rejection** — a WYSIWYG editor/a paste
+    from Word routinely produces markup outside the allowlist, and erroring on every stray tag
+    would make the editor unusable. New Maven dependency
+    `com.googlecode.owasp-java-html-sanitizer:owasp-java-html-sanitizer`, version-managed in the
+    root `pom.xml`'s `dependencyManagement` (this reactor's convention for every third-party
+    dependency, even single-module ones — see `commons-csv`/`minio` for precedent) but declared
+    **only in this module's own `pom.xml`**, not `infra` — `infra/CLAUDE.md`'s own rule for
+    promoting a utility there is "needed by two feature modules that can't depend on each other,"
+    and `content-service` doesn't store HTML, so there's no second consumer yet.
+    `CreateProductRequest`/`UpdateProductRequest.description` both gained `@Size(max = 50_000)` as
+    a sane abuse bound (no schema change — `Product.description` was already `TEXT`, unlimited).
+    New `ProductDescriptionSanitizerTest` (11 cases: null passthrough, allowed
+    blocks/formatting/tables/images preserved, `<script>`/event-handler attributes/`javascript:`
+    hrefs stripped, plain text passes through unchanged; a realistic "pasted from Google Docs"
+    case — verified against the sanitizer's real output rather than assumed, added while explaining
+    this class; documents that Docs' `style`-encoded bold is lost entirely since `STYLES` isn't in
+    this policy, and that stripping Docs' own `<b style="font-weight:normal;">` cancel-wrapper
+    while keeping the bare `<b>` ironically makes the result render as "everything bold" — a real
+    fidelity-vs-safety trade-off, not a bug; and 2 more cases — `<hr>` is dropped entirely and
+    `<pre><code>` degrades to a bare inline `<code>`, vs. headings/`<u>`/`<blockquote>` surviving
+    untouched — that became the reference `gui`'s `ProductDescriptionEditor.tsx` (below) was
+    designed against, so its toolbar never offers a formatting option the backend would silently
+    strip) plus 2 new `ProductServiceImplTest` cases (`Create`/`Update` each assert sanitization
+    runs before persisting) — 163 unit tests total (up from 150), verified via a real `mvn test`
+    run (JDK 21) in this session.
+    **`ProductServiceImplTest`'s `@InjectMocks` needed a `@Spy`, not a `@Mock`, for this
+    collaborator** — the real sanitizer runs against every test's actual input (so assertions see
+    genuinely sanitized output, not a mocked passthrough) without every existing test needing its
+    own new stubbing.
+    **Phase 2 (the `gui` WYSIWYG editor) is now built too** — see `gui/CLAUDE.md`'s
+    `ProductDescriptionEditor.tsx` note. **Phase 3 (the storefront-facing "article" render) is
+    now built too** — `ProductDetailPage.tsx`'s "Product Details" section, with a client-side
+    DOMPurify pass as defense in depth on top of this class's own on-write sanitization — see
+    `gui/CLAUDE.md`. This closes out all 3 phases of the accepted plan for this feature.
 - `mapper/` — `ProductCategoryMapper` (gained `toTreeNodeResponse(ProductCategoryTreeNode)` and a
   `parent.id -> parentId` mapping on `toResponse`, mirroring `content-service`'s `CategoryMapper`),
   `ProductMapper`. **`ProductMapper` is an abstract class, not
@@ -981,8 +1028,11 @@ this file's own `issuer-uri` property already used, and the same shape `identity
   cases to `ProductCategoryServiceImplTest` (`Create`/`Update` gained parent-assignment and
   cycle-rejection cases, and a new `ListTree` nested class covers the tree-building/sorting logic
   and the orphaned-child-becomes-root defensive case) for the `ProductCategory` hierarchy support
-  above.
-  150 tests, all passing, no Docker needed for any of
+  above. A further follow-up added `ProductDescriptionSanitizerTest` (11 cases, including a
+  verified-not-assumed Google-Docs-paste trace and the `<hr>`/`<pre>` coverage that shaped the
+  `gui` TipTap toolbar's design) plus 2 more `ProductServiceImplTest` cases for the
+  `Product.description` HTML-sanitization support above.
+  163 tests, all passing, no Docker needed for any of
   them (this count was independently re-verified per test class in this session — treat it, not
   any earlier figure quoted elsewhere in this file's own history, as authoritative if the two ever
   disagree).

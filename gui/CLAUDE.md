@@ -511,6 +511,46 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     "Save" button, which only ever touches name/description/category via `updateProduct`. This
     mirrors `ProductApi`'s own shape: variants/images are independently mutable endpoints on the
     backend, not fields inside the update-basic-fields payload.
+  - **`components/ProductDescriptionEditor.tsx` — new, replacing the plain multiline `TextField`
+    both create/edit modes used for `description`, per request (Phase 2 of the accepted
+    sanitized-HTML plan — see `ecommerce-service/CLAUDE.md`'s `ProductDescriptionSanitizer` note
+    for Phase 1 and the Markdown-vs-HTML discussion behind it).** TipTap-backed
+    (`@tiptap/react`+`@tiptap/starter-kit`+`@tiptap/extension-link`+`@tiptap/extension-image`+
+    `@tiptap/extension-underline`, all new dependencies, `^3.30.5`) — a real WYSIWYG editor, not a
+    Markdown Edit/Preview toggle like `@content`'s `MarkdownField.tsx`, since a shopper-facing
+    description needs inline images/spec layout Markdown can't produce (see that earlier
+    discussion). **`StarterKit.configure({ horizontalRule: false, codeBlock: false })`
+    deliberately disables those two nodes** — `ecommerce-service`'s
+    `ProductDescriptionSanitizerTest` confirmed `<hr>` is dropped entirely and `<pre><code>`
+    degrades to a bare inline `<code>` by the backend allowlist, so offering either in the toolbar
+    would silently misrepresent what actually gets saved; everything else `StarterKit` enables by
+    default (paragraph/headings/bold/italic/strike/lists/blockquote/hard break/undo-redo), plus
+    `Link`/`Image`/`Underline` added on top, was verified to survive that same allowlist
+    untouched. Toolbar is a small MUI `IconButton` row (`editor.isActive(...)` drives each
+    button's active/primary color), not a component library's own toolbar — this app has no rich-
+    text-editor UI kit dependency, and a handful of `IconButton`s was less surface than pulling
+    one in. **Deliberately uncontrolled** — `value` only seeds `useEditor`'s `content` once and is
+    re-applied via `editor.commands.setContent` exactly once more when `ProductFormPage`'s
+    async `loadProduct` resolves in edit mode (`editor.isEmpty` guards against clobbering
+    in-progress typing on a second render); `onChange` is how the parent form field learns about
+    every edit afterward — a plain controlled `value` prop re-rendering TipTap's own internal
+    ProseMirror document on every keystroke would fight the editor and lose cursor position, the
+    same reason no rich-text editor is ever built as a fully controlled component.
+    **`ProductFormPage.handleSubmit` needed a "has this actually got content" guard** — TipTap's
+    "empty" document serializes as `"<p></p>"`, never `""`, so the old plain
+    `description.trim() || undefined` omit-if-empty check (correct for the old `TextField`) would
+    have sent that markup to the backend instead of omitting the field. Originally a local helper
+    in this file; **moved to `utils/htmlContent.ts` (`hasVisibleHtmlContent`) once
+    `ProductDetailPage.tsx`'s Phase-3 read side needed the exact same check** (strips tags, checks
+    for either visible text or an `<img>` — an image-only description with no caption typed is
+    still a real description) — see that page's own note. New npm dependencies pushed the
+    production bundle from ~1.7 MB to ~2.1 MB gzip (539 KB → 672 KB) — ProseMirror (TipTap's
+    underlying editor engine) is not small;
+    not addressed here (code-splitting this page's editor behind a dynamic `import()` would be the
+    fix, flagged as a follow-up, not done as part of this feature). Verified via a clean
+    `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so this hasn't
+    been exercised in a real browser; test the golden path (typing, each toolbar button, an
+    image-by-URL insert, save, reload) before trusting it end-to-end.
   - `components/ProductVariantEditor.tsx` + `ProductVariantDialog.tsx` — the add-variant dialog's
     attribute key/value editor locks its key set to whatever the product's first variant already
     uses once one exists, enforcing US-1.6's "every variant shares the same attribute keys" rule
@@ -578,7 +618,30 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       exact fallback this breadcrumb always rendered before hierarchy existed). Each ancestor
       segment stays **plain text, not a link** — same reasoning as before, unchanged: `ShopPage`'s
       category filter is still id-driven with no URL-param support to pre-select it, so there's
-      still no route an ancestor segment could correctly link to. The gallery+info row sits in its own `bgcolor:
+      still no route an ancestor segment could correctly link to. **Gained a "Product Details"
+      article section below the gallery+info card, per request — Phase 3 of the accepted
+      sanitized-HTML plan (see `ecommerce-service/CLAUDE.md`'s `ProductDescriptionSanitizer` note
+      for Phases 1–2).** Renders `product.description` via `dangerouslySetInnerHTML`, but only
+      after a client-side `DOMPurify.sanitize()` pass — this is **defense in depth on top of**
+      `ProductDescriptionSanitizer`'s own on-write sanitization, not a substitute for it; the
+      comment directly above the render call says so explicitly, so a future edit doesn't "simplify"
+      this back to raw `product.description`. The section is omitted entirely (not rendered as an
+      empty card) when there's nothing to show — new `utils/htmlContent.ts`
+      (`hasVisibleHtmlContent`) is the same helper `ProductFormPage.tsx`'s submit guard uses (see
+      its own note below), extracted to a shared util once both the write side and this read side
+      needed the identical "TipTap's empty document is `<p></p>`, not `""`" check. Typography
+      overrides on the rendered content (`& p`/`& h1`–`& h6`/`& ul`/`& blockquote`/`& table`/etc.)
+      mirror `ProductDescriptionEditor.tsx`'s own content-area styles, so a description looks the
+      same while being edited as it does once published — deliberately not extracted into a shared
+      style object across the two files, since MUI's `sx` prop shape doesn't share cleanly between
+      an editable ProseMirror surface and a `dangerouslySetInnerHTML` block without more
+      abstraction than the ~15 lines of duplication was worth. New `dompurify` dependency
+      (`^3.4.14`) — **no `@types/dompurify`**, since `dompurify` ships its own TypeScript types as
+      of this version (confirmed before adding it — the separate `@types/dompurify` package is the
+      older, now-redundant stub). Verified via a clean `tsc --noEmit` and a successful `vite build`
+      only — no Docker in this sandbox, so this hasn't been exercised in a real browser; this
+      closes out all 3 phases of the `Product.description` rich-content feature.
+      The gallery+info row sits in its own `bgcolor:
       'background.paper'` card (`borderRadius: 2, p: 3`), per request, distinct from the page's own
       grey `background.default` behind it — `background.paper` rather than a hardcoded white so a
       future dark theme gets the right dark surface color automatically instead of a stuck-white

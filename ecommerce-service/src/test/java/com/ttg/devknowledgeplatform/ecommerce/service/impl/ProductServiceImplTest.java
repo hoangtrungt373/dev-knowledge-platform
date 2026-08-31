@@ -14,6 +14,7 @@ import com.ttg.devknowledgeplatform.ecommerce.repository.ProductImageRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductVariantRepository;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductCommands;
+import com.ttg.devknowledgeplatform.ecommerce.service.ProductDescriptionSanitizer;
 import com.ttg.devknowledgeplatform.infra.service.SlugService;
 import com.ttg.devknowledgeplatform.infra.service.StorageService;
 
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
@@ -65,6 +67,10 @@ class ProductServiceImplTest {
     private SlugService slugService;
     @Mock
     private StorageService storageService;
+    // @Spy, not @Mock — the real sanitizer runs (no stubbing needed for every test), so assertions
+    // below see genuinely sanitized output rather than a mocked passthrough.
+    @Spy
+    private ProductDescriptionSanitizer productDescriptionSanitizer = new ProductDescriptionSanitizer();
 
     @InjectMocks
     private ProductServiceImpl service;
@@ -149,6 +155,27 @@ class ProductServiceImplTest {
             assertThat(result.getVariants().get(0).getSku()).isEqualTo("TEE-S-BLK");
             assertThat(result.getImages()).hasSize(1);
             verify(outboxEventRepository).save(any(OutboxEvent.class));
+        }
+
+        @Test
+        void sanitizesDescriptionHtmlBeforePersisting() {
+            ProductCommands.VariantInput variantInput = new ProductCommands.VariantInput("SKU-1", BigDecimal.TEN, 5, Map.of());
+            ProductCommands.Create command = new ProductCommands.Create(
+                    "Tee", "<p>Nice</p><script>alert('xss')</script>", 10, List.of(variantInput), List.of());
+
+            when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
+            when(slugService.generateUniqueSlug(anyString(), any(), any())).thenReturn("tee");
+            when(productRepository.save(any(Product.class))).thenAnswer(invocation -> {
+                Product product = invocation.getArgument(0);
+                product.setId(1);
+                return product;
+            });
+            when(productVariantRepository.save(any(ProductVariant.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            Product result = service.create(command);
+
+            assertThat(result.getDescription()).isEqualTo("<p>Nice</p>");
+            verify(productDescriptionSanitizer).sanitize("<p>Nice</p><script>alert('xss')</script>");
         }
 
         @Test
@@ -244,6 +271,21 @@ class ProductServiceImplTest {
             assertThat(result.getSlug()).isEqualTo("404-not-found-t-shirt");
             verify(slugService, never()).generateUniqueSlug(anyString(), any(), any(), any());
             verify(outboxEventRepository).save(any(OutboxEvent.class));
+        }
+
+        @Test
+        void sanitizesDescriptionHtmlBeforePersisting() {
+            Product existing = productWithId(1);
+            when(productRepository.findById(1)).thenReturn(Optional.of(existing));
+            when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
+            when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            ProductCommands.Update command = new ProductCommands.Update(
+                    "404 Not Found T-Shirt", "<p onclick=\"alert('xss')\">Updated</p>", 10);
+            Product result = service.update(1, command);
+
+            assertThat(result.getDescription()).isEqualTo("<p>Updated</p>");
+            verify(productDescriptionSanitizer).sanitize("<p onclick=\"alert('xss')\">Updated</p>");
         }
 
         @Test

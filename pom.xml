@@ -51,6 +51,10 @@
         <minio.version>8.5.10</minio.version>
         <bucket4j.version>8.10.1</bucket4j.version>
         <commons-csv.version>1.11.0</commons-csv.version>
+        <!-- ecommerce-service's ProductDescriptionSanitizer — sanitizes admin-authored product
+             description HTML (from a TipTap WYSIWYG editor) server-side, before it's ever
+             persisted or rendered. -->
+        <owasp-html-sanitizer.version>20240325.1</owasp-html-sanitizer.version>
         <spring-cloud.version>2023.0.3</spring-cloud.version>
         <!-- Matches the quay.io/keycloak/keycloak:26.0 server image in docker-compose.infra.yml —
              identity-service's KeycloakAdminService uses this to call Keycloak's Admin REST API
@@ -169,6 +173,14 @@
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-csv</artifactId>
                 <version>${commons-csv.version}</version>
+            </dependency>
+
+            <!-- OWASP Java HTML Sanitizer — ecommerce-service only, for now (see that module's
+                 own pom.xml comment on ProductDescriptionSanitizer) -->
+            <dependency>
+                <groupId>com.googlecode.owasp-java-html-sanitizer</groupId>
+                <artifactId>owasp-java-html-sanitizer</artifactId>
+                <version>${owasp-html-sanitizer.version}</version>
             </dependency>
 
             <!-- JWT Dependencies -->

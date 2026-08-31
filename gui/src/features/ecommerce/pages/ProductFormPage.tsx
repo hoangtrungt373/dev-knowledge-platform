@@ -20,6 +20,8 @@ import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import ProductVariantEditor, { DisplayVariant } from '../components/ProductVariantEditor';
 import ProductImageGallery from '../components/ProductImageGallery';
+import ProductDescriptionEditor from '../components/ProductDescriptionEditor';
+import { hasVisibleHtmlContent } from '../utils/htmlContent';
 
 export default function ProductFormPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
@@ -82,10 +84,11 @@ export default function ProductFormPage(): JSX.Element {
     if (!validate()) return;
     setSaving(true);
     try {
+      const descriptionToSave = hasVisibleHtmlContent(description) ? description : undefined;
       if (isEdit && id) {
         await ecommerceApi.updateProduct(Number(id), {
           name: name.trim(),
-          description: description.trim() || undefined,
+          description: descriptionToSave,
           productCategoryId: productCategoryId as number,
         }, showError);
         showSuccess('Product updated');
@@ -93,7 +96,7 @@ export default function ProductFormPage(): JSX.Element {
       } else {
         const created = await ecommerceApi.createProduct({
           name: name.trim(),
-          description: description.trim() || undefined,
+          description: descriptionToSave,
           productCategoryId: productCategoryId as number,
           variants: draftVariants.map((v): ProductVariantInput => ({
             sku: v.sku, price: v.price, stockQuantity: v.stockQuantity, attributes: v.attributes,
@@ -198,14 +201,7 @@ export default function ProductFormPage(): JSX.Element {
               autoFocus
               inputProps={{ maxLength: 150 }}
             />
-            <TextField
-              label="Description"
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              fullWidth
-              multiline
-              minRows={3}
-            />
+            <ProductDescriptionEditor value={description} onChange={setDescription} />
             <FormControl fullWidth error={!!errors.productCategoryId}>
               <InputLabel>Category</InputLabel>
               <Select

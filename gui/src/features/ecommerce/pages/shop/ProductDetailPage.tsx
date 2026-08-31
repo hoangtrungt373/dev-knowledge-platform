@@ -23,6 +23,7 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import DOMPurify from 'dompurify';
 import { authService } from '@auth/services/authService';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useCart } from '../../context/CartContext';
@@ -31,6 +32,7 @@ import { shopApi } from '../../api/shopApi';
 import VariantSelector from '../../components/shop/VariantSelector';
 import { isLowStock, lowStockMessage } from '../../utils/stock';
 import { buildCategoryPath } from '../../utils/categoryPath';
+import { hasVisibleHtmlContent } from '../../utils/htmlContent';
 
 function formatPriceRange(variants: ProductVariant[]): string {
   const prices = variants.map(v => v.price);
@@ -112,6 +114,12 @@ export default function ProductDetailPage(): JSX.Element {
   }
 
   const categoryPath = buildCategoryPath(categories, product.productCategoryId);
+  // ecommerce-service's ProductDescriptionSanitizer already sanitized this on write — this
+  // DOMPurify pass is defense in depth (a sanitizer-policy gap, or a future write path that
+  // somehow skips the service layer), not the only thing standing between this HTML and the DOM.
+  const sanitizedDescription = product.description && hasVisibleHtmlContent(product.description)
+    ? DOMPurify.sanitize(product.description)
+    : '';
   const sortedImages = [...product.images].sort((a, b) => a.sortOrder - b.sortOrder);
   const activeImage = sortedImages[activeImageIndex];
   const showSlideArrows = sortedImages.length > 1;
@@ -286,9 +294,6 @@ export default function ProductDetailPage(): JSX.Element {
             </Typography>
           </Box>
 
-          {/* Category and description move to an "article" section below the info panel in a
-              later phase — not shown here anymore. */}
-
           <Divider sx={{ mb: 3 }} />
 
           <VariantSelector variants={product.variants} onSelect={setSelectedVariant} layout="row" />
@@ -392,6 +397,32 @@ export default function ProductDetailPage(): JSX.Element {
           </Stack>
         </Box>
       </Box>
+
+      {sanitizedDescription && (
+        <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, p: 3, mt: 3 }}>
+          <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>Product Details</Typography>
+          <Box
+            // Sanitized twice by the time this renders — ProductDescriptionSanitizer on the
+            // backend at write time, DOMPurify just above at read time (defense in depth, see
+            // that comment) — never render raw product.description directly.
+            dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
+            sx={{
+              color: 'text.primary',
+              '& p': { m: 0, mb: 1.5 },
+              '& p:last-child': { mb: 0 },
+              '& h1, & h2, & h3, & h4, & h5, & h6': { mt: 2, mb: 1, fontWeight: 600, '&:first-of-type': { mt: 0 } },
+              '& ul, & ol': { pl: 3, mb: 1.5 },
+              '& blockquote': {
+                borderLeft: '3px solid', borderColor: 'divider', pl: 1.5, ml: 0, my: 1.5, color: 'text.secondary',
+              },
+              '& a': { color: 'primary.main' },
+              '& img': { maxWidth: '100%', borderRadius: 1, my: 1 },
+              '& table': { borderCollapse: 'collapse', mb: 1.5 },
+              '& th, & td': { border: '1px solid', borderColor: 'divider', px: 1, py: 0.5 },
+            }}
+          />
+        </Box>
+      )}
     </Box>
   );
 }

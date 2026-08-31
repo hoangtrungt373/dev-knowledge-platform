@@ -15,6 +15,7 @@ import com.ttg.devknowledgeplatform.ecommerce.repository.ProductRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductVariantRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.spec.ProductSpecification;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductCommands;
+import com.ttg.devknowledgeplatform.ecommerce.service.ProductDescriptionSanitizer;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductService;
 import com.ttg.devknowledgeplatform.infra.service.SlugService;
 import com.ttg.devknowledgeplatform.infra.service.StorageService;
@@ -48,6 +49,7 @@ public class ProductServiceImpl implements ProductService {
     private final OutboxEventRepository outboxEventRepository;
     private final SlugService slugService;
     private final StorageService storageService;
+    private final ProductDescriptionSanitizer productDescriptionSanitizer;
 
     @Override
     public Product create(ProductCommands.Create command) {
@@ -69,7 +71,7 @@ public class ProductServiceImpl implements ProductService {
 
         Product product = new Product();
         product.setName(command.name());
-        product.setDescription(command.description());
+        product.setDescription(productDescriptionSanitizer.sanitize(command.description()));
         product.setSlug(slug);
         product.setActive(true);
         product.setProductCategory(category);
@@ -114,7 +116,7 @@ public class ProductServiceImpl implements ProductService {
             product.setSlug(slugService.generateUniqueSlug(
                     command.name(), productRepository::existsBySlugAndIdNot, id, EcommerceErrorCode.PRODUCT_SLUG_CONFLICT));
         }
-        product.setDescription(command.description());
+        product.setDescription(productDescriptionSanitizer.sanitize(command.description()));
         product.setProductCategory(findCategoryById(command.productCategoryId()));
 
         Product updated = productRepository.save(product);

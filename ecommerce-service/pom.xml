@@ -95,6 +95,17 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
+        <!-- OWASP Java HTML Sanitizer — ProductDescriptionSanitizer strips everything but a small
+             allowlist (blocks/formatting/links/images/tables) from a product's WYSIWYG-authored
+             description HTML before ProductServiceImpl ever persists it. Scoped to this module
+             only, not infra — infra's own rule is "needed by two feature modules that can't
+             depend on each other" (see infra/CLAUDE.md), and content-service stores long-form
+             content as Markdown, not HTML, so there's no second consumer yet. -->
+        <dependency>
+            <groupId>com.googlecode.owasp-java-html-sanitizer</groupId>
+            <artifactId>owasp-java-html-sanitizer</artifactId>
+        </dependency>
+
         <!-- Testcontainers Postgres — ProductSearchViewRepositoryIT is the one test in this
              module that needs a real Postgres (tsvector/pg_trgm/JSONB-containment matching is
              genuine SQL a mock can't verify); same two artifacts social-service's own test suite

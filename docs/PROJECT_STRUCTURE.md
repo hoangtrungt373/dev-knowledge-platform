@@ -1585,11 +1585,17 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │   split as content-service)
 │   ├── ProductCommands.java     — Create/Update input records (incl. nested VariantInput/
 │   │   ImageInput) mirroring content-service's QuestionAnswerCommands
+│   ├── ProductDescriptionSanitizer.java — plain @Component (no interface) wrapping OWASP Java
+│   │   HTML Sanitizer; ProductServiceImpl.create/.update sanitize Product.description down to a
+│   │   BLOCKS+FORMATTING+LINKS+IMAGES+TABLES allowlist before persisting — chosen over Markdown
+│   │   (content-service's Article/QuestionAnswer format) since a shopper-facing description needs
+│   │   layout Markdown can't do; sanitized on write, not read
 │   └── impl/
 │       ├── ProductCategoryServiceImpl.java / ProductServiceImpl.java — the latter enforces
 │       │   at-least-one-variant, no duplicate SKU/sortOrder within a request, no SKU conflict
 │       │   against existing variants, and consistent attribute keys across a product's variants;
-│       │   publishes a PRODUCT_CHANGED OutboxEvent after every create/update/deactivate
+│       │   publishes a PRODUCT_CHANGED OutboxEvent after every create/update/deactivate; sanitizes
+│       │   description via ProductDescriptionSanitizer before every save
 │       ├── ProductSearchServiceImpl.java — thin: trigram-threshold constant, blank-q handling,
 │       │   calls the repository with an unsorted PageRequest (the native query bakes in its own
 │       │   ORDER BY)
