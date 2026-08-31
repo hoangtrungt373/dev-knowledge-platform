@@ -163,7 +163,7 @@ export default function ProductFormPage(): JSX.Element {
   }
 
   return (
-    <Box sx={{ p: 3, maxWidth: 900 }}>
+    <Box sx={{ p: 3 }}>
 
       {/* Header */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
@@ -185,23 +185,35 @@ export default function ProductFormPage(): JSX.Element {
         </Stack>
       </Stack>
 
-      <Stack spacing={3}>
+      {/* Main (Basic Info, now just Name + Description — wide, no maxWidth cap so the
+          description editor actually has room) + Organization sidebar (Category) — per request,
+          replacing the old single 900px-capped column both used to share. Same calc()-gap-
+          compensation flex technique ProductDetailPage's own two-column layout already
+          established (see gui/CLAUDE.md) — the two subtractions below sum to exactly the 24px
+          `gap: 3` between them, so the columns actually fill 100% instead of always wrapping. */}
+      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'flex-start', mb: 3 }}>
+        <Box sx={{ flex: '1 1 calc(68% - 12px)', minWidth: 420 }}>
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Basic Info</Typography>
+            <Stack spacing={2}>
+              <TextField
+                label="Name"
+                value={name}
+                onChange={e => { setName(e.target.value); setErrors(p => ({ ...p, name: '' })); }}
+                error={!!errors.name}
+                helperText={errors.name || 'Slug is auto-generated from name'}
+                fullWidth
+                autoFocus
+                inputProps={{ maxLength: 150 }}
+              />
+              <ProductDescriptionEditor value={description} onChange={setDescription} />
+            </Stack>
+          </Paper>
+        </Box>
 
-        {/* Basic fields */}
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Basic Info</Typography>
-          <Stack spacing={2}>
-            <TextField
-              label="Name"
-              value={name}
-              onChange={e => { setName(e.target.value); setErrors(p => ({ ...p, name: '' })); }}
-              error={!!errors.name}
-              helperText={errors.name || 'Slug is auto-generated from name'}
-              fullWidth
-              autoFocus
-              inputProps={{ maxLength: 150 }}
-            />
-            <ProductDescriptionEditor value={description} onChange={setDescription} />
+        <Box sx={{ flex: '1 1 calc(32% - 12px)', minWidth: 260 }}>
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Organization</Typography>
             <FormControl fullWidth error={!!errors.productCategoryId}>
               <InputLabel>Category</InputLabel>
               <Select
@@ -215,8 +227,11 @@ export default function ProductFormPage(): JSX.Element {
                 {categories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
               </Select>
             </FormControl>
-          </Stack>
-        </Paper>
+          </Paper>
+        </Box>
+      </Box>
+
+      <Stack spacing={3}>
 
         {/* Variants */}
         {isEdit && product ? (

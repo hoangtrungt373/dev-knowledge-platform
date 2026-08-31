@@ -317,8 +317,10 @@ export default function ProductDescriptionEditor({ value, onChange }: Props): JS
             px: 1.5,
             py: 1.25,
             minHeight: 160,
-            maxHeight: 400,
-            overflowY: 'auto',
+            // Deliberately no maxHeight/overflowY here — a capped, internally-scrolling editor
+            // hid part of whatever was written (per request). Growing to fit content and letting
+            // the page itself scroll (one scrollbar, not a scrollbar nested inside a scrollbar)
+            // is the standard pattern real WYSIWYG editors use in a form, not a stopgap.
             '& .ProseMirror': { outline: 'none' },
             '& p': { m: 0, mb: 1 },
             '& p:last-child': { mb: 0 },

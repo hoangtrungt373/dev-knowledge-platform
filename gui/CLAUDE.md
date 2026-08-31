@@ -47,6 +47,28 @@ Cross-directory imports use path aliases (`@shared/*`, `@app/*`, `@auth/*`, `@ch
   it's a real prerequisite (lazy-loading needs an error boundary for a failed chunk load) if this
   gets revisited, rather than something to delete and re-write from scratch next time.
 - No global state library (no Redux/Zustand) — state is React Context + hooks.
+- **`app/admin-shell/AdminLayout.tsx`'s sidebar is now collapsible, per request** (built alongside
+  `@ecommerce/pages/ProductFormPage.tsx`'s two-column restructure — see that page's own note; the
+  goal behind both was the same "give the form more room" ask). Still a MUI `Drawer` with
+  `variant="permanent"` (unchanged — this is still not an overlay/slide-out drawer, the one other
+  place in this app that references "AdminLayout's permanent sidebar" as its own precedent still
+  holds), but its width is now `collapsed ? COLLAPSED_WIDTH (64) : EXPANDED_WIDTH (220)`, toggled
+  by a `ChevronLeft`/`ChevronRightIcon` button in the sidebar's own header row. Collapsed state is
+  **persisted to `localStorage`** (`adminSidebarCollapsed`) — a standing preference like a theme
+  choice, not per-session UI state, so it should survive a reload; every other per-viewer
+  convenience in this app that isn't shared/critical uses the same local-storage-not-Context
+  pattern. **No matching change was needed on the main-content side** — this `Drawer` renders in
+  normal document flow (`variant="permanent"` is not `position: fixed`), so `AdminLayout`'s main
+  content `Box` (`flex: 1`) already reflows to fill whatever width the sidebar frees up; this is
+  notably simpler than the classic MUI "persistent drawer + manually-synced `marginLeft` on the
+  content" recipe, and don't reach for that heavier pattern if this ever needs revisiting. When
+  collapsed: nav item labels, the "DKP Admin" brand text, and the user-info block's
+  username/email all hide, leaving icon-only rows each wrapped in a `Tooltip` (`placement="right"`)
+  so the icon's meaning isn't lost. This is a shared-shell change — affects all 14 routes under
+  `AdminLayout` (11 page components, see `App.tsx`), not just `ProductFormPage`; verified via a
+  clean `tsc --noEmit` and a successful `vite build` only, same as every other GUI change in this
+  session — no Docker in this sandbox, so the actual collapse/expand interaction (and the
+  persisted-preference reload behavior) hasn't been exercised in a real browser.
 - **No test framework is configured yet** — `package.json` only has `dev`/`build`/`preview` scripts,
   no `vitest`/`jest`, no test config file. `app/App.test.tsx` and `src/reportWebVitals.ts` are
   create-react-app-era leftovers that don't compile under `tsc --noEmit` (missing
@@ -511,6 +533,25 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     "Save" button, which only ever touches name/description/category via `updateProduct`. This
     mirrors `ProductApi`'s own shape: variants/images are independently mutable endpoints on the
     backend, not fields inside the update-basic-fields payload.
+  - **Restructured into a two-column layout, per request, fixing three named complaints: the
+    description editor felt too narrow, the sidebar couldn't free up space, and there was dead
+    space on the right doing nothing.** Presented as an explicit layout choice via a preview-based
+    question before building (two-column Shopify-admin-style vs. just widening the single column)
+    — two-column was chosen. Root container's `maxWidth: 900` is gone entirely (was capping the
+    *whole* page, description editor included); a new `Box sx={{ display: 'flex', gap: 3 }}` row
+    holds a **Basic Info** column (`flex: '1 1 calc(68% - 12px)'`, `minWidth: 420` — Name +
+    `ProductDescriptionEditor`, which is what actually needed the room) and a new, separate
+    **Organization** column (`flex: '1 1 calc(32% - 12px)'`, `minWidth: 260` — just the Category
+    `Select`, pulled out of the old single "Basic Info" `Paper`). Same `calc()`-gap-compensation
+    flex technique `ProductDetailPage.tsx`'s own two-column gallery+info split already established
+    (see that page's own note and `gui/CLAUDE.md`'s general note on why bare percentages plus a
+    `gap` always over-wrap) — the two subtractions (`12px`/`12px`) sum to exactly the `gap: 3`
+    (24px) between the columns. Variants and the Image Gallery/placeholder stay full-width **below**
+    both columns, not squeezed into either one — matches the approved layout exactly, since neither
+    component is a simple field that fits a sidebar-width column. **This needed a matching change to
+    the shared shell, not just this page** — see `AdminLayout.tsx`'s new collapsible sidebar note
+    below; the two changes were requested and built together, since a wider form and a narrower
+    sidebar are the same underlying "give the form more room" goal.
   - **`components/ProductDescriptionEditor.tsx` — new, replacing the plain multiline `TextField`
     both create/edit modes used for `description`, per request (Phase 2 of the accepted
     sanitized-HTML plan — see `ecommerce-service/CLAUDE.md`'s `ProductDescriptionSanitizer` note
@@ -602,6 +643,16 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       via a clean `tsc --noEmit` and a successful `vite build` only, same caveat as everything else
       in this feature — no Docker in this sandbox, so the actual paste/drop interaction hasn't been
       exercised in a real browser.
+    - **Further follow-up: the content area's `maxHeight: 400`/`overflowY: 'auto'` was removed
+      entirely, per request** — a capped, internally-scrolling editor hid part of whatever the
+      admin had written, with no visual cue that more content existed below the fold. Considered
+      alongside an alternative (reordering Variants/Images above the description) and rejected
+      that alternative explicitly: reordering doesn't touch the editor's own fixed-height scrollbox
+      at all, so it wouldn't have fixed the actual complaint on its own. The editor now grows to
+      fit its content and lets the page itself scroll — one scrollbar, not a scrollbar nested
+      inside a scrollbar — which is also the standard pattern real WYSIWYG editors use in a form
+      (Shopify's product description, Notion, Google Docs), not just a stopgap. `minHeight: 160`
+      is unchanged, still guarantees a reasonable empty-state click target.
   - `components/ProductVariantEditor.tsx` + `ProductVariantDialog.tsx` — the add-variant dialog's
     attribute key/value editor locks its key set to whatever the product's first variant already
     uses once one exists, enforcing US-1.6's "every variant shares the same attribute keys" rule
