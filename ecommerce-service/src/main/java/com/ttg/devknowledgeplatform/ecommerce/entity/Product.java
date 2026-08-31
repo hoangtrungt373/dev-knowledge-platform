@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.ecommerce.entity;
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
 
 import jakarta.persistence.AttributeOverride;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -33,6 +34,10 @@ import java.util.List;
  * or image still goes through its own repository directly (e.g.
  * {@code ProductVariantRepository.save}), not by mutating these collections and saving the
  * product.
+ *
+ * <p>{@link #productTagAssignments}, by contrast, *is* cascade-owned here (see the field's own
+ * Javadoc) — mirrors {@code content-service}'s {@code ContentItem.contentItemTags} ownership of
+ * its own many-to-many join rows.
  */
 @Entity
 @Table(name = "PRODUCT", schema = "ecommerce")
@@ -40,8 +45,8 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(callSuper = true, exclude = {"productCategory", "variants", "images"})
-@ToString(exclude = {"productCategory", "variants", "images"})
+@EqualsAndHashCode(callSuper = true, exclude = {"productCategory", "variants", "images", "productTagAssignments"})
+@ToString(exclude = {"productCategory", "variants", "images", "productTagAssignments"})
 public class Product extends AbstractEntity {
 
     @Column(name = "NAME", length = 150, nullable = false)
@@ -65,4 +70,13 @@ public class Product extends AbstractEntity {
 
     @OneToMany(mappedBy = "product", fetch = FetchType.LAZY)
     private List<ProductImage> images = new ArrayList<>();
+
+    /**
+     * The product's tag assignments — cascade-owned here (unlike {@link #variants}/{@link #images}
+     * above): {@code ProductServiceImpl.applyTagIds} clears and rebuilds this collection directly
+     * rather than going through {@code ProductTagAssignmentRepository} on its own, the same way
+     * {@code content-service}'s {@code ContentItem.contentItemTags} is managed.
+     */
+    @OneToMany(mappedBy = "product", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ProductTagAssignment> productTagAssignments = new ArrayList<>();
 }

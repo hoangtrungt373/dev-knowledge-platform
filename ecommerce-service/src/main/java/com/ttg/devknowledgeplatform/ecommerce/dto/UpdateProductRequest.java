@@ -6,6 +6,8 @@ import jakarta.validation.constraints.Size;
 
 import lombok.Data;
 
+import java.util.Set;
+
 /** Request payload to update a {@code Product}'s basic fields (not its variants/images). */
 @Data
 public class UpdateProductRequest {
@@ -20,4 +22,7 @@ public class UpdateProductRequest {
 
     @NotNull(message = "Product category is required")
     private Integer productCategoryId;
+
+    /** {@code null} leaves tags unchanged; empty clears them; otherwise replaces them. */
+    private Set<Integer> tagIds;
 }

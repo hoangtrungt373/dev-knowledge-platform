@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   IconButton,
   InputAdornment,
+  ListItemText,
   MenuItem,
   Paper,
   Select,
@@ -26,7 +28,7 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import BlockIcon from '@mui/icons-material/Block';
 import SearchIcon from '@mui/icons-material/Search';
-import { Product, ProductCategory } from '../types';
+import { Product, ProductCategory, ProductTag } from '../types';
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
@@ -45,6 +47,7 @@ export default function ProductListPage(): JSX.Element {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [tags, setTags] = useState<ProductTag[]>([]);
 
   // Pagination + filters
   const [page, setPage] = useState(0);
@@ -53,6 +56,7 @@ export default function ProductListPage(): JSX.Element {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<number | ''>('');
   const [activeFilter, setActiveFilter] = useState<'true' | 'false' | ''>('');
+  const [tagFilter, setTagFilter] = useState<number[]>([]);
 
   // Deactivate dialog
   const [deactivateTarget, setDeactivateTarget] = useState<Product | null>(null);
@@ -60,6 +64,8 @@ export default function ProductListPage(): JSX.Element {
 
   useEffect(() => {
     ecommerceApi.listProductCategories(undefined, showError).then(setCategories);
+    ecommerceApi.listProductTags({ size: 1000, sortBy: 'name', sortDir: 'asc' }, showError)
+      .then(page => setTags(page.content));
   }, [showError]);
 
   useEffect(() => {
@@ -79,13 +85,14 @@ export default function ProductListPage(): JSX.Element {
         q: search || undefined,
         productCategoryId: categoryFilter === '' ? undefined : categoryFilter,
         active: activeFilter === '' ? undefined : activeFilter === 'true',
+        tagIds: tagFilter.length === 0 ? undefined : tagFilter,
       }, showError);
       setProducts(data.content);
       setTotal(data.totalElements);
     } finally {
       if (showSpinner) setLoading(false);
     }
-  }, [page, pageSize, search, categoryFilter, activeFilter, showError]);
+  }, [page, pageSize, search, categoryFilter, activeFilter, tagFilter, showError]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
@@ -156,6 +163,30 @@ export default function ProductListPage(): JSX.Element {
           <MenuItem value="true">Active</MenuItem>
           <MenuItem value="false">Inactive</MenuItem>
         </Select>
+        <Select
+          multiple
+          value={tagFilter}
+          onChange={e => {
+            const value = e.target.value;
+            setTagFilter(typeof value === 'string' ? [] : value as number[]);
+            setPage(0);
+          }}
+          displayEmpty
+          size="small"
+          sx={{ minWidth: 180 }}
+          renderValue={selected =>
+            selected.length === 0
+              ? 'All tags'
+              : tags.filter(t => selected.includes(t.id)).map(t => t.name).join(', ')
+          }
+        >
+          {tags.map(tag => (
+            <MenuItem key={tag.id} value={tag.id}>
+              <Checkbox size="small" checked={tagFilter.includes(tag.id)} sx={{ p: 0.5, mr: 1 }} />
+              <ListItemText primary={tag.name} />
+            </MenuItem>
+          ))}
+        </Select>
       </Stack>
 
       {/* Table */}
@@ -183,7 +214,7 @@ export default function ProductListPage(): JSX.Element {
               <TableRow>
                 <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
                   <Typography variant="body2" color="text.secondary">
-                    {search || categoryFilter || activeFilter
+                    {search || categoryFilter || activeFilter || tagFilter.length > 0
                       ? 'No products match your filters.'
                       : 'No products yet. Create the first one.'}
                   </Typography>

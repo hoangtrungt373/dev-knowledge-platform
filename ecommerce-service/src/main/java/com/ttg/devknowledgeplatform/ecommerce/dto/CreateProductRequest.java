@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Set;
 
 /** Request payload to create a {@code Product} together with its variants and image gallery. */
 @Data
@@ -31,4 +32,7 @@ public class CreateProductRequest {
 
     @Valid
     private List<ProductImageRequest> images;
+
+    /** Omitted/{@code null} means no tags. */
+    private Set<Integer> tagIds;
 }

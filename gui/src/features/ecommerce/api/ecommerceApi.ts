@@ -2,6 +2,7 @@ import { httpClient } from '@shared/api/httpClient';
 import { PagedResponse } from '@shared/types';
 import {
   ProductCategory, ProductCategoryTreeNode, CreateProductCategoryPayload, UpdateProductCategoryPayload,
+  ProductTag, CreateProductTagPayload, UpdateProductTagPayload,
   Product, CreateProductPayload, UpdateProductPayload,
   ProductVariant, ProductVariantInput, ProductImage,
 } from '../types';
@@ -24,6 +25,15 @@ export interface ProductListParams {
   sortDir?: string;
   productCategoryId?: number;
   active?: boolean;
+  q?: string;
+  tagIds?: number[];
+}
+
+export interface ProductTagListParams {
+  page?: number;
+  size?: number;
+  sortBy?: string;
+  sortDir?: string;
   q?: string;
 }
 
@@ -51,13 +61,45 @@ export const ecommerceApi = {
     return httpClient.put(`/api/v1/admin/product-categories/${id}`, payload, showError);
   },
 
+  // ── Product Tags ─────────────────────────────────────────────────────────────
+  // No status field/filter — see ProductTag's own Javadoc-equivalent note in types.ts.
+
+  listProductTags(
+    params: ProductTagListParams, showError?: ShowError,
+  ): Promise<PagedResponse<ProductTag>> {
+    return httpClient.get(
+      `/api/v1/admin/product-tags${buildQuery(params as Record<string, string | number | boolean | undefined>)}`,
+      showError,
+    );
+  },
+
+  createProductTag(payload: CreateProductTagPayload, showError?: ShowError): Promise<ProductTag> {
+    return httpClient.post('/api/v1/admin/product-tags', payload, showError);
+  },
+
+  updateProductTag(
+    id: number, payload: UpdateProductTagPayload, showError?: ShowError,
+  ): Promise<ProductTag> {
+    return httpClient.put(`/api/v1/admin/product-tags/${id}`, payload, showError);
+  },
+
+  deleteProductTag(id: number, showError?: ShowError): Promise<void> {
+    return httpClient.delete(`/api/v1/admin/product-tags/${id}`, showError);
+  },
+
   // ── Products ─────────────────────────────────────────────────────────────────
 
   listProducts(params: ProductListParams, showError?: ShowError): Promise<PagedResponse<Product>> {
-    return httpClient.get(
-      `/api/v1/admin/products${buildQuery(params as Record<string, string | number | boolean | undefined>)}`,
-      showError,
-    );
+    // tagIds is a repeated query param (?tagIds=1&tagIds=2), matching ProductApi's
+    // @RequestParam Set<Integer> tagIds binding — buildQuery only handles scalar values, so it's
+    // built separately here and appended rather than folded into the scalar param set.
+    const { tagIds, ...scalarParams } = params;
+    const base = buildQuery(scalarParams as Record<string, string | number | boolean | undefined>);
+    const tagQuery = (tagIds ?? []).map(t => `tagIds=${t}`).join('&');
+    const query = tagQuery
+      ? `${base}${base ? '&' : '?'}${tagQuery}`
+      : base;
+    return httpClient.get(`/api/v1/admin/products${query}`, showError);
   },
 
   getProduct(id: number, showError?: ShowError): Promise<Product> {

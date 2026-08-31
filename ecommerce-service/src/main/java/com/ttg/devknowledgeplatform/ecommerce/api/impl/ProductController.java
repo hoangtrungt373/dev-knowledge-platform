@@ -47,7 +47,7 @@ public class ProductController implements ProductApi {
     public ResponseEntity<ProductResponse> create(CreateProductRequest request) {
         ProductCommands.Create command = new ProductCommands.Create(
                 request.getName(), request.getDescription(), request.getProductCategoryId(),
-                toVariantInputs(request.getVariants()), toImageInputs(request.getImages()));
+                toVariantInputs(request.getVariants()), toImageInputs(request.getImages()), request.getTagIds());
         Product created = productService.create(command);
         return ResponseEntity.status(HttpStatus.CREATED).body(productMapper.toResponse(created));
     }
@@ -55,7 +55,7 @@ public class ProductController implements ProductApi {
     @Override
     public ResponseEntity<ProductResponse> update(Integer id, UpdateProductRequest request) {
         ProductCommands.Update command = new ProductCommands.Update(
-                request.getName(), request.getDescription(), request.getProductCategoryId());
+                request.getName(), request.getDescription(), request.getProductCategoryId(), request.getTagIds());
         Product updated = productService.update(id, command);
         return ResponseEntity.ok(productMapper.toResponse(updated));
     }
@@ -113,9 +113,9 @@ public class ProductController implements ProductApi {
     @Override
     public ResponseEntity<PagedResponse<ProductResponse>> list(
             int page, int size, String sortBy, String sortDir,
-            Integer productCategoryId, Boolean active, String q) {
+            Integer productCategoryId, Boolean active, String q, Set<Integer> tagIds) {
         Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
-        Page<ProductResponse> responses = productService.list(pageable, productCategoryId, active, q)
+        Page<ProductResponse> responses = productService.list(pageable, productCategoryId, active, q, tagIds)
                 .map(productMapper::toResponse);
         return ResponseEntity.ok(PagedResponse.from(responses));
     }

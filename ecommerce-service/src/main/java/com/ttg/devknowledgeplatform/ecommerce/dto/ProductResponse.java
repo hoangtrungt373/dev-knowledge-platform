@@ -7,6 +7,7 @@ import lombok.Data;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 
 /** REST response shape for {@code Product}, including its variants and image gallery. */
 @Data
@@ -23,6 +24,8 @@ public class ProductResponse {
     private String categoryName;
     private List<ProductVariantResponse> variants;
     private List<ProductImageResponse> images;
+    /** Ids only, not names/full objects — matches {@code content-service}'s own {@code QuestionAnswerResponse.tagIds}. */
+    private Set<Integer> tagIds;
     private Instant createdAt;
     private Instant updatedAt;
 }

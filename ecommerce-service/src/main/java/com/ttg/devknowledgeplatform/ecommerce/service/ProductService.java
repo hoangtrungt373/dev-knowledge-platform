@@ -8,6 +8,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Set;
+
 /**
  * Manages the lifecycle of {@link Product}s and their variants/images.
  *
@@ -157,7 +159,8 @@ public interface ProductService {
      * @param productCategoryId optional category filter
      * @param active            optional active-flag filter
      * @param q                 optional case-insensitive name/slug substring filter
+     * @param tagIds            optional tag filter — matches a product tagged with *any* of the given ids
      * @return a page of matching products
      */
-    Page<Product> list(Pageable pageable, Integer productCategoryId, Boolean active, String q);
+    Page<Product> list(Pageable pageable, Integer productCategoryId, Boolean active, String q, Set<Integer> tagIds);
 }

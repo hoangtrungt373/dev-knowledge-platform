@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Seeds {@link Product}s (with their variants) from {@code data/csv/products.csv} +
@@ -99,7 +100,8 @@ public class ProductSeeder implements Seeder {
                     description == null || description.isBlank() ? null : description,
                     category.getId(),
                     variants,
-                    List.of());
+                    List.of(),
+                    Set.of());
             Product created = productService.create(command);
 
             if (isExplicitlyInactive(record)) {

@@ -21,6 +21,7 @@ import QueryStatsIcon from '@mui/icons-material/QueryStats';
 import DataArrayIcon from '@mui/icons-material/DataArray';
 import CategoryIcon from '@mui/icons-material/Category';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
+import SellIcon from '@mui/icons-material/Sell';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import HomeIcon from '@mui/icons-material/Home';
 import LogoutIcon from '@mui/icons-material/Logout';
@@ -44,6 +45,7 @@ const NAV_ITEMS = [
   { label: 'Embeddings',            icon: <DataArrayIcon fontSize="small" />,  path: '/admin/embeddings' },
   { label: 'Product Categories',    icon: <CategoryIcon fontSize="small" />,   path: '/admin/product-categories' },
   { label: 'Products',              icon: <Inventory2Icon fontSize="small" />, path: '/admin/products' },
+  { label: 'Product Tags',          icon: <SellIcon fontSize="small" />,       path: '/admin/product-tags' },
   { label: 'Order Fulfillment',     icon: <LocalShippingIcon fontSize="small" />, path: '/admin/orders' },
 ];
 

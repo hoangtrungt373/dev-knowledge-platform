@@ -747,6 +747,59 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     first sidesteps that. `ProductImage.url` (a time-limited presigned URL, resolved server-side by
     `ProductMapper` — see `ecommerce-service/CLAUDE.md`) is what actually renders as each
     thumbnail; never construct a MinIO URL client-side from `storageKey`.
+  - **Product Tags (post-Epic-1 follow-up) — admin-only GUI for `ecommerce-service`'s new
+    `ProductTag`/`ProductTagAssignment` many-to-many (see `ecommerce-service/CLAUDE.md`'s own
+    Product Tags note for the backend side and the 3 scope decisions this Phase 2 GUI pass
+    inherited: no status field, ids-only on `Product.tagIds`, no storefront/`ShopPage` filtering
+    yet).**
+    - `types.ts` gained `ProductTag`/`CreateProductTagPayload`/`UpdateProductTagPayload` (mirrors
+      `ProductCategory`'s own shape, minus `parentId` — `ProductTag` is flat, no hierarchy);
+      `Product` gained `tagIds: number[]` (ids only, matching `content-service`'s own convention);
+      `CreateProductPayload`/`UpdateProductPayload` both gained an optional `tagIds?: number[]` —
+      `UpdateProductPayload`'s own doc comment notes the backend's three-state
+      omit/empty-array/non-empty-array semantics, even though `ProductFormPage`'s own submit
+      handler (below) never actually omits it — the form always knows the product's full current
+      tag set, so it always sends the complete replacement set, never relies on "leave unchanged."
+    - `api/ecommerceApi.ts` gained `listProductTags`/`createProductTag`/`updateProductTag`/
+      `deleteProductTag` (paginated CRUD, mirroring `contentApi`'s own `listTags`/etc. shape) and a
+      new `ProductTagListParams` interface. **`ProductListParams` gained `tagIds?: number[]`, and
+      `listProducts` needed a genuinely different query-building path for it** — the existing
+      `buildQuery` helper only stringifies scalar values (`string | number | boolean`), but
+      `ProductApi.list`'s own `@RequestParam(required = false) Set<Integer> tagIds` binds from a
+      **repeated** query param (`?tagIds=1&tagIds=2`), not a single comma-joined one — `listProducts`
+      destructures `tagIds` out of the scalar params, builds `buildQuery` on what's left, then
+      appends `tagIds=N` pairs by hand and joins the two query strings with the right separator
+      (`&` if `buildQuery` already produced a `?...`, `?` if `tagIds` is the only filter set).
+    - New `pages/ProductTagListPage.tsx` + `components/ProductTagFormDialog.tsx` — mirror
+      `@content`'s `TagListPage.tsx`/`TagFormDialog.tsx` almost verbatim, **minus the Status
+      filter/column and the Status `Select`** in both, since `ProductTag` has no status field at
+      all (per the confirmed scope). Wired into `AdminLayout.tsx`'s `NAV_ITEMS` (`SellIcon`,
+      `/admin/product-tags`, placed right after "Products") and `App.tsx`'s admin route tree
+      (`product-tags` under `/admin`).
+    - **`ProductFormPage.tsx`'s Organization sidebar column gained a Tags `Paper` below Category**
+      — the exact Chip-toggle-cloud pattern `@content`'s `QuestionAnswerFormPage.tsx` already
+      established (`allTags`/`selectedTagIds: Set<number>`/`toggleTag`, one outlined/filled `Chip`
+      per tag, click to toggle). `allTags` is fetched once alongside the category tree
+      (`ecommerceApi.listProductTags({ size: 1000, ... })`, same "just fetch everything, no
+      pagination for a picker" convention `QuestionAnswerFormPage` uses for its own tag list);
+      `selectedTagIds` seeds from `product.tagIds` in `loadProduct` (edit mode) and starts empty in
+      create mode. `handleSubmit` sends `tagIds: [...selectedTagIds]` on both the create and update
+      payload — always the full current set, never omitted, so the three-state "omit to leave
+      unchanged" case documented on `UpdateProductPayload` is simply never exercised from this form
+      (there's no scenario in this UI where the admin edits a product without the tag picker having
+      already loaded its current tags).
+    - **`ProductListPage.tsx`'s filter bar gained a multi-select tag filter** — a plain MUI `Select`
+      with `multiple` + `Checkbox`+`ListItemText` per `MenuItem` (not a `Chip`-cloud like the form's
+      own picker, since this needed to sit inline in a `Select`-based filter row alongside the
+      existing Category/Status selects, not a standalone card) and a custom `renderValue` ("All
+      tags" when empty, else the selected tags' names joined by comma). Selecting any tag filters to
+      products matching **any** of the selected tags (`ProductSpecification.withFilters`'s own
+      `IN`-based join semantics, not an AND-across-tags match — see
+      `ecommerce-service/CLAUDE.md`'s own note on this).
+    - **Verified via a clean `tsc --noEmit` and a successful `vite build` only** — same caveat as
+      every other GUI change in this session: no Docker in this sandbox, so the actual admin
+      tag-CRUD flow, the `ProductFormPage` picker, and the list-page filter haven't been exercised
+      in a real browser.
   - **`pages/shop/` — the public storefront (US-1.1–1.4), the app's first genuinely public feature
     besides `/login`/`/signup`.** Every other feature in this app sits behind `PrivateRoute`;
     `/shop`/`/shop/:slug` are plain, ungated routes in `App.tsx`, matching

@@ -31,6 +31,27 @@ export interface UpdateProductCategoryPayload {
   parentId: number | null;
 }
 
+// ── Product Tags ─────────────────────────────────────────────────────────────
+// Fronts ecommerce-service's own ProductTag — deliberately distinct from content-service's Tag
+// (unrelated domain) and simpler than it: no status lifecycle, admin-only for now (no storefront
+// filtering yet — see ecommerce-service/CLAUDE.md's Product Tags note).
+
+export interface ProductTag {
+  id: number;
+  name: string;
+  slug: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProductTagPayload {
+  name: string;
+}
+
+export interface UpdateProductTagPayload {
+  name: string;
+}
+
 // ── Products ─────────────────────────────────────────────────────────────────
 
 export interface ProductVariant {
@@ -60,6 +81,8 @@ export interface Product {
   categoryName: string;
   variants: ProductVariant[];
   images: ProductImage[];
+  /** Ids only, matching content-service's own tagIds convention — no name/slug denormalized here. */
+  tagIds: number[];
   createdAt: string;
   updatedAt: string;
 }
@@ -77,12 +100,16 @@ export interface CreateProductPayload {
   description?: string;
   productCategoryId: number;
   variants: ProductVariantInput[];
+  tagIds?: number[];
 }
 
+/** tagIds: omit to leave unchanged, [] to clear, non-empty to replace — mirrors the backend's
+ * three-state ProductCommands.Update.tagIds semantics (see ecommerce-service/CLAUDE.md). */
 export interface UpdateProductPayload {
   name: string;
   description?: string;
   productCategoryId: number;
+  tagIds?: number[];
 }
 
 // ── Storefront (public browse/search) ───────────────────────────────────────

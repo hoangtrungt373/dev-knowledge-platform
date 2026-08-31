@@ -6,12 +6,15 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.OutboxEvent;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategory;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductImage;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductTag;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductTagAssignment;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductVariant;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OutboxEventRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductCategoryRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductImageRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductRepository;
+import com.ttg.devknowledgeplatform.ecommerce.repository.ProductTagRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductVariantRepository;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductCommands;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductDescriptionSanitizer;
@@ -33,6 +36,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -61,6 +65,8 @@ class ProductServiceImplTest {
     private ProductImageRepository productImageRepository;
     @Mock
     private ProductCategoryRepository productCategoryRepository;
+    @Mock
+    private ProductTagRepository productTagRepository;
     @Mock
     private OutboxEventRepository outboxEventRepository;
     @Mock
@@ -125,7 +131,7 @@ class ProductServiceImplTest {
             ProductCommands.ImageInput imageInput = new ProductCommands.ImageInput("products/1/0.jpg", 0);
             ProductCommands.Create command = new ProductCommands.Create(
                     "404 Not Found T-Shirt", "A tee for empty search results", 10,
-                    List.of(variantInput), List.of(imageInput));
+                    List.of(variantInput), List.of(imageInput), Set.of());
 
             when(productVariantRepository.existsBySku("TEE-S-BLK")).thenReturn(false);
             when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
@@ -161,7 +167,7 @@ class ProductServiceImplTest {
         void sanitizesDescriptionHtmlBeforePersisting() {
             ProductCommands.VariantInput variantInput = new ProductCommands.VariantInput("SKU-1", BigDecimal.TEN, 5, Map.of());
             ProductCommands.Create command = new ProductCommands.Create(
-                    "Tee", "<p>Nice</p><script>alert('xss')</script>", 10, List.of(variantInput), List.of());
+                    "Tee", "<p>Nice</p><script>alert('xss')</script>", 10, List.of(variantInput), List.of(), Set.of());
 
             when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
             when(slugService.generateUniqueSlug(anyString(), any(), any())).thenReturn("tee");
@@ -181,7 +187,7 @@ class ProductServiceImplTest {
         @Test
         void rejectsCreateWithNoVariants() {
             ProductCommands.Create command = new ProductCommands.Create(
-                    "No Variants", null, 10, List.of(), List.of());
+                    "No Variants", null, 10, List.of(), List.of(), Set.of());
 
             assertThatThrownBy(() -> service.create(command))
                     .isInstanceOf(ApiException.class)
@@ -195,7 +201,7 @@ class ProductServiceImplTest {
         void rejectsDuplicateSkuWithinTheSameRequest() {
             ProductCommands.VariantInput v1 = new ProductCommands.VariantInput("SKU-1", BigDecimal.TEN, 5, Map.of());
             ProductCommands.VariantInput v2 = new ProductCommands.VariantInput("SKU-1", BigDecimal.ONE, 5, Map.of());
-            ProductCommands.Create command = new ProductCommands.Create("Dup SKU", null, 10, List.of(v1, v2), List.of());
+            ProductCommands.Create command = new ProductCommands.Create("Dup SKU", null, 10, List.of(v1, v2), List.of(), Set.of());
 
             assertThatThrownBy(() -> service.create(command))
                     .isInstanceOf(ApiException.class)
@@ -206,7 +212,7 @@ class ProductServiceImplTest {
         @Test
         void rejectsSkuThatAlreadyExists() {
             ProductCommands.VariantInput variantInput = new ProductCommands.VariantInput("SKU-1", BigDecimal.TEN, 5, Map.of());
-            ProductCommands.Create command = new ProductCommands.Create("Existing SKU", null, 10, List.of(variantInput), List.of());
+            ProductCommands.Create command = new ProductCommands.Create("Existing SKU", null, 10, List.of(variantInput), List.of(), Set.of());
             when(productVariantRepository.existsBySku("SKU-1")).thenReturn(true);
 
             assertThatThrownBy(() -> service.create(command))
@@ -219,7 +225,7 @@ class ProductServiceImplTest {
         void rejectsInconsistentAttributeKeysAcrossVariants() {
             ProductCommands.VariantInput v1 = new ProductCommands.VariantInput("SKU-1", BigDecimal.TEN, 5, Map.of("size", "S"));
             ProductCommands.VariantInput v2 = new ProductCommands.VariantInput("SKU-2", BigDecimal.TEN, 5, Map.of("color", "Black"));
-            ProductCommands.Create command = new ProductCommands.Create("Mismatched", null, 10, List.of(v1, v2), List.of());
+            ProductCommands.Create command = new ProductCommands.Create("Mismatched", null, 10, List.of(v1, v2), List.of(), Set.of());
 
             assertThatThrownBy(() -> service.create(command))
                     .isInstanceOf(ApiException.class)
@@ -233,7 +239,7 @@ class ProductServiceImplTest {
             ProductCommands.ImageInput i1 = new ProductCommands.ImageInput("a.jpg", 0);
             ProductCommands.ImageInput i2 = new ProductCommands.ImageInput("b.jpg", 0);
             ProductCommands.Create command = new ProductCommands.Create(
-                    "Dup Sort", null, 10, List.of(variantInput), List.of(i1, i2));
+                    "Dup Sort", null, 10, List.of(variantInput), List.of(i1, i2), Set.of());
             when(productVariantRepository.existsBySku("SKU-1")).thenReturn(false);
 
             assertThatThrownBy(() -> service.create(command))
@@ -245,12 +251,61 @@ class ProductServiceImplTest {
         @Test
         void rejectsUnknownCategory() {
             ProductCommands.VariantInput variantInput = new ProductCommands.VariantInput("SKU-1", BigDecimal.TEN, 5, Map.of());
-            ProductCommands.Create command = new ProductCommands.Create("Orphan", null, 99, List.of(variantInput), List.of());
+            ProductCommands.Create command = new ProductCommands.Create("Orphan", null, 99, List.of(variantInput), List.of(), Set.of());
             when(productVariantRepository.existsBySku("SKU-1")).thenReturn(false);
             when(productCategoryRepository.findById(99)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.create(command))
                     .isInstanceOf(ResourceNotFoundException.class);
+        }
+
+        @Test
+        void createsProductWithTagAssignments() {
+            ProductCommands.VariantInput variantInput = new ProductCommands.VariantInput("SKU-1", BigDecimal.TEN, 5, Map.of());
+            ProductCommands.Create command = new ProductCommands.Create(
+                    "Tee", null, 10, List.of(variantInput), List.of(), Set.of(5, 6));
+
+            ProductTag tag5 = new ProductTag();
+            tag5.setId(5);
+            tag5.setName("New Arrival");
+            ProductTag tag6 = new ProductTag();
+            tag6.setId(6);
+            tag6.setName("Best Seller");
+
+            when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
+            when(slugService.generateUniqueSlug(anyString(), any(), any())).thenReturn("tee");
+            when(productTagRepository.findAllById(Set.of(5, 6))).thenReturn(List.of(tag5, tag6));
+            when(productTagRepository.getReferenceById(5)).thenReturn(tag5);
+            when(productTagRepository.getReferenceById(6)).thenReturn(tag6);
+            when(productRepository.save(any(Product.class))).thenAnswer(invocation -> {
+                Product product = invocation.getArgument(0);
+                product.setId(1);
+                return product;
+            });
+            when(productVariantRepository.save(any(ProductVariant.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            Product result = service.create(command);
+
+            assertThat(result.getProductTagAssignments()).hasSize(2);
+            assertThat(result.getProductTagAssignments().stream().map(a -> a.getProductTag().getId()))
+                    .containsExactlyInAnyOrder(5, 6);
+        }
+
+        @Test
+        void rejectsUnknownTagId() {
+            ProductCommands.VariantInput variantInput = new ProductCommands.VariantInput("SKU-1", BigDecimal.TEN, 5, Map.of());
+            ProductCommands.Create command = new ProductCommands.Create(
+                    "Tee", null, 10, List.of(variantInput), List.of(), Set.of(5, 99));
+
+            when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
+            when(slugService.generateUniqueSlug(anyString(), any(), any())).thenReturn("tee");
+            when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+            when(productTagRepository.findAllById(Set.of(5, 99))).thenReturn(List.of(new ProductTag())); // only 1 of 2 found
+
+            assertThatThrownBy(() -> service.create(command))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PRODUCT_TAG_NOT_FOUND);
         }
     }
 
@@ -264,7 +319,7 @@ class ProductServiceImplTest {
             when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
             when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            ProductCommands.Update command = new ProductCommands.Update("404 Not Found T-Shirt", "New description", 10);
+            ProductCommands.Update command = new ProductCommands.Update("404 Not Found T-Shirt", "New description", 10, null);
             Product result = service.update(1, command);
 
             assertThat(result.getDescription()).isEqualTo("New description");
@@ -281,7 +336,7 @@ class ProductServiceImplTest {
             when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
             ProductCommands.Update command = new ProductCommands.Update(
-                    "404 Not Found T-Shirt", "<p onclick=\"alert('xss')\">Updated</p>", 10);
+                    "404 Not Found T-Shirt", "<p onclick=\"alert('xss')\">Updated</p>", 10, null);
             Product result = service.update(1, command);
 
             assertThat(result.getDescription()).isEqualTo("<p>Updated</p>");
@@ -297,7 +352,7 @@ class ProductServiceImplTest {
                     .thenReturn("renamed-tee");
             when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            ProductCommands.Update command = new ProductCommands.Update("Renamed Tee", null, 10);
+            ProductCommands.Update command = new ProductCommands.Update("Renamed Tee", null, 10, null);
             Product result = service.update(1, command);
 
             assertThat(result.getSlug()).isEqualTo("renamed-tee");
@@ -307,8 +362,56 @@ class ProductServiceImplTest {
         void throwsWhenProductDoesNotExist() {
             when(productRepository.findById(99)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.update(99, new ProductCommands.Update("X", null, 10)))
+            assertThatThrownBy(() -> service.update(99, new ProductCommands.Update("X", null, 10, null)))
                     .isInstanceOf(ResourceNotFoundException.class);
+        }
+
+        @Test
+        void replacesTagAssignmentsWhenTagIdsProvided() {
+            Product existing = productWithId(1);
+            ProductTag oldTag = new ProductTag();
+            oldTag.setId(1);
+            ProductTagAssignment oldAssignment = new ProductTagAssignment();
+            oldAssignment.setProduct(existing);
+            oldAssignment.setProductTag(oldTag);
+            existing.getProductTagAssignments().add(oldAssignment);
+
+            ProductTag newTag = new ProductTag();
+            newTag.setId(7);
+            newTag.setName("Clearance");
+
+            when(productRepository.findById(1)).thenReturn(Optional.of(existing));
+            when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
+            when(productTagRepository.findAllById(Set.of(7))).thenReturn(List.of(newTag));
+            when(productTagRepository.getReferenceById(7)).thenReturn(newTag);
+            when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            ProductCommands.Update command = new ProductCommands.Update("404 Not Found T-Shirt", null, 10, Set.of(7));
+            Product result = service.update(1, command);
+
+            assertThat(result.getProductTagAssignments()).hasSize(1);
+            assertThat(result.getProductTagAssignments().get(0).getProductTag().getId()).isEqualTo(7);
+        }
+
+        @Test
+        void leavesTagAssignmentsUnchangedWhenTagIdsIsNull() {
+            Product existing = productWithId(1);
+            ProductTag existingTag = new ProductTag();
+            existingTag.setId(1);
+            ProductTagAssignment assignment = new ProductTagAssignment();
+            assignment.setProduct(existing);
+            assignment.setProductTag(existingTag);
+            existing.getProductTagAssignments().add(assignment);
+
+            when(productRepository.findById(1)).thenReturn(Optional.of(existing));
+            when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
+            when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            ProductCommands.Update command = new ProductCommands.Update("404 Not Found T-Shirt", null, 10, null);
+            Product result = service.update(1, command);
+
+            assertThat(result.getProductTagAssignments()).containsExactly(assignment);
+            verify(productTagRepository, never()).findAllById(any());
         }
     }
 

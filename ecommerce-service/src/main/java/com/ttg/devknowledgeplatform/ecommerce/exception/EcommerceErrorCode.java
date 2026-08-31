@@ -38,6 +38,12 @@ public enum EcommerceErrorCode implements ErrorCode {
     PRODUCT_VARIANT_BELONGS_TO_ANOTHER_PRODUCT("PRODUCT_VARIANT_004",
             "Variant {0} does not belong to product {1}", HttpStatus.BAD_REQUEST),
 
+    // Product Tag Errors (PRODUCT_TAG_*)
+    PRODUCT_TAG_NOT_FOUND("PRODUCT_TAG_001", "Product tag not found: {0}", HttpStatus.NOT_FOUND),
+    PRODUCT_TAG_NAME_CONFLICT("PRODUCT_TAG_002", "A product tag with name ''{0}'' already exists", HttpStatus.CONFLICT),
+    PRODUCT_TAG_SLUG_CONFLICT("PRODUCT_TAG_003", "Unable to generate a unique slug for product tag ''{0}''", HttpStatus.CONFLICT),
+    PRODUCT_TAG_IN_USE("PRODUCT_TAG_004", "Product tag {0} is assigned to one or more products and cannot be deleted", HttpStatus.CONFLICT),
+
     // Product Image Errors (PRODUCT_IMAGE_*)
     PRODUCT_IMAGE_DUPLICATE_SORT_ORDER("PRODUCT_IMAGE_001",
             "Sort order {0} appears more than once in the same request", HttpStatus.BAD_REQUEST),

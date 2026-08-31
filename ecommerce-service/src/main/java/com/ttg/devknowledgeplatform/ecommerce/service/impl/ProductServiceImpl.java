@@ -1,10 +1,13 @@
 package com.ttg.devknowledgeplatform.ecommerce.service.impl;
 
+import com.ttg.devknowledgeplatform.common.exception.CommonErrorCode;
 import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OutboxEvent;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategory;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductImage;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductTag;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductTagAssignment;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductVariant;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OutboxAggregateType;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
@@ -12,6 +15,7 @@ import com.ttg.devknowledgeplatform.ecommerce.repository.OutboxEventRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductCategoryRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductImageRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductRepository;
+import com.ttg.devknowledgeplatform.ecommerce.repository.ProductTagRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductVariantRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.spec.ProductSpecification;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductCommands;
@@ -31,8 +35,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -46,6 +52,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductVariantRepository productVariantRepository;
     private final ProductImageRepository productImageRepository;
     private final ProductCategoryRepository productCategoryRepository;
+    private final ProductTagRepository productTagRepository;
     private final OutboxEventRepository outboxEventRepository;
     private final SlugService slugService;
     private final StorageService storageService;
@@ -76,6 +83,11 @@ public class ProductServiceImpl implements ProductService {
         product.setActive(true);
         product.setProductCategory(category);
         Product saved = productRepository.save(product);
+
+        // Always applied, even when the request omits tagIds entirely (null -> Set.of()) — unlike
+        // update, a brand-new product has no prior tag state to "leave unchanged", so there's no
+        // three-state semantics to preserve here (see applyTagIds' own Javadoc).
+        applyTagIds(saved, command.tagIds() == null ? Set.of() : command.tagIds());
 
         for (ProductCommands.VariantInput variantInput : variants) {
             ProductVariant variant = new ProductVariant();
@@ -119,6 +131,10 @@ public class ProductServiceImpl implements ProductService {
         product.setDescription(productDescriptionSanitizer.sanitize(command.description()));
         product.setProductCategory(findCategoryById(command.productCategoryId()));
 
+        if (command.tagIds() != null) {
+            applyTagIds(product, command.tagIds());
+        }
+
         Product updated = productRepository.save(product);
         publishProductChanged(updated.getId());
         log.info("Updated product id={}", id);
@@ -147,8 +163,8 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    public Page<Product> list(Pageable pageable, Integer productCategoryId, Boolean active, String q) {
-        Specification<Product> spec = ProductSpecification.withFilters(productCategoryId, active, q);
+    public Page<Product> list(Pageable pageable, Integer productCategoryId, Boolean active, String q, Set<Integer> tagIds) {
+        Specification<Product> spec = ProductSpecification.withFilters(productCategoryId, active, q, tagIds);
         return productRepository.findAll(spec, pageable);
     }
 
@@ -338,6 +354,38 @@ public class ProductServiceImpl implements ProductService {
         for (ProductCommands.ImageInput image : images) {
             Validator.isTrue(seen.add(image.sortOrder()),
                     EcommerceErrorCode.PRODUCT_IMAGE_DUPLICATE_SORT_ORDER, image.sortOrder());
+        }
+    }
+
+    /**
+     * Clears and rebuilds {@code product.productTagAssignments} from {@code tagIds} — mirrors
+     * {@code content-service}'s {@code QuestionAnswerServiceImpl.applyTagIds} exactly, minus the
+     * "reject inactive tags" step that class has, since {@link ProductTag} has no status/lifecycle
+     * field at all (a deliberate simplification — see that entity's own Javadoc).
+     *
+     * <p>Called from {@code create} unconditionally (an empty/{@code null} set just means "no
+     * tags") and from {@code update} only when {@code command.tagIds() != null} — see each call
+     * site's own comment for the three-state semantics {@code update} preserves.
+     */
+    private void applyTagIds(Product product, Set<Integer> tagIds) {
+        Validator.isFalse(tagIds.stream().anyMatch(Objects::isNull),
+                CommonErrorCode.VALIDATION_FIELD_INVALID, "tagIds must not contain null");
+        LinkedHashSet<Integer> unique = new LinkedHashSet<>(tagIds);
+        if (unique.isEmpty()) {
+            product.getProductTagAssignments().clear();
+            return;
+        }
+
+        List<ProductTag> existing = productTagRepository.findAllById(unique);
+        Validator.isTrue(existing.size() == unique.size(),
+                EcommerceErrorCode.PRODUCT_TAG_NOT_FOUND, "One or more product tags were not found");
+
+        product.getProductTagAssignments().clear();
+        for (Integer tagId : unique) {
+            ProductTagAssignment assignment = new ProductTagAssignment();
+            assignment.setProduct(product);
+            assignment.setProductTag(productTagRepository.getReferenceById(tagId));
+            product.getProductTagAssignments().add(assignment);
         }
     }
 

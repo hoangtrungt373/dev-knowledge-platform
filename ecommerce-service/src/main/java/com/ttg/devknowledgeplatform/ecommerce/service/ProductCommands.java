@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.ecommerce.service;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Plain input records for {@link ProductService}, mirroring {@code api}'s
@@ -26,10 +27,16 @@ public final class ProductCommands {
             String description,
             Integer productCategoryId,
             List<VariantInput> variants,
-            List<ImageInput> images) {
+            List<ImageInput> images,
+            Set<Integer> tagIds) {
     }
 
-    /** Basic-field update only — variant/image mutation gets its own endpoints in a later slice. */
-    public record Update(String name, String description, Integer productCategoryId) {
+    /**
+     * Basic-field update only — variant/image mutation gets its own endpoints in a later slice.
+     *
+     * <p>{@code tagIds}: {@code null} leaves tags unchanged; empty clears them; otherwise replaces
+     * them — mirrors {@code content-service}'s {@code QuestionAnswerCommands.Update.tagIds}.
+     */
+    public record Update(String name, String description, Integer productCategoryId, Set<Integer> tagIds) {
     }
 }

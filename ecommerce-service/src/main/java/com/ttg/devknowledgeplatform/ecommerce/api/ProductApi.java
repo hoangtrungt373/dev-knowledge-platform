@@ -25,6 +25,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Set;
+
 /**
  * HTTP contract for the admin product management API.
  *
@@ -156,6 +158,7 @@ public interface ProductApi {
      * @param productCategoryId optional category filter
      * @param active            optional active-flag filter
      * @param q                 optional case-insensitive name/slug substring filter
+     * @param tagIds            optional tag filter — matches a product tagged with *any* of the given ids
      * @return {@code 200} with a paged list of products
      */
     @GetMapping
@@ -166,5 +169,6 @@ public interface ProductApi {
             @RequestParam(defaultValue = "desc") String sortDir,
             @RequestParam(required = false) Integer productCategoryId,
             @RequestParam(required = false) Boolean active,
-            @RequestParam(required = false) String q);
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Set<Integer> tagIds);
 }

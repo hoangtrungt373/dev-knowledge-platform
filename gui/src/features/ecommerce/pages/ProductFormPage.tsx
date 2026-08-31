@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   Box,
   Button,
+  Chip,
   CircularProgress,
   FormControl,
   IconButton,
@@ -15,7 +16,7 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { Product, ProductCategoryTreeNode, ProductVariantInput } from '../types';
+import { Product, ProductCategoryTreeNode, ProductTag, ProductVariantInput } from '../types';
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import ProductVariantEditor, { DisplayVariant } from '../components/ProductVariantEditor';
@@ -37,6 +38,11 @@ export default function ProductFormPage(): JSX.Element {
   // "can't be its own descendant's parent" rule) — picking a product's category has no cycle risk.
   const [categoryTree, setCategoryTree] = useState<ProductCategoryTreeNode[]>([]);
   const categoryOptions = flattenCategoryTree(categoryTree);
+
+  // Every product tag, fetched once, for the Chip-toggle-cloud picker below — same
+  // allTags/selectedTagIds/toggleTag shape @content's QuestionAnswerFormPage already established.
+  const [allTags, setAllTags] = useState<ProductTag[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
 
   // Basic fields
   const [name, setName] = useState('');
@@ -80,6 +86,8 @@ export default function ProductFormPage(): JSX.Element {
 
   useEffect(() => {
     ecommerceApi.getProductCategoryTree(showError).then(setCategoryTree);
+    ecommerceApi.listProductTags({ size: 1000, sortBy: 'name', sortDir: 'asc' }, showError)
+      .then(page => setAllTags(page.content));
   }, [showError]);
 
   const loadProduct = useCallback(() => {
@@ -89,8 +97,17 @@ export default function ProductFormPage(): JSX.Element {
       setName(p.name);
       setDescription(p.description ?? '');
       setProductCategoryId(p.productCategoryId);
+      setSelectedTagIds(new Set(p.tagIds));
     });
   }, [id, isEdit, showError]);
+
+  const toggleTag = (tagId: number) => {
+    setSelectedTagIds(prev => {
+      const next = new Set(prev);
+      next.has(tagId) ? next.delete(tagId) : next.add(tagId);
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (isEdit) {
@@ -113,11 +130,13 @@ export default function ProductFormPage(): JSX.Element {
     setSaving(true);
     try {
       const descriptionToSave = hasVisibleHtmlContent(description) ? description : undefined;
+      const tagIds = [...selectedTagIds];
       if (isEdit && id) {
         await ecommerceApi.updateProduct(Number(id), {
           name: name.trim(),
           description: descriptionToSave,
           productCategoryId: productCategoryId as number,
+          tagIds,
         }, showError);
         showSuccess('Product updated');
         await loadProduct();
@@ -129,6 +148,7 @@ export default function ProductFormPage(): JSX.Element {
           variants: draftVariants.map((v): ProductVariantInput => ({
             sku: v.sku, price: v.price, stockQuantity: v.stockQuantity, attributes: v.attributes,
           })),
+          tagIds,
         }, showError);
 
         // Only knowable once the product exists — uploadImage needs a real productId (see
@@ -349,6 +369,33 @@ export default function ProductFormPage(): JSX.Element {
                 ))}
               </Select>
             </FormControl>
+          </Paper>
+
+          {/* Tags — Chip-toggle-cloud, mirroring @content's QuestionAnswerFormPage picker */}
+          <Paper variant="outlined" sx={{ p: 2, mt: 3 }}>
+            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>
+              Tags
+            </Typography>
+            {allTags.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">No tags available</Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                {allTags.map(tag => {
+                  const selected = selectedTagIds.has(tag.id);
+                  return (
+                    <Chip
+                      key={tag.id}
+                      label={tag.name}
+                      size="small"
+                      color={selected ? 'primary' : 'default'}
+                      variant={selected ? 'filled' : 'outlined'}
+                      onClick={() => toggleTag(tag.id)}
+                      clickable
+                    />
+                  );
+                })}
+              </Box>
+            )}
           </Paper>
         </Box>
       </Box>

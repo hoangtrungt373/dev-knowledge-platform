@@ -1443,6 +1443,13 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                              Map<String,String> stored as JSONB (@JdbcTypeCode(SqlTypes.JSON),
 │   │                              same approach as ai-service's ContentEmbedding.metadata); DB CHECK
 │   │                              enforces 0 <= reservedQuantity <= stockQuantity
+│   ├── ProductTag.java         — flat, free-form label (name/slug only, no status — unlike
+│   │                              content-service's own Tag); many-to-many with Product via
+│   │                              ProductTagAssignment (DKP-0038)
+│   ├── ProductTagAssignment.java — explicit join entity (not @ManyToMany/@JoinTable), mirroring
+│   │                              content-service's ContentItemTag — carries its own audit columns;
+│   │                              lifecycle owned by Product.productTagAssignments (cascade ALL,
+│   │                              orphanRemoval), unlike Product's variants/images collections
 │   ├── ProductSearchView.java  — CQRS read model for browse/search/filter; one denormalized row per
 │   │                              Product; SEARCH_VECTOR (tsvector) is DB-generated from SEARCH_TEXT
 │   │                              and deliberately not mapped as a Java field; written only by
@@ -1752,9 +1759,12 @@ columns inline) and `ORDER_LINE`; and (Epic 3 Phase 1)
 new `ORDER_STATUS_HISTORY` table; and (Epic 3 Phase 5)
 `202608300002__0.0.2__DKP-0036__add_customer_order_owner_uuid_index.sql` — adds
 `IDX_CUSTOMER_ORDER_OWNER_UUID`, deferred until the "list my orders" query that actually needs it
-was built; and `202608310001__0.0.2__DKP-0037__add_product_category_parent_id.sql` — adds a
+was built; `202608310001__0.0.2__DKP-0037__add_product_category_parent_id.sql` — adds a
 nullable, self-referential `PARENT_CATEGORY_ID` FK (+ index) to `PRODUCT_CATEGORY`, the
-adjacency-list hierarchy support described above. All five applied via the consolidated
+adjacency-list hierarchy support (see the entity note above); and
+`202609010001__0.0.2__DKP-0038__add_product_tag_tables.sql` — adds `PRODUCT_TAG` and the explicit
+join table `PRODUCT_TAG_ASSIGNMENT` (`UNIQUE(PRODUCT_ID, PRODUCT_TAG_ID)`), the Product Tags
+many-to-many support (see the entity note above). All six applied via the consolidated
 `services-liquibase` job in `docker-compose.apps.yml` — see the Liquibase note above.
 
 **Epic 3 (Order Lifecycle & Inventory) is now fully built — all 6 phases**, including the REST

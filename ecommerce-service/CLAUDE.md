@@ -936,6 +936,87 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
   breadcrumb *was* deepened to a real root→leaf ancestor trail in a later follow-up** — see
   `gui/CLAUDE.md`'s `ProductDetailPage.tsx` note (`utils/categoryPath.ts`).
 
+- **Post-Epic-3 follow-up: Product Tags — a many-to-many relationship (a product can have
+  multiple tags, a tag can be attached to multiple products), per request.** Mirrors
+  `content-service`'s existing `Tag`/`ContentItemTag` pattern closely, the primary precedent
+  researched and followed rather than designed from scratch — three explicit scope decisions were
+  asked and confirmed before building: (1) `ProductTag` has **no status/lifecycle field** — just
+  `name`/`slug`, unlike `content-service`'s `Tag` (`TagStatus: ACTIVE/INACTIVE`), matching
+  `ProductCategory`'s own original pre-hierarchy simplicity; (2) `ProductResponse.tagIds` exposes
+  **ids only**, matching `content-service`'s own `QuestionAnswerResponse.tagIds` (not names/full
+  objects); (3) **admin-only scope for this pass** — the public storefront (`ProductSearchView`/
+  `ShopPage`) is *not* wired up to tags at all, deferred the same way storefront category-filtering
+  was deferred after the category-hierarchy work.
+  - New `entity/ProductTag` (`name`/`slug`, case-insensitive-unique via a `LOWER(NAME)` functional
+    index, same as `ProductCategory`) and `entity/ProductTagAssignment` — an **explicit join
+    entity**, not a bare `@ManyToMany`/`@JoinTable`, mirroring `content-service`'s
+    `ContentItemTag` exactly: the assignment row itself needs the same audit columns
+    (`usrCreation`/`dteCreation`/etc.) every other entity in this reactor carries, which a plain
+    join table can't provide. `UNIQUE(PRODUCT_ID, PRODUCT_TAG_ID)`. `Product` gained a
+    `productTagAssignments` nav-only collection — but unlike `variants`/`images` (no cascade, "own
+    repository owns the write"), this one **is** `cascade = ALL, orphanRemoval = true`, mirroring
+    `ContentItem.contentItemTags`' ownership of its own join rows.
+  - Migration `DKP-0038` (`202609010001__0.0.2__DKP-0038__add_product_tag_tables.sql`) — confirmed
+    against every changelog tree in the reactor for the next free ticket number before writing it,
+    not assumed.
+  - New `EcommerceErrorCode.PRODUCT_TAG_*` (`NOT_FOUND`/`NAME_CONFLICT`/`SLUG_CONFLICT`/`IN_USE`,
+    `PRODUCT_TAG_001`–`004`), `repository/ProductTagRepository` (mirrors
+    `ProductCategoryRepository`'s shape), `repository/ProductTagAssignmentRepository`
+    (`existsByProductTagId`, backing the in-use delete guard — read-only otherwise, every write
+    path is via `Product.productTagAssignments`' own cascade, never a direct
+    save/delete through this repository), `repository/spec/ProductTagSpecification` (`q` filter
+    only, no status), `service/ProductTagService`/`Impl` (create/update/delete/getById/**paginated**
+    list — paginated, not unpaginated like `ProductCategoryService.list`, since free-form tags are
+    expected to proliferate more than a taxonomy would, mirroring `content-service`'s own paginated
+    `TagService.list`), `mapper/ProductTagMapper`, `dto/{ProductTagResponse,
+    CreateProductTagRequest,UpdateProductTagRequest}`, and `api/ProductTagApi`+`Controller` at
+    `/api/v1/admin/product-tags` (CRUD, no attach/detach endpoints of its own — see below).
+  - **Tag assignment doesn't live on `ProductTagService` at all** — it travels with
+    `ProductCommands.Create`/`Update`'s own new `tagIds: Set<Integer>` field, exactly mirroring
+    `content-service`'s split between `TagService` (pure CRUD) and
+    `QuestionAnswerServiceImpl.applyTagIds` (assignment folded into the owning entity's own
+    create/update). New `ProductServiceImpl.applyTagIds(Product, Set<Integer>)` private helper —
+    byte-for-byte the same shape as `QuestionAnswerServiceImpl.applyTagIds` minus the "reject
+    inactive tags" step that class has (no status field to check here): reject any `null` id in the
+    input, dedupe via `LinkedHashSet`, bulk-fetch via `findAllById` and assert the count matches
+    (`PRODUCT_TAG_NOT_FOUND` if any are missing), then clear and rebuild
+    `product.getProductTagAssignments()` using `productTagRepository.getReferenceById` (a proxy
+    reference, no extra `SELECT`). **Same three-state semantics as `QuestionAnswerCommands.Update`**:
+    on `create`, a `null`/omitted `tagIds` just means "no tags" (always applied); on `update`,
+    `null` **leaves tags unchanged**, empty **clears** them, non-empty **replaces** them —
+    `ProductServiceImpl.update` only calls `applyTagIds` when `command.tagIds() != null`.
+  - `mapper/ProductMapper` gained a new `@AfterMapping resolveTagIds` step (alongside the existing
+    `resolveImageUrl` one) computing `ProductResponse.tagIds` from
+    `product.getProductTagAssignments()` — same "derived from a nav-only collection, not a direct
+    entity field" shape as the presigned-URL resolution, just no injected dependency needed for
+    this one.
+  - `repository/spec/ProductSpecification.withFilters` gained a new overload taking an optional
+    `Set<Integer> tagIds` (the 3-arg overload delegates to it with `null`, so every existing caller
+    is unaffected) — joins to `ProductTagAssignment` and matches **any** of the given tag ids (an
+    OR, not "must have all of them"), with `query.distinct(true)` to avoid a duplicate row per
+    matching assignment when a product carries more than one of the requested tags.
+    `ProductService.list`/`ProductServiceImpl.list`/`ProductApi.list`/`ProductController.list` all
+    gained the matching `Set<Integer> tagIds` parameter.
+  - New `ProductTagServiceImplTest` (mirrors `ProductCategoryServiceImplTest`'s shape, minus
+    anything hierarchy-related) plus 4 new `ProductServiceImplTest` cases (tag assignment on
+    create, an unknown-tag-id rejection, tag replacement on update, and the
+    null-leaves-tags-unchanged case) — **182 unit tests total** (up from 165), verified via a real
+    `mvn test` run (JDK 21) in this session.
+    **`ProductTagServiceImplTest` needed an explicit `(JpaRepository<ProductTag, Integer>)` cast at
+    two `verify(productTagRepository)...delete(...)` call sites** — `ProductTagRepository` extends
+    both `JpaRepository` (`delete(T)`) and `JpaSpecificationExecutor` (which gained its own
+    `delete(Specification<T>)` in a recent Spring Data JPA release), and `javac` can't disambiguate
+    the two inherited overloads inside a `verify()` chain without the cast, even though production
+    code's own direct `productTagRepository.delete(tag)` call has no such issue. Watch for the same
+    ambiguity in any future test verifying a `delete(entity)` call against a repository that
+    extends both interfaces.
+  - **Not built as part of this pass** (deliberately, per the scope decision above): no
+    `ProductSearchView` tag data (would need denormalizing tag ids/names into that CQRS read model
+    via `ProductChangedOutboxEventHandler`, plus native-SQL query changes in
+    `ProductSearchViewRepository`), and no `ShopPage` tag filter rail. `gui`'s own tag management
+    page, `ProductFormPage`'s tag picker, and the admin product list's tag filter were Phase 2 —
+    **now built**, see `gui/CLAUDE.md`'s own Product Tags note.
+
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"
 independently, not "one variant with both together" — see `ProductSearchView`'s Javadoc). **Epic 3
