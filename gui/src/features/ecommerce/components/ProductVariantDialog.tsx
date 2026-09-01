@@ -29,24 +29,27 @@ interface Props {
 
 interface AttributeRow { key: string; value: string; }
 
+/** One blank row per required key, or a single fully-blank row when there are none yet (this
+ * product's first variant, free to name its own keys) — used both to seed the dialog's initial
+ * state and to rebuild it on reset, so the two can't drift out of sync. */
+function buildInitialAttributes(requiredAttributeKeys: string[]): AttributeRow[] {
+  return requiredAttributeKeys.length > 0
+    ? requiredAttributeKeys.map(key => ({ key, value: '' }))
+    : [{ key: '', value: '' }];
+}
+
 export default function ProductVariantDialog({
   open, requiredAttributeKeys, saving = false, onClose, onAdd,
 }: Props): JSX.Element {
   const [sku, setSku] = useState('');
   const [price, setPrice] = useState('');
   const [stockQuantity, setStockQuantity] = useState('');
-  const [attributes, setAttributes] = useState<AttributeRow[]>(
-    requiredAttributeKeys.length > 0
-      ? requiredAttributeKeys.map(key => ({ key, value: '' }))
-      : [{ key: '', value: '' }],
-  );
+  const [attributes, setAttributes] = useState<AttributeRow[]>(() => buildInitialAttributes(requiredAttributeKeys));
   const [error, setError] = useState('');
 
   const reset = () => {
     setSku(''); setPrice(''); setStockQuantity('');
-    setAttributes(requiredAttributeKeys.length > 0
-      ? requiredAttributeKeys.map(key => ({ key, value: '' }))
-      : [{ key: '', value: '' }]);
+    setAttributes(buildInitialAttributes(requiredAttributeKeys));
     setError('');
   };
 

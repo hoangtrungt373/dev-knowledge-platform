@@ -20,6 +20,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import { ProductCategory, ProductSearchResult } from '../../types';
 import { shopApi } from '../../api/shopApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import { useDebouncedValue } from '@shared/hooks/useDebouncedValue';
 import ProductCard from '../../components/shop/ProductCard';
 
 const PAGE_SIZE = 12;
@@ -34,7 +35,7 @@ export default function ShopPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
 
   const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
+  const search = useDebouncedValue(searchInput, 300);
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
@@ -46,10 +47,7 @@ export default function ShopPage(): JSX.Element {
     shopApi.listCategories(showError).then(setCategories);
   }, [showError]);
 
-  useEffect(() => {
-    const t = setTimeout(() => { setSearch(searchInput); setPage(0); }, 300);
-    return () => clearTimeout(t);
-  }, [searchInput]);
+  useEffect(() => { setPage(0); }, [search]);
 
   const fetchResults = useCallback(async () => {
     setLoading(true);

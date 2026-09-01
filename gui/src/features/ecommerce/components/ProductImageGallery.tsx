@@ -3,19 +3,15 @@ import {
   Box,
   Button,
   CircularProgress,
-  IconButton,
   Paper,
   Stack,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import UploadIcon from '@mui/icons-material/Upload';
-import DeleteIcon from '@mui/icons-material/Delete';
-import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import { ProductImage } from '../types';
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import ImageThumbnailGrid from './ImageThumbnailGrid';
 
 interface Props {
   productId: number;
@@ -54,10 +50,10 @@ export default function ProductImageGallery({ productId, images, onChanged }: Pr
     }
   };
 
-  const handleRemove = async (image: ProductImage) => {
-    setBusyImageId(image.id);
+  const handleRemove = async (imageId: number) => {
+    setBusyImageId(imageId);
     try {
-      await ecommerceApi.removeImage(productId, image.id, showError);
+      await ecommerceApi.removeImage(productId, imageId, showError);
       onChanged();
     } catch {
       // showError already called
@@ -66,10 +62,11 @@ export default function ProductImageGallery({ productId, images, onChanged }: Pr
     }
   };
 
-  const handleMove = async (index: number, direction: -1 | 1) => {
-    const other = sorted[index + direction];
+  const handleMove = async (imageId: number, direction: -1 | 1) => {
+    const index = sorted.findIndex(img => img.id === imageId);
     const current = sorted[index];
-    if (!other) return;
+    const other = sorted[index + direction];
+    if (index === -1 || !other) return;
     setBusyImageId(current.id);
     try {
       await ecommerceApi.updateImageSortOrder(productId, current.id, SCRATCH_SORT_ORDER, showError);
@@ -104,62 +101,17 @@ export default function ProductImageGallery({ productId, images, onChanged }: Pr
         />
       </Stack>
 
-      {sorted.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">No images yet.</Typography>
-      ) : (
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-          {sorted.map((image, index) => (
-            <Box key={image.id} sx={{ width: 140 }}>
-              <Box
-                component="img"
-                src={image.url}
-                alt={`Product image, position ${image.sortOrder}`}
-                sx={{
-                  width: 140, height: 140, objectFit: 'cover', borderRadius: 1,
-                  border: '1px solid', borderColor: 'divider',
-                  opacity: busyImageId === image.id ? 0.5 : 1,
-                }}
-              />
-              <Stack direction="row" justifyContent="center" spacing={0.5} sx={{ mt: 0.5 }}>
-                <Tooltip title="Move earlier">
-                  <span>
-                    <IconButton
-                      size="small"
-                      disabled={index === 0 || busyImageId !== null}
-                      onClick={() => handleMove(index, -1)}
-                    >
-                      <ArrowUpwardIcon fontSize="small" />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-                <Tooltip title="Move later">
-                  <span>
-                    <IconButton
-                      size="small"
-                      disabled={index === sorted.length - 1 || busyImageId !== null}
-                      onClick={() => handleMove(index, 1)}
-                    >
-                      <ArrowDownwardIcon fontSize="small" />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-                <Tooltip title="Remove">
-                  <span>
-                    <IconButton
-                      size="small"
-                      color="error"
-                      disabled={busyImageId !== null}
-                      onClick={() => handleRemove(image)}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-              </Stack>
-            </Box>
-          ))}
-        </Box>
-      )}
+      <ImageThumbnailGrid
+        items={sorted.map(image => ({
+          id: image.id,
+          url: image.url,
+          alt: `Product image, position ${image.sortOrder}`,
+        }))}
+        busyId={busyImageId}
+        onMove={handleMove}
+        onRemove={handleRemove}
+        emptyMessage="No images yet."
+      />
     </Paper>
   );
 }

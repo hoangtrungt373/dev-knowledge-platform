@@ -1,4 +1,5 @@
 import { httpClient } from '@shared/api/httpClient';
+import { buildQueryString } from '@shared/utils/queryString';
 import { CheckoutAddressInput, CheckoutPreview, OrderConfirmation } from '../types';
 
 type ShowError = (msg: string) => void;
@@ -16,10 +17,7 @@ export const checkoutApi = {
   preview(selectedVariantIds?: number[], showError?: ShowError): Promise<CheckoutPreview> {
     // Repeated query param (?selectedVariantIds=1&selectedVariantIds=2) — preview is a GET, so
     // there's no body to carry a selection in; matches CheckoutApi.preview's own @RequestParam.
-    const query = selectedVariantIds?.length
-      ? `?${selectedVariantIds.map(id => `selectedVariantIds=${id}`).join('&')}`
-      : '';
-    return httpClient.get(`/api/v1/checkout/preview${query}`, showError);
+    return httpClient.get(`/api/v1/checkout/preview${buildQueryString({ selectedVariantIds })}`, showError);
   },
 
   /** AddressBook follow-up: `address` carries either an existing saved address

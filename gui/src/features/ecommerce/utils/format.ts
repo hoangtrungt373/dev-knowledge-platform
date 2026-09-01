@@ -20,3 +20,15 @@ export function formatPrice(value: number): string {
 export function formatVariantLabel(attributes: Record<string, string> | null | undefined): string {
   return attributes ? Object.values(attributes).join(' ') : '';
 }
+
+/**
+ * "Jan 5, 2026"-style short date, for a row's `createdAt` — extracted once copy-pasted verbatim
+ * into three admin list pages (`ProductCategoryListPage`, `ProductTagListPage`, `ProductListPage`).
+ */
+export function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+/** Row-count choices shared by every admin table's `TablePagination` (`ProductListPage`,
+ * `ProductTagListPage`, `AdminOrderListPage`) — was duplicated as an identical local const in each. */
+export const PAGE_SIZE_OPTIONS = [10, 20, 50];

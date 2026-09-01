@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Box,
@@ -18,16 +18,30 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
-import { Product, ProductCategoryTreeNode, ProductTag, ProductVariantInput } from '../types';
+import { Product, ProductCategoryTreeNode, ProductVariantInput } from '../types';
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
-import ProductVariantEditor, { DisplayVariant } from '../components/ProductVariantEditor';
+import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
+import ProductVariantEditor from '../components/ProductVariantEditor';
 import ProductImageGallery from '../components/ProductImageGallery';
-import ProductImageStager, { StagedImage } from '../components/ProductImageStager';
+import ProductImageStager from '../components/ProductImageStager';
 import ProductDescriptionEditor from '../components/ProductDescriptionEditor';
 import { hasVisibleHtmlContent } from '../utils/htmlContent';
 import { flattenCategoryTree } from '../utils/categoryTree';
+import { useProductTags } from '../hooks/useProductTags';
+import { useDraftVariants } from '../hooks/useDraftVariants';
+import { useStagedImages } from '../hooks/useStagedImages';
 
+/**
+ * Create/edit form for one product — the largest, most-iterated page in `@ecommerce` (see
+ * `gui/CLAUDE.md`'s own extensive history for this file). Three genuinely separable concerns
+ * (the tag picker's own staged-creation flow, the create-mode draft-variant list, and the
+ * create-mode staged-image queue) are extracted into their own hooks
+ * (`hooks/useProductTags`/`useDraftVariants`/`useStagedImages`) so this component is left owning
+ * just: category-tree fetch, the basic fields, edit-mode product loading, and the actual
+ * create/update submit — the same "extract a custom hook" remedy `gui/CLAUDE.md` already
+ * prescribes for this app's other God Components.
+ */
 export default function ProductFormPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const isEdit = id !== undefined;
@@ -41,17 +55,22 @@ export default function ProductFormPage(): JSX.Element {
   const [categoryTree, setCategoryTree] = useState<ProductCategoryTreeNode[]>([]);
   const categoryOptions = flattenCategoryTree(categoryTree);
 
-  // Every product tag, fetched once, for the Chip-toggle-cloud picker below — same
-  // allTags/selectedTagIds/toggleTag shape @content's QuestionAnswerFormPage already established.
-  const [allTags, setAllTags] = useState<ProductTag[]>([]);
-  const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
-  // Brand-new tag names typed into this form but not yet persisted — nothing is created on the
-  // backend until the product itself is saved (see handleSubmit's resolveStagedTagIds), so these
-  // are plain strings, not ProductTag objects with a real id. Kept separate from allTags/
-  // selectedTagIds rather than optimistically inserted into them, since a discarded form (Cancel,
-  // navigate away) must leave zero trace in the tag catalog.
-  const [stagedTagNames, setStagedTagNames] = useState<string[]>([]);
-  const [newTagInput, setNewTagInput] = useState('');
+  const {
+    allTags, selectedTagIds, setSelectedTagIds, stagedTagNames, newTagInput, setNewTagInput,
+    toggleTag, handleAddStagedTag, handleRemoveStagedTag, resolveStagedTagIds, clearStagedTagNames,
+  } = useProductTags(showError);
+
+  // Create-mode-only: a local, unsaved variant list — a product requires >=1 variant to exist at
+  // all (US-1.6), so these travel in the same create request as the basic fields, unlike edit
+  // mode where variants are added/removed independently against a real product (handleAddLiveVariant/
+  // handleRemoveLiveVariant below stay inline — a couple of lines each, already talking straight
+  // to ecommerceApi, nothing worth extracting).
+  const { draftVariants, addDraftVariant, removeDraftVariant } = useDraftVariants();
+
+  // Create-mode-only: images queued locally (no network call yet — see ProductImageStager's own
+  // Javadoc for why this can't just reuse ProductImageGallery). Uploaded one at a time, in order,
+  // right after createProduct resolves with the new product's id — see handleSubmit below.
+  const { stagedImages, addStagedImage, removeStagedImage, reorderStagedImage, revokeAll: revokeStagedImages } = useStagedImages();
 
   // Basic fields
   const [name, setName] = useState('');
@@ -61,42 +80,13 @@ export default function ProductFormPage(): JSX.Element {
   // Edit-mode-only: the loaded product, re-fetched after any variant/image mutation
   const [product, setProduct] = useState<Product | null>(null);
 
-  // Create-mode-only: a local, unsaved variant list — a product requires >=1 variant to exist
-  // at all (US-1.6), so these travel in the same create request as the basic fields, unlike
-  // edit mode where variants are added/removed independently against a real product.
-  const [draftVariants, setDraftVariants] = useState<DisplayVariant[]>([]);
-  const draftIdCounter = useRef(0);
-
-  // Create-mode-only: images queued locally (no network call yet — see ProductImageStager's own
-  // Javadoc for why this can't just reuse ProductImageGallery). Uploaded one at a time, in order,
-  // right after createProduct resolves with the new product's id — see handleSubmit below.
-  const [stagedImages, setStagedImages] = useState<StagedImage[]>([]);
-  const stagedImageIdCounter = useRef(0);
-  // Mirrors stagedImages on every render (no effect needed just to keep a ref in sync) so the
-  // unmount-cleanup effect below always revokes the *current* set of blob URLs, not whatever was
-  // staged at mount time — a plain `[]`-deps cleanup closure would otherwise only ever see the
-  // empty array from the very first render.
-  const stagedImagesRef = useRef<StagedImage[]>([]);
-  stagedImagesRef.current = stagedImages;
-
-  // Revokes any still-queued preview blob URLs if the admin navigates away (Cancel, back button)
-  // without ever submitting — handleSubmit's own success path revokes them explicitly instead
-  // (see below), since by then they're either uploaded or abandoned either way.
-  useEffect(() => {
-    return () => {
-      stagedImagesRef.current.forEach(img => URL.revokeObjectURL(img.previewUrl));
-    };
-  }, []);
-
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(isEdit);
-  const [saving, setSaving] = useState(false);
+  const { loading: saving, guard } = useSubmitGuard();
   const [variantBusy, setVariantBusy] = useState(false);
 
   useEffect(() => {
     ecommerceApi.getProductCategoryTree(showError).then(setCategoryTree);
-    ecommerceApi.listProductTags({ size: 1000, sortBy: 'name', sortDir: 'asc' }, showError)
-      .then(page => setAllTags(page.content));
   }, [showError]);
 
   const loadProduct = useCallback(() => {
@@ -108,56 +98,7 @@ export default function ProductFormPage(): JSX.Element {
       setProductCategoryId(p.productCategoryId);
       setSelectedTagIds(new Set(p.tagIds));
     });
-  }, [id, isEdit, showError]);
-
-  const toggleTag = (tagId: number) => {
-    setSelectedTagIds(prev => {
-      const next = new Set(prev);
-      next.has(tagId) ? next.delete(tagId) : next.add(tagId);
-      return next;
-    });
-  };
-
-  // Queues a brand-new tag name locally — no API call here at all. If the name already matches an
-  // existing catalog tag (case-insensitively), that existing tag is selected instead of queuing a
-  // duplicate that would only fail with PRODUCT_TAG_NAME_CONFLICT once the form is actually saved;
-  // an already-queued duplicate is likewise a silent no-op rather than a second staged entry.
-  const handleAddStagedTag = () => {
-    const trimmed = newTagInput.trim();
-    if (!trimmed) return;
-
-    const existing = allTags.find(t => t.name.toLowerCase() === trimmed.toLowerCase());
-    if (existing) {
-      setSelectedTagIds(prev => new Set(prev).add(existing.id));
-      setNewTagInput('');
-      return;
-    }
-    if (stagedTagNames.some(n => n.toLowerCase() === trimmed.toLowerCase())) {
-      setNewTagInput('');
-      return;
-    }
-    setStagedTagNames(prev => [...prev, trimmed]);
-    setNewTagInput('');
-  };
-
-  const handleRemoveStagedTag = (tagName: string) => {
-    setStagedTagNames(prev => prev.filter(n => n !== tagName));
-  };
-
-  // Actually creates every staged tag name — called from handleSubmit only, right before the
-  // product itself is created/updated, so nothing lands in the tag catalog until the product save
-  // is actually attempted. Aborts (rethrows) on the first failure rather than continuing
-  // best-effort like ProductImageStager's own upload loop: an incomplete tag set silently applied
-  // to the product would be more surprising here than a failed save the admin can simply retry.
-  const resolveStagedTagIds = async (): Promise<number[]> => {
-    const ids: number[] = [];
-    for (const tagName of stagedTagNames) {
-      const created = await ecommerceApi.createProductTag({ name: tagName }, showError);
-      setAllTags(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
-      ids.push(created.id);
-    }
-    return ids;
-  };
+  }, [id, isEdit, showError, setSelectedTagIds]);
 
   useEffect(() => {
     if (isEdit) {
@@ -175,112 +116,73 @@ export default function ProductFormPage(): JSX.Element {
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = (): void => {
     if (!validate()) return;
-    setSaving(true);
-    try {
-      const descriptionToSave = hasVisibleHtmlContent(description) ? description : undefined;
-      // Every staged (not-yet-real) tag name is created now, right before the product itself is
-      // saved — not the moment it was typed. If any creation fails, the whole submit aborts here
-      // (via the throw), before the product create/update call ever fires.
-      const newTagIds = await resolveStagedTagIds();
-      setStagedTagNames([]);
-      const tagIds = [...selectedTagIds, ...newTagIds];
-      if (isEdit && id) {
-        await ecommerceApi.updateProduct(Number(id), {
-          name: name.trim(),
-          description: descriptionToSave,
-          productCategoryId: productCategoryId as number,
-          tagIds,
-        }, showError);
-        showSuccess('Product updated');
-        await loadProduct();
-      } else {
-        const created = await ecommerceApi.createProduct({
-          name: name.trim(),
-          description: descriptionToSave,
-          productCategoryId: productCategoryId as number,
-          variants: draftVariants.map((v): ProductVariantInput => ({
-            sku: v.sku, price: v.price, stockQuantity: v.stockQuantity, attributes: v.attributes,
-          })),
-          tagIds,
-        }, showError);
-
-        // Only knowable once the product exists — uploadImage needs a real productId (see
-        // ProductImageStager's Javadoc). Sequential, not Promise.all: keeps sortOrder assignment
-        // (just the loop index) deterministic and avoids hammering the backend with N simultaneous
-        // multipart uploads. One failed image doesn't abort the rest, or the product creation
-        // itself — the product is already real at this point, so this is best-effort, not
-        // all-or-nothing; uploadImage's own showError already surfaces each individual failure.
-        let uploadedCount = 0;
-        for (let i = 0; i < stagedImages.length; i++) {
-          try {
-            await ecommerceApi.uploadImage(created.id, stagedImages[i].file, i, showError);
-            uploadedCount++;
-          } catch {
-            // showError already called; keep going so one bad file doesn't block the rest
-          }
-        }
-        stagedImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
-
-        if (stagedImages.length === 0) {
-          showSuccess('Product created — add images below');
-        } else if (uploadedCount === stagedImages.length) {
-          showSuccess(`Product created with ${uploadedCount} image${uploadedCount === 1 ? '' : 's'}`);
+    guard(async () => {
+      try {
+        const descriptionToSave = hasVisibleHtmlContent(description) ? description : undefined;
+        // Every staged (not-yet-real) tag name is created now, right before the product itself is
+        // saved — not the moment it was typed. If any creation fails, the whole submit aborts here
+        // (via the throw), before the product create/update call ever fires.
+        const newTagIds = await resolveStagedTagIds();
+        clearStagedTagNames();
+        const tagIds = [...selectedTagIds, ...newTagIds];
+        if (isEdit && id) {
+          await ecommerceApi.updateProduct(Number(id), {
+            name: name.trim(),
+            description: descriptionToSave,
+            productCategoryId: productCategoryId as number,
+            tagIds,
+          }, showError);
+          showSuccess('Product updated');
+          await loadProduct();
         } else {
-          showSuccess(`Product created — ${uploadedCount} of ${stagedImages.length} images uploaded; you can retry the rest below`);
+          const created = await ecommerceApi.createProduct({
+            name: name.trim(),
+            description: descriptionToSave,
+            productCategoryId: productCategoryId as number,
+            variants: draftVariants.map((v): ProductVariantInput => ({
+              sku: v.sku, price: v.price, stockQuantity: v.stockQuantity, attributes: v.attributes,
+            })),
+            tagIds,
+          }, showError);
+
+          // Only knowable once the product exists — uploadImage needs a real productId (see
+          // ProductImageStager's Javadoc). Sequential, not Promise.all: keeps sortOrder assignment
+          // (just the loop index) deterministic and avoids hammering the backend with N
+          // simultaneous multipart uploads. One failed image doesn't abort the rest, or the
+          // product creation itself — the product is already real at this point, so this is
+          // best-effort, not all-or-nothing; uploadImage's own showError already surfaces each
+          // individual failure.
+          let uploadedCount = 0;
+          for (let i = 0; i < stagedImages.length; i++) {
+            try {
+              await ecommerceApi.uploadImage(created.id, stagedImages[i].file, i, showError);
+              uploadedCount++;
+            } catch {
+              // showError already called; keep going so one bad file doesn't block the rest
+            }
+          }
+          revokeStagedImages();
+
+          if (stagedImages.length === 0) {
+            showSuccess('Product created — add images below');
+          } else if (uploadedCount === stagedImages.length) {
+            showSuccess(`Product created with ${uploadedCount} image${uploadedCount === 1 ? '' : 's'}`);
+          } else {
+            showSuccess(`Product created — ${uploadedCount} of ${stagedImages.length} images uploaded; you can retry the rest below`);
+          }
+          navigate(`/admin/products/${created.id}/edit`, { replace: true });
         }
-        navigate(`/admin/products/${created.id}/edit`, { replace: true });
+      } catch {
+        // showError already called
       }
-    } catch {
-      // showError already called
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
-  const handleAddDraftVariant = (input: ProductVariantInput) => {
-    draftIdCounter.current += 1;
-    setDraftVariants(prev => [...prev, {
-      id: `draft-${draftIdCounter.current}`,
-      sku: input.sku,
-      price: input.price,
-      stockQuantity: input.stockQuantity,
-      attributes: input.attributes ?? {},
-    }]);
+  const handleAddDraftVariant = (input: ProductVariantInput): void => {
+    addDraftVariant(input);
     setErrors(prev => ({ ...prev, variants: '' }));
-  };
-
-  const handleRemoveDraftVariant = (variantId: number | string) => {
-    setDraftVariants(prev => prev.filter(v => v.id !== variantId));
-  };
-
-  const handleAddStagedImage = (file: File) => {
-    stagedImageIdCounter.current += 1;
-    setStagedImages(prev => [...prev, {
-      id: `staged-${stagedImageIdCounter.current}`,
-      file,
-      previewUrl: URL.createObjectURL(file),
-    }]);
-  };
-
-  const handleRemoveStagedImage = (imageId: string) => {
-    setStagedImages(prev => {
-      const target = prev.find(img => img.id === imageId);
-      if (target) URL.revokeObjectURL(target.previewUrl);
-      return prev.filter(img => img.id !== imageId);
-    });
-  };
-
-  const handleReorderStagedImage = (imageId: string, direction: -1 | 1) => {
-    setStagedImages(prev => {
-      const index = prev.findIndex(img => img.id === imageId);
-      const otherIndex = index + direction;
-      if (index === -1 || otherIndex < 0 || otherIndex >= prev.length) return prev;
-      const next = [...prev];
-      [next[index], next[otherIndex]] = [next[otherIndex], next[index]];
-      return next;
-    });
   };
 
   const handleAddLiveVariant = async (input: ProductVariantInput) => {
@@ -378,7 +280,7 @@ export default function ProductFormPage(): JSX.Element {
                 <ProductVariantEditor
                   variants={draftVariants}
                   onAdd={handleAddDraftVariant}
-                  onRemove={handleRemoveDraftVariant}
+                  onRemove={removeDraftVariant}
                 />
                 {errors.variants && (
                   <Typography variant="body2" color="error" sx={{ mt: 1 }}>{errors.variants}</Typography>
@@ -394,9 +296,9 @@ export default function ProductFormPage(): JSX.Element {
             ) : (
               <ProductImageStager
                 images={stagedImages}
-                onAdd={handleAddStagedImage}
-                onRemove={handleRemoveStagedImage}
-                onReorder={handleReorderStagedImage}
+                onAdd={addStagedImage}
+                onRemove={removeStagedImage}
+                onReorder={reorderStagedImage}
               />
             )}
 
@@ -429,7 +331,7 @@ export default function ProductFormPage(): JSX.Element {
           {/* Tags — split into an "Existing tags" Chip-toggle-cloud (mirroring @content's
               QuestionAnswerFormPage picker) and a separate "New tags" section for names typed
               here but not yet created — nothing is persisted to the tag catalog until the product
-              itself is saved (see handleSubmit's resolveStagedTagIds). Renaming/deleting an
+              itself is saved (see useProductTags' own resolveStagedTagIds). Renaming/deleting an
               already-real tag still requires /admin/product-tags — this section is add-only. */}
           <Paper variant="outlined" sx={{ p: 2, mt: 3 }}>
             <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>

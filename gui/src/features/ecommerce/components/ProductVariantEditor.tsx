@@ -81,6 +81,9 @@ export default function ProductVariantEditor({ variants, onAdd, onRemove, busy =
                   {variant.reservedQuantity ? ` (${variant.reservedQuantity} reserved)` : ''}
                 </TableCell>
                 <TableCell>
+                  {/* key: value chips, not utils/format.ts's values-only formatVariantLabel — this
+                      is an admin table editing raw attribute data (the key itself is what's being
+                      managed here), not a shopper-facing label like CartPage's/OrderLineRow's. */}
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                     {Object.entries(variant.attributes).map(([key, value]) => (
                       <Chip key={key} label={`${key}: ${value}`} size="small" variant="outlined" />

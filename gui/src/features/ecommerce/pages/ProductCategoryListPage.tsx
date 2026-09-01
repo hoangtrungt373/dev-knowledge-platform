@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Box,
-  Button,
-  CircularProgress,
   IconButton,
   InputAdornment,
   Paper,
@@ -23,13 +21,11 @@ import SearchIcon from '@mui/icons-material/Search';
 import { ProductCategory, ProductCategoryTreeNode } from '../types';
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import { useDebouncedValue } from '@shared/hooks/useDebouncedValue';
 import ProductCategoryFormDialog from '../components/ProductCategoryFormDialog';
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric',
-  });
-}
+import AdminListHeader from '../components/AdminListHeader';
+import TableStatusRow from '../components/TableStatusRow';
+import { formatDate } from '../utils/format';
 
 function buildNameMap(nodes: ProductCategoryTreeNode[]): Record<number, string> {
   const map: Record<number, string> = {};
@@ -52,7 +48,7 @@ export default function ProductCategoryListPage(): JSX.Element {
   const [parentNameMap, setParentNameMap] = useState<Record<number, string>>({});
 
   const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
+  const search = useDebouncedValue(searchInput, 300);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editCategory, setEditCategory] = useState<ProductCategory | null>(null);
@@ -65,11 +61,6 @@ export default function ProductCategoryListPage(): JSX.Element {
   }, [showError]);
 
   useEffect(() => { loadTree(); }, [loadTree]);
-
-  useEffect(() => {
-    const t = setTimeout(() => setSearch(searchInput), 300);
-    return () => clearTimeout(t);
-  }, [searchInput]);
 
   const fetchCategories = useCallback(async (opts?: { showSpinner?: boolean }) => {
     const showSpinner = opts?.showSpinner ?? true;
@@ -92,18 +83,11 @@ export default function ProductCategoryListPage(): JSX.Element {
   return (
     <Box sx={{ p: 3 }}>
 
-      {/* Header */}
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2.5 }}>
-        <Box>
-          <Typography variant="h5" fontWeight={700}>Product Categories</Typography>
-          <Typography variant="body2" color="text.secondary">
-            {categories.length} categor{categories.length !== 1 ? 'ies' : 'y'} total
-          </Typography>
-        </Box>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
-          New Category
-        </Button>
-      </Stack>
+      <AdminListHeader
+        title="Product Categories"
+        subtitle={`${categories.length} categor${categories.length !== 1 ? 'ies' : 'y'} total`}
+        action={{ label: 'New Category', icon: <AddIcon />, onClick: openCreate }}
+      />
 
       {/* Filters */}
       <Stack direction="row" spacing={1.5} sx={{ mb: 2 }}>
@@ -136,20 +120,13 @@ export default function ProductCategoryListPage(): JSX.Element {
           </TableHead>
 
           <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
-                  <CircularProgress size={28} />
-                </TableCell>
-              </TableRow>
-            ) : categories.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {search ? 'No categories match your search.' : 'No product categories yet. Create the first one.'}
-                  </Typography>
-                </TableCell>
-              </TableRow>
+            {loading || categories.length === 0 ? (
+              <TableStatusRow
+                loading={loading}
+                isEmpty={categories.length === 0}
+                emptyMessage={search ? 'No categories match your search.' : 'No product categories yet. Create the first one.'}
+                colSpan={5}
+              />
             ) : (
               categories.map(category => (
                 <TableRow key={category.id} hover>

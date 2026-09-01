@@ -1,5 +1,6 @@
 import { httpClient } from '@shared/api/httpClient';
 import { PagedResponse } from '@shared/types';
+import { buildQueryString } from '@shared/utils/queryString';
 import { Order, OrderStatus } from '../types';
 
 type ShowError = (msg: string) => void;
@@ -13,9 +14,7 @@ type ShowError = (msg: string) => void;
  */
 export const adminOrderApi = {
   list(status: OrderStatus | undefined, page: number, size: number, showError?: ShowError): Promise<PagedResponse<Order>> {
-    const params = new URLSearchParams({ page: String(page), size: String(size) });
-    if (status) params.set('status', status);
-    return httpClient.get(`/api/v1/admin/orders?${params.toString()}`, showError);
+    return httpClient.get(`/api/v1/admin/orders${buildQueryString({ page, size, status })}`, showError);
   },
 
   ship(id: number, showError?: ShowError): Promise<Order> {

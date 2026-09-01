@@ -17,6 +17,7 @@ import StarIcon from '@mui/icons-material/Star';
 import StarOutlineIcon from '@mui/icons-material/StarOutline';
 import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
 import { addressApi } from '../api/addressApi';
 import { SavedAddress } from '../types';
@@ -33,7 +34,12 @@ export default function AddressBookPage(): JSX.Element {
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<SavedAddress | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SavedAddress | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const { loading: deleting, guard: guardDelete } = useSubmitGuard();
+  // A single shared guard (below) closes the double-click race across every row's own star
+  // button — settingDefaultId still tracks which row's button to disable/show a spinner for,
+  // useSubmitGuard just adds the ref-based "don't fire a second call while one's in flight" check
+  // on top, same as every other mutation in this feature.
+  const { guard: guardSetDefault } = useSubmitGuard();
   const [settingDefaultId, setSettingDefaultId] = useState<number | null>(null);
 
   const fetchAddresses = useCallback(async (opts?: { showSpinner?: boolean }) => {
@@ -53,32 +59,33 @@ export default function AddressBookPage(): JSX.Element {
   const openCreate = () => { setEditTarget(null); setFormOpen(true); };
   const openEdit = (address: SavedAddress) => { setEditTarget(address); setFormOpen(true); };
 
-  const handleDelete = async () => {
+  const handleDelete = (): void => {
     if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      await addressApi.remove(deleteTarget.id, showError);
-      showSuccess('Address removed');
-      setDeleteTarget(null);
-      refresh();
-    } catch {
-      // showError already called
-    } finally {
-      setDeleting(false);
-    }
+    guardDelete(async () => {
+      try {
+        await addressApi.remove(deleteTarget.id, showError);
+        showSuccess('Address removed');
+        setDeleteTarget(null);
+        refresh();
+      } catch {
+        // showError already called
+      }
+    });
   };
 
-  const handleSetDefault = async (address: SavedAddress) => {
-    setSettingDefaultId(address.id);
-    try {
-      await addressApi.setDefault(address.id, showError);
-      showSuccess('Default address updated');
-      refresh();
-    } catch {
-      // showError already called
-    } finally {
-      setSettingDefaultId(null);
-    }
+  const handleSetDefault = (address: SavedAddress): void => {
+    guardSetDefault(async () => {
+      setSettingDefaultId(address.id);
+      try {
+        await addressApi.setDefault(address.id, showError);
+        showSuccess('Default address updated');
+        refresh();
+      } catch {
+        // showError already called
+      } finally {
+        setSettingDefaultId(null);
+      }
+    });
   };
 
   if (loading && addresses === null) {

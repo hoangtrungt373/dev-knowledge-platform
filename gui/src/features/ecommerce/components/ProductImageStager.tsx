@@ -1,17 +1,12 @@
 import { ChangeEvent, useRef } from 'react';
 import {
-  Box,
   Button,
-  IconButton,
   Paper,
   Stack,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import UploadIcon from '@mui/icons-material/Upload';
-import DeleteIcon from '@mui/icons-material/Delete';
-import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import ImageThumbnailGrid from './ImageThumbnailGrid';
 
 /**
  * One not-yet-uploaded image queued on the product create form — `id` is a client-generated
@@ -65,54 +60,16 @@ export default function ProductImageStager({ images, onAdd, onRemove, onReorder 
         <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleFileSelected} />
       </Stack>
 
-      {images.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
-          No images yet — added here, uploaded once you create the product.
-        </Typography>
-      ) : (
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-          {images.map((image, index) => (
-            <Box key={image.id} sx={{ width: 140 }}>
-              <Box
-                component="img"
-                src={image.previewUrl}
-                alt={`Queued product image, position ${index}`}
-                sx={{
-                  width: 140, height: 140, objectFit: 'cover', borderRadius: 1,
-                  border: '1px solid', borderColor: 'divider',
-                }}
-              />
-              <Stack direction="row" justifyContent="center" spacing={0.5} sx={{ mt: 0.5 }}>
-                <Tooltip title="Move earlier">
-                  <span>
-                    <IconButton size="small" disabled={index === 0} onClick={() => onReorder(image.id, -1)}>
-                      <ArrowUpwardIcon fontSize="small" />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-                <Tooltip title="Move later">
-                  <span>
-                    <IconButton
-                      size="small"
-                      disabled={index === images.length - 1}
-                      onClick={() => onReorder(image.id, 1)}
-                    >
-                      <ArrowDownwardIcon fontSize="small" />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-                <Tooltip title="Remove">
-                  <span>
-                    <IconButton size="small" color="error" onClick={() => onRemove(image.id)}>
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-              </Stack>
-            </Box>
-          ))}
-        </Box>
-      )}
+      <ImageThumbnailGrid
+        items={images.map((image, index) => ({
+          id: image.id,
+          url: image.previewUrl,
+          alt: `Queued product image, position ${index}`,
+        }))}
+        onMove={onReorder}
+        onRemove={onRemove}
+        emptyMessage="No images yet — added here, uploaded once you create the product."
+      />
     </Paper>
   );
 }

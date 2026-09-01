@@ -2,10 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
-  Button,
   Checkbox,
   Chip,
-  CircularProgress,
   IconButton,
   InputAdornment,
   ListItemText,
@@ -31,13 +29,12 @@ import SearchIcon from '@mui/icons-material/Search';
 import { Product, ProductCategory, ProductTag } from '../types';
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
+import { useDebouncedValue } from '@shared/hooks/useDebouncedValue';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
-
-const PAGE_SIZE_OPTIONS = [10, 20, 50];
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
+import AdminListHeader from '../components/AdminListHeader';
+import TableStatusRow from '../components/TableStatusRow';
+import { formatDate, PAGE_SIZE_OPTIONS } from '../utils/format';
 
 export default function ProductListPage(): JSX.Element {
   const navigate = useNavigate();
@@ -53,25 +50,27 @@ export default function ProductListPage(): JSX.Element {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
+  const search = useDebouncedValue(searchInput, 300);
   const [categoryFilter, setCategoryFilter] = useState<number | ''>('');
   const [activeFilter, setActiveFilter] = useState<'true' | 'false' | ''>('');
   const [tagFilter, setTagFilter] = useState<number[]>([]);
 
   // Deactivate dialog
   const [deactivateTarget, setDeactivateTarget] = useState<Product | null>(null);
-  const [deactivating, setDeactivating] = useState(false);
+  const { loading: deactivating, guard: guardDeactivate } = useSubmitGuard();
 
   useEffect(() => {
-    ecommerceApi.listProductCategories(undefined, showError).then(setCategories);
+    ecommerceApi.listProductCategories(undefined, showError).then(setCategories).catch(() => {
+      // Silent — a failed fetch just leaves the category filter empty; showError already fired.
+    });
     ecommerceApi.listProductTags({ size: 1000, sortBy: 'name', sortDir: 'asc' }, showError)
-      .then(page => setTags(page.content));
+      .then(page => setTags(page.content))
+      .catch(() => {
+        // Silent — a failed fetch just leaves the tag filter empty; showError already fired.
+      });
   }, [showError]);
 
-  useEffect(() => {
-    const t = setTimeout(() => { setSearch(searchInput); setPage(0); }, 300);
-    return () => clearTimeout(t);
-  }, [searchInput]);
+  useEffect(() => { setPage(0); }, [search]);
 
   const fetchProducts = useCallback(async (opts?: { showSpinner?: boolean }) => {
     const showSpinner = opts?.showSpinner ?? true;
@@ -96,36 +95,28 @@ export default function ProductListPage(): JSX.Element {
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
-  const handleDeactivate = async () => {
+  const handleDeactivate = (): void => {
     if (!deactivateTarget) return;
-    setDeactivating(true);
-    try {
-      await ecommerceApi.deactivateProduct(deactivateTarget.id, showError);
-      showSuccess(`"${deactivateTarget.name}" deactivated`);
-      setDeactivateTarget(null);
-      fetchProducts({ showSpinner: false });
-    } catch {
-      // showError already called
-    } finally {
-      setDeactivating(false);
-    }
+    guardDeactivate(async () => {
+      try {
+        await ecommerceApi.deactivateProduct(deactivateTarget.id, showError);
+        showSuccess(`"${deactivateTarget.name}" deactivated`);
+        setDeactivateTarget(null);
+        fetchProducts({ showSpinner: false });
+      } catch {
+        // showError already called
+      }
+    });
   };
 
   return (
     <Box sx={{ p: 3 }}>
 
-      {/* Header */}
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2.5 }}>
-        <Box>
-          <Typography variant="h5" fontWeight={700}>Products</Typography>
-          <Typography variant="body2" color="text.secondary">
-            {total} product{total !== 1 ? 's' : ''} total
-          </Typography>
-        </Box>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/admin/products/new')}>
-          New Product
-        </Button>
-      </Stack>
+      <AdminListHeader
+        title="Products"
+        subtitle={`${total} product${total !== 1 ? 's' : ''} total`}
+        action={{ label: 'New Product', icon: <AddIcon />, onClick: () => navigate('/admin/products/new') }}
+      />
 
       {/* Filters */}
       <Stack direction="row" spacing={1.5} sx={{ mb: 2 }}>
@@ -204,22 +195,17 @@ export default function ProductListPage(): JSX.Element {
           </TableHead>
 
           <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
-                  <CircularProgress size={28} />
-                </TableCell>
-              </TableRow>
-            ) : products.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {search || categoryFilter || activeFilter || tagFilter.length > 0
-                      ? 'No products match your filters.'
-                      : 'No products yet. Create the first one.'}
-                  </Typography>
-                </TableCell>
-              </TableRow>
+            {loading || products.length === 0 ? (
+              <TableStatusRow
+                loading={loading}
+                isEmpty={products.length === 0}
+                emptyMessage={
+                  search || categoryFilter || activeFilter || tagFilter.length > 0
+                    ? 'No products match your filters.'
+                    : 'No products yet. Create the first one.'
+                }
+                colSpan={6}
+              />
             ) : (
               products.map(product => (
                 <TableRow key={product.id} hover>

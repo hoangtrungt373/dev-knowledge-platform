@@ -1,5 +1,6 @@
 import { httpClient } from '@shared/api/httpClient';
 import { PagedResponse } from '@shared/types';
+import { buildQueryString } from '@shared/utils/queryString';
 import { Order, OrderStatus } from '../types';
 
 type ShowError = (msg: string) => void;
@@ -15,8 +16,7 @@ export const orderApi = {
    * or more statuses via a repeated query param, matching `OrderApi.list`'s own
    * `@RequestParam List<OrderStatus>`; omitted (or empty) returns every status ("All"). */
   list(page: number, size: number, statuses?: OrderStatus[], showError?: ShowError): Promise<PagedResponse<Order>> {
-    const statusParams = statuses?.length ? statuses.map(s => `&statuses=${s}`).join('') : '';
-    return httpClient.get(`/api/v1/orders?page=${page}&size=${size}${statusParams}`, showError);
+    return httpClient.get(`/api/v1/orders${buildQueryString({ page, size, statuses })}`, showError);
   },
 
   getById(id: number, showError?: ShowError): Promise<Order> {

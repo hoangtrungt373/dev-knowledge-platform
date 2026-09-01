@@ -14,6 +14,7 @@ import {
 import { SavedAddress } from '../types';
 import { addressApi } from '../api/addressApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 
 interface FormErrors {
   fullName?: string;
@@ -49,7 +50,7 @@ export default function AddressFormDialog({ open, address, onClose, onSaved }: P
   const [country, setCountry] = useState('');
   const [makeDefault, setMakeDefault] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
-  const [saving, setSaving] = useState(false);
+  const { loading: saving, guard } = useSubmitGuard();
 
   useEffect(() => {
     if (open) {
@@ -78,34 +79,33 @@ export default function AddressFormDialog({ open, address, onClose, onSaved }: P
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = (): void => {
     if (!validate()) return;
-    setSaving(true);
-    try {
-      const fields = {
-        label: label.trim() || undefined,
-        fullName: fullName.trim(),
-        line1: line1.trim(),
-        line2: line2.trim() || undefined,
-        city: city.trim(),
-        state: state.trim(),
-        postalCode: postalCode.trim(),
-        country: country.trim(),
-      };
-      if (isEdit) {
-        await addressApi.update(address.id, fields, showError);
-        showSuccess('Address updated');
-      } else {
-        await addressApi.create({ ...fields, makeDefault }, showError);
-        showSuccess('Address added');
+    guard(async () => {
+      try {
+        const fields = {
+          label: label.trim() || undefined,
+          fullName: fullName.trim(),
+          line1: line1.trim(),
+          line2: line2.trim() || undefined,
+          city: city.trim(),
+          state: state.trim(),
+          postalCode: postalCode.trim(),
+          country: country.trim(),
+        };
+        if (isEdit) {
+          await addressApi.update(address.id, fields, showError);
+          showSuccess('Address updated');
+        } else {
+          await addressApi.create({ ...fields, makeDefault }, showError);
+          showSuccess('Address added');
+        }
+        onSaved();
+        onClose();
+      } catch {
+        // showError already called
       }
-      onSaved();
-      onClose();
-    } catch {
-      // showError already called
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
   return (

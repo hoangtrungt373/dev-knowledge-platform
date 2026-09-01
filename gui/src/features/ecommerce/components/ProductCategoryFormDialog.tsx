@@ -16,6 +16,7 @@ import {
 import { ProductCategory, ProductCategoryTreeNode, CreateProductCategoryPayload, UpdateProductCategoryPayload } from '../types';
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import { flattenCategoryTree } from '../utils/categoryTree';
 
 interface Props {
@@ -48,7 +49,7 @@ export default function ProductCategoryFormDialog({ open, category, treeNodes, o
   const [name, setName] = useState('');
   const [parentId, setParentId] = useState<number | ''>('');
   const [nameError, setNameError] = useState('');
-  const [saving, setSaving] = useState(false);
+  const { loading: saving, guard } = useSubmitGuard();
 
   const isEdit = category !== null;
 
@@ -77,27 +78,26 @@ export default function ProductCategoryFormDialog({ open, category, treeNodes, o
     return true;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = (): void => {
     if (!validate()) return;
-    setSaving(true);
-    try {
-      const resolvedParentId = parentId === '' ? null : parentId;
-      if (isEdit) {
-        const payload: UpdateProductCategoryPayload = { name: name.trim(), parentId: resolvedParentId };
-        await ecommerceApi.updateProductCategory(category.id, payload, showError);
-        showSuccess('Product category updated');
-      } else {
-        const payload: CreateProductCategoryPayload = { name: name.trim(), parentId: resolvedParentId ?? undefined };
-        await ecommerceApi.createProductCategory(payload, showError);
-        showSuccess('Product category created');
+    guard(async () => {
+      try {
+        const resolvedParentId = parentId === '' ? null : parentId;
+        if (isEdit) {
+          const payload: UpdateProductCategoryPayload = { name: name.trim(), parentId: resolvedParentId };
+          await ecommerceApi.updateProductCategory(category.id, payload, showError);
+          showSuccess('Product category updated');
+        } else {
+          const payload: CreateProductCategoryPayload = { name: name.trim(), parentId: resolvedParentId ?? undefined };
+          await ecommerceApi.createProductCategory(payload, showError);
+          showSuccess('Product category created');
+        }
+        onSaved();
+        onClose();
+      } catch {
+        // showError already called
       }
-      onSaved();
-      onClose();
-    } catch {
-      // showError already called
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
   return (

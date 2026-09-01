@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Box,
-  Button,
-  CircularProgress,
   IconButton,
   InputAdornment,
   Paper,
@@ -25,16 +23,13 @@ import SearchIcon from '@mui/icons-material/Search';
 import { ProductTag } from '../types';
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
+import { useDebouncedValue } from '@shared/hooks/useDebouncedValue';
 import ProductTagFormDialog from '../components/ProductTagFormDialog';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
-
-const PAGE_SIZE_OPTIONS = [10, 20, 50];
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric',
-  });
-}
+import AdminListHeader from '../components/AdminListHeader';
+import TableStatusRow from '../components/TableStatusRow';
+import { formatDate, PAGE_SIZE_OPTIONS } from '../utils/format';
 
 /** Mirrors @content's TagListPage — minus the Status filter/column, since ProductTag has none
  * (per the confirmed "just name + slug" scope, see ecommerce-service/CLAUDE.md). */
@@ -48,20 +43,14 @@ export default function ProductTagListPage(): JSX.Element {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
+  const search = useDebouncedValue(searchInput, 300);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editTag, setEditTag] = useState<ProductTag | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProductTag | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const { loading: deleting, guard: guardDelete } = useSubmitGuard();
 
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setSearch(searchInput);
-      setPage(0);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [searchInput]);
+  useEffect(() => { setPage(0); }, [search]);
 
   const fetchTags = useCallback(async (opts?: { showSpinner?: boolean }) => {
     const showSpinner = opts?.showSpinner ?? true;
@@ -88,36 +77,28 @@ export default function ProductTagListPage(): JSX.Element {
   const openCreate = () => { setEditTag(null); setFormOpen(true); };
   const openEdit = (tag: ProductTag) => { setEditTag(tag); setFormOpen(true); };
 
-  const handleDelete = async () => {
+  const handleDelete = (): void => {
     if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      await ecommerceApi.deleteProductTag(deleteTarget.id, showError);
-      showSuccess(`Product tag "${deleteTarget.name}" deleted`);
-      setDeleteTarget(null);
-      refreshTags();
-    } catch {
-      // showError already called
-    } finally {
-      setDeleting(false);
-    }
+    guardDelete(async () => {
+      try {
+        await ecommerceApi.deleteProductTag(deleteTarget.id, showError);
+        showSuccess(`Product tag "${deleteTarget.name}" deleted`);
+        setDeleteTarget(null);
+        refreshTags();
+      } catch {
+        // showError already called
+      }
+    });
   };
 
   return (
     <Box sx={{ p: 3 }}>
 
-      {/* Header */}
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2.5 }}>
-        <Box>
-          <Typography variant="h5" fontWeight={700}>Product Tags</Typography>
-          <Typography variant="body2" color="text.secondary">
-            {total} tag{total !== 1 ? 's' : ''} total
-          </Typography>
-        </Box>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
-          New Product Tag
-        </Button>
-      </Stack>
+      <AdminListHeader
+        title="Product Tags"
+        subtitle={`${total} tag${total !== 1 ? 's' : ''} total`}
+        action={{ label: 'New Product Tag', icon: <AddIcon />, onClick: openCreate }}
+      />
 
       {/* Filters */}
       <Stack direction="row" spacing={1.5} sx={{ mb: 2 }}>
@@ -149,20 +130,13 @@ export default function ProductTagListPage(): JSX.Element {
           </TableHead>
 
           <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={4} align="center" sx={{ py: 6 }}>
-                  <CircularProgress size={28} />
-                </TableCell>
-              </TableRow>
-            ) : tags.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={4} align="center" sx={{ py: 6 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {search ? 'No product tags match your search.' : 'No product tags yet. Create the first one.'}
-                  </Typography>
-                </TableCell>
-              </TableRow>
+            {loading || tags.length === 0 ? (
+              <TableStatusRow
+                loading={loading}
+                isEmpty={tags.length === 0}
+                emptyMessage={search ? 'No product tags match your search.' : 'No product tags yet. Create the first one.'}
+                colSpan={4}
+              />
             ) : (
               tags.map(tag => (
                 <TableRow key={tag.id} hover>

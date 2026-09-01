@@ -1,17 +1,9 @@
 import { httpClient } from '@shared/api/httpClient';
 import { PagedResponse } from '@shared/types';
+import { buildQueryString } from '@shared/utils/queryString';
 import { Product, ProductCategory, ProductSearchResult } from '../types';
 
 type ShowError = (msg: string) => void;
-
-function buildQuery(params: Record<string, string | number | boolean | undefined>): string {
-  const q = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== '') q.set(k, String(v));
-  });
-  const s = q.toString();
-  return s ? `?${s}` : '';
-}
 
 export interface ShopSearchParams {
   page?: number;
@@ -36,7 +28,7 @@ export interface ShopSearchParams {
  */
 export const shopApi = {
   search(params: ShopSearchParams, showError?: ShowError): Promise<PagedResponse<ProductSearchResult>> {
-    const query: Record<string, string | number | boolean | undefined> = {
+    const query = {
       page: params.page,
       size: params.size,
       categoryId: params.categoryId,
@@ -46,7 +38,7 @@ export const shopApi = {
       inStockOnly: params.inStockOnly,
       ...params.attributes,
     };
-    return httpClient.get(`/api/v1/public/products${buildQuery(query)}`, showError);
+    return httpClient.get(`/api/v1/public/products${buildQueryString(query)}`, showError);
   },
 
   getBySlug(slug: string, showError?: ShowError): Promise<Product> {

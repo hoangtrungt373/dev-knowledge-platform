@@ -1,5 +1,6 @@
 import { httpClient } from '@shared/api/httpClient';
 import { PagedResponse } from '@shared/types';
+import { buildQueryString, QueryParams } from '@shared/utils/queryString';
 import {
   ProductCategory, ProductCategoryTreeNode, CreateProductCategoryPayload, UpdateProductCategoryPayload,
   ProductTag, CreateProductTagPayload, UpdateProductTagPayload,
@@ -8,15 +9,6 @@ import {
 } from '../types';
 
 type ShowError = (msg: string) => void;
-
-function buildQuery(params: Record<string, string | number | boolean | undefined>): string {
-  const q = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== '') q.set(k, String(v));
-  });
-  const s = q.toString();
-  return s ? `?${s}` : '';
-}
 
 export interface ProductListParams {
   page?: number;
@@ -42,7 +34,7 @@ export const ecommerceApi = {
   // No delete endpoint — ProductCategoryApi doesn't expose one (see ecommerce-service/CLAUDE.md).
 
   listProductCategories(q?: string, showError?: ShowError): Promise<ProductCategory[]> {
-    return httpClient.get(`/api/v1/admin/product-categories${buildQuery({ q })}`, showError);
+    return httpClient.get(`/api/v1/admin/product-categories${buildQueryString({ q })}`, showError);
   },
 
   getProductCategoryTree(showError?: ShowError): Promise<ProductCategoryTreeNode[]> {
@@ -67,10 +59,10 @@ export const ecommerceApi = {
   listProductTags(
     params: ProductTagListParams, showError?: ShowError,
   ): Promise<PagedResponse<ProductTag>> {
-    return httpClient.get(
-      `/api/v1/admin/product-tags${buildQuery(params as Record<string, string | number | boolean | undefined>)}`,
-      showError,
-    );
+    // params is typed via a named `interface` (no implicit index signature) — see QueryParams's
+    // own doc comment for why that needs an explicit cast here where an inline object literal
+    // wouldn't.
+    return httpClient.get(`/api/v1/admin/product-tags${buildQueryString(params as QueryParams)}`, showError);
   },
 
   createProductTag(payload: CreateProductTagPayload, showError?: ShowError): Promise<ProductTag> {
@@ -90,16 +82,11 @@ export const ecommerceApi = {
   // ── Products ─────────────────────────────────────────────────────────────────
 
   listProducts(params: ProductListParams, showError?: ShowError): Promise<PagedResponse<Product>> {
-    // tagIds is a repeated query param (?tagIds=1&tagIds=2), matching ProductApi's
-    // @RequestParam Set<Integer> tagIds binding — buildQuery only handles scalar values, so it's
-    // built separately here and appended rather than folded into the scalar param set.
-    const { tagIds, ...scalarParams } = params;
-    const base = buildQuery(scalarParams as Record<string, string | number | boolean | undefined>);
-    const tagQuery = (tagIds ?? []).map(t => `tagIds=${t}`).join('&');
-    const query = tagQuery
-      ? `${base}${base ? '&' : '?'}${tagQuery}`
-      : base;
-    return httpClient.get(`/api/v1/admin/products${query}`, showError);
+    // tagIds is a repeated query param (?tagIds=1&tagIds=2), matching ProductApi's own
+    // @RequestParam Set<Integer> tagIds binding — buildQueryString appends an array value as
+    // repeated keys, so it's passed straight through alongside the scalar params (cast needed —
+    // see QueryParams's own doc comment).
+    return httpClient.get(`/api/v1/admin/products${buildQueryString(params as QueryParams)}`, showError);
   },
 
   getProduct(id: number, showError?: ShowError): Promise<Product> {

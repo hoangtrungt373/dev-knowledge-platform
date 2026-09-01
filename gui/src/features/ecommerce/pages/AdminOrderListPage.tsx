@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Box,
   Chip,
-  CircularProgress,
   IconButton,
   MenuItem,
   Paper,
@@ -21,13 +20,15 @@ import {
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
 import { adminOrderApi } from '../api/adminOrderApi';
 import { Order, OrderStatus } from '../types';
 import { ORDER_STATUS_COLORS, ORDER_STATUS_LABELS, formatOrderDate } from '../utils/orderStatus';
-import { formatPrice } from '../utils/format';
+import { formatPrice, PAGE_SIZE_OPTIONS } from '../utils/format';
+import AdminListHeader from '../components/AdminListHeader';
+import TableStatusRow from '../components/TableStatusRow';
 
-const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const ALL_STATUSES: OrderStatus[] = [
   'PENDING', 'PAYMENT_PROCESSING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'FAILED', 'EXPIRED',
 ];
@@ -51,7 +52,7 @@ export default function AdminOrderListPage(): JSX.Element {
   const [pageSize, setPageSize] = useState(20);
 
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
+  const { loading: actionLoading, guard: guardAction } = useSubmitGuard();
 
   const fetchOrders = useCallback(async (opts?: { showSpinner?: boolean }) => {
     const showSpinner = opts?.showSpinner ?? true;
@@ -67,38 +68,29 @@ export default function AdminOrderListPage(): JSX.Element {
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
-  const handleConfirmAction = async (): Promise<void> => {
+  const handleConfirmAction = (): void => {
     if (!actionTarget) return;
-    setActionLoading(true);
-    try {
-      if (actionTarget.action === 'ship') {
-        await adminOrderApi.ship(actionTarget.order.id, showError);
-        showSuccess(`Order #${actionTarget.order.id} marked shipped.`);
-      } else {
-        await adminOrderApi.deliver(actionTarget.order.id, showError);
-        showSuccess(`Order #${actionTarget.order.id} marked delivered.`);
+    guardAction(async () => {
+      try {
+        if (actionTarget.action === 'ship') {
+          await adminOrderApi.ship(actionTarget.order.id, showError);
+          showSuccess(`Order #${actionTarget.order.id} marked shipped.`);
+        } else {
+          await adminOrderApi.deliver(actionTarget.order.id, showError);
+          showSuccess(`Order #${actionTarget.order.id} marked delivered.`);
+        }
+        setActionTarget(null);
+        fetchOrders({ showSpinner: false });
+      } catch {
+        // showError already called
       }
-      setActionTarget(null);
-      fetchOrders({ showSpinner: false });
-    } catch {
-      // showError already called
-    } finally {
-      setActionLoading(false);
-    }
+    });
   };
 
   return (
     <Box sx={{ p: 3 }}>
 
-      {/* Header */}
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2.5 }}>
-        <Box>
-          <Typography variant="h5" fontWeight={700}>Order Fulfillment</Typography>
-          <Typography variant="body2" color="text.secondary">
-            {total} order{total !== 1 ? 's' : ''}
-          </Typography>
-        </Box>
-      </Stack>
+      <AdminListHeader title="Order Fulfillment" subtitle={`${total} order${total !== 1 ? 's' : ''}`} />
 
       {/* Filter */}
       <Stack direction="row" spacing={1.5} sx={{ mb: 2 }}>
@@ -131,20 +123,15 @@ export default function AdminOrderListPage(): JSX.Element {
           </TableHead>
 
           <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
-                  <CircularProgress size={28} />
-                </TableCell>
-              </TableRow>
-            ) : orders.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {statusFilter ? `No orders are currently ${ORDER_STATUS_LABELS[statusFilter].toLowerCase()}.` : 'No orders yet.'}
-                  </Typography>
-                </TableCell>
-              </TableRow>
+            {loading || orders.length === 0 ? (
+              <TableStatusRow
+                loading={loading}
+                isEmpty={orders.length === 0}
+                emptyMessage={
+                  statusFilter ? `No orders are currently ${ORDER_STATUS_LABELS[statusFilter].toLowerCase()}.` : 'No orders yet.'
+                }
+                colSpan={6}
+              />
             ) : (
               orders.map(order => {
                 const placedAt = order.statusHistory[0]?.occurredAt;

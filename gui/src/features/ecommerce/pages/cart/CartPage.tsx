@@ -155,6 +155,8 @@ export default function CartPage(): JSX.Element {
               checked={selectedVariantIds.size > 0 && selectedVariantIds.size === allVariantIds.length}
               indeterminate={selectedVariantIds.size > 0 && selectedVariantIds.size < allVariantIds.length}
               onChange={() => toggleSelectAll(allVariantIds)}
+              disableRipple
+              sx={{ p: 0 }}
             />
             <Typography variant="body2" color="text.secondary">
               {selectedVariantIds.size > 0 ? `${selectedVariantIds.size} selected` : 'Select all'}
@@ -277,7 +279,7 @@ function CartLineRow({ line, pending, selected, onToggleSelect, onQuantityChange
         spacing={2}
         sx={{ py: 2, opacity: 0.6 }}
       >
-        <Checkbox checked={selected} onChange={onToggleSelect} />
+        <Checkbox checked={selected} onChange={onToggleSelect} disableRipple sx={{ p: 0 }} />
         <Thumbnail imageUrl={null} alt="" />
         <Box sx={{ flex: 1 }}>
           <Typography variant="body2">Variant #{line.variantId}</Typography>
@@ -297,7 +299,7 @@ function CartLineRow({ line, pending, selected, onToggleSelect, onQuantityChange
       spacing={2}
       sx={{ py: 1 }}
     >
-      <Checkbox checked={selected} onChange={onToggleSelect} />
+      <Checkbox checked={selected} onChange={onToggleSelect} disableRipple sx={{ p: 0 }} />
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, minWidth: 0 }}>
         {/* Only the thumbnail/name are a real link — the variation box and price below are
             plain siblings now, not nested inside it, so clicking them doesn't also navigate. */}

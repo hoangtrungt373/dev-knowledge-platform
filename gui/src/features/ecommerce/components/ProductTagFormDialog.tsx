@@ -12,6 +12,7 @@ import {
 import { ProductTag } from '../types';
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 
 interface Props {
   open: boolean;
@@ -26,7 +27,7 @@ export default function ProductTagFormDialog({ open, tag, onClose, onSaved }: Pr
   const { showError, showSuccess } = useNotification();
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState('');
-  const [saving, setSaving] = useState(false);
+  const { loading: saving, guard } = useSubmitGuard();
 
   const isEdit = tag !== null;
 
@@ -50,24 +51,23 @@ export default function ProductTagFormDialog({ open, tag, onClose, onSaved }: Pr
     return true;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = (): void => {
     if (!validate()) return;
-    setSaving(true);
-    try {
-      if (isEdit) {
-        await ecommerceApi.updateProductTag(tag.id, { name: name.trim() }, showError);
-        showSuccess('Product tag updated');
-      } else {
-        await ecommerceApi.createProductTag({ name: name.trim() }, showError);
-        showSuccess('Product tag created');
+    guard(async () => {
+      try {
+        if (isEdit) {
+          await ecommerceApi.updateProductTag(tag.id, { name: name.trim() }, showError);
+          showSuccess('Product tag updated');
+        } else {
+          await ecommerceApi.createProductTag({ name: name.trim() }, showError);
+          showSuccess('Product tag created');
+        }
+        onSaved();
+        onClose();
+      } catch {
+        // showError already called
       }
-      onSaved();
-      onClose();
-    } catch {
-      // showError already called
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
   return (
