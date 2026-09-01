@@ -144,7 +144,10 @@ both `identity-service` and `social-service` were extracted into standalone serv
     adding the missing `route(path("/api/v1/admin/product-tags/**"), http(baseUrl))` line. **A new
     `@RequestMapping` on any of the six standalone services is not itself sufficient** — every PR
     that adds one needs a matching route added to this class in the same change, or the endpoint
-    is simply unreachable from the GUI with no obvious error pointing back here.
+    is simply unreachable from the GUI with no obvious error pointing back here. **Applied
+    immediately on the very next new endpoint** — `ecommerce-service`'s AddressBook feature
+    (`SavedAddressApi` at `/api/v1/addresses/**`) added its own `route(path("/api/v1/addresses/**"),
+    http(baseUrl))` line in the same change that introduced the endpoint, this time with no gap.
 - `security/` — transport/security **edge** infra, **and, as of the CORS-consolidation pass, the
   sole CORS source of truth in this whole reactor — zero exceptions.** `CorsConfig` here is the
   only real CORS config left anywhere. `ai-service`'s own copy (the only other one that ever

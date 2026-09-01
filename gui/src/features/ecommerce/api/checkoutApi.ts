@@ -1,5 +1,5 @@
 import { httpClient } from '@shared/api/httpClient';
-import { Address, CheckoutPreview, OrderConfirmation } from '../types';
+import { CheckoutAddressInput, CheckoutPreview, OrderConfirmation } from '../types';
 
 type ShowError = (msg: string) => void;
 
@@ -22,7 +22,10 @@ export const checkoutApi = {
     return httpClient.get(`/api/v1/checkout/preview${query}`, showError);
   },
 
-  confirm(address: Address, selectedVariantIds?: number[], showError?: ShowError): Promise<OrderConfirmation> {
+  /** AddressBook follow-up: `address` carries either an existing saved address
+   * (`savedAddressId`, every other field ignored) or a fresh, one-off address — see
+   * `CheckoutAddressInput`'s own doc comment. */
+  confirm(address: CheckoutAddressInput, selectedVariantIds?: number[], showError?: ShowError): Promise<OrderConfirmation> {
     return httpClient.post('/api/v1/checkout/confirm', { ...address, selectedVariantIds }, showError);
   },
 };

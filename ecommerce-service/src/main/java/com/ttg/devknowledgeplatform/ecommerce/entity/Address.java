@@ -10,11 +10,14 @@ import lombok.NoArgsConstructor;
 /**
  * A shipping address, embedded directly on {@link Order} rather than its own table/entity.
  *
- * <p>This module locked "single inline address, no saved address book" for Epic 2 (see
- * {@code docs/user-stories/02-cart-checkout.md}, US-2.5) — there is no independent lifecycle or
- * reuse to justify a standalone entity, so this is a plain JPA {@code @Embeddable} value object,
- * captured fresh at checkout and snapshotted onto the order that used it, the same "frozen at
- * purchase time" treatment {@link Order} already gives price (see {@link OrderLine}).
+ * <p>This module originally locked "single inline address, no saved address book" for Epic 2 (see
+ * {@code docs/user-stories/02-cart-checkout.md}, US-2.5) — a real address book has since been
+ * added ({@link SavedAddress}, a genuinely independent, reusable entity), but this class' own role
+ * is unchanged: whichever address a shopper actually chooses at checkout time (saved or one-off)
+ * is still copied into a plain JPA {@code @Embeddable} value object and snapshotted onto the order
+ * that used it, the same "frozen at purchase time" treatment {@link Order} already gives price
+ * (see {@link OrderLine}) — an order's own shipping address must never change just because the
+ * {@link SavedAddress} it was copied from is later edited or deleted.
  */
 @Embeddable
 @Data

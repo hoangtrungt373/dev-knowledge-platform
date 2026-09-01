@@ -9,7 +9,8 @@ visibility into which backend module actually owns a given entity.
 ```
 gui/src/
 ├── features/
-│   ├── auth/       — login/signup/OTP/OAuth2 callback, profile ("Dashboard"), admin login
+│   ├── auth/       — login/signup/OTP/OAuth2 callback, own-profile page (ProfilePage.tsx,
+│                       renamed from Dashboard.tsx — see app/account-shell/ below), admin login
 │   ├── chat/        — the RAG chat UI (session sidebar, message stream, sources panel)
 │   ├── friends/      — friend graph UI (search, requests, friends list, blocking)
 │   ├── messaging/     — 1:1 DM chat over STOMP WebSocket (Phase 1; groups/channels are Phase 2)
@@ -22,7 +23,8 @@ gui/src/
 │                            pages/cart/, pages/checkout/ (Epic 2) + pages/orders/ (Epic 3's
 │                            shopper-facing order history/detail, US-3.3/3.5/3.6)
 ├── app/          — app shell: App.tsx (routes), main.tsx, theme.ts, NavBar, GuestRoute/PrivateRoute,
-│                    admin-shell/ (AdminLayout, AdminDashboard — the admin nav frame + landing page)
+│                    admin-shell/ (AdminLayout, AdminDashboard — the admin nav frame + landing page),
+│                    account-shell/ (AccountLayout — the shopper's own Profile+Addresses sidebar)
 └── shared/        — httpClient, common.types-equivalent (types.ts, incl. PagedResponse), the
                       NotificationContext, storage.ts (STORAGE_KEYS), colors.ts, errorHandler.ts,
                       useSubmitGuard, ConfirmDialog
@@ -1157,6 +1159,31 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       distribution among siblings. Pinning the column to a fixed width removes the variability at
       its source rather than just changing how content aligns within it: `alignItems="center"` and
       the always-rendered caption were kept, now safe since the box they sit in never resizes.
+      **Follow-up: the always-rendered (`visibility: 'hidden'`) caption turned out to cause a
+      second, different bug — the stepper itself sat visibly above the row's true vertical center,
+      not just off-width, reported directly and diagnosed rather than guessed.** The reserved
+      second line gave the quantity column a taller flow height than every other single-line
+      sibling in the row (thumbnail/name, unit price, delete button); since the whole two-line
+      block — not just the visible stepper — is what the outer row's `alignItems="center"` centers,
+      the block's own midpoint (which sits *between* the stepper and the reserved caption line) is
+      what lines up with the row's center, leaving the stepper itself sitting above it. The taller
+      the row's other content already is (this row's own 64px thumbnail), the more room there was
+      for this to be visible. Fixed by taking the caption out of flow entirely instead of just
+      hiding it: it's now conditionally rendered (`{isLowStock(...) && <Typography ...>}`, no
+      `visibility`/placeholder-text trick anymore) and `position: 'absolute'` (`top: '100%', left:
+      '50%', transform: 'translateX(-50%)'` on a `position: 'relative'` wrapping `Stack`) — this
+      fixes *both* remaining concerns at once: the column's flow height is now just the stepper's,
+      so `alignItems="center"` centers it exactly like every single-line sibling regardless of
+      whether this particular line is low-stock; and there's no live layout jump to guard against
+      in the first place anymore either, since an absolutely positioned element was never part of
+      the flow height calculation to begin with — a strictly better mechanism than the
+      always-rendered-but-invisible placeholder it replaced, not just a smaller version of the same
+      trick. Accepted trade-off, not fixed further: the caption can now render slightly into the
+      existing row-to-row gap (the `Stack`'s own `spacing={1}`/`divider` breathing room) when a
+      line actually is low-stock, rather than guaranteed clearance — a rare state, and a minor
+      cosmetic one, so not worth reserving permanent extra padding on every row (which would
+      reintroduce a form of the original per-row height variability this whole thread has been
+      fixing) just to guard against it.
       A per-row `pending` flag
       (keyed by `variantId`) disables only the row with an in-flight mutation, not the whole page.
       **Colors: per-unit "$X each" price is `color="text.primary"`, the row's right-aligned
@@ -1531,6 +1558,96 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     - **Verified** the same way as `OrderHistoryPage`/`OrderDetailPage` above: clean `tsc --noEmit`
       (no new errors) and a successful `vite build`; no interactive browser testing was possible in
       this environment (no Docker to run the backend stack).
+  - **AddressBook — a shopper's own reusable, multi-address book with a designated default, per
+    request. Both the standalone management page and `CheckoutPage` integration landed together**
+    (confirmed via 3 scope questions before building: checkout wiring in scope, an optional label
+    field, and a checkout-time quick-save checkbox — see `ecommerce-service/CLAUDE.md`'s own
+    AddressBook note for the backend half).
+    - `types.ts` gained `SavedAddress`/`CreateSavedAddressPayload`/`UpdateSavedAddressPayload`
+      (mirrors the backend's `SavedAddress`/`Create`/`UpdateSavedAddressRequest` field-for-field,
+      including `defaultAddress` — not `isDefault` — to match the entity's own Lombok-accessor
+      naming choice) and a new `CheckoutAddressInput` (the two-shape `savedAddressId` **or** fresh
+      fields + `saveAddress`/`addressLabel` contract, mirroring `AddressRequest`). The existing
+      `Address` type is untouched — still the plain, no-id shape a fresh one-off entry uses.
+    - New `api/addressApi.ts` (`list`/`create`/`update`/`remove`/`setDefault`) — a separate file
+      from `checkoutApi.ts`/`ecommerceApi.ts`, mirroring the backend's own `SavedAddressApi`/
+      `CheckoutApi` split. `checkoutApi.confirm`'s own `address` parameter changed type from
+      `Address` to `CheckoutAddressInput` to carry the new two-shape contract.
+    - New `pages/AddressBookPage.tsx` (flat under `pages/`, not a subfolder — a single page, same
+      placement convention as `ProductTagListPage.tsx`) + `components/AddressFormDialog.tsx` —
+      **never admin-gated** (every address belongs to exactly the caller, same shape as
+      `/orders`/`/cart`); nested under the Account shell as `/account/addresses` (see the
+      follow-up note below — its very first cut was a standalone top-level `/addresses` route
+      with its own `NavBar` button, superseded almost immediately). Each address renders as its
+      own `Paper` card: label-or-full-name heading, a "Default" `Chip` when applicable, the full
+      address text, and a row of icon actions — a star toggle (filled `StarIcon` when already
+      default, disabled; outlined `StarOutlineIcon`, clickable, otherwise) calling
+      `addressApi.setDefault`, Edit (opens `AddressFormDialog`), and Delete (routed through the
+      existing `@shared/components/ConfirmDialog`, same pattern every other delete action in this
+      app uses). `AddressFormDialog` shows a "Set as default" checkbox **only in create mode** —
+      mirrors the backend exactly: `update()` never touches the default flag at all, promoting an
+      address is its own dedicated action, not a side effect of a plain field edit.
+    - **`CheckoutPage.tsx`'s Shipping Address section gained a saved-address picker above the
+      existing manual form, not replacing it.** A `RadioGroup` (own bordered card per option,
+      highlighted `primary.main` when selected) lists every saved address (label-or-full-name +
+      "Default" `Chip` + the full address text) plus a trailing "Enter a new address" option — only
+      rendered at all when `savedAddresses.length > 0`, so a shopper with no saved addresses sees
+      exactly the same form as before this feature existed, no empty picker taking up space. The
+      picker **pre-selects the caller's default address** (or the first one, if none is somehow
+      marked default) on load, so the common "just use my usual address" case needs zero clicks —
+      picking "Enter a new address" is one click away. The manual form (unchanged fields) renders
+      only when that sentinel option is selected (`addressChoice === NEW_ADDRESS_OPTION`), and
+      gained a "Save this address for future orders" checkbox + an optional label field (shown only
+      once checked) at its bottom. `handleSubmit` builds `{ savedAddressId }` or the full ad-hoc
+      fields + `saveAddress`/`addressLabel` depending on which mode is active — `validate()` skips
+      entirely when a saved address is selected (there's nothing to validate — the picked address
+      already exists). The saved-addresses fetch is a second, independent `useEffect` call
+      alongside the existing `checkoutApi.preview` one (not gating `previewLoading`), with a
+      **silently swallowed** failure — same "this is a cosmetic convenience, not a real checkout
+      error" reasoning `ProductDetailPage`'s own breadcrumb-ancestor fetch already established; a
+      failed/slow fetch just falls back to the manual form exactly as before this feature existed.
+    - **Verified via a clean `tsc --noEmit` and a successful `vite build` only** — no Docker in this
+      sandbox, so the actual address CRUD, default-star toggle, and the checkout picker/quick-save
+      flow are unverified in a real browser.
+    - **Follow-up, per request: `AddressBookPage` moved off its own standalone top-level route
+      into a new shared "Account" shell alongside `@auth`'s own profile page** — asked directly
+      whether to merge Addresses into `Dashboard.tsx` outright, and recommended (and built) a
+      proper shell instead: `Dashboard.tsx` was too large a single page to just bolt a second,
+      unrelated (ecommerce-service-owned) concern onto, and a disconnected top-level `/addresses`
+      nav button read as unrelated to "your own account" even though conceptually it obviously
+      belongs there. New `app/account-shell/AccountLayout.tsx` — deliberately a **much simpler**
+      sidebar than `AdminLayout`'s own (no collapse toggle/`localStorage` persistence — that
+      complexity earns its keep on `AdminLayout` with 9+ nav items, not here with just two: Profile
+      and Addresses), and unlike `AdminLayout`, `NavBar` stays visible above it (the account area is
+      still "part of the site," not a separate back-office experience with its own replacement
+      chrome). Lives directly under `app/`, not inside either feature — same reasoning
+      `admin-shell/` is neutral rather than owned by `@content`/`@ecommerce`: this shell's two
+      destinations span two unrelated features (`@auth`'s `ProfilePage`, `@ecommerce`'s
+      `AddressBookPage`), so it can't fairly belong to either one.
+      - `@auth/pages/Dashboard.tsx` renamed to `ProfilePage.tsx` (`git mv`, preserving history;
+        component renamed to match) — its own content/logic is otherwise untouched, still owns its
+        full outer layout (`Box sx={{ maxWidth: 800, ... }}`), since `AccountLayout`'s own main
+        content area carries no padding of its own, same "nested page owns its own padding"
+        convention `AdminLayout`'s own `<Outlet/>` wrapper already established.
+      - **`/dashboard` was kept as a redirect route (`<Navigate to="/account/profile" replace />`),
+        not removed** — `AuthCallback.tsx`/`Login.tsx`/`SignUp.tsx`/`AdminLogin.tsx`'s own
+        post-login redirects, `GuestRoute`'s default `redirect` prop, `SessionSidebar.tsx`/
+        `MessagesPage.tsx`'s "back" buttons, and the root `/` route's own
+        `authService.isAuthenticated() ? '/dashboard' : '/login'` branch all still navigate to this
+        exact literal path; redirecting here instead of deleting the route meant none of those
+        needed to change at all. `App.tsx`'s new nested routes: `/account/profile`,
+        `/account/addresses`, and an index route redirecting `/account` itself to `/account/profile`.
+      - `NavBar.tsx`'s own "Dashboard" button became "Account" (`AccountCircleIcon`, replacing
+        `DashboardIcon`) — navigates straight to `/account/profile` (not through the `/dashboard`
+        redirect) and highlights on `location.pathname.startsWith('/account')`, since the old
+        `isActive('/dashboard')` exact-match check would never highlight once every real
+        navigation landed on `/account/profile` instead. The separate "Addresses" `NavBar` button
+        added earlier this same session was removed outright — one "Account" entry now covers both
+        destinations via `AccountLayout`'s own sidebar, and keeping a second top-level button
+        pointing at the same destination would have just duplicated it.
+      - Verified via a clean `tsc --noEmit` and a successful `vite build`; grepped the whole `gui/src`
+        tree for every remaining `/dashboard` reference and confirmed each one is a call site this
+        redirect intentionally keeps working, not a missed spot.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's
@@ -1734,7 +1851,7 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   it's still pending.
 - A few pages were already large enough before this reorg to smell like God Components mixing
   data-fetching + view + local logic (`@ai/pages/EmbeddingsPage.tsx` ~512 lines,
-  `@auth/pages/Dashboard.tsx` ~407, `@ai/pages/PipelineMetricsPage.tsx` ~352,
+  `@auth/pages/ProfilePage.tsx` (renamed from `Dashboard.tsx`) ~407, `@ai/pages/PipelineMetricsPage.tsx` ~352,
   `@content/pages/QuestionAnswerFormPage.tsx` ~351) — worth extracting a custom hook per page if
   you're touching one of these for a feature change anyway, but that's a finer-grained cleanup this
   reorg didn't attempt.

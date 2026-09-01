@@ -44,7 +44,10 @@ public interface CheckoutApi {
 
     /**
      * Creates an order from the caller's currently-available cart lines and the given shipping
-     * address (US-2.5, US-2.6), clearing the cart on success.
+     * address (US-2.5, US-2.6), clearing the cart on success. {@code request} carries either an
+     * existing AddressBook entry ({@code savedAddressId}) or a fresh, one-off address — see
+     * {@code AddressRequest}'s own Javadoc for the full two-shape contract, including the optional
+     * "save this for next time" flag.
      *
      * @param userUuid the caller's Keycloak UUID
      * @param request  the shipping address to snapshot onto the order

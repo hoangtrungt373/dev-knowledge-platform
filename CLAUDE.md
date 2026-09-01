@@ -282,11 +282,12 @@ Every other path maps to exactly one service by its own resource prefix — `/ap
 `identity-service`, `/api/v1/projects/**`/`/api/v1/tasks/**` → `task-service`,
 `/api/v1/dms/**`/`/friends/**`/`/groups/**`/`/channels/**` → `social-service`,
 `/api/v1/chat/sessions/**` → `ai-service`, `/api/v1/cart/**`/`/api/v1/checkout/**`/
-`/api/v1/orders/**` → `ecommerce-service` (Epic 2's authenticated-only shopper cart/checkout —
-`/api/v1/cart/**` was the app's first genuinely new top-level prefix, no shared-prefix
-disambiguation needed since nothing else owns any part of it; `/api/v1/checkout/**` followed the
-same shape once Epic 2's checkout half was built; `/api/v1/orders/**` followed it again once Epic
-3 Phase 5's shopper-facing order REST surface was built — admin ship/deliver live under the
+`/api/v1/orders/**`/`/api/v1/addresses/**` → `ecommerce-service` (Epic 2's authenticated-only
+shopper cart/checkout — `/api/v1/cart/**` was the app's first genuinely new top-level prefix, no
+shared-prefix disambiguation needed since nothing else owns any part of it; `/api/v1/checkout/**`
+followed the same shape once Epic 2's checkout half was built; `/api/v1/orders/**` followed it
+again once Epic 3 Phase 5's shopper-facing order REST surface was built; `/api/v1/addresses/**`
+followed it once more for the AddressBook feature — admin ship/deliver live under the
 shared `/api/v1/admin/**` prefix instead, as `/api/v1/admin/orders/**`, alongside
 `ecommerce-service`'s existing `/products/**`/`/product-categories/**` admin segments). See
 `GatewayRoutesConfig`'s own Javadoc for the

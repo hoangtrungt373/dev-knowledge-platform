@@ -5,6 +5,7 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.Address;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OrderLine;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OrderStatusHistory;
+import com.ttg.devknowledgeplatform.ecommerce.entity.SavedAddress;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
@@ -16,6 +17,8 @@ import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutCommands;
 import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutPreview;
 import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutResult;
 import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutService;
+import com.ttg.devknowledgeplatform.ecommerce.service.SavedAddressCommands;
+import com.ttg.devknowledgeplatform.ecommerce.service.SavedAddressService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -54,6 +57,7 @@ public class CheckoutServiceImpl implements CheckoutService {
     private final CartService cartService;
     private final OrderRepository orderRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final SavedAddressService savedAddressService;
 
     @Value("${app.ecommerce.checkout.flat-shipping-fee:5.00}")
     private BigDecimal flatShippingFee;
@@ -69,7 +73,8 @@ public class CheckoutServiceImpl implements CheckoutService {
     }
 
     @Override
-    public CheckoutResult confirm(String userUuid, CheckoutCommands.AddressInput address, List<Integer> selectedVariantIds) {
+    public CheckoutResult confirm(
+            String userUuid, CheckoutCommands.AddressSelection addressSelection, List<Integer> selectedVariantIds) {
         Cart cart = cartService.getCart(userUuid);
         List<CartLine> candidateLines = filterBySelection(cart.lines(), selectedVariantIds);
         List<CartLine> availableLines = requireCheckoutableCart(candidateLines);
@@ -77,6 +82,7 @@ public class CheckoutServiceImpl implements CheckoutService {
 
         BigDecimal subtotal = computeSubtotal(availableLines);
         BigDecimal total = subtotal.add(flatShippingFee);
+        Address shippingAddress = resolveAddress(userUuid, addressSelection);
 
         // US-3.1: reserve every line's stock before the order itself is ever persisted — an
         // insufficient-stock line throws here, and the whole transaction (including any
@@ -88,7 +94,7 @@ public class CheckoutServiceImpl implements CheckoutService {
         Order order = new Order();
         order.setOwnerUuid(userUuid);
         order.setStatus(OrderStatus.PENDING);
-        order.setShippingAddress(toAddress(address));
+        order.setShippingAddress(shippingAddress);
         order.setSubtotal(subtotal);
         order.setShippingFee(flatShippingFee);
         order.setTotal(total);
@@ -102,9 +108,57 @@ public class CheckoutServiceImpl implements CheckoutService {
         // anything excluded by selectedVariantIds (or dropped by this final revalidation) stays in
         // the cart untouched, only after the order is durably saved (US-2.6).
         cartService.removeItems(userUuid, availableLines.stream().map(CartLine::variantId).toList());
+        maybeSaveAddressForFuture(userUuid, addressSelection);
         log.info("Created order id={} for userUuid={} lineCount={} droppedLineCount={}",
                 saved.getId(), userUuid, availableLines.size(), droppedLines.size());
         return new CheckoutResult(saved, droppedLines);
+    }
+
+    /**
+     * Resolves the actual shipping {@link Address} to snapshot onto the order — either copied
+     * from an existing AddressBook entry ({@code savedAddressId}, ownership re-checked via
+     * {@link SavedAddressService#getOwned}) or from a fresh, one-off {@code adHocAddress}. The
+     * latter can no longer be enforced complete via {@code @NotBlank} (see
+     * {@code CheckoutCommands.AddressSelection}'s own Javadoc for why), so every required field is
+     * checked here instead, imperatively — same idiom every other cross-field business rule in
+     * this reactor's service layer already uses ({@code Validator}, not Bean Validation).
+     */
+    private Address resolveAddress(String userUuid, CheckoutCommands.AddressSelection selection) {
+        if (selection.savedAddressId() != null) {
+            return toAddress(savedAddressService.getOwned(selection.savedAddressId(), userUuid));
+        }
+        CheckoutCommands.AddressInput input = selection.adHocAddress();
+        boolean complete = input != null
+                && isNotBlank(input.fullName()) && isNotBlank(input.line1()) && isNotBlank(input.city())
+                && isNotBlank(input.state()) && isNotBlank(input.postalCode()) && isNotBlank(input.country());
+        Validator.isTrue(complete, EcommerceErrorCode.CHECKOUT_ADDRESS_REQUIRED);
+        return toAddress(input);
+    }
+
+    /**
+     * Persists {@code adHocAddress} into the caller's AddressBook when {@code saveAddress} was
+     * requested — a no-op whenever an existing {@code savedAddressId} was used instead (nothing
+     * new to save). Deliberately best-effort: a failure here (unexpected, since nothing about this
+     * write depends on anything the checkout itself validated) is logged and swallowed rather than
+     * rethrown, so it can never roll back an order that has already reserved real stock — the
+     * order succeeding matters far more than this convenience side effect.
+     */
+    private void maybeSaveAddressForFuture(String userUuid, CheckoutCommands.AddressSelection selection) {
+        if (selection.savedAddressId() != null || !selection.saveAddress()) {
+            return;
+        }
+        try {
+            CheckoutCommands.AddressInput input = selection.adHocAddress();
+            savedAddressService.create(userUuid, new SavedAddressCommands.Create(
+                    selection.label(), input.fullName(), input.line1(), input.line2(),
+                    input.city(), input.state(), input.postalCode(), input.country(), false));
+        } catch (Exception e) {
+            log.warn("Could not save address to AddressBook for userUuid={} after checkout: {}", userUuid, e.getMessage());
+        }
+    }
+
+    private static boolean isNotBlank(String value) {
+        return value != null && !value.isBlank();
     }
 
     /**
@@ -182,5 +236,11 @@ public class CheckoutServiceImpl implements CheckoutService {
     private static Address toAddress(CheckoutCommands.AddressInput input) {
         return new Address(
                 input.fullName(), input.line1(), input.line2(), input.city(), input.state(), input.postalCode(), input.country());
+    }
+
+    private static Address toAddress(SavedAddress saved) {
+        return new Address(
+                saved.getFullName(), saved.getLine1(), saved.getLine2(), saved.getCity(),
+                saved.getState(), saved.getPostalCode(), saved.getCountry());
     }
 }

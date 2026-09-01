@@ -1,7 +1,7 @@
 import { AppBar, Toolbar, Typography, Button, Box, Badge, IconButton, Tooltip } from '@mui/material';
 import PeopleIcon from '@mui/icons-material/People';
 import ChecklistIcon from '@mui/icons-material/Checklist';
-import DashboardIcon from '@mui/icons-material/Dashboard';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
@@ -81,18 +81,21 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
 
         {isAuthed && (
           <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+            {/* Leads into the Account shell (Profile + Addresses, AccountLayout's own sidebar) —
+                one nav entry covers both now, rather than a separate top-level button per
+                sub-page. */}
             <Button
               color="inherit"
               size="small"
-              startIcon={<DashboardIcon fontSize="small" />}
-              onClick={() => navigate('/dashboard')}
+              startIcon={<AccountCircleIcon fontSize="small" />}
+              onClick={() => navigate('/account/profile')}
               sx={{
-                backgroundColor: isActive('/dashboard')
+                backgroundColor: location.pathname.startsWith('/account')
                   ? 'action.selected'
                   : 'transparent',
               }}
             >
-              Dashboard
+              Account
             </Button>
 
             <Button

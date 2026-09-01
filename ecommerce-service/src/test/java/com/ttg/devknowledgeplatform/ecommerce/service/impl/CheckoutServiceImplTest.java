@@ -4,6 +4,7 @@ import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductVariant;
+import com.ttg.devknowledgeplatform.ecommerce.entity.SavedAddress;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
@@ -14,6 +15,8 @@ import com.ttg.devknowledgeplatform.ecommerce.service.CartService;
 import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutCommands;
 import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutPreview;
 import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutResult;
+import com.ttg.devknowledgeplatform.ecommerce.service.SavedAddressCommands;
+import com.ttg.devknowledgeplatform.ecommerce.service.SavedAddressService;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -54,17 +57,21 @@ class CheckoutServiceImplTest {
     private OrderRepository orderRepository;
     @Mock
     private ProductVariantRepository productVariantRepository;
+    @Mock
+    private SavedAddressService savedAddressService;
 
     @InjectMocks
     private CheckoutServiceImpl service;
 
-    private CheckoutCommands.AddressInput address;
+    private CheckoutCommands.AddressInput addressInput;
+    private CheckoutCommands.AddressSelection address;
 
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(service, "flatShippingFee", FLAT_SHIPPING_FEE);
-        address = new CheckoutCommands.AddressInput(
+        addressInput = new CheckoutCommands.AddressInput(
                 "Ada Lovelace", "1 Analytical Engine Way", null, "London", "England", "SW1A 1AA", "UK");
+        address = new CheckoutCommands.AddressSelection(null, addressInput, false, null);
     }
 
     private static CartLine availableLine(Integer variantId, int quantity, BigDecimal price) {
@@ -295,6 +302,100 @@ class CheckoutServiceImplTest {
 
             verify(orderRepository, never()).save(any());
             verify(cartService, never()).removeItems(eq(USER_UUID), any());
+        }
+
+        @Test
+        void usesAnExistingAddressBookEntryWhenSavedAddressIdIsGiven() {
+            CartLine available = availableLine(1, 2, new BigDecimal("10.00"));
+            when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(available)));
+            when(productVariantRepository.reserve(1, 2)).thenReturn(1);
+            when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+            SavedAddress saved = new SavedAddress();
+            saved.setFullName("Grace Hopper");
+            saved.setLine1("1 Compiler Ave");
+            saved.setCity("Arlington");
+            saved.setState("VA");
+            saved.setPostalCode("22201");
+            saved.setCountry("USA");
+            when(savedAddressService.getOwned(7, USER_UUID)).thenReturn(saved);
+
+            // adHocAddress is deliberately non-null here too — resolveAddress must still prefer the
+            // saved address and ignore it entirely, not just work when adHocAddress is absent.
+            var selection = new CheckoutCommands.AddressSelection(7, addressInput, false, null);
+            CheckoutResult result = service.confirm(USER_UUID, selection, null);
+
+            assertThat(result.order().getShippingAddress().getFullName()).isEqualTo("Grace Hopper");
+            verify(savedAddressService, never()).create(any(), any());
+        }
+
+        @Test
+        void rejectsAnIncompleteAdHocAddressWhenNoSavedAddressIdIsGiven() {
+            when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(availableLine(1, 1, new BigDecimal("10.00")))));
+            var incomplete = new CheckoutCommands.AddressInput(
+                    "Ada Lovelace", "", null, "London", "England", "SW1A 1AA", "UK");
+            var selection = new CheckoutCommands.AddressSelection(null, incomplete, false, null);
+
+            assertThatThrownBy(() -> service.confirm(USER_UUID, selection, null))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.CHECKOUT_ADDRESS_REQUIRED);
+
+            verify(orderRepository, never()).save(any());
+        }
+
+        @Test
+        void savesTheAdHocAddressToTheAddressBookWhenRequested() {
+            CartLine available = availableLine(1, 1, new BigDecimal("10.00"));
+            when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(available)));
+            when(productVariantRepository.reserve(1, 1)).thenReturn(1);
+            when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+            var selection = new CheckoutCommands.AddressSelection(null, addressInput, true, "Home");
+
+            service.confirm(USER_UUID, selection, null);
+
+            verify(savedAddressService).create(eq(USER_UUID), eq(new SavedAddressCommands.Create(
+                    "Home", "Ada Lovelace", "1 Analytical Engine Way", null, "London", "England", "SW1A 1AA", "UK", false)));
+        }
+
+        @Test
+        void doesNotSaveToTheAddressBookWhenAnExistingSavedAddressWasUsed() {
+            CartLine available = availableLine(1, 1, new BigDecimal("10.00"));
+            when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(available)));
+            when(productVariantRepository.reserve(1, 1)).thenReturn(1);
+            when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+            SavedAddress saved = new SavedAddress();
+            saved.setFullName("Grace Hopper");
+            saved.setLine1("1 Compiler Ave");
+            saved.setCity("Arlington");
+            saved.setState("VA");
+            saved.setPostalCode("22201");
+            saved.setCountry("USA");
+            when(savedAddressService.getOwned(7, USER_UUID)).thenReturn(saved);
+            // saveAddress: true here is meaningless once a savedAddressId is given — there's
+            // nothing new to save — and must not be acted on regardless.
+            var selection = new CheckoutCommands.AddressSelection(7, addressInput, true, "Home");
+
+            service.confirm(USER_UUID, selection, null);
+
+            verify(savedAddressService, never()).create(any(), any());
+        }
+
+        @Test
+        void placingTheOrderSucceedsEvenWhenSavingTheAddressToTheAddressBookFails() {
+            CartLine available = availableLine(1, 1, new BigDecimal("10.00"));
+            when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(available)));
+            when(productVariantRepository.reserve(1, 1)).thenReturn(1);
+            when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+                Order saved = invocation.getArgument(0);
+                saved.setId(101);
+                return saved;
+            });
+            when(savedAddressService.create(any(), any())).thenThrow(new RuntimeException("boom"));
+            var selection = new CheckoutCommands.AddressSelection(null, addressInput, true, "Home");
+
+            CheckoutResult result = service.confirm(USER_UUID, selection, null);
+
+            assertThat(result.order().getId()).isEqualTo(101);
         }
     }
 }

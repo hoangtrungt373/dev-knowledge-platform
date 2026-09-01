@@ -22,6 +22,10 @@ BEGIN;
 -- Every table in the ecommerce schema, listed together so Postgres can resolve FK dependency
 -- order itself in one statement — CASCADE is included as a safety net for any future table this
 -- list falls behind on, not because it's required today (every FK-linked table is already listed).
+-- RESTART IDENTITY is sufficient on its own here (no separate ALTER SEQUENCE ... RESTART WITH 1
+-- needed) — every ecommerce.*_SEQ sequence is linked via ALTER SEQUENCE ... OWNED BY back to its
+-- column (see each table's own migration), which is exactly the association Postgres's
+-- TRUNCATE ... RESTART IDENTITY looks for to decide which sequences to reset.
 TRUNCATE TABLE
     ecommerce.OUTBOX_EVENT,
     ecommerce.PRODUCT_SEARCH_VIEW,
@@ -35,23 +39,5 @@ TRUNCATE TABLE
     ecommerce.PRODUCT,
     ecommerce.PRODUCT_CATEGORY
     RESTART IDENTITY CASCADE;
-
--- RESTART IDENTITY above is a no-op for every id column here — none of them are backed by a
--- Postgres IDENTITY/serial column "owned" by a sequence. This reactor uses explicit, standalone
--- ecommerce.*_SEQ sequences (root CLAUDE.md's "Sequences" convention) that Hibernate calls
--- nextval() on itself, with no ALTER SEQUENCE ... OWNED BY link back to any column — so
--- TRUNCATE's own identity-reset never reaches them. Reset each one by hand instead, so freshly
--- seeded rows start clean at id=1 again rather than continuing from wherever they left off.
-ALTER SEQUENCE ecommerce.PRODUCT_CATEGORY_SEQ RESTART WITH 1;
-ALTER SEQUENCE ecommerce.PRODUCT_SEQ RESTART WITH 1;
-ALTER SEQUENCE ecommerce.PRODUCT_IMAGE_SEQ RESTART WITH 1;
-ALTER SEQUENCE ecommerce.PRODUCT_VARIANT_SEQ RESTART WITH 1;
-ALTER SEQUENCE ecommerce.PRODUCT_TAG_SEQ RESTART WITH 1;
-ALTER SEQUENCE ecommerce.PRODUCT_TAG_ASSIGNMENT_SEQ RESTART WITH 1;
-ALTER SEQUENCE ecommerce.PRODUCT_SEARCH_VIEW_SEQ RESTART WITH 1;
-ALTER SEQUENCE ecommerce.OUTBOX_EVENT_SEQ RESTART WITH 1;
-ALTER SEQUENCE ecommerce.CUSTOMER_ORDER_SEQ RESTART WITH 1;
-ALTER SEQUENCE ecommerce.ORDER_LINE_SEQ RESTART WITH 1;
-ALTER SEQUENCE ecommerce.ORDER_STATUS_HISTORY_SEQ RESTART WITH 1;
 
 COMMIT;

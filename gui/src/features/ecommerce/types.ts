@@ -173,6 +173,69 @@ export interface Address {
   country: string;
 }
 
+// ── AddressBook ──────────────────────────────────────────────────────────────
+// Mirrors ecommerce-service's SavedAddress — a full first-class, independently-owned entity
+// (create/edit/delete/set-default), deliberately distinct from Address above (still a plain
+// frozen-at-checkout-time snapshot on an Order, no lifecycle of its own).
+
+export interface SavedAddress {
+  id: number;
+  label: string | null;
+  fullName: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  defaultAddress: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSavedAddressPayload {
+  label?: string;
+  fullName: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  /** The caller's very first address is auto-defaulted regardless of this flag — see
+   * ecommerce-service/CLAUDE.md's own AddressBook note. */
+  makeDefault?: boolean;
+}
+
+/** No makeDefault here — promoting an address to default is its own dedicated action
+ * (addressApi.setDefault), kept separate from a plain field edit, mirroring the backend. */
+export interface UpdateSavedAddressPayload {
+  label?: string;
+  fullName: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+}
+
+/** Checkout's own two-shape address contract (mirrors ecommerce-service's AddressRequest) — either
+ * an existing AddressBook entry (savedAddressId, every other field ignored) or a fresh, one-off
+ * address, optionally saved into the AddressBook via saveAddress/addressLabel. */
+export interface CheckoutAddressInput {
+  savedAddressId?: number;
+  fullName?: string;
+  line1?: string;
+  line2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  saveAddress?: boolean;
+  addressLabel?: string;
+}
+
 export interface OrderLine {
   variantId: number;
   sku: string;

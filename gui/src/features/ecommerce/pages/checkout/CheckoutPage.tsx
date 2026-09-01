@@ -3,10 +3,14 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Divider,
+  FormControlLabel,
   Paper,
+  Radio,
+  RadioGroup,
   Stack,
   TextField,
   Typography,
@@ -15,7 +19,8 @@ import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import { useCart } from '../../context/CartContext';
 import { checkoutApi } from '../../api/checkoutApi';
-import { Address, CheckoutPreview } from '../../types';
+import { addressApi } from '../../api/addressApi';
+import { Address, CheckoutPreview, SavedAddress } from '../../types';
 import { formatPrice } from '../../utils/format';
 
 interface AddressFormErrors {
@@ -30,6 +35,13 @@ interface AddressFormErrors {
 const EMPTY_ADDRESS: Address = {
   fullName: '', line1: '', line2: '', city: '', state: '', postalCode: '', country: '',
 };
+
+/** Sentinel radio value for "enter a new address" — distinct from any real numeric address id. */
+const NEW_ADDRESS_OPTION = 'new';
+
+function formatSavedAddress(a: SavedAddress): string {
+  return `${a.fullName}, ${a.line1}${a.line2 ? `, ${a.line2}` : ''}, ${a.city}, ${a.state} ${a.postalCode}, ${a.country}`;
+}
 
 export default function CheckoutPage(): JSX.Element {
   const navigate = useNavigate();
@@ -46,8 +58,18 @@ export default function CheckoutPage(): JSX.Element {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(true);
 
+  // AddressBook follow-up: the caller's saved addresses, fetched alongside the preview — a
+  // separate, independent request (not gating previewLoading), since a failure here shouldn't
+  // block checkout, only fall back to the "enter a new address" form below.
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  // The selected radio value — a SavedAddress id (as a string, to share one RadioGroup value type
+  // with the NEW_ADDRESS_OPTION sentinel) or NEW_ADDRESS_OPTION itself.
+  const [addressChoice, setAddressChoice] = useState<string>(NEW_ADDRESS_OPTION);
+
   const [address, setAddress] = useState<Address>(EMPTY_ADDRESS);
   const [errors, setErrors] = useState<AddressFormErrors>({});
+  const [saveAddress, setSaveAddress] = useState(false);
+  const [addressLabel, setAddressLabel] = useState('');
 
   useEffect(() => {
     setPreviewLoading(true);
@@ -55,10 +77,27 @@ export default function CheckoutPage(): JSX.Element {
       .then(setPreview)
       .catch((err) => setPreviewError(err instanceof Error ? err.message : 'Could not load your cart.'))
       .finally(() => setPreviewLoading(false));
+
+    addressApi.list().then(addresses => {
+      setSavedAddresses(addresses);
+      // Pre-select the caller's default address (or the first one, if somehow none is marked
+      // default) so the common case needs zero clicks — "enter a new address" stays one click away.
+      if (addresses.length > 0) {
+        const preferred = addresses.find(a => a.defaultAddress) ?? addresses[0];
+        setAddressChoice(String(preferred.id));
+      }
+    }).catch(() => {
+      // Silently falls back to the "enter a new address" form (its own default addressChoice) —
+      // a toast here would read as a real checkout error over what's really just a cosmetic
+      // convenience failing to load.
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const usingSavedAddress = addressChoice !== NEW_ADDRESS_OPTION;
+
   const validate = (): boolean => {
+    if (usingSavedAddress) return true; // nothing to validate — the picked address already exists
     const newErrors: AddressFormErrors = {};
     if (!address.fullName.trim()) newErrors.fullName = 'Full name is required';
     if (!address.line1.trim()) newErrors.line1 = 'Address is required';
@@ -75,7 +114,14 @@ export default function CheckoutPage(): JSX.Element {
     if (!validate()) return;
     guard(async () => {
       try {
-        const result = await checkoutApi.confirm(address, selectedVariantIds);
+        const addressInput = usingSavedAddress
+          ? { savedAddressId: Number(addressChoice) }
+          : {
+              ...address,
+              saveAddress,
+              addressLabel: saveAddress ? (addressLabel.trim() || undefined) : undefined,
+            };
+        const result = await checkoutApi.confirm(addressInput, selectedVariantIds);
         refreshCart(); // backend removes only the ordered lines on success — resync the badge/context
         // Order Detail (Epic 3) is now the canonical "here's your order" view — it has the real
         // Pay Now button this page's own former inline confirmation never could.
@@ -155,70 +201,141 @@ export default function CheckoutPage(): JSX.Element {
 
       <Paper variant="outlined" sx={{ p: 2.5 }} component="form" onSubmit={handleSubmit}>
         <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>Shipping Address</Typography>
-        <Stack spacing={2}>
-          <TextField
-            label="Full Name"
-            fullWidth
-            value={address.fullName}
-            onChange={(e) => setAddress({ ...address, fullName: e.target.value })}
-            error={!!errors.fullName}
-            helperText={errors.fullName}
-          />
-          <TextField
-            label="Address Line 1"
-            fullWidth
-            value={address.line1}
-            onChange={(e) => setAddress({ ...address, line1: e.target.value })}
-            error={!!errors.line1}
-            helperText={errors.line1}
-          />
-          <TextField
-            label="Address Line 2 (optional)"
-            fullWidth
-            value={address.line2}
-            onChange={(e) => setAddress({ ...address, line2: e.target.value })}
-          />
-          <Stack direction="row" spacing={2}>
-            <TextField
-              label="City"
-              fullWidth
-              value={address.city}
-              onChange={(e) => setAddress({ ...address, city: e.target.value })}
-              error={!!errors.city}
-              helperText={errors.city}
-            />
-            <TextField
-              label="State"
-              fullWidth
-              value={address.state}
-              onChange={(e) => setAddress({ ...address, state: e.target.value })}
-              error={!!errors.state}
-              helperText={errors.state}
-            />
-          </Stack>
-          <Stack direction="row" spacing={2}>
-            <TextField
-              label="Postal Code"
-              fullWidth
-              value={address.postalCode}
-              onChange={(e) => setAddress({ ...address, postalCode: e.target.value })}
-              error={!!errors.postalCode}
-              helperText={errors.postalCode}
-            />
-            <TextField
-              label="Country"
-              fullWidth
-              value={address.country}
-              onChange={(e) => setAddress({ ...address, country: e.target.value })}
-              error={!!errors.country}
-              helperText={errors.country}
-            />
-          </Stack>
 
-          <Button type="submit" variant="contained" size="large" disabled={submitting}>
-            {submitting ? <CircularProgress size={24} color="inherit" /> : `Place Order — ${formatPrice(preview.total)}`}
-          </Button>
-        </Stack>
+        {savedAddresses.length > 0 && (
+          <RadioGroup
+            value={addressChoice}
+            onChange={(e) => setAddressChoice(e.target.value)}
+            sx={{ mb: 2 }}
+          >
+            <Stack spacing={1}>
+              {savedAddresses.map(saved => (
+                <FormControlLabel
+                  key={saved.id}
+                  value={String(saved.id)}
+                  control={<Radio />}
+                  sx={{
+                    m: 0,
+                    p: 1,
+                    border: '1px solid',
+                    borderColor: addressChoice === String(saved.id) ? 'primary.main' : 'divider',
+                    borderRadius: 1,
+                    alignItems: 'flex-start',
+                  }}
+                  label={
+                    <Box sx={{ pt: 0.5 }}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <Typography variant="body2" fontWeight={600}>
+                          {saved.label || saved.fullName}
+                        </Typography>
+                        {saved.defaultAddress && (
+                          <Chip label="Default" size="small" color="primary" variant="outlined" />
+                        )}
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary">
+                        {formatSavedAddress(saved)}
+                      </Typography>
+                    </Box>
+                  }
+                />
+              ))}
+              <FormControlLabel
+                value={NEW_ADDRESS_OPTION}
+                control={<Radio />}
+                label="Enter a new address"
+                sx={{
+                  m: 0,
+                  p: 1,
+                  border: '1px solid',
+                  borderColor: addressChoice === NEW_ADDRESS_OPTION ? 'primary.main' : 'divider',
+                  borderRadius: 1,
+                }}
+              />
+            </Stack>
+          </RadioGroup>
+        )}
+
+        {!usingSavedAddress && (
+          <Stack spacing={2}>
+            <TextField
+              label="Full Name"
+              fullWidth
+              value={address.fullName}
+              onChange={(e) => setAddress({ ...address, fullName: e.target.value })}
+              error={!!errors.fullName}
+              helperText={errors.fullName}
+            />
+            <TextField
+              label="Address Line 1"
+              fullWidth
+              value={address.line1}
+              onChange={(e) => setAddress({ ...address, line1: e.target.value })}
+              error={!!errors.line1}
+              helperText={errors.line1}
+            />
+            <TextField
+              label="Address Line 2 (optional)"
+              fullWidth
+              value={address.line2}
+              onChange={(e) => setAddress({ ...address, line2: e.target.value })}
+            />
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="City"
+                fullWidth
+                value={address.city}
+                onChange={(e) => setAddress({ ...address, city: e.target.value })}
+                error={!!errors.city}
+                helperText={errors.city}
+              />
+              <TextField
+                label="State"
+                fullWidth
+                value={address.state}
+                onChange={(e) => setAddress({ ...address, state: e.target.value })}
+                error={!!errors.state}
+                helperText={errors.state}
+              />
+            </Stack>
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="Postal Code"
+                fullWidth
+                value={address.postalCode}
+                onChange={(e) => setAddress({ ...address, postalCode: e.target.value })}
+                error={!!errors.postalCode}
+                helperText={errors.postalCode}
+              />
+              <TextField
+                label="Country"
+                fullWidth
+                value={address.country}
+                onChange={(e) => setAddress({ ...address, country: e.target.value })}
+                error={!!errors.country}
+                helperText={errors.country}
+              />
+            </Stack>
+
+            <FormControlLabel
+              control={<Checkbox checked={saveAddress} onChange={(e) => setSaveAddress(e.target.checked)} />}
+              label="Save this address for future orders"
+            />
+            {saveAddress && (
+              <TextField
+                label="Label (optional)"
+                placeholder="Home, Work…"
+                fullWidth
+                value={addressLabel}
+                onChange={(e) => setAddressLabel(e.target.value)}
+                inputProps={{ maxLength: 50 }}
+              />
+            )}
+          </Stack>
+        )}
+
+        <Button type="submit" variant="contained" size="large" fullWidth disabled={submitting} sx={{ mt: 2 }}>
+          {submitting ? <CircularProgress size={24} color="inherit" /> : `Place Order — ${formatPrice(preview.total)}`}
+        </Button>
       </Paper>
     </Box>
   );

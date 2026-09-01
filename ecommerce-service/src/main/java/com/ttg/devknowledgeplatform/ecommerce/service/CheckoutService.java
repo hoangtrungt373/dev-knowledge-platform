@@ -46,12 +46,16 @@ public interface CheckoutService {
      * this final revalidation) stays in the cart untouched.
      *
      * @param userUuid           the caller's Keycloak UUID
-     * @param address            the shipping address to snapshot onto the order
+     * @param addressSelection   either a reference to an existing AddressBook entry or a fresh,
+     *                           one-off address (optionally saved into the AddressBook) — see
+     *                           {@link CheckoutCommands.AddressSelection}'s own Javadoc
      * @param selectedVariantIds optional subset of variant ids to restrict this checkout to;
      *                           {@code null} checks out the whole cart
      * @return the created order plus any lines dropped at this final revalidation
      * @throws com.ttg.devknowledgeplatform.common.exception.ApiException if the cart (or the
-     *         selected subset of it) is empty, or every line in it is currently unavailable
+     *         selected subset of it) is empty, every line in it is currently unavailable, the
+     *         address selection is missing/incomplete, or {@code savedAddressId} doesn't belong
+     *         to the caller
      */
-    CheckoutResult confirm(String userUuid, CheckoutCommands.AddressInput address, List<Integer> selectedVariantIds);
+    CheckoutResult confirm(String userUuid, CheckoutCommands.AddressSelection addressSelection, List<Integer> selectedVariantIds);
 }

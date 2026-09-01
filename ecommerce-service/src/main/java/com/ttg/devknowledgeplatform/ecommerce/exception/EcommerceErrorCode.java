@@ -61,6 +61,12 @@ public enum EcommerceErrorCode implements ErrorCode {
     CHECKOUT_CART_EMPTY("CHECKOUT_001", "Your cart is empty", HttpStatus.BAD_REQUEST),
     CHECKOUT_NO_VALID_ITEMS("CHECKOUT_002",
             "None of the items in your cart are currently available", HttpStatus.CONFLICT),
+    CHECKOUT_ADDRESS_REQUIRED("CHECKOUT_003",
+            "A shipping address is required — provide a saved address id or the full address details",
+            HttpStatus.BAD_REQUEST),
+
+    // Saved Address Errors (SAVED_ADDRESS_*) — AddressBook
+    SAVED_ADDRESS_NOT_FOUND("SAVED_ADDRESS_001", "Address not found: {0}", HttpStatus.NOT_FOUND),
 
     // Order Errors (ORDER_*) — Epic 3
     ORDER_INSUFFICIENT_STOCK("ORDER_001",

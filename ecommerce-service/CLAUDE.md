@@ -1054,14 +1054,105 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
       isolation). Not run against a real database in this session, same caveat every seeder change
       in this reactor carries until the `docker compose` stack is actually started.
     - New `scripts/purge-seed-data.sql` (a plain dev utility, not a Liquibase changeset — lives
-      outside `database/sql/` so it's never picked up as a migration) — `TRUNCATE`s every table in
-      the `ecommerce` schema plus resets every `*_SEQ` sequence by hand (`RESTART IDENTITY` on
-      `TRUNCATE` is a no-op here, since this reactor's sequences are explicit/standalone, not
-      `OWNED BY` an identity column — see root `CLAUDE.md`'s "Sequences" convention), so every
-      seeder's natural-key idempotency check (`name` existence, per each seeder's own Javadoc) sees
-      a genuinely empty table on the next `app.seed.enabled=true` boot instead of silently skipping
+      outside `database/sql/` so it's never picked up as a migration) — `TRUNCATE ... RESTART
+      IDENTITY CASCADE`s every table in the `ecommerce` schema in one statement, so every seeder's
+      natural-key idempotency check (`name` existence, per each seeder's own Javadoc) sees a
+      genuinely empty table on the next `app.seed.enabled=true` boot instead of silently skipping
       every row. Cart state (Redis, not Postgres) is out of scope — the script's own header comment
-      notes the separate `redis-cli FLUSHDB` for that.
+      notes the separate `redis-cli FLUSHDB` for that. **Correction to this note's own first draft**:
+      it originally shipped with a redundant, separate `ALTER SEQUENCE ... RESTART WITH 1` per
+      table, on the mistaken assumption that `RESTART IDENTITY` is a no-op for this reactor's
+      explicit `*_SEQ` sequences — checking the actual migrations found every one of them **is**
+      linked via `ALTER SEQUENCE ... OWNED BY` back to its column (e.g. `ALTER SEQUENCE
+      ecommerce.PRODUCT_SEQ OWNED BY ecommerce.PRODUCT.PRODUCT_ID`), which is exactly the
+      association `TRUNCATE ... RESTART IDENTITY` looks for — so plain `RESTART IDENTITY` already
+      resets them correctly on its own, and the per-table statements were dead weight, not a
+      necessary workaround. Root `CLAUDE.md`'s own "Sequences" convention note doesn't claim
+      `OWNED BY` either way — don't assume "own sequence per table" implies "no `OWNED BY` link"
+      without actually checking the migration.
+
+- **AddressBook — a shopper's own reusable, multi-address book with a designated default,
+  per request. Phase 1 (backend) complete; Phase 2 (GUI, including checkout wiring) is next.**
+  Reverses `Address`'s own original Epic 2 scope lock ("single inline address, no saved address
+  book" — see that class's own Javadoc, updated to point here). Three scope decisions asked and
+  confirmed before building: (1) this pass also wires `CheckoutPage` to actually use the
+  AddressBook (pick a saved address, not just build a separate management page); (2) each address
+  gets an optional `label` field (e.g. "Home"/"Work"); (3) checkout also gets a "save this address
+  for next time" quick-save checkbox, not just a dedicated management page.
+  - New `entity/SavedAddress` — a full first-class entity (own lifecycle: create/edit/delete/
+    set-default), deliberately **not** a reuse of `Address` (which stays a plain `@Embeddable`
+    snapshotted onto `Order`, frozen at purchase time, no lifecycle of its own — see its own
+    updated Javadoc). `ownerUuid` is a plain column, not a `User` foreign key — same
+    "claims-only, no persisted row" shape `Order.ownerUuid` already established for this module.
+    `defaultAddress` (not `isDefault`) is the boolean field name — deliberately, so Lombok's
+    generated accessors (`isDefaultAddress()`/`setDefaultAddress(boolean)`) stay unambiguous
+    (`isIsDefault()` is exactly the kind of accessor-naming landmine this dodges).
+  - Migration `DKP-0039` (`202609020001__0.0.2__DKP-0039__add_saved_address_table.sql`) —
+    `SAVED_ADDRESS` table, own `SAVED_ADDRESS_SEQ` (`OWNED BY`, same convention every other
+    sequence here already uses). A plain btree index on `OWNER_UUID` (a genuine "list my
+    addresses" query exists from day one, unlike `CUSTOMER_ORDER`'s own `OWNER_UUID` when that
+    table was first created). **"At most one default per owner" is enforced twice** — a partial
+    unique index (`UX_SAVED_ADDRESS_OWNER_DEFAULT ON SAVED_ADDRESS (OWNER_UUID) WHERE IS_DEFAULT
+    = TRUE`, not a plain `UNIQUE(OWNER_UUID)`, since any number of *non*-default addresses is
+    allowed per owner) as the real database-level guarantee, plus `SavedAddressServiceImpl`'s own
+    app-level unset-then-set dance (via a new bulk `SavedAddressRepository.clearDefaultForOwner`)
+    that's what actually makes the common path succeed instead of just failing loudly against the
+    index.
+  - New `EcommerceErrorCode.SAVED_ADDRESS_NOT_FOUND` (`SAVED_ADDRESS_001`) and
+    `CHECKOUT_ADDRESS_REQUIRED` (`CHECKOUT_003`, for an incomplete ad-hoc checkout address — see
+    below), `repository/SavedAddressRepository`, `service/SavedAddressCommands`
+    (`Create`/`Update` records), `service/SavedAddressService`/`Impl`, `mapper/SavedAddressMapper`,
+    `dto/{SavedAddressResponse,CreateSavedAddressRequest,UpdateSavedAddressRequest}`, and
+    `api/SavedAddressApi`+`Controller` at `/api/v1/addresses` — **shopper-facing, never
+    admin-gated** (no admin surface exists for this resource at all, unlike `ProductTag`/
+    `ProductCategory` — an AddressBook entry has exactly one legitimate reader/writer, its own
+    owner), same shape as `CartApi`/`OrderApi`. Every method resolves the caller via
+    `@CurrentUserId` and is ownership-scoped (`findByIdAndOwnerUuid`, mirroring `OrderRepository`'s
+    own `.filter(o -> o.getOwnerUuid().equals(callerUuid))` pattern as a derived query instead) —
+    someone else's address id behaves exactly like a nonexistent one, same convention
+    `OrderService` already established.
+  - **Business rules, all in `SavedAddressServiceImpl`**: the caller's very first address is
+    always auto-defaulted, regardless of whether `makeDefault` was requested — there's no sensible
+    "no default while at least one address exists" state, and forcing an explicit set-default call
+    just for the first address would be a pointless extra step for the overwhelmingly common case.
+    Deleting the current default auto-promotes the caller's own most-recently-created remaining
+    address (a no-op when it was the last one) — same "never leave the invariant broken" reasoning.
+    `update` never touches the default flag at all — promoting an address is its own dedicated
+    action (`POST /{id}/set-default`), kept separate from a plain field edit.
+  - **Checkout integration (`AddressRequest`/`CheckoutCommands`/`CheckoutServiceImpl`)**: an order's
+    shipping address can now come from either an existing AddressBook entry (`savedAddressId`) or a
+    fresh, one-off entry (the original fields) — `AddressRequest`'s address fields are no longer
+    `@NotBlank` (can't declaratively enforce "one or the other" anymore), so
+    `CheckoutServiceImpl.resolveAddress` validates the actual choice imperatively (`Validator`,
+    same idiom every other cross-field business rule in this reactor's service layer already
+    uses) instead — throws `CHECKOUT_ADDRESS_REQUIRED` when neither a valid `savedAddressId` nor a
+    complete ad-hoc address was given. New `CheckoutCommands.AddressSelection` wraps the two-shape
+    choice (`savedAddressId`, `adHocAddress`, `saveAddress`, `label`) — `CheckoutService.confirm`'s
+    signature changed to take this instead of a bare `AddressInput` (every call site — production
+    and test — updated accordingly). Whichever address is actually chosen still gets copied into
+    the same frozen `Address` `@Embeddable` snapshot as before (a new `toAddress(SavedAddress)`
+    overload alongside the existing `toAddress(AddressInput)`) — an order's own shipping address
+    must never change just because the `SavedAddress` it was copied from is later edited/deleted.
+  - **The "save this address for next time" quick-save is deliberately best-effort** — a new
+    `maybeSaveAddressForFuture`, called right after the order (and its stock reservations) has
+    already been durably saved, wraps its `SavedAddressService.create` call in a bare try/catch
+    (log-and-swallow, no rethrow): the order succeeding matters far more than this convenience side
+    effect, so a failure here (unexpected, since nothing about this write depends on anything the
+    checkout itself validated) must never roll back an order that has already reserved real stock.
+    A no-op whenever `savedAddressId` was used instead (nothing new to save).
+  - New `SavedAddressServiceImplTest` (mirrors `ProductTagServiceImplTest`'s shape) plus 6 new
+    `CheckoutServiceImplTest` cases (saved-address resolution ignoring a simultaneously-present
+    ad-hoc address, incomplete-ad-hoc-address rejection, quick-save firing with the right
+    `SavedAddressCommands.Create`, quick-save *not* firing when a saved address was used, and the
+    best-effort save-failure case not blocking the order) — **200 unit tests total** (up from 182),
+    verified via a real `mvn test` run (JDK 21).
+  - **`gateway`'s `GatewayRoutesConfig` gained a matching `/api/v1/addresses/**` route** in the
+    same change — a lesson learned the hard way on Product Tags (see this file's own note on that
+    feature, and `gateway/CLAUDE.md`'s matching note): a new endpoint on this service is not
+    reachable from the GUI at all without it.
+  - **GUI Phase 2 — now built**: `gui`'s "My Addresses" page, the `CheckoutPage` picker (saved
+    address vs. a new one, with the quick-save checkbox), and the corresponding
+    `types.ts`/`api/addressApi.ts` additions — see `gui/CLAUDE.md`'s own AddressBook note.
 
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"

@@ -67,8 +67,8 @@ public class GatewayRoutesConfig {
     /** Routes {@code /api/v1/admin/products/**}, {@code /api/v1/admin/product-categories/**},
      * {@code /api/v1/admin/product-tags/**}, {@code /api/v1/admin/orders/**},
      * {@code /api/v1/public/products/**}, {@code /api/v1/public/product-categories/**},
-     * {@code /api/v1/cart/**}, {@code /api/v1/checkout/**}, and {@code /api/v1/orders/**} to
-     * {@code ecommerce-service}. */
+     * {@code /api/v1/cart/**}, {@code /api/v1/checkout/**}, {@code /api/v1/orders/**}, and
+     * {@code /api/v1/addresses/**} to {@code ecommerce-service}. */
     @Bean
     public RouterFunction<ServerResponse> ecommerceServiceRoutes() {
         String baseUrl = services.getEcommerceServiceBaseUrl();
@@ -82,6 +82,7 @@ public class GatewayRoutesConfig {
                 .route(path("/api/v1/cart/**"), http(baseUrl))
                 .route(path("/api/v1/checkout/**"), http(baseUrl))
                 .route(path("/api/v1/orders/**"), http(baseUrl))
+                .route(path("/api/v1/addresses/**"), http(baseUrl))
                 .build();
     }
 

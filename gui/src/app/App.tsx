@@ -6,6 +6,7 @@ import PrivateRoute from './PrivateRoute';
 import GuestRoute from './GuestRoute';
 import AdminLayout from './admin-shell/AdminLayout';
 import AdminDashboard from './admin-shell/AdminDashboard';
+import AccountLayout from './account-shell/AccountLayout';
 import TagListPage from '@content/pages/TagListPage';
 import CategoryListPage from '@content/pages/CategoryListPage';
 import QuestionAnswerListPage from '@content/pages/QuestionAnswerListPage';
@@ -23,12 +24,13 @@ import CartPage from '@ecommerce/pages/cart/CartPage';
 import CheckoutPage from '@ecommerce/pages/checkout/CheckoutPage';
 import OrderHistoryPage from '@ecommerce/pages/orders/OrderHistoryPage';
 import OrderDetailPage from '@ecommerce/pages/orders/OrderDetailPage';
+import AddressBookPage from '@ecommerce/pages/AddressBookPage';
 import { NotificationProvider } from '@shared/contexts/NotificationContext';
 import { CartProvider } from '@ecommerce/context/CartContext';
 import { StompConnectionProvider } from '@messaging/context/StompConnectionContext';
 import Login from '@auth/pages/Login';
 import SignUp from '@auth/pages/SignUp';
-import Dashboard from '@auth/pages/Dashboard';
+import ProfilePage from '@auth/pages/ProfilePage';
 import FriendsPage from '@friends/pages/FriendsPage';
 import TasksPage from '@tasks/pages/TasksPage';
 import ChatPage from '@chat/pages/ChatPage';
@@ -76,11 +78,26 @@ function App() {
             <Route path="/shop/:slug" element={<ProductDetailPage />} />
 
             {/* Protected user routes */}
-            <Route path="/dashboard" element={
-              <PrivateRoute>
-                <Dashboard />
-              </PrivateRoute>
-            } />
+            {/* /dashboard is kept as a redirect, not removed — AuthCallback.tsx/AdminLogin.tsx/
+                Login.tsx/SignUp.tsx/GuestRoute's own default `redirect` prop, and NavBar's brand
+                logo all still navigate to this literal path; redirecting here means none of those
+                needed to change when Profile moved under the new /account shell below. */}
+            <Route path="/dashboard" element={<Navigate to="/account/profile" replace />} />
+
+            {/* Account — the shopper's own Profile + AddressBook, sharing one sidebar shell (see
+                AccountLayout's own Javadoc-style comment for why it lives outside both features). */}
+            <Route
+              path="/account"
+              element={
+                <PrivateRoute>
+                  <AccountLayout />
+                </PrivateRoute>
+              }
+            >
+              <Route path="profile" element={<ProfilePage />} />
+              <Route path="addresses" element={<AddressBookPage />} />
+              <Route index element={<Navigate to="profile" replace />} />
+            </Route>
 
             <Route path="/friends" element={
               <PrivateRoute>

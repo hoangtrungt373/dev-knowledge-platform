@@ -65,7 +65,7 @@ const readOnlyFieldSx = {
   '& .MuiInputBase-input': { cursor: 'default' },
 } as const;
 
-export default function Dashboard(): JSX.Element | null {
+export default function ProfilePage(): JSX.Element | null {
   const { showError, showSuccess } = useNotification();
   const [searchParams, setSearchParams] = useSearchParams();
   const { loading: saving, guard } = useSubmitGuard();

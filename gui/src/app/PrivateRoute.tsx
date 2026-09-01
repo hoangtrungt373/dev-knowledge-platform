@@ -15,7 +15,7 @@ interface Props {
  * privileged) users before the page component ever mounts.
  *
  * Usage in App.tsx:
- *   <Route path="/dashboard"        element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+ *   <Route path="/account/profile"  element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
  *   <Route path="/admin/dashboard"  element={<PrivateRoute requireRole="ADMIN" redirect="/admin/login"><AdminDashboard /></PrivateRoute>} />
  */
 export default function PrivateRoute({ children, requireRole, redirect = '/login' }: Props): JSX.Element {

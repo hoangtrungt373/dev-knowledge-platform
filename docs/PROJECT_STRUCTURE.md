@@ -1464,7 +1464,8 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                              types to this same shared table
 │   ├── Address.java            — @Embeddable value object (fullName/line1/line2/city/state/
 │   │                              postalCode/country), embedded on Order — no standalone table;
-│   │                              Epic 2 locked "single inline address, no saved address book"
+│   │                              frozen at purchase time regardless of whether the shopper chose
+│   │                              a SavedAddress or a fresh one-off entry at checkout (below)
 │   ├── Order.java               — table CUSTOMER_ORDER, not ORDER (a reserved SQL keyword in
 │   │                              PostgreSQL, same reason social-service's Group maps to
 │   │                              MESSAGE_GROUP); ownerUuid is a plain claims-based column, never
@@ -1480,10 +1481,18 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                hard-delete a variant outright); sku/productName/unitPrice are
 │   │                                copied at purchase time for the same reason; no stored
 │   │                                lineTotal — derived at read time by CheckoutMapper
-│   └── OrderStatusHistory.java  — Epic 3, US-3.5: one row per Order lifecycle transition
-│                                    (fromStatus/toStatus/optional reason); fromStatus is null only
-│                                    for the very first row; DTE_CREATION doubles as the
-│                                    "occurred at" timestamp, so there's no separate column for it
+│   ├── OrderStatusHistory.java  — Epic 3, US-3.5: one row per Order lifecycle transition
+│   │                                (fromStatus/toStatus/optional reason); fromStatus is null only
+│   │                                for the very first row; DTE_CREATION doubles as the
+│   │                                "occurred at" timestamp, so there's no separate column for it
+│   └── SavedAddress.java        — AddressBook feature (DKP-0039): a full first-class entity, own
+│                                    create/edit/delete/set-default lifecycle, unlike Address
+│                                    above (still a lifecycle-less @Embeddable). ownerUuid is a
+│                                    plain claims-based column, same shape as Order.ownerUuid;
+│                                    defaultAddress (not isDefault, to keep Lombok's generated
+│                                    accessors unambiguous) is enforced unique-per-owner by a
+│                                    partial DB index (WHERE IS_DEFAULT = TRUE) plus
+│                                    SavedAddressServiceImpl's own unset-then-set app logic
 ├── enums/
 │   ├── OutboxEventStatus.java     — PENDING, PROCESSING, PROCESSED, FAILED
 │   ├── OutboxAggregateType.java   — PRODUCT (widen only when a later epic adds an aggregate root)
@@ -1511,7 +1520,11 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │   poll queries (Epic 3 Phases 3–4), findByOwnerUuidOrderByIdDesc since Phase 5 — "list
 │   │   my orders", backed by a new IDX_CUSTOMER_ORDER_OWNER_UUID index — and, since a post-Epic-3
 │   │   follow-up, JpaSpecificationExecutor<Order> for the admin fulfillment queue's optional
-│   │   status filter)
+│   │   status filter) / SavedAddressRepository.java (AddressBook feature: findByIdAndOwnerUuid
+│   │   for ownership-scoped lookups, findByOwnerUuidOrderByDefaultAddressDescIdDesc for "list
+│   │   mine, default-first", and clearDefaultForOwner — a bulk @Modifying UPDATE unsetting any
+│   │   existing default in one statement, so the partial unique index never sees two defaults
+│   │   for one owner at once even transiently)
 │   └── spec/
 │       └── ProductCategorySpecification.java / ProductSpecification.java / OrderSpecification.java
 │           (withFilters(OrderStatus) — the admin order-fulfillment queue's own dynamic filtering,
@@ -1625,7 +1638,20 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │       Epic 3 Phase 2 (US-3.1): confirm now calls ProductVariantRepository.reserve per line
 │       before building the Order, in the same transaction — insufficient stock throws
 │       ORDER_INSUFFICIENT_STOCK and rolls back the whole request; confirm also appends the
-│       order's first OrderStatusHistory row (fromStatus null, toStatus PENDING)
+│       order's first OrderStatusHistory row (fromStatus null, toStatus PENDING). AddressBook
+│       follow-up: confirm's shipping address now comes from a new CheckoutCommands.
+│       AddressSelection (savedAddressId / adHocAddress / saveAddress / label) instead of a bare
+│       AddressInput — resolveAddress prefers an existing SavedAddress (ownership re-checked),
+│       otherwise validates the ad-hoc fields imperatively (no longer @NotBlank-enforceable);
+│       maybeSaveAddressForFuture persists a "save for next time" address only after the order
+│       already saved, wrapped in try/catch so a failure there can never roll back a real order
+├── service/{SavedAddressCommands,SavedAddressService}.java / impl/SavedAddressServiceImpl.java —
+│   the AddressBook feature: every method scoped to one owner (ownerUuid, the JWT sub claim,
+│   mirroring OrderService's own convention — someone else's address id behaves exactly like a
+│   nonexistent one). create() auto-defaults a caller's very first address regardless of the
+│   makeDefault flag; delete() auto-promotes the most-recently-created remaining address when the
+│   deleted one was the default; update() never touches the default flag at all (that's
+│   setDefault()'s own dedicated job)
 ├── service/OrderService.java / impl/OrderServiceImpl.java — Epic 3 Phases 3–5 (US-3.6–3.8, 3.3,
 │   │   3.5): thin cancel(orderId, callerUuid)/ship(orderId)/deliver(orderId) wrappers around
 │   │   orderstatus.OrderStatusHandlerRegistry (find-or-404, dispatch, save); cancel hides
@@ -1693,7 +1719,9 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │                                    / OrderMapper (Epic 3 Phase 5, hand-written — toResponse reads
 │                                    Order.lines/statusHistory, relying on the default
 │                                    spring.jpa.open-in-view=true the same way ProductMapper relies
-│                                    on it for Product.variants/images)
+│                                    on it for Product.variants/images) / ProductTagMapper (plain
+│                                    MapStruct interface, no @AfterMapping needed) / SavedAddressMapper
+│                                    (same shape, AddressBook feature)
 ├── api/                         — REST layer
 │   ├── ProductCategoryApi.java / ProductApi.java — admin CRUD (/api/v1/admin/**), incl.
 │   │                                 GET /tree (roots with nested children, sorted by name —
@@ -1711,13 +1739,25 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                 for the storefront's category filter rail, which a
 │   │                                 non-admin/logged-out shopper can't reach the admin endpoint
 │   │                                 for; delegates to the same ProductCategoryService.list(null)
+│   ├── ProductTagApi.java        — /api/v1/admin/product-tags, admin-gated CRUD (paginated list,
+│   │                                 unlike ProductCategoryApi's unpaginated one); assignment
+│   │                                 itself travels with ProductApi's own create/update
+│   │                                 (tagIds), not a dedicated attach/detach endpoint here
 │   ├── CartApi.java              — /api/v1/cart (US-2.1–2.4), authenticated-only — no new
 │   │                                 SecurityConfig rule needed (falls under the existing default
 │   │                                 anyRequest().authenticated()); every mutating method returns
 │   │                                 the freshly-resolved CartResponse, not just 200
 │   ├── CheckoutApi.java          — /api/v1/checkout (US-2.5–2.7), authenticated-only, same rule as
 │   │                                 CartApi; GET /preview (review) + POST /confirm (creates the
-│   │                                 order, 201)
+│   │                                 order, 201) — confirm's AddressRequest carries either an
+│   │                                 existing SavedAddress id or a fresh one-off address
+│   │                                 (AddressBook feature, DKP-0039)
+│   ├── SavedAddressApi.java      — /api/v1/addresses (AddressBook feature), authenticated-only,
+│   │                                 same rule as CartApi — but never admin-gated at all, unlike
+│   │                                 every ProductTag/ProductCategory-style resource: an
+│   │                                 AddressBook entry has exactly one legitimate owner. GET
+│   │                                 (list mine, default-first), POST (create), PUT /{id},
+│   │                                 DELETE /{id}, POST /{id}/set-default
 │   ├── OrderApi.java             — /api/v1/orders (Epic 3 Phase 5, US-3.3/3.5/3.6), authenticated-
 │   │                                 only, same rule as CartApi; GET (list mine, paginated, most
 │   │                                 recent first), GET /{id} (full status timeline),
@@ -1732,13 +1772,14 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                 no gateway change needed, /api/v1/admin/orders/** already
 │   │                                 covers the bare GET the same way /api/v1/admin/products/**
 │   │                                 already covers ProductApi.list
-│   └── impl/                    — ProductCategoryController / ProductController (admin-gated
-│                                    automatically via this module's own security/SecurityConfig
-│                                    /api/v1/admin/** rule) / ProductSearchController /
-│                                    PublicProductCategoryController (both public via that same
-│                                    config's /api/v1/public/** rule) / CartController /
-│                                    CheckoutController / OrderController / AdminOrderController
-│                                    (admin-gated the same way ProductController is)
+│   └── impl/                    — ProductCategoryController / ProductController /
+│                                    ProductTagController (admin-gated automatically via this
+│                                    module's own security/SecurityConfig /api/v1/admin/** rule) /
+│                                    ProductSearchController / PublicProductCategoryController
+│                                    (both public via that same config's /api/v1/public/** rule) /
+│                                    CartController / CheckoutController / SavedAddressController /
+│                                    OrderController / AdminOrderController (admin-gated the same
+│                                    way ProductController is)
 └── dto/                         — ProductCategoryResponse/CreateProductCategoryRequest/
                                      UpdateProductCategoryRequest/ProductCategoryTreeNodeResponse
                                      (all now parentId-aware), ProductResponse/
@@ -1748,10 +1789,16 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
                                      CartResponse/CartLineResponse/AddCartItemRequest/
                                      UpdateCartItemRequest,
                                      AddressRequest/AddressResponse/OrderLineResponse/
-                                     CheckoutPreviewResponse/CheckoutConfirmResponse,
+                                     CheckoutPreviewResponse/CheckoutConfirmResponse
+                                     (AddressRequest now carries an optional savedAddressId/
+                                     saveAddress/addressLabel — AddressBook feature, DKP-0039),
                                      UpdateProductImageSortOrderRequest,
                                      ProductSearchResponse,
-                                     OrderStatusHistoryResponse/OrderResponse (Epic 3 Phase 5)
+                                     OrderStatusHistoryResponse/OrderResponse (Epic 3 Phase 5),
+                                     ProductTagResponse/CreateProductTagRequest/
+                                     UpdateProductTagRequest,
+                                     SavedAddressResponse/CreateSavedAddressRequest/
+                                     UpdateSavedAddressRequest (AddressBook feature)
 ```
 
 Liquibase migrations: `ecommerce-service/.../database/sql/2026/0.0.2/202608040001__0.0.2__DKP-0023__add_ecommerce_catalog_tables.sql`
@@ -1774,8 +1821,12 @@ nullable, self-referential `PARENT_CATEGORY_ID` FK (+ index) to `PRODUCT_CATEGOR
 adjacency-list hierarchy support (see the entity note above); and
 `202609010001__0.0.2__DKP-0038__add_product_tag_tables.sql` — adds `PRODUCT_TAG` and the explicit
 join table `PRODUCT_TAG_ASSIGNMENT` (`UNIQUE(PRODUCT_ID, PRODUCT_TAG_ID)`), the Product Tags
-many-to-many support (see the entity note above). All six applied via the consolidated
-`services-liquibase` job in `docker-compose.apps.yml` — see the Liquibase note above.
+many-to-many support (see the entity note above); and
+`202609020001__0.0.2__DKP-0039__add_saved_address_table.sql` — adds `SAVED_ADDRESS` (own
+`SAVED_ADDRESS_SEQ`, a plain btree index on `OWNER_UUID`, and a partial unique index
+`WHERE IS_DEFAULT = TRUE` enforcing at most one default per owner), the AddressBook feature (see
+the entity note above). All seven applied via the consolidated `services-liquibase` job in
+`docker-compose.apps.yml` — see the Liquibase note above.
 
 **Epic 3 (Order Lifecycle & Inventory) is now fully built — all 6 phases**, including the REST
 surface (`OrderApi`/`AdminOrderApi`, Phase 5) — see `ecommerce-service/CLAUDE.md`'s own Epic 3

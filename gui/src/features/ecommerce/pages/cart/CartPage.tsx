@@ -384,7 +384,19 @@ function CartLineRow({ line, pending, selected, onToggleSelect, onQuantityChange
         </Box>
       </Popover>
 
-      <Stack alignItems="center" spacing={0.5} sx={{ width: 160, flexShrink: 0 }}>
+      {/* position: relative + the caption below anchored via position: absolute (not spacing/a
+          second flow child) — the caption used to always render in flow (just visibility:hidden
+          when not low-stock) to keep this column's own height stable across a live quantity edit
+          that crosses the low-stock threshold. That reserved second line was itself the bug: since
+          every other item in this row (thumbnail, price, delete button) is single-line, that
+          reserved line pushed the block's own vertical center below the stepper, so alignItems on
+          the outer row centered the whole two-line block instead of the stepper itself — the
+          stepper ends up visibly above the row's true center, worse the taller the row's other
+          content already is (e.g. the 64px thumbnail). Taking the caption out of flow entirely
+          fixes both at once: the column's flow height is now just the stepper's, so it centers
+          exactly like every single-line sibling, and there's no layout jump to prevent in the
+          first place since an absolutely positioned element never affected flow height either way. */}
+      <Stack alignItems="center" sx={{ width: 160, flexShrink: 0, position: 'relative' }}>
         <Stack direction="row" alignItems="center" sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
           <IconButton
             size="small"
@@ -402,14 +414,23 @@ function CartLineRow({ line, pending, selected, onToggleSelect, onQuantityChange
             <AddIcon fontSize="small" />
           </IconButton>
         </Stack>
-        <Typography
-          variant="caption"
-          color="warning.main"
-          fontWeight={600}
-          sx={{ whiteSpace: 'nowrap', visibility: isLowStock(line.availableQuantity) ? 'visible' : 'hidden' }}
-        >
-          {isLowStock(line.availableQuantity) ? lowStockMessage(line.availableQuantity as number) : 'placeholder'}
-        </Typography>
+        {isLowStock(line.availableQuantity) && (
+          <Typography
+            variant="caption"
+            color="warning.main"
+            fontWeight={600}
+            sx={{
+              whiteSpace: 'nowrap',
+              position: 'absolute',
+              top: '100%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              mt: 0.5,
+            }}
+          >
+            {lowStockMessage(line.availableQuantity as number)}
+          </Typography>
+        )}
       </Stack>
 
       <Typography variant="body1" fontWeight={500} color="error.main" sx={{ minWidth: 80, textAlign: 'right' }}>

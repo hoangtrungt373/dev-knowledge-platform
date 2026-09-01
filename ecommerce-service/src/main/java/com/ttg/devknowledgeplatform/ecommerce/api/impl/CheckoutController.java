@@ -33,10 +33,15 @@ public class CheckoutController implements CheckoutApi {
 
     @Override
     public ResponseEntity<CheckoutConfirmResponse> confirm(String userUuid, AddressRequest request) {
-        CheckoutCommands.AddressInput address = new CheckoutCommands.AddressInput(
+        // adHocAddress is only meaningful when savedAddressId is null — built either way (cheap,
+        // plain field copies) rather than conditionally, since CheckoutServiceImpl's own
+        // resolveAddress is what actually decides which one to use.
+        CheckoutCommands.AddressInput adHocAddress = new CheckoutCommands.AddressInput(
                 request.getFullName(), request.getLine1(), request.getLine2(),
                 request.getCity(), request.getState(), request.getPostalCode(), request.getCountry());
-        var result = checkoutService.confirm(userUuid, address, request.getSelectedVariantIds());
+        var addressSelection = new CheckoutCommands.AddressSelection(
+                request.getSavedAddressId(), adHocAddress, request.isSaveAddress(), request.getAddressLabel());
+        var result = checkoutService.confirm(userUuid, addressSelection, request.getSelectedVariantIds());
         return ResponseEntity.status(HttpStatus.CREATED).body(checkoutMapper.toConfirmResponse(result));
     }
 }
