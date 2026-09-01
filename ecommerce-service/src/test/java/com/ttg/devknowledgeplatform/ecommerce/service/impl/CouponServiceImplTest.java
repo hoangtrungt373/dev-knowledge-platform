@@ -70,11 +70,13 @@ class CouponServiceImplTest {
     }
 
     private static CouponCommands.Create createCommand(String code, CouponType type, BigDecimal value) {
-        return new CouponCommands.Create(code, CouponTarget.SUBTOTAL, type, value, true, null, null, null, null, null);
+        return new CouponCommands.Create(
+                code, CouponTarget.SUBTOTAL, type, value, true, null, null, null, null, null, null, null, null);
     }
 
     private static CouponCommands.Update updateCommand(CouponType type, BigDecimal value) {
-        return new CouponCommands.Update(CouponTarget.SUBTOTAL, type, value, true, null, null, null, null, null);
+        return new CouponCommands.Update(
+                CouponTarget.SUBTOTAL, type, value, true, null, null, null, null, null, null, null, null);
     }
 
     @Nested
@@ -143,12 +145,41 @@ class CouponServiceImplTest {
             when(couponRepository.existsByCode("BADRANGE")).thenReturn(false);
             CouponCommands.Create command = new CouponCommands.Create(
                     "BADRANGE", CouponTarget.SUBTOTAL, CouponType.PERCENTAGE, BigDecimal.TEN, true,
-                    now, now.minus(1, ChronoUnit.DAYS), null, null, null);
+                    now, now.minus(1, ChronoUnit.DAYS), null, null, null, null, null, null);
 
             assertThatThrownBy(() -> service.create(command))
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.COUPON_INVALID_DATE_RANGE);
+        }
+
+        @Test
+        void persistsMaxDiscountAmountAndDescription() {
+            when(couponRepository.existsByCode("CAPPED")).thenReturn(false);
+            when(couponRepository.save(any(Coupon.class))).thenAnswer(invocation -> invocation.getArgument(0));
+            CouponCommands.Create command = new CouponCommands.Create(
+                    "CAPPED", CouponTarget.SUBTOTAL, CouponType.PERCENTAGE, new BigDecimal("20"), true,
+                    null, null, null, null, null,
+                    new BigDecimal("20.00"), "20% off orders over $100, up to $20", null);
+
+            Coupon result = service.create(command);
+
+            assertThat(result.getMaxDiscountAmount()).isEqualByComparingTo("20.00");
+            assertThat(result.getDescription()).isEqualTo("20% off orders over $100, up to $20");
+        }
+
+        @Test
+        void persistsImageUrl() {
+            when(couponRepository.existsByCode("PICTURED")).thenReturn(false);
+            when(couponRepository.save(any(Coupon.class))).thenAnswer(invocation -> invocation.getArgument(0));
+            CouponCommands.Create command = new CouponCommands.Create(
+                    "PICTURED", CouponTarget.SUBTOTAL, CouponType.PERCENTAGE, new BigDecimal("10"), true,
+                    null, null, null, null, null, null, null,
+                    "http://localhost:9000/product-images/description-images/some-uuid.png");
+
+            Coupon result = service.create(command);
+
+            assertThat(result.getImageUrl()).isEqualTo("http://localhost:9000/product-images/description-images/some-uuid.png");
         }
     }
 
@@ -183,6 +214,21 @@ class CouponServiceImplTest {
 
             assertThatThrownBy(() -> service.update(99, updateCommand(CouponType.PERCENTAGE, BigDecimal.TEN)))
                     .isInstanceOf(ResourceNotFoundException.class);
+        }
+
+        @Test
+        void updatesMaxDiscountAmountAndDescription() {
+            when(couponRepository.findById(1)).thenReturn(Optional.of(existing));
+            when(couponRepository.save(any(Coupon.class))).thenAnswer(invocation -> invocation.getArgument(0));
+            CouponCommands.Update command = new CouponCommands.Update(
+                    CouponTarget.SUBTOTAL, CouponType.PERCENTAGE, new BigDecimal("10"), true,
+                    null, null, null, null, null,
+                    new BigDecimal("15.00"), "10% off, capped at $15", null);
+
+            Coupon result = service.update(1, command);
+
+            assertThat(result.getMaxDiscountAmount()).isEqualByComparingTo("15.00");
+            assertThat(result.getDescription()).isEqualTo("10% off, capped at $15");
         }
     }
 

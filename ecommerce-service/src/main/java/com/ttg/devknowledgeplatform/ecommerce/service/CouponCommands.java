@@ -19,7 +19,8 @@ public final class CouponCommands {
     public record Create(
             String code, CouponTarget target, CouponType type, BigDecimal value, boolean active,
             Instant startAt, Instant endAt, BigDecimal minSubtotal,
-            Integer maxRedemptions, Integer maxRedemptionsPerUser) {
+            Integer maxRedemptions, Integer maxRedemptionsPerUser,
+            BigDecimal maxDiscountAmount, String description, String imageUrl) {
     }
 
     /** No {@code code} field — a coupon's code is immutable after creation (see {@code Coupon}'s
@@ -27,6 +28,7 @@ public final class CouponCommands {
     public record Update(
             CouponTarget target, CouponType type, BigDecimal value, boolean active,
             Instant startAt, Instant endAt, BigDecimal minSubtotal,
-            Integer maxRedemptions, Integer maxRedemptionsPerUser) {
+            Integer maxRedemptions, Integer maxRedemptionsPerUser,
+            BigDecimal maxDiscountAmount, String description, String imageUrl) {
     }
 }

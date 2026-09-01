@@ -79,7 +79,11 @@ public class CouponRedemptionServiceImpl implements CouponRedemptionService {
         BigDecimal raw = coupon.getType() == CouponType.PERCENTAGE
                 ? baseAmount.multiply(coupon.getValue()).divide(ONE_HUNDRED, 2, RoundingMode.HALF_UP)
                 : coupon.getValue();
-        BigDecimal clamped = raw.min(baseAmount);
+        // maxDiscountAmount is an independent cap on top of the raw calculation — applied before
+        // the base-amount clamp below, and uniformly to both CouponType values (see Coupon's own
+        // Javadoc for why a capped FIXED_AMOUNT coupon is a valid, if unusual, admin choice too).
+        BigDecimal capped = coupon.getMaxDiscountAmount() != null ? raw.min(coupon.getMaxDiscountAmount()) : raw;
+        BigDecimal clamped = capped.min(baseAmount);
         return clamped.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : clamped;
     }
 

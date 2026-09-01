@@ -48,6 +48,32 @@ import java.time.Instant;
  * against {@link CouponRedemption} rows once checkout integration (Phase 2) exists to write them.
  * Per-product/category eligibility scoping is Phase 3, not built yet — don't assume a coupon can be
  * restricted to specific products today.
+ *
+ * <p>{@link #maxDiscountAmount} (nullable — no cap) is a follow-up, independent of every field
+ * above: a {@code PERCENTAGE} coupon's own discount is otherwise unbounded on a large-enough cart
+ * (e.g. "20% off" on a $500 subtotal is a $100 discount) — this lets an admin express "20% off,
+ * capped at $20" as two separate, composable numbers instead of forcing that shape into
+ * {@link #value} itself. {@code CouponRedemptionServiceImpl.calculateDiscount} applies it
+ * uniformly to both {@link CouponType} values (clamped after the raw percentage/fixed
+ * calculation, before the existing base-amount clamp), not just {@code PERCENTAGE} — a
+ * {@code FIXED_AMOUNT} coupon capped below its own {@link #value} is a valid, if unusual, choice
+ * (further reducing an already-fixed discount), not a state worth rejecting.
+ *
+ * <p>{@link #description} (nullable, purely presentational) is a second follow-up — a
+ * shopper-facing summary (e.g. "20% off orders over $100, up to $20") for the future {@code gui}
+ * dialog that lets a shopper browse which coupons they can actually apply, rather than requiring
+ * they already know a code. Never read by {@code CouponRedemptionService} — this field carries no
+ * business meaning, unlike everything else on this entity.
+ *
+ * <p>{@link #imageUrl} (nullable, also purely presentational) is a third follow-up — a promo
+ * banner/icon for that same future picker dialog, alongside {@link #description}. Deliberately a
+ * <strong>permanent</strong>, unsigned URL ({@code CouponImageService}, backed by {@code infra}'s
+ * {@code StorageService.uploadPublicImage}), not the time-limited presigned kind
+ * {@code ProductImage}/an avatar uses — a {@code Coupon} has no "not-yet-published/deactivated"
+ * access-control concern the way a {@code Product} does (see {@code StorageService}'s own Javadoc
+ * for that distinction, and {@code ProductDescriptionImageService}'s identical reasoning for
+ * {@code Product.description}'s own inline images): a coupon's whole purpose is being shown to
+ * shoppers, so nothing here needs hiding once created.
  */
 @Entity
 @Table(name = "COUPON", schema = "ecommerce")
@@ -90,4 +116,13 @@ public class Coupon extends AbstractEntity {
 
     @Column(name = "MAX_REDEMPTIONS_PER_USER")
     private Integer maxRedemptionsPerUser;
+
+    @Column(name = "MAX_DISCOUNT_AMOUNT", precision = 12, scale = 2)
+    private BigDecimal maxDiscountAmount;
+
+    @Column(name = "DESCRIPTION", length = 255)
+    private String description;
+
+    @Column(name = "IMAGE_URL", length = 500)
+    private String imageUrl;
 }

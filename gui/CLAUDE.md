@@ -1740,6 +1740,120 @@ slice" benefit without that cost — revisit only if a genuine second deployable
         straight from the headline+button row into the list with only a plain margin, no visible
         separator; now matches the same headline-then-divider-then-content shape `OrderHistoryPage`
         and other card-style pages already use elsewhere in this app.
+  - **Coupons ("ProductDiscount" feature) — Phase 4, the last of the 4 accepted phases, now built:
+    an admin coupon-management page plus `CheckoutPage`'s code-entry UI, per request.** No backend
+    change was needed — `ecommerce-service`'s Phase 1 (admin CRUD) and Phase 2 (checkout
+    integration) already exposed everything this GUI pass needed; see
+    `ecommerce-service/CLAUDE.md`'s own Coupon note for both.
+    - `types.ts` gained `CouponTarget`/`CouponType`/`Coupon`/`CreateCouponPayload`/
+      `UpdateCouponPayload` (mirroring `CouponResponse`/`Create`+`UpdateCouponRequest`
+      field-for-field), and `CheckoutPreview`/`Order` both gained `subtotalDiscountAmount`; `Order`
+      also gained `subtotalCouponCode`/`shippingCouponCode` (both nullable) — matching the
+      backend's own Phase 2 DTO additions. **Follow-up: `Coupon`/`Create`+`UpdateCouponPayload` all
+      gained `maxDiscountAmount`/`description`**, matching the backend's own follow-up (see
+      `ecommerce-service/CLAUDE.md`'s own note) — a cap on a single redemption's discount and a
+      shopper-facing summary, respectively.
+    - `api/ecommerceApi.ts` gained a Coupons section (`listCoupons`/`createCoupon`/`updateCoupon`/
+      `deleteCoupon` + a new `CouponListParams` interface) — admin CRUD only, folded into this
+      same file alongside Product Categories/Tags/Products rather than its own file, since it's
+      admin-catalog-management the same way those are (unlike `checkoutApi.ts`'s genuinely
+      different, authenticated-shopper audience). `api/checkoutApi.ts`'s `preview`/`confirm` both
+      gained `subtotalCouponCode`/`shippingCouponCode` parameters mirroring `CheckoutApi`'s own —
+      `preview` never redeems (safe to call repeatedly while a shopper tries different codes),
+      only `confirm` actually consumes a redemption slot.
+    - New `pages/CouponListPage.tsx` + `components/CouponFormDialog.tsx` — mirror
+      `ProductTagListPage.tsx`/`ProductTagFormDialog.tsx`'s shape, with the richer field set/
+      filters `Coupon` actually has: an Active/Applies-To filter pair alongside the search box
+      (`CouponApi.list`'s own `active`/`target` params), and a "Conditions" table column
+      summarizing whichever of min-subtotal/redemption-limits/date-range are actually set (`None`
+      when none are). `CouponFormDialog`'s `code` field is `disabled`, not omitted, in edit mode —
+      visible-but-read-only communicates "immutable after creation" more clearly than hiding it.
+      `startAt`/`endAt` use plain `<TextField type="datetime-local">` (no date-picker library
+      dependency anywhere in this app to reach for instead) — `toDatetimeLocal`/`fromDatetimeLocal`
+      handle the round trip through the backend's `Instant` fields entirely via `Date`'s own local-
+      time parsing/`toISOString()`, no timezone-math of its own. Client-side mirrors of the
+      backend's own cross-field checks (a percentage value over 100, `endAt` not after `startAt`)
+      are included as a fast-fail nicety — the backend's own `Validator` checks are still the real
+      guard. Wired into `AdminLayout.tsx`'s `NAV_ITEMS` (`DiscountIcon`, `/admin/coupons`, after
+      Order Fulfillment) and `App.tsx`'s admin route tree.
+    - **`CheckoutPage.tsx`'s Order Summary gained a Coupons section**, per the original Phase 1
+      scope decision (coupon-code entry only, at most 2 codes — one `SUBTOTAL`, one
+      `SHIPPING_FEE`): two independent code fields, each with its own `TextField`+`Apply` button
+      that re-fetches the preview with that code included; once accepted, the field is replaced by
+      a removable success `Chip` (`onDelete` re-fetches the preview without that code). A new
+      `loadPreview(subtotalCode?, shippingCode?)` helper (shared by the initial mount fetch and
+      every Apply/Remove action) is what every one of these calls goes through, so applying/
+      removing a coupon always runs the exact same server-side revalidation the initial load did.
+      **An Apply/Remove failure sets that field's own inline error text, never a page-level
+      `previewLoading`/toast** — the shopper is actively looking at a working Order Summary at
+      that point, and a bad/expired/ineligible code shouldn't blank out the whole page over what's
+      really a per-field validation failure (mirrors the deliberate "cosmetic failure, not a
+      checkout error" treatment this page's own saved-address fetch already established). A new
+      "Discount" row renders between Subtotal and Shipping whenever
+      `preview.subtotalDiscountAmount > 0`. `handleSubmit` passes both applied codes into
+      `checkoutApi.confirm` — `preview` itself never redeems, only `confirm` does (exactly the
+      distinction `CouponRedemptionService.resolve`/`.calculateDiscount` vs. `.redeem` draws on
+      the backend).
+      - **Fixed a display bug surfaced while building this, in both `CheckoutPage.tsx` and
+        `OrderDetailPage.tsx`: the existing "struck-through original fee + Free label" shipping
+        treatment assumed any waiver meant a $0 charge.** That was true before Phase 2 — the only
+        thing that could ever waive a fee was `FreeOverThresholdShippingFeeCalculator`'s
+        all-or-nothing threshold — but a `SHIPPING_FEE` coupon can discount *partially*
+        (percentage or a fixed amount smaller than the fee itself), leaving `shippingFee > 0`
+        while `originalShippingFee > shippingFee` still holds. Both pages now show the actual
+        discounted fee (not a misleading "Free" label) whenever the charge isn't genuinely zero,
+        keeping "Free" only for the true $0 case — one shared `originalShippingFee >
+        shippingFee` branch still covers both waiver sources (automatic threshold or coupon),
+        just with a corrected inner check.
+    - **`OrderDetailPage.tsx`'s Items section also gained the applied coupon codes (as small
+      `Chip`s, `LocalOfferIcon`, labeled by target) and the same "Discount" row**, so an
+      already-placed order's own detail view shows the same coupon information the checkout
+      preview did, sourced from `Order.subtotalCouponCode`/`shippingCouponCode`/
+      `subtotalDiscountAmount` (all persisted at checkout, Phase 2). **`OrderHistoryPage.tsx`'s
+      per-order cards were deliberately left untouched** — they only ever showed `Order.total`,
+      never a subtotal/shipping breakdown at all (even before this feature), so there's no
+      existing breakdown row to extend there; this follows the same precedent `originalShippingFee`
+      itself set (detail-page-only, not the list cards).
+    - **Verified via a clean `tsc --noEmit` and a successful `vite build` only** — no Docker in
+      this sandbox, so the actual admin coupon CRUD, the checkout Apply/Remove flow, and the order
+      detail's discount display are unverified in a real browser. This closes out all 4 phases of
+      the Coupon ("ProductDiscount") feature — data model, checkout redemption, and this GUI pass;
+      only Phase 3 (product/category eligibility scoping) remains unbuilt, deferred per the
+      original phased plan.
+    - **Follow-up: `maxDiscountAmount`/`description`, per request — mirrors the backend's own
+      follow-up (see `ecommerce-service/CLAUDE.md`'s Coupon note for the full motivation,
+      including the literal "20% off, capped at $20, for a subtotal over $100" example this field
+      was built for).** `CouponFormDialog.tsx` gained a "Max discount amount" `TextField` (paired
+      in a row with the existing Value field — the two are conceptually linked, a cap *on* the
+      discount) and a multiline "Description" `TextField` (255-char limit, helper text showing a
+      real example) — both optional, both validated client-side the same fast-fail-nicety way the
+      existing percentage/date-range checks already are. `CouponListPage.tsx`'s Code column now
+      shows the coupon's `description` as a truncated caption underneath the code itself (full text
+      in a native `title` tooltip), and its Conditions column gained an "Up to $X off" line when
+      `maxDiscountAmount` is set. No new admin page/route — both fields live inside the existing
+      Phase 4 CRUD surface. Verified via a clean `tsc --noEmit` and a successful `vite build` only,
+      same caveat as the rest of this feature.
+    - **Follow-up: `Coupon.imageUrl` — a promo banner/icon, per request. Mirrors the backend's own
+      follow-up** (see `ecommerce-service/CLAUDE.md`'s Coupon note — deliberately a permanent URL,
+      not presigned, since a coupon has no access-control concern the way a `Product` does).
+      `ecommerceApi.ts` gained `uploadCouponImage(file)` (`POST /api/v1/admin/coupons/images/
+      upload`, mirrors the existing `uploadDescriptionImage`'s shape — usable in create mode too,
+      no `couponId` needed). `CouponFormDialog.tsx` gained a "Promo image" section — reuses the
+      **shared `components/Thumbnail.tsx`** (not a new hand-rolled image box; an audit already
+      found that exact pattern duplicated 4 times elsewhere in this feature before that component
+      existed, so a 5th copy here would have repeated the same mistake) inside a
+      `position: relative` wrapper that overlays a `CircularProgress` while `uploadingImage` is
+      true — same "spinner over the existing thumbnail during upload" treatment
+      `ProfilePage.tsx`'s own avatar upload already established, just without the circular crop
+      (a coupon banner is rectangular, an avatar isn't). "Upload"/"Replace" and, once an image is
+      set, "Remove" buttons sit beside it; the hidden `<input type="file">` + 5&nbsp;MB/image-type
+      client-side validation before the real upload call is the same shape
+      `ProfilePage.tsx#handleAvatarChange` already uses. `CouponListPage.tsx`'s Code column now
+      leads with a small (40×40) `Thumbnail` too, so the admin table shows what the future
+      shopper-facing picker will actually render. `types.ts`'s `Coupon`/`Create`+
+      `UpdateCouponPayload` all gained `imageUrl`. Verified via a clean `tsc --noEmit` and a
+      successful `vite build` only — no Docker in this sandbox, so the actual upload/replace/remove
+      flow is unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

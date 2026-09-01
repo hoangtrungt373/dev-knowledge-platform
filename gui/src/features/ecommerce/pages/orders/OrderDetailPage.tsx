@@ -20,6 +20,7 @@ import StepConnector, { stepConnectorClasses } from '@mui/material/StepConnector
 import { styled } from '@mui/material/styles';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
@@ -252,21 +253,54 @@ export default function OrderDetailPage(): JSX.Element {
           ))}
         </Stack>
         <Divider sx={{ my: 1.5 }} />
+        {(order.subtotalCouponCode || order.shippingCouponCode) && (
+          <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+            {order.subtotalCouponCode && (
+              <Chip
+                label={`${order.subtotalCouponCode} (subtotal)`}
+                size="small"
+                color="success"
+                variant="outlined"
+                icon={<LocalOfferIcon fontSize="small" />}
+              />
+            )}
+            {order.shippingCouponCode && (
+              <Chip
+                label={`${order.shippingCouponCode} (shipping)`}
+                size="small"
+                color="success"
+                variant="outlined"
+                icon={<LocalOfferIcon fontSize="small" />}
+              />
+            )}
+          </Stack>
+        )}
         <Stack direction="row" justifyContent="space-between">
           <Typography variant="body2" color="text.secondary">Subtotal</Typography>
           <Typography variant="body2" color="error.main">{formatPrice(order.subtotal)}</Typography>
         </Stack>
+        {order.subtotalDiscountAmount > 0 && (
+          <Stack direction="row" justifyContent="space-between">
+            <Typography variant="body2" color="text.secondary">Discount</Typography>
+            <Typography variant="body2" color="success.main">−{formatPrice(order.subtotalDiscountAmount)}</Typography>
+          </Stack>
+        )}
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography variant="body2" color="text.secondary">Shipping</Typography>
           {order.originalShippingFee > order.shippingFee ? (
-            // Free shipping applied at checkout (FreeOverThresholdShippingFeeCalculator's own
-            // threshold) — show the fee it would have been, struck through, same treatment
-            // CheckoutPage's own preview uses, rather than just a bare "$0.00".
+            // A waiver applied at checkout — either the automatic FreeOverThresholdShippingFeeCalculator
+            // threshold (always all-or-nothing) or a SHIPPING_FEE coupon (Phase 2, can be a partial
+            // discount, not necessarily down to zero) — same treatment CheckoutPage's own preview
+            // uses: only label it "Free" when the actual charge is zero.
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography variant="body2" color="text.secondary" sx={{ textDecoration: 'line-through' }}>
                 {formatPrice(order.originalShippingFee)}
               </Typography>
-              <Typography variant="body2" color="success.main" fontWeight={600}>Free</Typography>
+              {order.shippingFee === 0 ? (
+                <Typography variant="body2" color="success.main" fontWeight={600}>Free</Typography>
+              ) : (
+                <Typography variant="body2" color="success.main">{formatPrice(order.shippingFee)}</Typography>
+              )}
             </Stack>
           ) : (
             <Typography variant="body2" color="error.main">{formatPrice(order.shippingFee)}</Typography>

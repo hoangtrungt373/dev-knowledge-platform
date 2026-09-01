@@ -412,10 +412,43 @@ in `docker-compose.apps.yml`'s `ecommerce-service` block) same shape as `content
   Extends `CsvSeeder<Void>` (buildEntity's real work is the `uploadImage` call itself; `persist` is
   a no-op) — `alreadyExists` checks for any existing image at the target `sortOrder` on that
   product, not a permanent identifier, same fixed-sample-dataset tradeoff as `ProductCategorySeeder`.
+- `CouponSeeder` (`data/csv/coupons.csv`, columns: `code`/`target`/`type`/`value`/`active`/
+  `startAt`/`endAt`/`minSubtotal`/`maxRedemptions`/`maxRedemptionsPerUser`/`maxDiscountAmount`/
+  `description` — the last two added in the same follow-up that added both columns to `Coupon`
+  itself) — 8 realistic sample coupons for the Coupon ("ProductDiscount") feature, added once
+  Phase 4's checkout code-entry UI had nothing to actually exercise without an admin manually
+  creating one first. Covers every eligibility branch `CouponRedemptionService.resolve` checks in
+  one small dataset: `WELCOME10`/`SAVE5`/`VIP20` (all `SUBTOTAL`, exercising plain percentage, a
+  fixed amount gated by `minSubtotal`, and a redemption-capped percentage that's **also**
+  `maxDiscountAmount`-capped — `VIP20` is the literal "reduce 20%, max $20, for a subtotal >
+  $100" example that motivated that field), `FREESHIP`/`SHIPHALF` (both
+  `SHIPPING_FEE` — the first fully covers the flat fee, the second only halves it, deliberately
+  covering both branches of `gui`'s corrected "Free" vs. partial-discount shipping display — see
+  `gui/CLAUDE.md`'s own Coupon note for the display bug this combination caught),
+  `SUMMER2026`/`BLACKFRIDAY2025` (both date-ranged — one currently active, one already expired, so
+  `COUPON_EXPIRED` has a real row to trigger against), and `OLDPROMO` (`active=false`, so
+  `COUPON_INACTIVE` and the admin list's Inactive filter both have a real row too). Mirrors
+  `ProductTagSeeder`'s shape exactly — extends `CsvSeeder<Coupon>`, bypasses `CouponService` and
+  persists directly via `CouponRepository` (creating a `Coupon` has no outbox/read-model side
+  effect that would require the service layer), and its idempotency key is `code` itself
+  (normalized to uppercase before the existence check, mirroring `CouponServiceImpl`'s own
+  normalization) — unlike `ProductTagSeeder`'s/`ProductCategorySeeder`'s `name`, this is already
+  the entity's own real natural key (a database `UNIQUE` constraint backs it), not a stand-in for
+  a decoupled `seedId` this feature doesn't have either. Blank-tolerant parsing for every optional
+  column (`active` defaults `true`; `startAt`/`endAt`/`minSubtotal`/`maxRedemptions`/
+  `maxRedemptionsPerUser` all default `null`, i.e. "no bound"), matching `ProductSeeder`'s own
+  blank-cell conventions.
 - `EcommerceDataSeedingRunner` — `ApplicationRunner`, `@ConditionalOnProperty("app.seed.enabled")`,
-  explicit order (categories → products → images, each depending on the previous existing) — same
-  pattern as `content-service`'s/`social-service`'s own runners, not a `List<Seeder>` loop (see
-  `infra`'s `Seeder` Javadoc for why).
+  explicit order (categories → tags → products → images → coupons, each depending on the previous
+  existing except coupons, which are independent of every other seeder here and run last purely by
+  convention) — same pattern as `content-service`'s/`social-service`'s own runners, not a
+  `List<Seeder>` loop (see `infra`'s `Seeder` Javadoc for why).
+- `scripts/purge-seed-data.sql` (repo root of this module, a plain dev utility — see its own header
+  comment) gained `ecommerce.COUPON`/`ecommerce.COUPON_REDEMPTION` to its `TRUNCATE` list alongside
+  this seeder — without both, a re-run with `app.seed.enabled=true` would silently skip every
+  coupon row on the natural-key check, same staleness trap every other seeder's own idempotency
+  check already carries. `SAVED_ADDRESS` was deliberately left off this same list — no seeder
+  creates one, so purging it would be unrelated scope creep for this change.
 
 **Epic 2 (Cart & Checkout) — the cart half (US-2.1–2.4) is built; checkout (US-2.5–2.7) is not
 yet.** Showcases this epic's own locked pattern: **Redis as a primary store, not a cache** (see
@@ -1202,9 +1235,9 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
 
 - **Coupon ("ProductDiscount" feature) — code-driven discounts targeting either the cart subtotal
   or the shipping fee, by percentage or fixed amount, with eligibility conditions. Phase 1 (data
-  model + basic admin CRUD) and Phase 2 (checkout integration/redemption) are both built; Phase 3
-  (product/category eligibility scoping) and Phase 4 (`gui` admin/checkout UI) are not.** Three
-  scope decisions confirmed before building: (1) **coupon-code entry only** — no automatic/code-free
+  model + basic admin CRUD), Phase 2 (checkout integration/redemption), and Phase 4 (`gui`
+  admin/checkout UI) are all built; only Phase 3 (product/category eligibility scoping) remains,
+  deferred per the original phased plan.** Three scope decisions confirmed before building: (1) **coupon-code entry only** — no automatic/code-free
   promotions (that stays
   `shipping.FreeOverThresholdShippingFeeCalculator`'s own separate, unrelated mechanism); (2) a
   shopper may apply **at most 2 coupons per order — one per `CouponTarget`** (one `SUBTOTAL`, one
@@ -1326,11 +1359,80 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
     charges, an ineligible coupon's rejection propagating straight through `preview`, and
     `confirm` persisting both coupon codes/amounts and redeeming only after the order itself
     saved) — **242 unit tests total** (up from 220), verified via a real `mvn test` run (JDK 21).
-  - **Not built as part of this pass** (deliberately, per the phased plan): no product/category
-    eligibility scoping (Phase 3, needs join tables mirroring `ProductTagAssignment`'s explicit-join
-    shape), and no `gui` admin coupon-management page or checkout code-entry UI (Phase 4) — a
-    shopper can now have a coupon redeemed server-side, but has no actual UI anywhere to type a
-    code into yet.
+  - **Phase 4 — `gui` admin coupon-management page + checkout code-entry UI, now built** (no
+    backend change needed — everything this pass needed was already exposed by Phases 1–2). See
+    `gui/CLAUDE.md`'s own Coupons note for the full detail: `CouponListPage`/`CouponFormDialog`
+    (admin CRUD, mirroring `ProductTagListPage`'s shape), `CheckoutPage.tsx`'s per-target Apply/
+    Remove code fields, and `OrderDetailPage.tsx`'s persisted-coupon/discount display. That pass
+    also caught and fixed a GUI display bug this phase's own partial-discount shipping coupons
+    exposed: the existing "struck-through original + Free label" shipping treatment assumed any
+    waiver meant a $0 charge, true only before this phase (when the only waiver source was
+    `FreeOverThresholdShippingFeeCalculator`'s all-or-nothing threshold) — a `SHIPPING_FEE`
+    coupon can discount partially, leaving `shippingFee > 0` while `originalShippingFee >
+    shippingFee` still holds.
+  - **Follow-up: `maxDiscountAmount` (a cap on a single redemption's discount) and `description`
+    (a shopper-facing summary), per request.** `maxDiscountAmount` closes a real gap in the
+    original design: a `PERCENTAGE` coupon's discount was otherwise unbounded on a large-enough
+    cart (e.g. "20% off" on a $500 subtotal is a $100 discount) — the exact motivating example was
+    "reduce 20%, maximum $20, for an order with subtotal > $100," which the seed data's `VIP20`
+    coupon now reproduces verbatim (`value=20`, `type=PERCENTAGE`, `minSubtotal=100.00`,
+    `maxDiscountAmount=20.00`). New `Coupon.maxDiscountAmount`/`description` columns (migration
+    `DKP-0043`, `202609020005`, both nullable — `maxDiscountAmount` has a `CHECK (... IS NULL OR
+    ... > 0)`, `description` is purely presentational with no constraint beyond a 255-char
+    `@Size`). `CouponRedemptionServiceImpl.calculateDiscount` applies the cap **after** the raw
+    percentage/fixed calculation but **before** the existing base-amount clamp, and **uniformly to
+    both `CouponType` values, not just `PERCENTAGE`** — a `FIXED_AMOUNT` coupon capped below its
+    own `value` is a valid, if unusual, admin choice (further reducing an already-fixed discount),
+    not a state worth rejecting; see `Coupon`'s own updated Javadoc. `description` is never read
+    by `CouponRedemptionService` at all — it exists purely for a future `gui` dialog letting a
+    shopper browse which coupons they can apply, rather than requiring they already know a code
+    (not built yet — this follow-up is the data-model half only). `CouponCommands.Create`/`Update`,
+    `CreateCouponRequest`/`UpdateCouponRequest` (`@DecimalMin`/`@Size` validation, mirroring the
+    existing `value`/`code` fields' own annotations), `CouponResponse`, and `CouponController`'s
+    command construction all gained both fields — `CouponMapper` needed no change (plain
+    field-name auto-mapping already covers them). `CouponSeeder`/`coupons.csv` gained both columns
+    too, with every one of the 8 seed coupons now carrying a real `description`. New
+    `CouponServiceImplTest` cases (`persistsMaxDiscountAmountAndDescription`/
+    `updatesMaxDiscountAmountAndDescription`) and 4 new `CouponRedemptionServiceImplTest.
+    CalculateDiscount` cases (a percentage discount actually capped, one left untouched below its
+    cap, a fixed-amount discount capped below its own value, and confirmation that the cap never
+    overrides the base-amount clamp) — **248 unit tests total** (up from 242), verified via a real
+    `mvn test` run (JDK 21). `gui`'s `CouponFormDialog`/`CouponListPage` updated to match — see
+    `gui/CLAUDE.md`'s own Coupons note.
+  - **Follow-up: `Coupon.imageUrl` — a promo banner/icon for the same future coupon-picker
+    dialog, per request.** New `Coupon.imageUrl` column (migration `DKP-0044`, `202609020006`,
+    nullable `VARCHAR(500)`). **Deliberately a permanent, unsigned URL, not a presigned one** —
+    same choice `ProductDescriptionImageService` already made for `Product.description`'s own
+    inline images, and for the identical reason: a `Coupon` has no "not-yet-published/deactivated"
+    access-control concern the way a `Product`'s gallery does (see `StorageService`'s own Javadoc),
+    so there's no reason to pay a presigned URL's re-signing-on-every-read cost here — a coupon's
+    whole purpose is being shown to shoppers. New `service/CouponImageService`/`Impl` — **not**
+    part of `CouponService`, mirroring `ProductDescriptionImageService`'s own split from
+    `ProductService` for the identical reason: this touches no existing `Coupon` row (no
+    `couponId`), so it works in create mode too, and the returned URL is set as a plain field on
+    the create/update request afterward rather than resolved by an id. Delegates to `infra`'s
+    `StorageService.uploadPublicImage` (already imported by this module's `EcommerceServiceApplication`
+    for the description-image use case — no new `@Import` needed). New `api/CouponImageApi`+
+    `Controller` at `POST /api/v1/admin/coupons/images/upload` — a separate resource from
+    `CouponApi`, nested under `/api/v1/admin/coupons` purely so `gateway`'s existing
+    `/api/v1/admin/coupons/**` route already covers it, not because it's part of that resource
+    (byte-for-byte the same reasoning `ProductDescriptionImageApi`'s own Javadoc documents). New
+    `dto/CouponImageResponse` (`url` only, mirrors `ProductDescriptionImageResponse`). `Coupon`/
+    `CouponCommands`/`Create`+`UpdateCouponRequest`/`CouponResponse`/`CouponController` all gained
+    a matching `imageUrl` field. New `CouponImageServiceImplTest` (mirrors
+    `ProductDescriptionImageServiceImplTest`) plus a new `CouponServiceImplTest.persistsImageUrl`
+    case — **250 unit tests total** (up from 248), verified via a real `mvn test` run (JDK 21). No
+    `gateway` route change needed. `CouponSeeder`/`coupons.csv` were **not** extended with real
+    images — every seeded coupon has `imageUrl = null` for now (a legitimate, documented state —
+    "an admin simply never bothered to illustrate," per the migration's own comment), since there's
+    no real static asset to reference from seed data without generating placeholder banners the
+    way `ProductImageSeeder` does for the catalog; revisit if the future picker dialog's own design
+    review wants seeded coupons to look fully populated. `gui`'s `CouponFormDialog`/`CouponListPage`
+    updated to match — see `gui/CLAUDE.md`'s own Coupons note.
+  - **Not built as part of this pass**: product/category eligibility scoping (Phase 3, needs join
+    tables mirroring `ProductTagAssignment`'s explicit-join shape) — the one remaining deferred
+    phase. A shopper can redeem a coupon end-to-end today (server-side and through the GUI); the
+    only gap left is that a coupon can't yet be restricted to specific products/categories.
 
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"

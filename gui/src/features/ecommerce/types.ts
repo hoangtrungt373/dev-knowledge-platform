@@ -256,11 +256,14 @@ export interface CheckoutPreview {
   /** Every current cart line — some may have available: false (US-2.7). */
   lines: CartLine[];
   subtotal: number;
+  /** A SUBTOTAL coupon's discount — subtotal itself is never reduced, this is a separate amount
+   * (Coupon feature Phase 2). Zero when no subtotal coupon is applied. */
+  subtotalDiscountAmount: number;
   shippingFee: number;
-  /** What shippingFee would be absent any promotional waiver (e.g. free-shipping-over-threshold)
-   * — equal to shippingFee whenever nothing was waived. A value greater than shippingFee means a
-   * waiver applied (today: FreeOverThresholdShippingFeeCalculator's own threshold), and the GUI
-   * shows this original fee struck through rather than just the final number. */
+  /** What shippingFee would be absent any promotional waiver (e.g. free-shipping-over-threshold,
+   * or Phase 2's SHIPPING_FEE coupon) — equal to shippingFee whenever nothing was waived. A value
+   * greater than shippingFee means a waiver applied, and the GUI shows this original fee struck
+   * through rather than just the final number. */
   originalShippingFee: number;
   total: number;
 }
@@ -307,12 +310,84 @@ export interface Order {
   cancelRequested: boolean;
   shippingAddress: Address;
   subtotal: number;
+  /** A SUBTOTAL coupon's discount, persisted at checkout (Coupon feature Phase 2) — zero when
+   * none was applied. */
+  subtotalDiscountAmount: number;
   shippingFee: number;
   /** What shippingFee would have been absent any promotional waiver — equal to shippingFee
    * whenever nothing was waived; see CheckoutPreview's own note above. */
   originalShippingFee: number;
   total: number;
+  /** The redeemed coupon codes, if any (Coupon feature Phase 2) — null when that target had none
+   * applied. */
+  subtotalCouponCode: string | null;
+  shippingCouponCode: string | null;
   lines: OrderLine[];
   /** Oldest first, per the backend's own @OrderBy("id ASC") — read top-to-bottom as a timeline. */
   statusHistory: OrderStatusHistoryEntry[];
+}
+
+// ── Coupons ("ProductDiscount" feature) ─────────────────────────────────────
+// Mirrors ecommerce-service's Coupon entity / CouponResponse / Create+UpdateCouponRequest.
+// Admin-only CRUD (Phase 1); redemption at checkout is Phase 2 (see CheckoutPreview/Order above
+// and CheckoutAddressInput below) — this section is only the admin-management shape.
+
+export type CouponTarget = 'SUBTOTAL' | 'SHIPPING_FEE';
+export type CouponType = 'PERCENTAGE' | 'FIXED_AMOUNT';
+
+export interface Coupon {
+  id: number;
+  code: string;
+  target: CouponTarget;
+  type: CouponType;
+  value: number;
+  active: boolean;
+  startAt: string | null;
+  endAt: string | null;
+  minSubtotal: number | null;
+  maxRedemptions: number | null;
+  maxRedemptionsPerUser: number | null;
+  /** Caps a single redemption's discount regardless of value/type (e.g. "20% off, up to $20") —
+   * null means no cap. Applied uniformly to both CouponType values, not just PERCENTAGE. */
+  maxDiscountAmount: number | null;
+  /** Shopper-facing summary (e.g. "20% off orders over $100, up to $20") for the future coupon
+   * picker dialog — purely presentational, never read by eligibility/discount logic. */
+  description: string | null;
+  /** Permanent, unsigned promo banner/icon URL for that same future dialog — null if the admin
+   * never uploaded one. Set via `ecommerceApi.uploadCouponImage`, never re-uploaded on save. */
+  imageUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCouponPayload {
+  code: string;
+  target: CouponTarget;
+  type: CouponType;
+  value: number;
+  active?: boolean;
+  startAt?: string;
+  endAt?: string;
+  minSubtotal?: number;
+  maxRedemptions?: number;
+  maxRedemptionsPerUser?: number;
+  maxDiscountAmount?: number;
+  description?: string;
+  imageUrl?: string;
+}
+
+/** No `code` field — immutable after creation, mirroring the backend's UpdateCouponRequest. */
+export interface UpdateCouponPayload {
+  target: CouponTarget;
+  type: CouponType;
+  value: number;
+  active: boolean;
+  startAt?: string;
+  endAt?: string;
+  minSubtotal?: number;
+  maxRedemptions?: number;
+  maxRedemptionsPerUser?: number;
+  maxDiscountAmount?: number;
+  description?: string;
+  imageUrl?: string;
 }

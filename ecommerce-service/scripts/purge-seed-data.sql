@@ -1,5 +1,6 @@
 -- Purges every ecommerce-service table so the CSV seeders (ProductCategorySeeder,
--- ProductTagSeeder, ProductSeeder, ProductImageSeeder) can be re-run from a clean slate.
+-- ProductTagSeeder, ProductSeeder, ProductImageSeeder, CouponSeeder) can be re-run from a clean
+-- slate.
 --
 -- Why this is needed at all: every seeder's idempotency check is a natural-key existence check
 -- (e.g. ProductSeeder skips a row whose "name" already exists) — see ecommerce-service/CLAUDE.md.
@@ -26,12 +27,18 @@ BEGIN;
 -- needed) — every ecommerce.*_SEQ sequence is linked via ALTER SEQUENCE ... OWNED BY back to its
 -- column (see each table's own migration), which is exactly the association Postgres's
 -- TRUNCATE ... RESTART IDENTITY looks for to decide which sequences to reset.
+-- COUPON_REDEMPTION/COUPON are included here (a seeded coupon has no FK from anything else, but
+-- COUPON_REDEMPTION FKs onto both COUPON and CUSTOMER_ORDER) — SAVED_ADDRESS is deliberately not,
+-- since no seeder ever creates one (there's no CSV-driven AddressBook seed, only real
+-- shopper-entered data), so purging it here would just be scope creep unrelated to CouponSeeder.
 TRUNCATE TABLE
     ecommerce.OUTBOX_EVENT,
     ecommerce.PRODUCT_SEARCH_VIEW,
+    ecommerce.COUPON_REDEMPTION,
     ecommerce.ORDER_STATUS_HISTORY,
     ecommerce.ORDER_LINE,
     ecommerce.CUSTOMER_ORDER,
+    ecommerce.COUPON,
     ecommerce.PRODUCT_TAG_ASSIGNMENT,
     ecommerce.PRODUCT_TAG,
     ecommerce.PRODUCT_IMAGE,

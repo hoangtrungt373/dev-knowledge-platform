@@ -49,4 +49,20 @@ public class CreateCouponRequest {
 
     @Min(value = 1, message = "Max redemptions per user must be at least 1")
     private Integer maxRedemptionsPerUser;
+
+    /** Caps a single redemption's discount regardless of {@code value}/{@code type} — omitted
+     * means no cap. See {@code Coupon}'s own Javadoc for why this is separate from {@code value}. */
+    @DecimalMin(value = "0.0", inclusive = false, message = "Max discount amount must be greater than zero")
+    private BigDecimal maxDiscountAmount;
+
+    /** Shopper-facing summary for the future coupon picker dialog — purely presentational,
+     * optional, never validated against the coupon's own actual conditions. */
+    @Size(max = 255, message = "Description must not exceed 255 characters")
+    private String description;
+
+    /** Permanent, unsigned promo banner/icon URL — normally the {@code url} returned by
+     * {@code CouponImageApi#upload}, set here as a plain string rather than re-uploaded on every
+     * create/update. Optional. */
+    @Size(max = 500, message = "Image URL must not exceed 500 characters")
+    private String imageUrl;
 }

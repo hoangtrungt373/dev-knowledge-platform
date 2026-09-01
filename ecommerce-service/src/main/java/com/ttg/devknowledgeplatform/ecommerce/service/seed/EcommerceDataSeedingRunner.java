@@ -14,7 +14,10 @@ import org.springframework.stereotype.Component;
  * product can reference either by name), then products (which need a category and at least one
  * variant to exist, and may optionally reference already-seeded tags — see
  * {@link ProductSeeder}'s own Javadoc), then a first gallery image for a handful of featured
- * products (which need a product to exist). Gated by {@code app.seed.enabled} (off by default,
+ * products (which need a product to exist). Coupons are independent of every other seeder here
+ * (a {@code Coupon} has no foreign key onto a product/category/tag — see {@link CouponSeeder}'s
+ * own Javadoc) and so run last purely by convention, not because anything depends on them coming
+ * after. Gated by {@code app.seed.enabled} (off by default,
  * enabled explicitly for the `docker compose` stack) so a production-like profile never seeds
  * unintentionally — same property name and shape as {@code content-service}'s/
  * {@code social-service}'s own {@code DataSeedingRunner}.
@@ -31,6 +34,7 @@ public class EcommerceDataSeedingRunner implements ApplicationRunner {
     private final ProductTagSeeder productTagSeeder;
     private final ProductSeeder productSeeder;
     private final ProductImageSeeder productImageSeeder;
+    private final CouponSeeder couponSeeder;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -39,6 +43,7 @@ public class EcommerceDataSeedingRunner implements ApplicationRunner {
         productTagSeeder.seed();
         productSeeder.seed();
         productImageSeeder.seed();
+        couponSeeder.seed();
         log.info("ecommerce-service CSV data seeding complete.");
     }
 }

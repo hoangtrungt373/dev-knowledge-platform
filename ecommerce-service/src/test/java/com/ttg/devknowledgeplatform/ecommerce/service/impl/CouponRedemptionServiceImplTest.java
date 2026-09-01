@@ -224,6 +224,56 @@ class CouponRedemptionServiceImplTest {
 
             assertThat(discount).isEqualByComparingTo("5.00");
         }
+
+        @Test
+        void capsAPercentageDiscountAtMaxDiscountAmount() {
+            // "20% off, capped at $20" on a $500 subtotal — the raw 20% ($100) must be capped
+            // down to $20, not left uncapped.
+            coupon.setType(CouponType.PERCENTAGE);
+            coupon.setValue(new BigDecimal("20"));
+            coupon.setMaxDiscountAmount(new BigDecimal("20.00"));
+
+            BigDecimal discount = service.calculateDiscount(coupon, new BigDecimal("500.00"));
+
+            assertThat(discount).isEqualByComparingTo("20.00");
+        }
+
+        @Test
+        void leavesAPercentageDiscountBelowMaxDiscountAmountUntouched() {
+            coupon.setType(CouponType.PERCENTAGE);
+            coupon.setValue(new BigDecimal("20"));
+            coupon.setMaxDiscountAmount(new BigDecimal("50.00"));
+
+            BigDecimal discount = service.calculateDiscount(coupon, new BigDecimal("100.00"));
+
+            assertThat(discount).isEqualByComparingTo("20.00"); // 20% of 100 = 20, below the 50 cap
+        }
+
+        @Test
+        void capsAFixedAmountDiscountBelowItsOwnValueToo() {
+            // A cap under the fixed value is a valid, if unusual, admin choice — the cap applies
+            // uniformly to both CouponType values, not just PERCENTAGE.
+            coupon.setType(CouponType.FIXED_AMOUNT);
+            coupon.setValue(new BigDecimal("30.00"));
+            coupon.setMaxDiscountAmount(new BigDecimal("10.00"));
+
+            BigDecimal discount = service.calculateDiscount(coupon, new BigDecimal("100.00"));
+
+            assertThat(discount).isEqualByComparingTo("10.00");
+        }
+
+        @Test
+        void aMaxDiscountAmountCapNeverOverridesTheBaseAmountClamp() {
+            // The base-amount clamp still applies after the cap — a $20 cap on a $5 base amount
+            // must still land at $5, not $20.
+            coupon.setType(CouponType.PERCENTAGE);
+            coupon.setValue(new BigDecimal("100"));
+            coupon.setMaxDiscountAmount(new BigDecimal("20.00"));
+
+            BigDecimal discount = service.calculateDiscount(coupon, new BigDecimal("5.00"));
+
+            assertThat(discount).isEqualByComparingTo("5.00");
+        }
     }
 
     @Nested

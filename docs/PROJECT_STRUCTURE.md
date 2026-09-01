@@ -1510,7 +1510,17 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                (CouponTarget: SUBTOTAL/SHIPPING_FEE) x type (CouponType:
 │   │                                PERCENTAGE/FIXED_AMOUNT) as two small orthogonal enums, not
 │   │                                four separate Strategy classes; code is immutable after
-│   │                                creation (no rename via update, unlike ProductTag.name)
+│   │                                creation (no rename via update, unlike ProductTag.name).
+│   │                                Follow-up (DKP-0043): maxDiscountAmount (caps a single
+│   │                                redemption's discount, e.g. "20% off, up to $20" — applied
+│   │                                uniformly to both CouponType values in
+│   │                                CouponRedemptionServiceImpl.calculateDiscount) and
+│   │                                description (purely presentational, for a future gui
+│   │                                coupon-picker dialog — never read by redemption logic), both
+│   │                                nullable. Follow-up (DKP-0044): imageUrl — a promo banner/icon
+│   │                                for that same future dialog, a permanent StorageService.
+│   │                                uploadPublicImage URL (not presigned — a Coupon has no
+│   │                                access-control concern the way a Product does), also nullable
 │   └── CouponRedemption.java    — the ledger Coupon.maxRedemptions/maxRedemptionsPerUser are
 │                                    enforced against, written by CouponRedemptionServiceImpl.redeem
 │                                    once Phase 2's CheckoutServiceImpl.confirm saves the order;
@@ -1716,9 +1726,15 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   normalizes the code then checks active/target-match/date-range/min-subtotal/global-and-per-user
 │   redemption-count limits in order; calculateDiscount(coupon, baseAmount) is a separate method
 │   since the discount is computed against a target-specific base amount (subtotal vs. shipping
-│   fee) while minSubtotal is always checked against the cart subtotal regardless of target;
+│   fee) while minSubtotal is always checked against the cart subtotal regardless of target — the
+│   raw calculation is then clamped to coupon.maxDiscountAmount (if set, DKP-0043 follow-up) before
+│   the existing base-amount clamp, uniformly for both CouponType values;
 │   redeem(coupon, order, ownerUuid, discountAmount) persists a CouponRedemption row — called only
 │   by confirm, never preview, and only after the order itself has already saved
+├── service/CouponImageService.java / impl/CouponImageServiceImpl.java (ProductDiscount feature,
+│   DKP-0044 follow-up) — not part of CouponService, mirroring ProductDescriptionImageService's own
+│   split from ProductService: touches no existing Coupon row, so it works in create mode too;
+│   delegates to infra's StorageService.uploadPublicImage and returns a permanent URL
 ├── service/OrderService.java / impl/OrderServiceImpl.java — Epic 3 Phases 3–5 (US-3.6–3.8, 3.3,
 │   │   3.5): thin cancel(orderId, callerUuid)/ship(orderId)/deliver(orderId) wrappers around
 │   │   orderstatus.OrderStatusHandlerRegistry (find-or-404, dispatch, save); cancel hides
@@ -1758,12 +1774,23 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                    them through ProductService.uploadImage via a new
 │   │                                    InMemoryMultipartFile (byte-array-backed MultipartFile —
 │   │                                    Spring's MockMultipartFile is spring-test-scoped only)
+│   ├── CouponSeeder.java           — extends infra's CsvSeeder<Coupon>; mirrors ProductTagSeeder
+│   │                                    (code is the idempotency key — already the entity's own
+│   │                                    real natural key, normalized to uppercase before the
+│   │                                    existence check — no seedId, direct-repository persist, no
+│   │                                    CouponService involved). 8 sample coupons covering every
+│   │                                    CouponRedemptionService.resolve eligibility branch —
+│   │                                    percentage/fixed, both CouponTarget values, min-subtotal,
+│   │                                    redemption caps, an active and an expired date range, and
+│   │                                    an inactive one
 │   └── EcommerceDataSeedingRunner.java — ApplicationRunner, @ConditionalOnProperty
 │                                           ("app.seed.enabled"), explicit
-│                                           categories→tags→products→images order (tags must exist
-│                                           before products.csv's tagNames column can reference
-│                                           them by name), same shape as content-service's/
-│                                           social-service's own runners
+│                                           categories→tags→products→images→coupons order (tags
+│                                           must exist before products.csv's tagNames column can
+│                                           reference them by name; coupons are independent of
+│                                           everything else here and run last by convention only),
+│                                           same shape as content-service's/social-service's own
+│                                           runners
 ├── mapper/                      — MapStruct: ProductCategoryMapper / ProductMapper (an abstract
 │                                    class, not a plain interface — injects infra's StorageService
 │                                    to resolve each ProductImage.storageKey into a presigned url
@@ -1833,6 +1860,11 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                 change needed). CRUD only today: POST, PUT /{id}, DELETE
 │   │                                 /{id}, GET /{id}, GET (paginated, q/active/target filters via
 │   │                                 CouponSpecification) — no redemption/validation endpoint yet
+│   ├── CouponImageApi.java       — POST /api/v1/admin/coupons/images/upload (DKP-0044 follow-up),
+│   │                                 a separate resource from CouponApi (no couponId needed, works
+│   │                                 in create mode too), nested under /api/v1/admin/coupons purely
+│   │                                 so gateway's existing route already covers it — mirrors
+│   │                                 ProductDescriptionImageApi's identical split from ProductApi
 │   ├── OrderApi.java             — /api/v1/orders (Epic 3 Phase 5, US-3.3/3.5/3.6), authenticated-
 │   │                                 only, same rule as CartApi; GET (list mine, paginated, most
 │   │                                 recent first), GET /{id} (full status timeline),
@@ -1880,7 +1912,11 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
                                      SavedAddressResponse/CreateSavedAddressRequest/
                                      UpdateSavedAddressRequest (AddressBook feature),
                                      CouponResponse/CreateCouponRequest/UpdateCouponRequest
-                                     (ProductDiscount feature Phase 1)
+                                     (ProductDiscount feature Phase 1; all three gained
+                                     maxDiscountAmount/description in a DKP-0043 follow-up, then
+                                     imageUrl in a DKP-0044 follow-up),
+                                     CouponImageResponse (url only, mirrors
+                                     ProductDescriptionImageResponse)
 ```
 
 Liquibase migrations: `ecommerce-service/.../database/sql/2026/0.0.2/202608040001__0.0.2__DKP-0023__add_ecommerce_catalog_tables.sql`

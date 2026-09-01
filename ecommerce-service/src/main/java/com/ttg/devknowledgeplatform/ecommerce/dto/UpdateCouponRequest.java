@@ -6,6 +6,7 @@ import com.ttg.devknowledgeplatform.ecommerce.enums.CouponType;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import lombok.Data;
 
@@ -41,4 +42,13 @@ public class UpdateCouponRequest {
 
     @Min(value = 1, message = "Max redemptions per user must be at least 1")
     private Integer maxRedemptionsPerUser;
+
+    @DecimalMin(value = "0.0", inclusive = false, message = "Max discount amount must be greater than zero")
+    private BigDecimal maxDiscountAmount;
+
+    @Size(max = 255, message = "Description must not exceed 255 characters")
+    private String description;
+
+    @Size(max = 500, message = "Image URL must not exceed 500 characters")
+    private String imageUrl;
 }

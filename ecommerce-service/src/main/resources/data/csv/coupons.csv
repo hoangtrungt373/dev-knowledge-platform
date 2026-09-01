@@ -1,0 +1,9 @@
+code,target,type,value,active,startAt,endAt,minSubtotal,maxRedemptions,maxRedemptionsPerUser,maxDiscountAmount,description
+WELCOME10,SUBTOTAL,PERCENTAGE,10,true,,,,,1,,10% off your first order
+SAVE5,SUBTOTAL,FIXED_AMOUNT,5.00,true,,,25.00,,,,"$5 off orders over $25"
+VIP20,SUBTOTAL,PERCENTAGE,20,true,,,100.00,100,1,20.00,"20% off orders over $100, up to $20 off"
+FREESHIP,SHIPPING_FEE,FIXED_AMOUNT,5.00,true,,,30.00,,,,Free shipping on orders over $30
+SHIPHALF,SHIPPING_FEE,PERCENTAGE,50,true,,,,,,,"Half off shipping, any order size"
+SUMMER2026,SUBTOTAL,PERCENTAGE,15,true,2026-06-01T00:00:00Z,2026-09-30T23:59:59Z,,,,,"Summer sale — 15% off, June through September 2026"
+BLACKFRIDAY2025,SUBTOTAL,PERCENTAGE,25,true,2025-11-28T00:00:00Z,2025-11-30T23:59:59Z,,,,,Black Friday 2025 — 25% off (expired)
+OLDPROMO,SUBTOTAL,FIXED_AMOUNT,10.00,false,,,,,,,Retired promo — no longer active

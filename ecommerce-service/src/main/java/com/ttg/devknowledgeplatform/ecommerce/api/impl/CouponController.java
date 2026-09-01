@@ -42,7 +42,8 @@ public class CouponController implements CouponApi {
         Coupon coupon = couponService.create(new CouponCommands.Create(
                 request.getCode(), request.getTarget(), request.getType(), request.getValue(), request.isActive(),
                 request.getStartAt(), request.getEndAt(), request.getMinSubtotal(),
-                request.getMaxRedemptions(), request.getMaxRedemptionsPerUser()));
+                request.getMaxRedemptions(), request.getMaxRedemptionsPerUser(),
+                request.getMaxDiscountAmount(), request.getDescription(), request.getImageUrl()));
         return ResponseEntity.status(HttpStatus.CREATED).body(couponMapper.toResponse(coupon));
     }
 
@@ -51,7 +52,8 @@ public class CouponController implements CouponApi {
         Coupon coupon = couponService.update(id, new CouponCommands.Update(
                 request.getTarget(), request.getType(), request.getValue(), request.isActive(),
                 request.getStartAt(), request.getEndAt(), request.getMinSubtotal(),
-                request.getMaxRedemptions(), request.getMaxRedemptionsPerUser()));
+                request.getMaxRedemptions(), request.getMaxRedemptionsPerUser(),
+                request.getMaxDiscountAmount(), request.getDescription(), request.getImageUrl()));
         return ResponseEntity.ok(couponMapper.toResponse(coupon));
     }
 

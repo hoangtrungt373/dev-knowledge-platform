@@ -23,6 +23,7 @@ import CategoryIcon from '@mui/icons-material/Category';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import SellIcon from '@mui/icons-material/Sell';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import DiscountIcon from '@mui/icons-material/Discount';
 import HomeIcon from '@mui/icons-material/Home';
 import LogoutIcon from '@mui/icons-material/Logout';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
@@ -47,6 +48,7 @@ const NAV_ITEMS = [
   { label: 'Products',              icon: <Inventory2Icon fontSize="small" />, path: '/admin/products' },
   { label: 'Product Tags',          icon: <SellIcon fontSize="small" />,       path: '/admin/product-tags' },
   { label: 'Order Fulfillment',     icon: <LocalShippingIcon fontSize="small" />, path: '/admin/orders' },
+  { label: 'Coupons',               icon: <DiscountIcon fontSize="small" />,   path: '/admin/coupons' },
 ];
 
 export default function AdminLayout(): JSX.Element {

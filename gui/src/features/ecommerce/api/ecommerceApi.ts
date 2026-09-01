@@ -6,6 +6,7 @@ import {
   ProductTag, CreateProductTagPayload, UpdateProductTagPayload,
   Product, CreateProductPayload, UpdateProductPayload,
   ProductVariant, ProductVariantInput, ProductImage,
+  Coupon, CreateCouponPayload, UpdateCouponPayload, CouponTarget,
 } from '../types';
 
 type ShowError = (msg: string) => void;
@@ -27,6 +28,16 @@ export interface ProductTagListParams {
   sortBy?: string;
   sortDir?: string;
   q?: string;
+}
+
+export interface CouponListParams {
+  page?: number;
+  size?: number;
+  sortBy?: string;
+  sortDir?: string;
+  q?: string;
+  active?: boolean;
+  target?: CouponTarget;
 }
 
 export const ecommerceApi = {
@@ -154,5 +165,32 @@ export const ecommerceApi = {
     const form = new FormData();
     form.append('file', file);
     return httpClient.postForm('/api/v1/admin/products/description-images/upload', form, showError);
+  },
+
+  // ── Coupons ("ProductDiscount" feature, Phase 4 admin GUI) ────────────────────
+  // Admin CRUD only — redemption itself happens through checkoutApi's preview/confirm, not here.
+
+  listCoupons(params: CouponListParams, showError?: ShowError): Promise<PagedResponse<Coupon>> {
+    return httpClient.get(`/api/v1/admin/coupons${buildQueryString(params as QueryParams)}`, showError);
+  },
+
+  createCoupon(payload: CreateCouponPayload, showError?: ShowError): Promise<Coupon> {
+    return httpClient.post('/api/v1/admin/coupons', payload, showError);
+  },
+
+  updateCoupon(id: number, payload: UpdateCouponPayload, showError?: ShowError): Promise<Coupon> {
+    return httpClient.put(`/api/v1/admin/coupons/${id}`, payload, showError);
+  },
+
+  deleteCoupon(id: number, showError?: ShowError): Promise<void> {
+    return httpClient.delete(`/api/v1/admin/coupons/${id}`, showError);
+  },
+
+  // Usable in create mode too (no couponId needed) — same shape as uploadDescriptionImage above,
+  // returns a permanent URL rather than a presigned one (see CouponImageService's own Javadoc).
+  uploadCouponImage(file: File, showError?: ShowError): Promise<{ url: string }> {
+    const form = new FormData();
+    form.append('file', file);
+    return httpClient.postForm('/api/v1/admin/coupons/images/upload', form, showError);
   },
 };

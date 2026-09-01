@@ -52,6 +52,9 @@ public class CouponServiceImpl implements CouponService {
         coupon.setMinSubtotal(command.minSubtotal());
         coupon.setMaxRedemptions(command.maxRedemptions());
         coupon.setMaxRedemptionsPerUser(command.maxRedemptionsPerUser());
+        coupon.setMaxDiscountAmount(command.maxDiscountAmount());
+        coupon.setDescription(command.description());
+        coupon.setImageUrl(command.imageUrl());
 
         Coupon saved = couponRepository.save(coupon);
         log.info("Created coupon id={} code={}", saved.getId(), code);
@@ -73,6 +76,9 @@ public class CouponServiceImpl implements CouponService {
         coupon.setMinSubtotal(command.minSubtotal());
         coupon.setMaxRedemptions(command.maxRedemptions());
         coupon.setMaxRedemptionsPerUser(command.maxRedemptionsPerUser());
+        coupon.setMaxDiscountAmount(command.maxDiscountAmount());
+        coupon.setDescription(command.description());
+        coupon.setImageUrl(command.imageUrl());
 
         Coupon saved = couponRepository.save(coupon);
         log.info("Updated coupon id={}", id);

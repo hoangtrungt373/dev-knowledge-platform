@@ -18,6 +18,7 @@ import ProductTagListPage from '@ecommerce/pages/ProductTagListPage';
 import ProductListPage from '@ecommerce/pages/ProductListPage';
 import ProductFormPage from '@ecommerce/pages/ProductFormPage';
 import AdminOrderListPage from '@ecommerce/pages/AdminOrderListPage';
+import CouponListPage from '@ecommerce/pages/CouponListPage';
 import ShopPage from '@ecommerce/pages/shop/ShopPage';
 import ProductDetailPage from '@ecommerce/pages/shop/ProductDetailPage';
 import CartPage from '@ecommerce/pages/cart/CartPage';
@@ -189,6 +190,7 @@ function App() {
               <Route path="products/new" element={<ProductFormPage />} />
               <Route path="products/:id/edit" element={<ProductFormPage />} />
               <Route path="orders" element={<AdminOrderListPage />} />
+              <Route path="coupons" element={<CouponListPage />} />
               <Route index element={<Navigate to="dashboard" replace />} />
             </Route>
 

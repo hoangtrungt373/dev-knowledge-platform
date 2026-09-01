@@ -15,6 +15,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import { useCart } from '../../context/CartContext';
@@ -90,9 +91,59 @@ export default function CheckoutPage(): JSX.Element {
   const [saveAddress, setSaveAddress] = useState(false);
   const [addressLabel, setAddressLabel] = useState('');
 
+  // Coupon feature Phase 4: at most one code per target (mirrors the backend's own "1 subtotal, 1
+  // shipping" constraint — two separate optional codes, not a list). "Applied" means the last
+  // preview call actually accepted it; the raw text input is kept separate so a typo mid-edit
+  // doesn't look like an already-applied code.
+  const [subtotalCouponInput, setSubtotalCouponInput] = useState('');
+  const [shippingCouponInput, setShippingCouponInput] = useState('');
+  const [appliedSubtotalCoupon, setAppliedSubtotalCoupon] = useState<string | null>(null);
+  const [appliedShippingCoupon, setAppliedShippingCoupon] = useState<string | null>(null);
+  const [subtotalCouponError, setSubtotalCouponError] = useState<string | null>(null);
+  const [shippingCouponError, setShippingCouponError] = useState<string | null>(null);
+  const [applyingSubtotalCoupon, setApplyingSubtotalCoupon] = useState(false);
+  const [applyingShippingCoupon, setApplyingShippingCoupon] = useState(false);
+
+  /** Re-fetches the preview with the given coupon codes (undefined = none) — shared by the
+   * initial load and every Apply/Remove action below, so they all go through the exact same
+   * revalidation the backend itself does. Never toggles the page-level `previewLoading` spinner
+   * once the initial load has completed — an Apply/Remove failure should only affect its own
+   * field, not blank out the whole Order Summary the shopper is actively looking at. */
+  const loadPreview = (subtotalCode?: string, shippingCode?: string): Promise<CheckoutPreview> =>
+    checkoutApi.preview(selectedVariantIds, subtotalCode, shippingCode);
+
+  const handleApplyCoupon = (target: 'subtotal' | 'shipping'): void => {
+    const code = (target === 'subtotal' ? subtotalCouponInput : shippingCouponInput).trim();
+    if (!code) return;
+    const setApplying = target === 'subtotal' ? setApplyingSubtotalCoupon : setApplyingShippingCoupon;
+    const setFieldError = target === 'subtotal' ? setSubtotalCouponError : setShippingCouponError;
+    setApplying(true);
+    setFieldError(null);
+    const subtotalCode = target === 'subtotal' ? code : (appliedSubtotalCoupon ?? undefined);
+    const shippingCode = target === 'shipping' ? code : (appliedShippingCoupon ?? undefined);
+    loadPreview(subtotalCode, shippingCode)
+      .then(result => {
+        setPreview(result);
+        if (target === 'subtotal') setAppliedSubtotalCoupon(code);
+        else setAppliedShippingCoupon(code);
+      })
+      .catch(err => setFieldError(err instanceof Error ? err.message : 'This coupon can\'t be applied.'))
+      .finally(() => setApplying(false));
+  };
+
+  const handleRemoveCoupon = (target: 'subtotal' | 'shipping'): void => {
+    const subtotalCode = target === 'subtotal' ? undefined : (appliedSubtotalCoupon ?? undefined);
+    const shippingCode = target === 'shipping' ? undefined : (appliedShippingCoupon ?? undefined);
+    loadPreview(subtotalCode, shippingCode).then(result => {
+      setPreview(result);
+      if (target === 'subtotal') { setAppliedSubtotalCoupon(null); setSubtotalCouponInput(''); }
+      else { setAppliedShippingCoupon(null); setShippingCouponInput(''); }
+    }).catch(err => showError(err instanceof Error ? err.message : 'Could not remove this coupon.'));
+  };
+
   useEffect(() => {
     setPreviewLoading(true);
-    checkoutApi.preview(selectedVariantIds)
+    loadPreview()
       .then(setPreview)
       .catch((err) => setPreviewError(err instanceof Error ? err.message : 'Could not load your cart.'))
       .finally(() => setPreviewLoading(false));
@@ -140,7 +191,12 @@ export default function CheckoutPage(): JSX.Element {
               saveAddress,
               addressLabel: saveAddress ? (addressLabel.trim() || undefined) : undefined,
             };
-        const result = await checkoutApi.confirm(addressInput, selectedVariantIds);
+        const result = await checkoutApi.confirm(
+          addressInput,
+          selectedVariantIds,
+          appliedSubtotalCoupon ?? undefined,
+          appliedShippingCoupon ?? undefined,
+        );
         refreshCart(); // backend removes only the ordered lines on success — resync the badge/context
         // Order Detail (Epic 3) is now the canonical "here's your order" view — it has the real
         // Pay Now button this page's own former inline confirmation never could.
@@ -201,21 +257,104 @@ export default function CheckoutPage(): JSX.Element {
         )}
 
         <Divider sx={{ my: 1.5 }} />
+
+        {/* Coupon feature Phase 4 — one code per CouponTarget, mirroring the backend's own
+            "at most 2 coupons, 1 subtotal + 1 shipping" constraint. */}
+        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1 }}>
+          <LocalOfferIcon fontSize="small" color="action" />
+          <Typography variant="body2" fontWeight={600}>Coupons</Typography>
+        </Stack>
+        <Stack spacing={1.5} sx={{ mb: 1.5 }}>
+          {appliedSubtotalCoupon ? (
+            <Chip
+              label={`${appliedSubtotalCoupon} — subtotal discount applied`}
+              color="success"
+              variant="outlined"
+              onDelete={() => handleRemoveCoupon('subtotal')}
+              sx={{ alignSelf: 'flex-start' }}
+            />
+          ) : (
+            <Stack direction="row" spacing={1} alignItems="flex-start">
+              <TextField
+                size="small"
+                label="Subtotal coupon code"
+                value={subtotalCouponInput}
+                onChange={e => { setSubtotalCouponInput(e.target.value); setSubtotalCouponError(null); }}
+                error={!!subtotalCouponError}
+                helperText={subtotalCouponError}
+                sx={{ flex: 1 }}
+              />
+              <Button
+                variant="outlined"
+                onClick={() => handleApplyCoupon('subtotal')}
+                disabled={!subtotalCouponInput.trim() || applyingSubtotalCoupon}
+                sx={{ height: 40 }}
+              >
+                {applyingSubtotalCoupon ? <CircularProgress size={18} /> : 'Apply'}
+              </Button>
+            </Stack>
+          )}
+
+          {appliedShippingCoupon ? (
+            <Chip
+              label={`${appliedShippingCoupon} — shipping discount applied`}
+              color="success"
+              variant="outlined"
+              onDelete={() => handleRemoveCoupon('shipping')}
+              sx={{ alignSelf: 'flex-start' }}
+            />
+          ) : (
+            <Stack direction="row" spacing={1} alignItems="flex-start">
+              <TextField
+                size="small"
+                label="Shipping coupon code"
+                value={shippingCouponInput}
+                onChange={e => { setShippingCouponInput(e.target.value); setShippingCouponError(null); }}
+                error={!!shippingCouponError}
+                helperText={shippingCouponError}
+                sx={{ flex: 1 }}
+              />
+              <Button
+                variant="outlined"
+                onClick={() => handleApplyCoupon('shipping')}
+                disabled={!shippingCouponInput.trim() || applyingShippingCoupon}
+                sx={{ height: 40 }}
+              >
+                {applyingShippingCoupon ? <CircularProgress size={18} /> : 'Apply'}
+              </Button>
+            </Stack>
+          )}
+        </Stack>
+
+        <Divider sx={{ my: 1.5 }} />
         <Stack direction="row" justifyContent="space-between">
           <Typography variant="body2" color="text.secondary">Subtotal</Typography>
           <Typography variant="body2">{formatPrice(preview.subtotal)}</Typography>
         </Stack>
+        {preview.subtotalDiscountAmount > 0 && (
+          <Stack direction="row" justifyContent="space-between">
+            <Typography variant="body2" color="text.secondary">Discount</Typography>
+            <Typography variant="body2" color="success.main">−{formatPrice(preview.subtotalDiscountAmount)}</Typography>
+          </Stack>
+        )}
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography variant="body2" color="text.secondary">Shipping</Typography>
           {preview.originalShippingFee > preview.shippingFee ? (
-            // Free shipping just kicked in (FreeOverThresholdShippingFeeCalculator's own
-            // threshold) — show the fee it would have been, struck through, rather than just a
-            // bare "$0.00" that doesn't communicate the savings.
+            // A waiver applied — either the automatic FreeOverThresholdShippingFeeCalculator
+            // threshold (always all-or-nothing) or a SHIPPING_FEE coupon (Phase 2, can be a
+            // *partial* percentage/fixed discount, not necessarily down to zero) — show the fee it
+            // would have been, struck through, next to what's actually charged now. Only label it
+            // "Free" when the charge is genuinely zero; a partial coupon discount still shows its
+            // own discounted price, not a misleading "Free".
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography variant="body2" color="text.secondary" sx={{ textDecoration: 'line-through' }}>
                 {formatPrice(preview.originalShippingFee)}
               </Typography>
-              <Typography variant="body2" color="success.main" fontWeight={600}>Free</Typography>
+              {preview.shippingFee === 0 ? (
+                <Typography variant="body2" color="success.main" fontWeight={600}>Free</Typography>
+              ) : (
+                <Typography variant="body2" color="success.main">{formatPrice(preview.shippingFee)}</Typography>
+              )}
             </Stack>
           ) : (
             <Typography variant="body2">{formatPrice(preview.shippingFee)}</Typography>
