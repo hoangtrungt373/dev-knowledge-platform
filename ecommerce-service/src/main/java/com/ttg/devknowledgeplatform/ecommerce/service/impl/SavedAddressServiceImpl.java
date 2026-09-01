@@ -49,8 +49,8 @@ public class SavedAddressServiceImpl implements SavedAddressService {
     public SavedAddress create(String ownerUuid, SavedAddressCommands.Create command) {
         SavedAddress address = new SavedAddress();
         address.setOwnerUuid(ownerUuid);
-        applyFields(address, command.label(), command.fullName(), command.line1(), command.line2(),
-                command.city(), command.state(), command.postalCode(), command.country());
+        applyFields(address, command.label(), command.fullName(), command.phone(), command.email(), command.line1(),
+                command.line2(), command.city(), command.state(), command.postalCode(), command.country());
 
         // The very first address for a caller is always the default, regardless of whether it was
         // explicitly requested — there's no sensible "no default while at least one address
@@ -72,8 +72,8 @@ public class SavedAddressServiceImpl implements SavedAddressService {
     @Override
     public SavedAddress update(Integer id, String ownerUuid, SavedAddressCommands.Update command) {
         SavedAddress address = findOwned(id, ownerUuid);
-        applyFields(address, command.label(), command.fullName(), command.line1(), command.line2(),
-                command.city(), command.state(), command.postalCode(), command.country());
+        applyFields(address, command.label(), command.fullName(), command.phone(), command.email(), command.line1(),
+                command.line2(), command.city(), command.state(), command.postalCode(), command.country());
         SavedAddress saved = savedAddressRepository.save(address);
         log.info("Updated saved address id={} for ownerUuid={}", id, ownerUuid);
         return saved;
@@ -118,10 +118,12 @@ public class SavedAddressServiceImpl implements SavedAddressService {
     }
 
     private static void applyFields(
-            SavedAddress address, String label, String fullName, String line1, String line2,
-            String city, String state, String postalCode, String country) {
+            SavedAddress address, String label, String fullName, String phone, String email, String line1,
+            String line2, String city, String state, String postalCode, String country) {
         address.setLabel(label);
         address.setFullName(fullName);
+        address.setPhone(phone);
+        address.setEmail(email);
         address.setLine1(line1);
         address.setLine2(line2);
         address.setCity(city);

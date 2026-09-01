@@ -89,7 +89,8 @@ class CheckoutServiceImplTest {
         lenient().when(shippingFeeCalculator.calculate(any(), any()))
                 .thenReturn(new ShippingFeeQuote(FLAT_SHIPPING_FEE, FLAT_SHIPPING_FEE));
         addressInput = new CheckoutCommands.AddressInput(
-                "Ada Lovelace", "1 Analytical Engine Way", null, "London", "England", "SW1A 1AA", "UK");
+                "Ada Lovelace", "+44 20 7946 0958", "ada@example.com", "1 Analytical Engine Way", null, "London",
+                "England", "SW1A 1AA", "UK");
         address = new CheckoutCommands.AddressSelection(null, addressInput, false, null);
     }
 
@@ -488,6 +489,8 @@ class CheckoutServiceImplTest {
             when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
             SavedAddress saved = new SavedAddress();
             saved.setFullName("Grace Hopper");
+            saved.setPhone("+1 703-555-0100");
+            saved.setEmail("grace@example.com");
             saved.setLine1("1 Compiler Ave");
             saved.setCity("Arlington");
             saved.setState("VA");
@@ -508,7 +511,8 @@ class CheckoutServiceImplTest {
         void rejectsAnIncompleteAdHocAddressWhenNoSavedAddressIdIsGiven() {
             when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(availableLine(1, 1, new BigDecimal("10.00")))));
             var incomplete = new CheckoutCommands.AddressInput(
-                    "Ada Lovelace", "", null, "London", "England", "SW1A 1AA", "UK");
+                    "Ada Lovelace", "+44 20 7946 0958", "ada@example.com", "", null, "London", "England",
+                    "SW1A 1AA", "UK");
             var selection = new CheckoutCommands.AddressSelection(null, incomplete, false, null);
 
             assertThatThrownBy(() -> service.confirm(USER_UUID, selection, null, null, null))
@@ -530,7 +534,8 @@ class CheckoutServiceImplTest {
             service.confirm(USER_UUID, selection, null, null, null);
 
             verify(savedAddressService).create(eq(USER_UUID), eq(new SavedAddressCommands.Create(
-                    "Home", "Ada Lovelace", "1 Analytical Engine Way", null, "London", "England", "SW1A 1AA", "UK", false)));
+                    "Home", "Ada Lovelace", "+44 20 7946 0958", "ada@example.com", "1 Analytical Engine Way", null,
+                    "London", "England", "SW1A 1AA", "UK", false)));
         }
 
         @Test
@@ -541,6 +546,8 @@ class CheckoutServiceImplTest {
             when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
             SavedAddress saved = new SavedAddress();
             saved.setFullName("Grace Hopper");
+            saved.setPhone("+1 703-555-0100");
+            saved.setEmail("grace@example.com");
             saved.setLine1("1 Compiler Ave");
             saved.setCity("Arlington");
             saved.setState("VA");

@@ -44,8 +44,13 @@ function toOrderLine(line: CartLine): OrderLine {
   };
 }
 
+/** Lightweight client-side sanity check only — the backend's own @Email is the real validation. */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 interface AddressFormErrors {
   fullName?: string;
+  phone?: string;
+  email?: string;
   line1?: string;
   city?: string;
   state?: string;
@@ -54,14 +59,15 @@ interface AddressFormErrors {
 }
 
 const EMPTY_ADDRESS: Address = {
-  fullName: '', line1: '', line2: '', city: '', state: '', postalCode: '', country: '',
+  fullName: '', phone: '', email: '', line1: '', line2: '', city: '', state: '', postalCode: '', country: '',
 };
 
 /** Sentinel radio value for "enter a new address" — distinct from any real numeric address id. */
 const NEW_ADDRESS_OPTION = 'new';
 
 function formatSavedAddress(a: SavedAddress): string {
-  return `${a.fullName}, ${a.line1}${a.line2 ? `, ${a.line2}` : ''}, ${a.city}, ${a.state} ${a.postalCode}, ${a.country}`;
+  const contact = [a.phone, a.email].filter(Boolean).join(' · ');
+  return `${a.fullName}${contact ? ` · ${contact}` : ''}, ${a.line1}${a.line2 ? `, ${a.line2}` : ''}, ${a.city}, ${a.state} ${a.postalCode}, ${a.country}`;
 }
 
 export default function CheckoutPage(): JSX.Element {
@@ -159,6 +165,10 @@ export default function CheckoutPage(): JSX.Element {
     if (usingSavedAddress) return true; // nothing to validate — the picked address already exists
     const newErrors: AddressFormErrors = {};
     if (!address.fullName.trim()) newErrors.fullName = 'Full name is required';
+    if (!(address.phone ?? '').trim()) newErrors.phone = 'Phone number is required';
+    const emailTrimmed = (address.email ?? '').trim();
+    if (!emailTrimmed) newErrors.email = 'Email is required';
+    else if (!EMAIL_PATTERN.test(emailTrimmed)) newErrors.email = 'Enter a valid email address';
     if (!address.line1.trim()) newErrors.line1 = 'Address is required';
     if (!address.city.trim()) newErrors.city = 'City is required';
     if (!address.state.trim()) newErrors.state = 'State is required';
@@ -391,6 +401,25 @@ export default function CheckoutPage(): JSX.Element {
               onChange={(e) => setAddress({ ...address, fullName: e.target.value })}
               error={!!errors.fullName}
               helperText={errors.fullName}
+            />
+            <TextField
+              label="Phone Number"
+              fullWidth
+              value={address.phone ?? ''}
+              onChange={(e) => setAddress({ ...address, phone: e.target.value })}
+              error={!!errors.phone}
+              helperText={errors.phone}
+              inputProps={{ maxLength: 30 }}
+            />
+            <TextField
+              label="Email"
+              type="email"
+              fullWidth
+              value={address.email ?? ''}
+              onChange={(e) => setAddress({ ...address, email: e.target.value })}
+              error={!!errors.email}
+              helperText={errors.email}
+              inputProps={{ maxLength: 255 }}
             />
             <TextField
               label="Address Line 1"

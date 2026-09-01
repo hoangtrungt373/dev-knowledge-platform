@@ -98,6 +98,8 @@ public class OrderMapper {
     public static AddressResponse toAddressResponse(Address address) {
         return AddressResponse.builder()
                 .fullName(address.getFullName())
+                .phone(address.getPhone())
+                .email(address.getEmail())
                 .line1(address.getLine1())
                 .line2(address.getLine2())
                 .city(address.getCity())

@@ -39,7 +39,7 @@ public class CheckoutController implements CheckoutApi {
         // plain field copies) rather than conditionally, since CheckoutServiceImpl's own
         // resolveAddress is what actually decides which one to use.
         CheckoutCommands.AddressInput adHocAddress = new CheckoutCommands.AddressInput(
-                request.getFullName(), request.getLine1(), request.getLine2(),
+                request.getFullName(), request.getPhone(), request.getEmail(), request.getLine1(), request.getLine2(),
                 request.getCity(), request.getState(), request.getPostalCode(), request.getCountry());
         var addressSelection = new CheckoutCommands.AddressSelection(
                 request.getSavedAddressId(), adHocAddress, request.isSaveAddress(), request.getAddressLabel());

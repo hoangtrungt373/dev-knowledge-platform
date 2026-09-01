@@ -165,6 +165,14 @@ export interface Cart {
 
 export interface Address {
   fullName: string;
+  /** Optional like line2 below for the same reason: a handful of orders/saved addresses placed
+   * before this field existed have no phone on file (see ecommerce-service's own PHONE column
+   * migration, nullable at the DB level); every fresh write is required to supply one. */
+  phone?: string;
+  /** The invoice/order-confirmation recipient — deliberately independent of the caller's
+   * Keycloak login email, since the two can legitimately differ. Optional for the same
+   * "no backfill" reason as phone above. */
+  email?: string;
   line1: string;
   line2?: string;
   city: string;
@@ -182,6 +190,10 @@ export interface SavedAddress {
   id: number;
   label: string | null;
   fullName: string;
+  /** Optional for the same "no backfill" reason as Address.phone above. */
+  phone?: string;
+  /** Optional for the same "no backfill" reason — see Address.email above. */
+  email?: string;
   line1: string;
   line2: string | null;
   city: string;
@@ -196,6 +208,8 @@ export interface SavedAddress {
 export interface CreateSavedAddressPayload {
   label?: string;
   fullName: string;
+  phone: string;
+  email: string;
   line1: string;
   line2?: string;
   city: string;
@@ -212,6 +226,8 @@ export interface CreateSavedAddressPayload {
 export interface UpdateSavedAddressPayload {
   label?: string;
   fullName: string;
+  phone: string;
+  email: string;
   line1: string;
   line2?: string;
   city: string;
@@ -226,6 +242,8 @@ export interface UpdateSavedAddressPayload {
 export interface CheckoutAddressInput {
   savedAddressId?: number;
   fullName?: string;
+  phone?: string;
+  email?: string;
   line1?: string;
   line2?: string;
   city?: string;

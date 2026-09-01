@@ -16,6 +16,8 @@ public class SavedAddressResponse {
     private Integer id;
     private String label;
     private String fullName;
+    private String phone;
+    private String email;
     private String line1;
     private String line2;
     private String city;

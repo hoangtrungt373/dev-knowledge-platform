@@ -146,6 +146,12 @@ export default function AddressBookPage(): JSX.Element {
                     )}
                   </Stack>
                   <Typography variant="body2" color="text.secondary">{address.fullName}</Typography>
+                  {address.phone && (
+                    <Typography variant="body2" color="text.secondary">{address.phone}</Typography>
+                  )}
+                  {address.email && (
+                    <Typography variant="body2" color="text.secondary">{address.email}</Typography>
+                  )}
                   <Typography variant="body2" color="text.secondary">
                     {address.line1}{address.line2 ? `, ${address.line2}` : ''}
                   </Typography>

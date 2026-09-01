@@ -9,6 +9,8 @@ import lombok.Data;
 public class AddressResponse {
 
     private String fullName;
+    private String phone;
+    private String email;
     private String line1;
     private String line2;
     private String city;

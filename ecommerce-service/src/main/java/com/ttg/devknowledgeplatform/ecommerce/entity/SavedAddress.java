@@ -52,6 +52,21 @@ public class SavedAddress extends AbstractEntity {
     @Column(name = "FULL_NAME", length = 150, nullable = false)
     private String fullName;
 
+    /** Nullable at the DB level only because pre-existing rows have nothing to backfill (see this
+     * column's own migration) — {@code Create}/{@code UpdateSavedAddressRequest} both make it
+     * {@code @NotBlank} for every write going forward, same treatment {@link Address#getPhone()}
+     * gets on the order-snapshot side. */
+    @Column(name = "PHONE", length = 30)
+    private String phone;
+
+    /** Nullable at the DB level for the same "no backfill" reason as {@link #phone} — the
+     * invoice/order-confirmation recipient for orders placed with this address, deliberately
+     * independent of the caller's Keycloak login email (see {@link Address#getEmail()}'s own
+     * Javadoc). {@code @NotBlank} on both {@code Create}/{@code UpdateSavedAddressRequest} for
+     * every write going forward. */
+    @Column(name = "EMAIL", length = 255)
+    private String email;
+
     @Column(name = "LINE_1", length = 255, nullable = false)
     private String line1;
 

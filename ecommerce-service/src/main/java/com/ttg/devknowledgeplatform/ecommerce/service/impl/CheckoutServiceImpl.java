@@ -204,8 +204,9 @@ public class CheckoutServiceImpl implements CheckoutService {
         }
         CheckoutCommands.AddressInput input = selection.adHocAddress();
         boolean complete = input != null
-                && isNotBlank(input.fullName()) && isNotBlank(input.line1()) && isNotBlank(input.city())
-                && isNotBlank(input.state()) && isNotBlank(input.postalCode()) && isNotBlank(input.country());
+                && isNotBlank(input.fullName()) && isNotBlank(input.phone()) && isNotBlank(input.email())
+                && isNotBlank(input.line1()) && isNotBlank(input.city()) && isNotBlank(input.state())
+                && isNotBlank(input.postalCode()) && isNotBlank(input.country());
         Validator.isTrue(complete, EcommerceErrorCode.CHECKOUT_ADDRESS_REQUIRED);
         return toAddress(input);
     }
@@ -225,7 +226,7 @@ public class CheckoutServiceImpl implements CheckoutService {
         try {
             CheckoutCommands.AddressInput input = selection.adHocAddress();
             savedAddressService.create(userUuid, new SavedAddressCommands.Create(
-                    selection.label(), input.fullName(), input.line1(), input.line2(),
+                    selection.label(), input.fullName(), input.phone(), input.email(), input.line1(), input.line2(),
                     input.city(), input.state(), input.postalCode(), input.country(), false));
         } catch (Exception e) {
             log.warn("Could not save address to AddressBook for userUuid={} after checkout: {}", userUuid, e.getMessage());
@@ -310,12 +311,13 @@ public class CheckoutServiceImpl implements CheckoutService {
 
     private static Address toAddress(CheckoutCommands.AddressInput input) {
         return new Address(
-                input.fullName(), input.line1(), input.line2(), input.city(), input.state(), input.postalCode(), input.country());
+                input.fullName(), input.phone(), input.email(), input.line1(), input.line2(), input.city(),
+                input.state(), input.postalCode(), input.country());
     }
 
     private static Address toAddress(SavedAddress saved) {
         return new Address(
-                saved.getFullName(), saved.getLine1(), saved.getLine2(), saved.getCity(),
-                saved.getState(), saved.getPostalCode(), saved.getCountry());
+                saved.getFullName(), saved.getPhone(), saved.getEmail(), saved.getLine1(), saved.getLine2(),
+                saved.getCity(), saved.getState(), saved.getPostalCode(), saved.getCountry());
     }
 }

@@ -16,8 +16,13 @@ import { addressApi } from '../api/addressApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 
+/** Lightweight client-side sanity check only — the backend's own @Email is the real validation. */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 interface FormErrors {
   fullName?: string;
+  phone?: string;
+  email?: string;
   line1?: string;
   city?: string;
   state?: string;
@@ -42,6 +47,8 @@ export default function AddressFormDialog({ open, address, onClose, onSaved }: P
 
   const [label, setLabel] = useState('');
   const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [line1, setLine1] = useState('');
   const [line2, setLine2] = useState('');
   const [city, setCity] = useState('');
@@ -56,6 +63,8 @@ export default function AddressFormDialog({ open, address, onClose, onSaved }: P
     if (open) {
       setLabel(address?.label ?? '');
       setFullName(address?.fullName ?? '');
+      setPhone(address?.phone ?? '');
+      setEmail(address?.email ?? '');
       setLine1(address?.line1 ?? '');
       setLine2(address?.line2 ?? '');
       setCity(address?.city ?? '');
@@ -70,6 +79,9 @@ export default function AddressFormDialog({ open, address, onClose, onSaved }: P
   const validate = (): boolean => {
     const e: FormErrors = {};
     if (!fullName.trim()) e.fullName = 'Full name is required';
+    if (!phone.trim()) e.phone = 'Phone number is required';
+    if (!email.trim()) e.email = 'Email is required';
+    else if (!EMAIL_PATTERN.test(email.trim())) e.email = 'Enter a valid email address';
     if (!line1.trim()) e.line1 = 'Address is required';
     if (!city.trim()) e.city = 'City is required';
     if (!state.trim()) e.state = 'State is required';
@@ -86,6 +98,8 @@ export default function AddressFormDialog({ open, address, onClose, onSaved }: P
         const fields = {
           label: label.trim() || undefined,
           fullName: fullName.trim(),
+          phone: phone.trim(),
+          email: email.trim(),
           line1: line1.trim(),
           line2: line2.trim() || undefined,
           city: city.trim(),
@@ -130,6 +144,25 @@ export default function AddressFormDialog({ open, address, onClose, onSaved }: P
             error={!!errors.fullName}
             helperText={errors.fullName}
             fullWidth
+          />
+          <TextField
+            label="Phone Number"
+            value={phone}
+            onChange={e => { setPhone(e.target.value); setErrors(p => ({ ...p, phone: undefined })); }}
+            error={!!errors.phone}
+            helperText={errors.phone}
+            fullWidth
+            inputProps={{ maxLength: 30 }}
+          />
+          <TextField
+            label="Email"
+            type="email"
+            value={email}
+            onChange={e => { setEmail(e.target.value); setErrors(p => ({ ...p, email: undefined })); }}
+            error={!!errors.email}
+            helperText={errors.email}
+            fullWidth
+            inputProps={{ maxLength: 255 }}
           />
           <TextField
             label="Address Line 1"

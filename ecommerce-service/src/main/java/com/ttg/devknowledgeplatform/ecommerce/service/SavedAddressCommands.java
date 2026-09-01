@@ -16,12 +16,12 @@ public final class SavedAddressCommands {
      *                    matters from the caller's *second* address onward.
      */
     public record Create(
-            String label, String fullName, String line1, String line2, String city,
+            String label, String fullName, String phone, String email, String line1, String line2, String city,
             String state, String postalCode, String country, boolean makeDefault) {
     }
 
     public record Update(
-            String label, String fullName, String line1, String line2, String city,
+            String label, String fullName, String phone, String email, String line1, String line2, String city,
             String state, String postalCode, String country) {
     }
 }

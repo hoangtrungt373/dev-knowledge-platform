@@ -48,6 +48,8 @@ class SavedAddressServiceImplTest {
         existing.setOwnerUuid(OWNER_UUID);
         existing.setLabel("Home");
         existing.setFullName("Ada Lovelace");
+        existing.setPhone("+44 20 7946 0958");
+        existing.setEmail("ada@example.com");
         existing.setLine1("1 Analytical Engine Way");
         existing.setCity("London");
         existing.setState("England");
@@ -58,7 +60,8 @@ class SavedAddressServiceImplTest {
 
     private static SavedAddressCommands.Create createCommand(boolean makeDefault) {
         return new SavedAddressCommands.Create(
-                "Work", "Grace Hopper", "1 Compiler Ave", null, "Arlington", "VA", "22201", "USA", makeDefault);
+                "Work", "Grace Hopper", "+1 703-555-0100", "grace@example.com", "1 Compiler Ave", null, "Arlington",
+                "VA", "22201", "USA", makeDefault);
     }
 
     @Nested
@@ -121,7 +124,8 @@ class SavedAddressServiceImplTest {
             when(savedAddressRepository.findByIdAndOwnerUuid(1, OWNER_UUID)).thenReturn(Optional.of(existing));
             when(savedAddressRepository.save(any(SavedAddress.class))).thenAnswer(invocation -> invocation.getArgument(0));
             var command = new SavedAddressCommands.Update(
-                    "Office", "Ada L.", "221B Baker St", "Flat 2", "London", "England", "NW1 6XE", "UK");
+                    "Office", "Ada L.", "+44 20 7946 0958", "ada.l@example.com", "221B Baker St", "Flat 2", "London",
+                    "England", "NW1 6XE", "UK");
 
             SavedAddress result = service.update(1, OWNER_UUID, command);
 
@@ -133,7 +137,7 @@ class SavedAddressServiceImplTest {
         @Test
         void throwsWhenNoAddressWithThisIdBelongsToTheCaller() {
             when(savedAddressRepository.findByIdAndOwnerUuid(99, OWNER_UUID)).thenReturn(Optional.empty());
-            var command = new SavedAddressCommands.Update("L", "N", "L1", null, "C", "S", "P", "Co");
+            var command = new SavedAddressCommands.Update("L", "N", "P1", "E1", "L1", null, "C", "S", "P", "Co");
 
             assertThatThrownBy(() -> service.update(99, OWNER_UUID, command))
                     .isInstanceOf(ResourceNotFoundException.class)

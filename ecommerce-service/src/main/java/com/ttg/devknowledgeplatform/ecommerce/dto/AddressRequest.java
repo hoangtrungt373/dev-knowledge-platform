@@ -26,6 +26,10 @@ public class AddressRequest {
 
     private String fullName;
 
+    private String phone;
+
+    private String email;
+
     private String line1;
 
     private String line2;

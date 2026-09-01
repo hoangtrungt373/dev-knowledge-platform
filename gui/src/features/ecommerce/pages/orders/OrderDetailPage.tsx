@@ -257,7 +257,7 @@ export default function OrderDetailPage(): JSX.Element {
           <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
             {order.subtotalCouponCode && (
               <Chip
-                label={`${order.subtotalCouponCode} (subtotal)`}
+                label={`${order.subtotalCouponCode} (discount)`}
                 size="small"
                 color="success"
                 variant="outlined"
@@ -316,6 +316,12 @@ export default function OrderDetailPage(): JSX.Element {
       <Paper variant="outlined" sx={{ p: 2.5, mb: 3 }}>
         <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Shipping To</Typography>
         <Typography variant="body2">{order.shippingAddress.fullName}</Typography>
+        {order.shippingAddress.phone && (
+          <Typography variant="body2">{order.shippingAddress.phone}</Typography>
+        )}
+        {order.shippingAddress.email && (
+          <Typography variant="body2">{order.shippingAddress.email}</Typography>
+        )}
         <Typography variant="body2">{order.shippingAddress.line1}</Typography>
         {order.shippingAddress.line2 && <Typography variant="body2">{order.shippingAddress.line2}</Typography>}
         <Typography variant="body2">

@@ -28,6 +28,25 @@ public class Address {
     @Column(name = "FULL_NAME", length = 150, nullable = false)
     private String fullName;
 
+    /** Nullable — unlike every other field on this class, this column was added after
+     * {@code CUSTOMER_ORDER} already had real rows with no phone data to backfill (see this
+     * column's own migration), so it can't retroactively become {@code NOT NULL} the way the
+     * others were from day one. Required going forward regardless, via
+     * {@code CheckoutServiceImpl#resolveAddress}'s own imperative completeness check (fresh, ad-hoc
+     * addresses) and {@code Create}/{@code UpdateSavedAddressRequest}'s {@code @NotBlank} (AddressBook
+     * entries) — an order copied from an old {@link SavedAddress} that predates this column is the
+     * only way a {@code null} can still reach here today. */
+    @Column(name = "PHONE", length = 30)
+    private String phone;
+
+    /** Nullable for the same reason {@link #phone} is — the shopper's invoice/order-confirmation
+     * recipient, deliberately independent of their Keycloak login email (the JWT's own {@code
+     * email} claim), since the two can legitimately differ (a shared inbox, an accountant, etc.).
+     * Required going forward via the same imperative/{@code @NotBlank} checks as every other field
+     * added after this table's original rows already existed. */
+    @Column(name = "EMAIL", length = 255)
+    private String email;
+
     @Column(name = "LINE_1", length = 255, nullable = false)
     private String line1;
 

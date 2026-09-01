@@ -10,7 +10,8 @@ public final class CheckoutCommands {
     private CheckoutCommands() {}
 
     public record AddressInput(
-            String fullName, String line1, String line2, String city, String state, String postalCode, String country) {
+            String fullName, String phone, String email, String line1, String line2, String city, String state,
+            String postalCode, String country) {
     }
 
     /**

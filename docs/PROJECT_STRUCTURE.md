@@ -1462,10 +1462,18 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                              eventType stays a plain string — one Java field can only be one
 │   │                              enum type, and every future epic keeps adding its own event
 │   │                              types to this same shared table
-│   ├── Address.java            — @Embeddable value object (fullName/line1/line2/city/state/
-│   │                              postalCode/country), embedded on Order — no standalone table;
-│   │                              frozen at purchase time regardless of whether the shopper chose
-│   │                              a SavedAddress or a fresh one-off entry at checkout (below)
+│   ├── Address.java            — @Embeddable value object (fullName/phone/email/line1/line2/city/
+│   │                              state/postalCode/country), embedded on Order — no standalone
+│   │                              table; frozen at purchase time regardless of whether the shopper
+│   │                              chose a SavedAddress or a fresh one-off entry at checkout (below).
+│   │                              phone (DKP-0045)/email (DKP-0046) are both nullable at the DB
+│   │                              level only — pre-existing rows had nothing to backfill them from
+│   │                              — but required going forward at the application layer
+│   │                              (CheckoutServiceImpl.resolveAddress's own imperative check, same
+│   │                              as fullName/line1). email is the invoice/order-confirmation
+│   │                              recipient, deliberately independent of the caller's Keycloak
+│   │                              login email (the JWT's own email claim) — the two can legitimately
+│   │                              differ, per request
 │   ├── Order.java               — table CUSTOMER_ORDER, not ORDER (a reserved SQL keyword in
 │   │                              PostgreSQL, same reason social-service's Group maps to
 │   │                              MESSAGE_GROUP); ownerUuid is a plain claims-based column, never
@@ -1502,7 +1510,11 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                defaultAddress (not isDefault, to keep Lombok's generated
 │   │                                accessors unambiguous) is enforced unique-per-owner by a
 │   │                                partial DB index (WHERE IS_DEFAULT = TRUE) plus
-│   │                                SavedAddressServiceImpl's own unset-then-set app logic
+│   │                                SavedAddressServiceImpl's own unset-then-set app logic.
+│   │                                phone (DKP-0045)/email (DKP-0046) are both nullable at the DB
+│   │                                level, same reasoning as Address.phone/email above, but
+│   │                                @NotBlank (email also @Email) on both Create/
+│   │                                UpdateSavedAddressRequest for every fresh write
 │   ├── Coupon.java              — "ProductDiscount" feature (DKP-0041), Phase 1: code-driven
 │   │                                discount, code normalized to uppercase before persisting (a
 │   │                                plain UNIQUE constraint is then correctly case-insensitive,

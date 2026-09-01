@@ -2027,6 +2027,48 @@ slice" benefit without that cost — revisit only if a genuine second deployable
         all — the search box only filters the already-sorted list it received, never reorders it.
         Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
         sandbox, so the actual sort/display is unverified in a real browser.
+- **A `phone` field on `Address`/`SavedAddress`, per request — threaded through every address
+  surface (AddressBook, checkout, order detail).** `types.ts`'s `Address`/`SavedAddress` both gained
+  `phone?: string` — **optional, mirroring `line2`'s own existing treatment**, not `string | null`,
+  since the backend can genuinely return `null` for a handful of pre-existing rows (see
+  `ecommerce-service/CLAUDE.md`'s own note on the new nullable-at-the-DB-level `PHONE` column) but
+  this type also doubles as this page's own local form state, which never actually holds `null` —
+  matching `line2`'s precedent kept one interface honest for both uses instead of introducing a
+  `string | null` that would then fail to assign into `CheckoutAddressInput.phone?: string` wherever
+  `CheckoutPage.tsx` spreads its own `address` state into it. `CreateSavedAddressPayload`/
+  `UpdateSavedAddressPayload` both gained a **required** `phone: string` instead (mirrors the
+  backend's own `@NotBlank` on both request DTOs — a saved address is never allowed to omit one
+  going forward, even though an existing one might). `AddressFormDialog.tsx` gained a required
+  "Phone Number" `TextField` (own `FormErrors.phone`, `validate()` case, `maxLength: 30`) between
+  Full Name and Address Line 1; `CheckoutPage.tsx`'s own fresh-address form gained the identical
+  field in its own `EMPTY_ADDRESS`/`AddressFormErrors`/`validate()`, and its `formatSavedAddress`
+  helper now folds a saved address's phone into the one-line summary shown next to each radio
+  option (`fullName · phone, line1, ...`) when present. `AddressBookPage.tsx`'s own address-row
+  display and `OrderDetailPage.tsx`'s "Shipping To" panel both show it conditionally
+  (`{address.phone && <Typography>...}`), the same optional-field-display idiom `line2` already
+  uses in both places — never assumed present, since an order/address from before this field
+  existed simply won't have one. Verified via a clean `tsc --noEmit` and a successful `vite build`
+  only — no Docker in this sandbox, so the actual form/display is unverified in a real browser.
+- **An `email` field on `Address`/`SavedAddress` too, per request — the invoice/order-confirmation
+  recipient, deliberately independent of the caller's Keycloak login email.** Prompted by a direct
+  question about whether invoice email needed its own column; the user clarified a login email and
+  the email an order's invoice should go to can legitimately differ, so this mirrors `phone`'s own
+  treatment field-for-field rather than resolving a recipient off the JWT's `email` claim alone —
+  see `ecommerce-service/CLAUDE.md`'s own note for the full reasoning. `types.ts`'s `Address`/
+  `SavedAddress` both gained an optional `email?: string` (same "doubles as local form state, so
+  optional not `| null`" reasoning `phone` already established); `CreateSavedAddressPayload`/
+  `UpdateSavedAddressPayload` gained a required `email: string` instead. `AddressFormDialog.tsx`
+  gained a required "Email" `TextField` (`type="email"`, own `FormErrors.email`, `maxLength: 255`)
+  right after Phone Number, with a lightweight client-side format check — a plain
+  `EMAIL_PATTERN` regex local to the component, since the backend's own `@Email` is the real
+  validation, this is just faster feedback; `CheckoutPage.tsx`'s own fresh-address form gained the
+  identical field/check in its own `EMPTY_ADDRESS`/`AddressFormErrors`/`validate()`. Its
+  `formatSavedAddress` helper now folds `phone`/`email` together into one contact segment
+  (`fullName · phone · email, line1, ...`, either half omitted when absent) rather than showing
+  `phone` alone. `AddressBookPage.tsx`'s address-row display and `OrderDetailPage.tsx`'s "Shipping
+  To" panel both show it conditionally, the same idiom `phone`/`line2` already use. Verified via a
+  clean `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the actual
+  form/display is unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

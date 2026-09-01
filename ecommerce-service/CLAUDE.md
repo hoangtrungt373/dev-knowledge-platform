@@ -588,8 +588,10 @@ in Phase 1, then spent by Phase 2.
 
 **Epic 2's checkout half (US-2.5–2.7) is built on top of the cart above.**
 
-- `entity/Address` — a plain JPA `@Embeddable` value object (`fullName`/`line1`/`line2`/`city`/
-  `state`/`postalCode`/`country`), embedded directly on `Order` rather than its own table/entity —
+- `entity/Address` — a plain JPA `@Embeddable` value object (`fullName`/`phone`/`email`/`line1`/
+  `line2`/`city`/`state`/`postalCode`/`country` — `phone`/`email` are later, nullable-at-the-DB-level
+  additions, see this file's own AddressBook-follow-up notes below), embedded directly on `Order`
+  rather than its own table/entity —
   this epic locked "single inline address, no saved address book" (US-2.5), so there's no
   independent lifecycle or reuse to justify a standalone entity; it's captured fresh at checkout
   and snapshotted onto whichever order used it, the same "frozen at purchase time" treatment
@@ -1540,6 +1542,69 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
     phase. A shopper can now redeem a coupon end-to-end and browse which ones are available without
     already knowing a code; the only gap left is that a coupon can't yet be restricted to specific
     products/categories.
+
+- **Follow-up: a `phone` field on `Address`/`SavedAddress`/`Order`, per request** — a shipping
+  contact number, threaded through both address paths (an existing AddressBook entry and a fresh,
+  one-off address at checkout) the same way `fullName` already is. `entity/Address` (the
+  `@Embeddable` snapshotted onto `Order`) and `entity/SavedAddress` both gained a `phone` column —
+  **nullable at the DB level**, unlike every sibling address column (all `NOT NULL` from each
+  table's very first migration), because this one was added after both tables already had real
+  rows with nothing to backfill it from; there's no historically-correct placeholder the way
+  `SUBTOTAL_DISCOUNT_AMOUNT` (DKP-0042) could default to `0`. Required going forward regardless, at
+  the application layer only: `CreateSavedAddressRequest`/`UpdateSavedAddressRequest` both add
+  `@NotBlank`/`@Size(max = 30)`, and `CheckoutServiceImpl.resolveAddress`'s own imperative
+  completeness check (the same `Validator`-based check `fullName`/`line1`/`city`/`state`/
+  `postalCode`/`country` already go through) now requires `phone` too for a fresh, ad-hoc checkout
+  address. An order copied from an old `SavedAddress` that predates this column is the only way a
+  `null` can still reach a real order today. New migration `202609020007__...__DKP-0045__
+  add_address_phone_column.sql` — `ALTER TABLE ... ADD COLUMN IF NOT EXISTS PHONE VARCHAR(30)` on
+  both `ecommerce.CUSTOMER_ORDER` and `ecommerce.SAVED_ADDRESS`. Threaded through every layer in
+  between: `AddressRequest`/`AddressResponse`/`CreateSavedAddressRequest`/
+  `UpdateSavedAddressRequest`/`SavedAddressResponse` (all gained `phone`), `CheckoutCommands
+  .AddressInput`/`SavedAddressCommands.Create`/`.Update` (all gained a `phone` component, positioned
+  right after `fullName` in every one, purely by convention), `OrderMapper.toAddressResponse`, and
+  both `toAddress(...)` overloads in `CheckoutServiceImpl`. `SavedAddressMapper` needed no change at
+  all — MapStruct auto-maps the new same-named field on both sides. Existing
+  `CheckoutServiceImplTest`/`SavedAddressServiceImplTest` cases updated for the new constructor
+  arity (no new test cases — this is a pure field threading exercise, not new branching logic) —
+  **261 unit tests total, unchanged**, verified via a real `mvn test` run (JDK 21). `gui`'s
+  `AddressFormDialog.tsx`/`CheckoutPage.tsx`'s own address form both gained a required Phone Number
+  field; `AddressBookPage.tsx`/`OrderDetailPage.tsx`/`CheckoutPage.tsx`'s `formatSavedAddress` all
+  show it where present — see `gui/CLAUDE.md`'s own note.
+
+- **Follow-up: an `email` field on `Address`/`SavedAddress`/`Order` too, per request —
+  deliberately independent of the caller's Keycloak login email.** Prompted by a direct question:
+  "the application normally sends invoice info to the user's email — shall we add the email column
+  into those entities too?" The recommendation given first was to *not* add one and instead resolve
+  the invoice recipient from the JWT's own `email` claim (`KeycloakJwtAuthenticationConverter` →
+  `CustomOAuth2User.email`, shared via `infra.security` — the same claims-only shape `ownerUuid`
+  already uses), since this reactor already has that claim on every authenticated request. The user
+  clarified the actual requirement: **a shopper's login email and the email they want an invoice
+  sent to can legitimately differ** (a shared inbox, an accountant, etc.) — a real per-address
+  contact detail, not an account attribute, which the JWT claim alone can't capture. Implemented by
+  mirroring `phone` exactly, field-for-field: `entity/Address`/`entity/SavedAddress` both gained an
+  `email` column, positioned right after `phone` everywhere — **nullable at the DB level** (new
+  migration `202609020008__...__DKP-0046__add_address_email_column.sql`, same "no backfill" reasoning
+  as `phone`'s own `DKP-0045`, `VARCHAR(255)` matching this reactor's existing `EMAIL` column
+  convention — `identity.USER.EMAIL`/`social.PROFILE.EMAIL`), but required for every fresh write at
+  the application layer: `CreateSavedAddressRequest`/`UpdateSavedAddressRequest` both gained
+  `@NotBlank`/`@Email`/`@Size(max = 255)` (the one difference from `phone` — an actual format
+  constraint, since an email has real syntax `phone` doesn't), and
+  `CheckoutServiceImpl.resolveAddress`'s own imperative completeness check now requires `email` too
+  for a fresh, ad-hoc checkout address. Threaded through the exact same layers `phone` was:
+  `AddressRequest`/`AddressResponse`/`SavedAddressResponse`, `CheckoutCommands.AddressInput`,
+  `SavedAddressCommands.Create`/`.Update`, `OrderMapper.toAddressResponse`, both
+  `CheckoutServiceImpl.toAddress(...)` overloads — `SavedAddressMapper` again needed no change
+  (MapStruct auto-maps). `CheckoutServiceImplTest`/`SavedAddressServiceImplTest` updated for the new
+  constructor arity only — **261 unit tests total, unchanged**, verified via a real `mvn test` run
+  (JDK 21). `gui`'s `Address`/`SavedAddress` types gained an optional `email` (same "doubles as
+  local form state" reasoning as `phone`); `CreateSavedAddressPayload`/`UpdateSavedAddressPayload`
+  gained a required one. `AddressFormDialog.tsx`/`CheckoutPage.tsx`'s own address form both gained a
+  required "Email" field with a lightweight client-side format check (a plain regex — the backend's
+  own `@Email` is the real validation); `AddressBookPage.tsx`/`OrderDetailPage.tsx` show it
+  conditionally, same idiom as `phone`/`line2`; `CheckoutPage.tsx`'s `formatSavedAddress` folds
+  `phone`/`email` together into one contact summary (`fullName · phone · email, line1, ...`) when
+  present. See `gui/CLAUDE.md`'s own note.
 
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"

@@ -37,9 +37,9 @@ public class SavedAddressController implements SavedAddressApi {
     @Override
     public ResponseEntity<SavedAddressResponse> create(String userUuid, CreateSavedAddressRequest request) {
         var command = new SavedAddressCommands.Create(
-                request.getLabel(), request.getFullName(), request.getLine1(), request.getLine2(),
-                request.getCity(), request.getState(), request.getPostalCode(), request.getCountry(),
-                request.isMakeDefault());
+                request.getLabel(), request.getFullName(), request.getPhone(), request.getEmail(), request.getLine1(),
+                request.getLine2(), request.getCity(), request.getState(), request.getPostalCode(),
+                request.getCountry(), request.isMakeDefault());
         var created = savedAddressService.create(userUuid, command);
         return ResponseEntity.status(HttpStatus.CREATED).body(savedAddressMapper.toResponse(created));
     }
@@ -47,8 +47,9 @@ public class SavedAddressController implements SavedAddressApi {
     @Override
     public ResponseEntity<SavedAddressResponse> update(String userUuid, Integer id, UpdateSavedAddressRequest request) {
         var command = new SavedAddressCommands.Update(
-                request.getLabel(), request.getFullName(), request.getLine1(), request.getLine2(),
-                request.getCity(), request.getState(), request.getPostalCode(), request.getCountry());
+                request.getLabel(), request.getFullName(), request.getPhone(), request.getEmail(), request.getLine1(),
+                request.getLine2(), request.getCity(), request.getState(), request.getPostalCode(),
+                request.getCountry());
         var updated = savedAddressService.update(id, userUuid, command);
         return ResponseEntity.ok(savedAddressMapper.toResponse(updated));
     }
