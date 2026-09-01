@@ -10,6 +10,7 @@ import com.ttg.devknowledgeplatform.ecommerce.enums.CouponType;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.repository.CouponRedemptionRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.CouponRepository;
+import com.ttg.devknowledgeplatform.ecommerce.service.CouponRedemptionService;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -394,6 +395,76 @@ class CouponRedemptionServiceImplTest {
             service.listAvailable(CouponTarget.SHIPPING_FEE, OWNER_UUID);
 
             verify(couponRepository).findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SHIPPING_FEE);
+        }
+    }
+
+    @Nested
+    class ListAvailableRanked {
+
+        private Coupon coupon(String code, CouponType type, String value) {
+            Coupon c = new Coupon();
+            c.setId(3);
+            c.setCode(code);
+            c.setTarget(CouponTarget.SUBTOTAL);
+            c.setType(type);
+            c.setValue(new BigDecimal(value));
+            c.setActive(true);
+            return c;
+        }
+
+        @Test
+        void ranksByRealDiscountAmountNotByDeclaredValue() {
+            // BIGVALUE declares "50%" but is capped at $5 off; SMALLVALUE is a plain "$10 off" —
+            // SMALLVALUE actually saves more on this $100 order, so it must rank first despite its
+            // smaller declared value.
+            Coupon bigValue = coupon("BIGVALUE", CouponType.PERCENTAGE, "50");
+            bigValue.setMaxDiscountAmount(new BigDecimal("5.00"));
+            Coupon smallValue = coupon("SMALLVALUE", CouponType.FIXED_AMOUNT, "10.00");
+            when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SUBTOTAL))
+                    .thenReturn(List.of(bigValue, smallValue));
+
+            List<CouponRedemptionService.RankedCoupon> result = service.listAvailableRanked(
+                    CouponTarget.SUBTOTAL, OWNER_UUID, new BigDecimal("100.00"), new BigDecimal("100.00"));
+
+            assertThat(result).extracting(CouponRedemptionService.RankedCoupon::coupon)
+                    .containsExactly(smallValue, bigValue);
+            assertThat(result.get(0).discountAmount()).isEqualByComparingTo("10.00");
+            assertThat(result.get(1).discountAmount()).isEqualByComparingTo("5.00");
+        }
+
+        @Test
+        void alwaysRanksEligibleCouponsBeforeIneligibleOnesRegardlessOfDiscountSize() {
+            Coupon ineligibleButBigger = coupon("LOCKED20", CouponType.FIXED_AMOUNT, "20.00");
+            ineligibleButBigger.setMinSubtotal(new BigDecimal("200.00"));
+            Coupon eligibleButSmaller = coupon("UNLOCKED5", CouponType.FIXED_AMOUNT, "5.00");
+            when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SUBTOTAL))
+                    .thenReturn(List.of(ineligibleButBigger, eligibleButSmaller));
+
+            List<CouponRedemptionService.RankedCoupon> result = service.listAvailableRanked(
+                    CouponTarget.SUBTOTAL, OWNER_UUID, new BigDecimal("50.00"), new BigDecimal("50.00"));
+
+            assertThat(result).extracting(CouponRedemptionService.RankedCoupon::coupon)
+                    .containsExactly(eligibleButSmaller, ineligibleButBigger);
+            assertThat(result.get(0).eligible()).isTrue();
+            assertThat(result.get(1).eligible()).isFalse();
+        }
+
+        @Test
+        void computesEligibleAgainstTheGivenSubtotalIndependentlyOfBaseAmount() {
+            // A SHIPPING_FEE coupon: minSubtotal is always checked against subtotal, never the
+            // shipping-fee baseAmount its own discount is computed against (see resolve()'s own
+            // Javadoc for the identical rule at redemption time).
+            Coupon c = coupon("FREESHIP", CouponType.FIXED_AMOUNT, "5.00");
+            c.setTarget(CouponTarget.SHIPPING_FEE);
+            c.setMinSubtotal(new BigDecimal("30.00"));
+            when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SHIPPING_FEE))
+                    .thenReturn(List.of(c));
+
+            List<CouponRedemptionService.RankedCoupon> result = service.listAvailableRanked(
+                    CouponTarget.SHIPPING_FEE, OWNER_UUID, new BigDecimal("35.00"), new BigDecimal("5.00"));
+
+            assertThat(result.get(0).eligible()).isTrue();
+            assertThat(result.get(0).discountAmount()).isEqualByComparingTo("5.00");
         }
     }
 }

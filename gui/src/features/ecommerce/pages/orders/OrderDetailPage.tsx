@@ -288,10 +288,11 @@ export default function OrderDetailPage(): JSX.Element {
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography variant="body2" color="text.secondary">Shipping</Typography>
           {order.originalShippingFee > order.shippingFee ? (
-            // A waiver applied at checkout — either the automatic FreeOverThresholdShippingFeeCalculator
-            // threshold (always all-or-nothing) or a SHIPPING_FEE coupon (Phase 2, can be a partial
-            // discount, not necessarily down to zero) — same treatment CheckoutPage's own preview
-            // uses: only label it "Free" when the actual charge is zero.
+            // A SHIPPING_FEE coupon discounted the fee at checkout — the only mechanism that can
+            // do this now (see ecommerce-service's FlatRateShippingFeeCalculator/
+            // FreeOverThresholdShippingFeeCalculator Javadoc), can be a partial discount, not
+            // necessarily down to zero — same treatment CheckoutPage's own preview uses: only
+            // label it "Free" when the actual charge is zero.
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography variant="body2" color="text.secondary" sx={{ textDecoration: 'line-through' }}>
                 {formatPrice(order.originalShippingFee)}

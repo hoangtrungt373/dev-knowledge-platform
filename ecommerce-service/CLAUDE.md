@@ -664,27 +664,39 @@ in Phase 1, then spent by Phase 2.
   narrower scope decision in this same section's history (originally "no consumer for it on
   `Order` today") — kept only until the very next request actually needed it, which is exactly why
   that kind of deferral is framed as a scope decision, not a closed door.
-  **`shipping.FreeOverThresholdShippingFeeCalculator` is the active `@Component` bean today** (a
-  follow-up swap, per request) — free shipping once `subtotal` reaches
+  **`shipping.FreeOverThresholdShippingFeeCalculator` was briefly the active `@Component` bean**
+  (a follow-up swap, per request) — free shipping once `subtotal` reaches
   `app.ecommerce.checkout.free-shipping-threshold` (`CHECKOUT_FREE_SHIPPING_THRESHOLD` env var,
   default `50.00`), else the same flat fee `shipping.FlatRateShippingFeeCalculator` always charged
   (`app.ecommerce.checkout.flat-shipping-fee`/`CHECKOUT_FLAT_SHIPPING_FEE`, default `5.00`, reused
   as "the fee below the threshold" rather than a second redundant property). Both properties follow
   the same `@Value`-on-a-field convention `CartServiceImpl`'s own `cartTtl` already established for
-  a tunable business value. `FlatRateShippingFeeCalculator` (the original strategy) stays in the
-  codebase as a reference implementation/an easy strategy to switch back to, but deliberately
-  carries **no `@Component`** anymore — same "don't leave two ambiguous candidates wired in at
-  once" reasoning `payment.NoOpPaymentGatewayPort`'s own Javadoc documents for that seam's future
-  real-adapter swap; re-add `@Component` there (and remove it from whichever strategy is active) to
-  switch back. `CheckoutServiceImplTest` mocks `ShippingFeeCalculator` (`lenient()`, since several
-  early-rejection tests never reach it) instead of the old `ReflectionTestUtils.setField` hack a
-  plain `@Value` field needed, plus cases pinning that `preview`'s `total` and `confirm`'s
-  `Order.total` are both built from the actually-charged `quote.fee()`, never the waived
-  `originalFee` (while `originalShippingFee` itself still reports the pre-waiver amount on both);
-  `FreeOverThresholdShippingFeeCalculatorTest` pins the at/above/below-threshold boundary and that
-  `originalFee` keeps reporting the below-threshold fee even once waived — **205 unit tests total**
-  (up from 200 as of the AddressBook entry above; treat this figure, not `165` further down this
-  file, as the current one — see that paragraph's own note on why it can go stale).
+  a tunable business value. **`FlatRateShippingFeeCalculator` is the active bean again now, per a
+  later request — see the Coupon feature section below for why.** In short: once the Coupon
+  feature's own `SHIPPING_FEE`-target coupons existed, this automatic threshold-based waiver could
+  zero out the shipping fee *before* a coupon was even considered, so a shopper's `SHIPPING_FEE`
+  coupon could "apply" successfully (redeeming a real, possibly limited-use
+  `CouponRedemption`) for zero actual benefit — `CouponRedemptionServiceImpl.calculateDiscount`
+  clamps any discount to the base amount it's discounting off of, already `0` in that case. Rather
+  than add cross-mechanism guard logic, the fix was to stop running two independent shipping-
+  discount mechanisms at once: coupons are now the only thing that ever discounts a shipping fee,
+  so `FreeOverThresholdShippingFeeCalculator` was demoted back out. Both classes stay in the
+  codebase either way — whichever isn't active is kept as a reference implementation/an easy
+  strategy to switch back to, deliberately carrying **no `@Component`** — same "don't leave two
+  ambiguous candidates wired in at once" reasoning `payment.NoOpPaymentGatewayPort`'s own Javadoc
+  documents for that seam's future real-adapter swap; re-add `@Component` to whichever strategy
+  should be active (and remove it from the other) to switch again. `CheckoutServiceImplTest` mocks
+  `ShippingFeeCalculator` (`lenient()`, since several early-rejection tests never reach it) instead
+  of the old `ReflectionTestUtils.setField` hack a plain `@Value` field needed, plus cases pinning
+  that `preview`'s `total` and `confirm`'s `Order.total` are both built from the actually-charged
+  `quote.fee()`, never the waived `originalFee` (while `originalShippingFee` itself still reports
+  the pre-waiver amount on both) — these mocked-collaborator tests are unaffected by which concrete
+  strategy is the real active bean. `FreeOverThresholdShippingFeeCalculatorTest` (still present,
+  still passing — it instantiates the class directly, independent of Spring wiring) pins the
+  at/above/below-threshold boundary and that `originalFee` keeps reporting the below-threshold fee
+  even once waived — **205 unit tests total** (up from 200 as of the AddressBook entry above; treat
+  this figure, not `165` further down this file, as the current one — see that paragraph's own note
+  on why it can go stale).
 - `mapper/CheckoutMapper` — **hand-written, not MapStruct**, and injects `CartMapper` to reuse
   `toLineResponse` for every cart-line shape this mapper surfaces (a preview's lines, and any lines
   silently dropped at confirm time) rather than duplicating that branching a second time.
@@ -1471,6 +1483,58 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
     a real `mvn test` run (JDK 21). `gui`'s new `components/CouponPickerDialog.tsx` (opened from
     `CheckoutPage.tsx`'s own coupon-entry section) is the actual consumer — see `gui/CLAUDE.md`'s
     own Coupons note.
+  - **Follow-up: a real conflict between this feature and `shipping.FreeOverThresholdShippingFeeCalculator`
+    (which had been the active `ShippingFeeCalculator` bean since an earlier, pre-Coupon-feature
+    follow-up), found and fixed once both mechanisms coexisted, per request.** Once a shopper's
+    cart already qualified for that threshold's automatic waiver (`shippingFee` already `0`), a
+    `SHIPPING_FEE` coupon could still "apply" successfully — `CouponRedemptionServiceImpl
+    .calculateDiscount` clamps to the base amount it's discounting off of, so the computed discount
+    was silently `0` — yet `redeem()` still ran regardless, consuming a real, possibly
+    limited-use `CouponRedemption` for zero actual benefit, with the `gui` showing the exact same
+    "Free" line before and after. Rather than add cross-mechanism guard logic (e.g. rejecting a
+    `SHIPPING_FEE` coupon in `resolve()` whenever the strategy's own quote already zeroed the fee),
+    the simpler fix was to stop running two independent shipping-discount mechanisms at once:
+    `FlatRateShippingFeeCalculator` is the active `ShippingFeeCalculator` bean again (swapped back
+    via the usual `@Component` move — see both classes' own updated Javadoc, and this file's own
+    checkout section above for the full incident writeup), so coupons are now the *only* thing that
+    ever discounts a shipping fee. No code/entity/migration changes were needed beyond the
+    `@Component` swap itself and updating `application.yml`'s own comment
+    (`free-shipping-threshold` is left defined but unread, in case
+    `FreeOverThresholdShippingFeeCalculator` is ever switched back in). `gui`'s `CheckoutPage.tsx`/
+    `OrderDetailPage.tsx` had their own explanatory comments (not their actual logic — the
+    struck-through-original-fee display was already correct and remains exactly as needed) updated
+    to stop citing the now-inactive automatic waiver as a possible source of a shown discount.
+  - **Follow-up: the coupon picker now sorts by what's actually best for this order, per request —
+    not by a coupon's own declared `value`.** The `CouponRepository` query behind `listAvailable`
+    still orders by `value DESC` at the DB level (a cheap default, now purely a tie-break), but a
+    `PERCENTAGE` coupon's raw `value` alone doesn't say how much money it actually saves —
+    especially once `maxDiscountAmount` caps it, or once two coupons of different `type`
+    (`PERCENTAGE` vs `FIXED_AMOUNT`) are compared at all. New `CouponRedemptionService
+    .listAvailableRanked(target, ownerUuid, subtotal, baseAmount)` — computes each coupon's real
+    `eligible` flag and `discountAmount` (via the existing `calculateDiscount`) and sorts
+    eligible-first, then by `discountAmount` descending within each group; an ineligible coupon
+    always sorts after every eligible one regardless of size, since it can't be applied right now
+    no matter how much it would theoretically save. Returns a new nested
+    `CouponRedemptionService.RankedCoupon(Coupon, boolean eligible, BigDecimal discountAmount)`
+    record — deliberately not the REST DTO itself, so the service stays free of any web-layer
+    dependency. **`CouponPickerController` stays a thin pass-through** (per this reactor's own
+    "business logic belongs in the service layer" convention) — it resolves which amount each
+    coupon's discount should be computed against (`subtotal` for `SUBTOTAL`, the new
+    `shippingFee` request param for `SHIPPING_FEE` — the same target-based choice
+    `CheckoutServiceImpl.resolveDiscounts` already makes for the real checkout path) and maps each
+    `RankedCoupon` straight to an `AvailableCouponResponse`, nothing more. `CouponMapper
+    .toAvailableResponse` simplified to accept the already-computed `eligible`/`discountAmount`
+    directly (no longer needs `subtotal` itself, since it no longer derives `eligible` on its
+    own). `AvailableCouponResponse` gained `discountAmount` — informational, same as `eligible`,
+    and now what the `gui` shows as "Save $X" per row too. `CouponPickerApi.listAvailable` gained
+    an optional `shippingFee` query param (the caller's current quoted fee, e.g. the checkout
+    preview's own `originalShippingFee` — ignored for `SUBTOTAL` requests, treated as `0` if
+    omitted for `SHIPPING_FEE` ones rather than erroring). New `CouponRedemptionServiceImplTest
+    .ListAvailableRanked` (3 cases: ranks by real discount over declared value, eligible always
+    before ineligible regardless of size, `eligible` computed against `subtotal` independently of
+    `baseAmount`) — **261 unit tests total** (up from 258), verified via a real `mvn test` run
+    (JDK 21). `gui`'s `CouponPickerDialog.tsx` passes the results straight through in the order
+    they arrive (no client-side sort of its own) — see `gui/CLAUDE.md`'s own Coupons note.
   - **Not built as part of this pass**: product/category eligibility scoping (Phase 3, needs join
     tables mirroring `ProductTagAssignment`'s explicit-join shape) — the one remaining deferred
     phase. A shopper can now redeem a coupon end-to-end and browse which ones are available without

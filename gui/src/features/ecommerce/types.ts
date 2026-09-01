@@ -395,8 +395,11 @@ export interface UpdateCouponPayload {
 /** One entry in the shopper-facing coupon picker (`couponApi.listAvailable`) — mirrors the
  * backend's `AvailableCouponResponse`, deliberately leaner than `Coupon` above (no id/active/
  * startAt/redemption-limit counters, all irrelevant once a coupon has already been filtered to
- * "currently redeemable" server-side). `eligible` is computed server-side against the subtotal
- * passed to the request — not derived client-side, so the GUI never duplicates that comparison. */
+ * "currently redeemable" server-side). `eligible`/`discountAmount` are both computed server-side
+ * against the caller's own order (subtotal for eligibility always; subtotal or the passed
+ * `shippingFee`, depending on `target`, for `discountAmount`) — not derived client-side, so the
+ * GUI never duplicates either computation. The list itself already arrives sorted by what's best
+ * for this order (eligible first, then `discountAmount` descending) — no client-side sort needed. */
 export interface AvailableCoupon {
   code: string;
   target: CouponTarget;
@@ -408,4 +411,8 @@ export interface AvailableCoupon {
   imageUrl: string | null;
   endAt: string | null;
   eligible: boolean;
+  /** What this coupon would actually deduct from this order right now — the same computation
+   * checkout itself uses. Purely informational (never itself applied), and what the list is
+   * sorted by. */
+  discountAmount: number;
 }

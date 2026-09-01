@@ -92,15 +92,11 @@ export default function CheckoutPage(): JSX.Element {
   const [saveAddress, setSaveAddress] = useState(false);
   const [addressLabel, setAddressLabel] = useState('');
 
-  // Coupon feature follow-up: a single shared code field, not one per CouponTarget — the backend
-  // still only ever holds at most one code per target (subtotalCouponCode/shippingCouponCode, two
-  // independent slots), this just collapses the *input* down to one, since a coupon's own target
-  // is intrinsic to the code (looked up server-side), not something the shopper should have to
-  // pre-declare. "Applied" means the last preview call actually accepted it into that slot; the
-  // raw text input is kept separate so a typo mid-edit doesn't look like an already-applied code.
-  const [couponInput, setCouponInput] = useState('');
-  const [couponError, setCouponError] = useState<string | null>(null);
-  const [applyingCoupon, setApplyingCoupon] = useState(false);
+  // Coupon feature follow-up: both slots are now chosen together inside CouponPickerDialog (a
+  // radio per CouponTarget section, applied in one combined call) rather than through a field on
+  // this page — "Applied" still just means the last preview call actually accepted a code into
+  // that slot; CheckoutPage owns this state and the actual API call, the dialog only ever
+  // proposes a selection (see applyCoupons' own doc comment).
   const [appliedSubtotalCoupon, setAppliedSubtotalCoupon] = useState<string | null>(null);
   const [appliedShippingCoupon, setAppliedShippingCoupon] = useState<string | null>(null);
   const [couponPickerOpen, setCouponPickerOpen] = useState(false);
@@ -113,70 +109,25 @@ export default function CheckoutPage(): JSX.Element {
   const loadPreview = (subtotalCode?: string, shippingCode?: string): Promise<CheckoutPreview> =>
     checkoutApi.preview(selectedVariantIds, subtotalCode, shippingCode);
 
-  /** The backend's own COUPON_TARGET_MISMATCH code (EcommerceErrorCode.COUPON_TARGET_MISMATCH,
-   * "COUPON_007") — the one failure `handleApplyCoupon`'s manual-entry fallback treats as "try the
-   * other slot" rather than a real, user-facing error. */
-  const isCouponTargetMismatch = (err: unknown): boolean =>
-    (err as { errorResponse?: { errorCode?: string } })?.errorResponse?.errorCode === 'COUPON_007';
-
-  const applyToTarget = (target: CouponTarget, code: string): Promise<void> => {
-    const subtotalCode = target === 'SUBTOTAL' ? code : (appliedSubtotalCoupon ?? undefined);
-    const shippingCode = target === 'SHIPPING_FEE' ? code : (appliedShippingCoupon ?? undefined);
-    return loadPreview(subtotalCode, shippingCode).then(result => {
+  /** The single entry point for changing either (or both) applied coupon(s) — one
+   * `checkoutApi.preview` call carrying the *complete* desired state for both slots at once
+   * (never a delta), same shape `checkoutApi.preview`/`.confirm` themselves expect. Passed
+   * straight through as `CouponPickerDialog`'s own `onApply` prop (its two radio selections
+   * already resolve to exactly these two optional codes) and reused by `handleRemoveCoupon` below
+   * for a single-slot clear, so there's exactly one code path that ever calls `loadPreview` with
+   * coupon codes attached. */
+  const applyCoupons = (subtotalCode?: string, shippingCode?: string): Promise<void> =>
+    loadPreview(subtotalCode, shippingCode).then(result => {
       setPreview(result);
-      if (target === 'SUBTOTAL') setAppliedSubtotalCoupon(code);
-      else setAppliedShippingCoupon(code);
+      setAppliedSubtotalCoupon(subtotalCode ?? null);
+      setAppliedShippingCoupon(shippingCode ?? null);
     });
-  };
-
-  /** `codeOverride`/`targetOverride` let `CouponPickerDialog`'s `onSelect` apply a picked coupon
-   * directly — it already knows the real target, so there's nothing to guess. Manual entry (no
-   * override) doesn't know a typed code's target ahead of time, so it tries whichever slot(s) are
-   * still open: with both open, it tries SUBTOTAL first and only retries SHIPPING_FEE on a
-   * `COUPON_TARGET_MISMATCH` — this is deterministic, not a guess that might be wrong, since a
-   * code has exactly one real target and the retry only ever fires once the first attempt has
-   * already proven it wasn't that one. Any other failure (not found, expired, inactive, etc.)
-   * propagates immediately with no retry. */
-  const handleApplyCoupon = (codeOverride?: string, targetOverride?: CouponTarget): void => {
-    const code = (codeOverride ?? couponInput).trim();
-    if (!code) return;
-    setCouponInput(code);
-    setApplyingCoupon(true);
-    setCouponError(null);
-
-    let attempt: Promise<void>;
-    if (targetOverride) {
-      attempt = applyToTarget(targetOverride, code);
-    } else if (!appliedSubtotalCoupon && !appliedShippingCoupon) {
-      attempt = applyToTarget('SUBTOTAL', code).catch(err => {
-        if (isCouponTargetMismatch(err)) return applyToTarget('SHIPPING_FEE', code);
-        throw err;
-      });
-    } else if (!appliedSubtotalCoupon) {
-      attempt = applyToTarget('SUBTOTAL', code);
-    } else if (!appliedShippingCoupon) {
-      attempt = applyToTarget('SHIPPING_FEE', code);
-    } else {
-      // Both slots already filled — nothing left for a typed/picked code to apply into (the input
-      // itself is hidden in this state too, see the JSX below; this is just a defensive no-op).
-      setApplyingCoupon(false);
-      return;
-    }
-
-    attempt
-      .catch(err => setCouponError(err instanceof Error ? err.message : 'This coupon can\'t be applied.'))
-      .finally(() => setApplyingCoupon(false));
-  };
 
   const handleRemoveCoupon = (target: CouponTarget): void => {
     const subtotalCode = target === 'SUBTOTAL' ? undefined : (appliedSubtotalCoupon ?? undefined);
     const shippingCode = target === 'SHIPPING_FEE' ? undefined : (appliedShippingCoupon ?? undefined);
-    loadPreview(subtotalCode, shippingCode).then(result => {
-      setPreview(result);
-      if (target === 'SUBTOTAL') setAppliedSubtotalCoupon(null);
-      else setAppliedShippingCoupon(null);
-      setCouponInput('');
-    }).catch(err => showError(err instanceof Error ? err.message : 'Could not remove this coupon.'));
+    applyCoupons(subtotalCode, shippingCode)
+      .catch(err => showError(err instanceof Error ? err.message : 'Could not remove this coupon.'));
   };
 
   useEffect(() => {
@@ -296,23 +247,15 @@ export default function CheckoutPage(): JSX.Element {
 
         <Divider sx={{ my: 1.5 }} />
 
-        {/* Coupon feature follow-up — one shared code field; the backend still enforces "at most
-            2 coupons, 1 subtotal + 1 shipping" via two independent slots (see handleApplyCoupon's
-            own doc comment for how a typed code's target gets resolved). */}
+        {/* Coupon feature follow-up — both slots are chosen together inside CouponPickerDialog
+            now (a radio per CouponTarget section); the backend still enforces "at most 2 coupons,
+            1 subtotal + 1 shipping" via two independent slots either way. Shipping shown before
+            Subtotal throughout this page, matching the dialog's own section order. */}
         <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1 }}>
           <LocalOfferIcon fontSize="small" color="action" />
           <Typography variant="body2" fontWeight={600}>Coupons</Typography>
         </Stack>
         <Stack spacing={1} sx={{ mb: 1.5 }}>
-          {appliedSubtotalCoupon && (
-            <Chip
-              label={`${appliedSubtotalCoupon} — subtotal discount applied`}
-              color="success"
-              variant="outlined"
-              onDelete={() => handleRemoveCoupon('SUBTOTAL')}
-              sx={{ alignSelf: 'flex-start' }}
-            />
-          )}
           {appliedShippingCoupon && (
             <Chip
               label={`${appliedShippingCoupon} — shipping discount applied`}
@@ -322,39 +265,22 @@ export default function CheckoutPage(): JSX.Element {
               sx={{ alignSelf: 'flex-start' }}
             />
           )}
-
-          {/* Once both slots are filled there's nothing left to type/pick a code into — the field
-              (and the dialog it opens) hides entirely rather than staying around disabled. */}
-          {(!appliedSubtotalCoupon || !appliedShippingCoupon) && (
-            <Stack spacing={0.5}>
-              <Stack direction="row" spacing={1} alignItems="flex-start">
-                <TextField
-                  size="small"
-                  label="Coupon code"
-                  value={couponInput}
-                  onChange={e => { setCouponInput(e.target.value); setCouponError(null); }}
-                  error={!!couponError}
-                  helperText={couponError}
-                  sx={{ flex: 1 }}
-                />
-                <Button
-                  variant="outlined"
-                  onClick={() => handleApplyCoupon()}
-                  disabled={!couponInput.trim() || applyingCoupon}
-                  sx={{ height: 40 }}
-                >
-                  {applyingCoupon ? <CircularProgress size={18} /> : 'Apply'}
-                </Button>
-              </Stack>
-              <Button
-                size="small"
-                onClick={() => setCouponPickerOpen(true)}
-                sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
-              >
-                Browse available coupons
-              </Button>
-            </Stack>
+          {appliedSubtotalCoupon && (
+            <Chip
+              label={`${appliedSubtotalCoupon} — subtotal discount applied`}
+              color="success"
+              variant="outlined"
+              onDelete={() => handleRemoveCoupon('SUBTOTAL')}
+              sx={{ alignSelf: 'flex-start' }}
+            />
           )}
+          <Button
+            size="small"
+            onClick={() => setCouponPickerOpen(true)}
+            sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
+          >
+            {appliedSubtotalCoupon || appliedShippingCoupon ? 'Manage coupons' : 'Add a coupon'}
+          </Button>
         </Stack>
 
         <Divider sx={{ my: 1.5 }} />
@@ -362,21 +288,18 @@ export default function CheckoutPage(): JSX.Element {
           <Typography variant="body2" color="text.secondary">Subtotal</Typography>
           <Typography variant="body2">{formatPrice(preview.subtotal)}</Typography>
         </Stack>
-        {preview.subtotalDiscountAmount > 0 && (
-          <Stack direction="row" justifyContent="space-between">
-            <Typography variant="body2" color="text.secondary">Discount</Typography>
-            <Typography variant="body2" color="success.main">−{formatPrice(preview.subtotalDiscountAmount)}</Typography>
-          </Stack>
-        )}
+        {/* Shipping shown before the subtotal Discount row, matching the Coupons section/dialog's
+            own Shipping-before-Subtotal ordering throughout this page. */}
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography variant="body2" color="text.secondary">Shipping</Typography>
           {preview.originalShippingFee > preview.shippingFee ? (
-            // A waiver applied — either the automatic FreeOverThresholdShippingFeeCalculator
-            // threshold (always all-or-nothing) or a SHIPPING_FEE coupon (Phase 2, can be a
-            // *partial* percentage/fixed discount, not necessarily down to zero) — show the fee it
-            // would have been, struck through, next to what's actually charged now. Only label it
-            // "Free" when the charge is genuinely zero; a partial coupon discount still shows its
-            // own discounted price, not a misleading "Free".
+            // A SHIPPING_FEE coupon discounted the fee — the only mechanism that can do this now
+            // (FreeOverThresholdShippingFeeCalculator's automatic threshold waiver was demoted
+            // once it turned out to conflict with shipping coupons, see that class's own Javadoc)
+            // — which can be *partial* (percentage/fixed, not necessarily down to zero), so show
+            // the fee it would have been, struck through, next to what's actually charged now.
+            // Only label it "Free" when the charge is genuinely zero; a partial discount still
+            // shows its own discounted price, not a misleading "Free".
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography variant="body2" color="text.secondary" sx={{ textDecoration: 'line-through' }}>
                 {formatPrice(preview.originalShippingFee)}
@@ -391,6 +314,12 @@ export default function CheckoutPage(): JSX.Element {
             <Typography variant="body2">{formatPrice(preview.shippingFee)}</Typography>
           )}
         </Stack>
+        {preview.subtotalDiscountAmount > 0 && (
+          <Stack direction="row" justifyContent="space-between">
+            <Typography variant="body2" color="text.secondary">Discount</Typography>
+            <Typography variant="body2" color="success.main">−{formatPrice(preview.subtotalDiscountAmount)}</Typography>
+          </Stack>
+        )}
         <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
           <Typography variant="subtitle1" fontWeight={700}>Total</Typography>
           <Typography variant="subtitle1" fontWeight={700}>{formatPrice(preview.total)}</Typography>
@@ -548,10 +477,15 @@ export default function CheckoutPage(): JSX.Element {
         <CouponPickerDialog
           open
           subtotal={preview.subtotal}
+          // The pre-coupon quoted fee — Free Shipping coupons' discountAmount/sort is computed
+          // against this, never the already-(possibly-)discounted preview.shippingFee, so
+          // reopening the dialog with a shipping coupon already applied still ranks options
+          // correctly.
+          shippingFee={preview.originalShippingFee}
           appliedSubtotalCode={appliedSubtotalCoupon}
           appliedShippingCode={appliedShippingCoupon}
           onClose={() => setCouponPickerOpen(false)}
-          onSelect={(code, target) => handleApplyCoupon(code, target)}
+          onApply={applyCoupons}
         />
       )}
     </Box>

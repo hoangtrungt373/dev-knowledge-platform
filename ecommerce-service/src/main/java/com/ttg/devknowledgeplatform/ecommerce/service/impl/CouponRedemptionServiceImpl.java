@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -111,6 +112,19 @@ public class CouponRedemptionServiceImpl implements CouponRedemptionService {
                 .filter(c -> c.getMaxRedemptionsPerUser() == null
                         || couponRedemptionRepository.countByCouponIdAndOwnerUuid(c.getId(), ownerUuid)
                         < c.getMaxRedemptionsPerUser())
+                .toList();
+    }
+
+    @Override
+    public List<RankedCoupon> listAvailableRanked(
+            CouponTarget target, String ownerUuid, BigDecimal subtotal, BigDecimal baseAmount) {
+        return listAvailable(target, ownerUuid).stream()
+                .map(coupon -> new RankedCoupon(
+                        coupon,
+                        coupon.getMinSubtotal() == null || subtotal.compareTo(coupon.getMinSubtotal()) >= 0,
+                        calculateDiscount(coupon, baseAmount)))
+                .sorted(Comparator.comparing(RankedCoupon::eligible).reversed()
+                        .thenComparing(RankedCoupon::discountAmount, Comparator.reverseOrder()))
                 .toList();
     }
 

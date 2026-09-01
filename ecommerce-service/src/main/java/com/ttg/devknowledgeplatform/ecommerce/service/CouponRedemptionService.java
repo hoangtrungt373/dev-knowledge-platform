@@ -82,4 +82,39 @@ public interface CouponRedemptionService {
      * @return matching coupons, biggest discount first
      */
     List<Coupon> listAvailable(CouponTarget target, String ownerUuid);
+
+    /**
+     * Like {@link #listAvailable}, but pre-computed and sorted for direct display — each result
+     * also carries whether it's currently {@link RankedCoupon#eligible()} for {@code subtotal} and
+     * what it would actually {@link RankedCoupon#discountAmount()} deduct from {@code baseAmount}
+     * right now (via {@link #calculateDiscount}), ordered eligible-first, then by that discount
+     * amount descending within each group — "what's best for this order," not a coupon's own
+     * declared {@link Coupon#getValue()} (a {@code PERCENTAGE} coupon's raw value alone doesn't say
+     * how much money it actually saves, especially once {@link Coupon#getMaxDiscountAmount()} caps
+     * it). An ineligible coupon always sorts after every eligible one regardless of how large its
+     * theoretical discount is — it can't be applied right now no matter what, so ranking it above a
+     * smaller-but-usable coupon would be actively misleading.
+     *
+     * <p>{@code CouponPickerApi} is the one caller — {@code CouponPickerController} stays a thin
+     * pass-through, mapping each {@link RankedCoupon} straight to an
+     * {@code AvailableCouponResponse}, per this reactor's own "business logic belongs in the
+     * service layer, not the controller" convention.
+     *
+     * @param target     which slot to browse ({@code SUBTOTAL} or {@code SHIPPING_FEE})
+     * @param ownerUuid  the caller's Keycloak UUID, for the per-user redemption cap
+     * @param subtotal   the caller's current cart subtotal — for the {@code eligible} flag, and,
+     *                   when {@code target == SUBTOTAL}, as {@code baseAmount} too
+     * @param baseAmount the amount each coupon's discount is computed against — the cart subtotal
+     *                   for {@code target == SUBTOTAL}, the caller's current quoted shipping fee
+     *                   for {@code target == SHIPPING_FEE} (the caller resolves which one to pass,
+     *                   the same target-based choice {@code CheckoutServiceImpl.resolveDiscounts}
+     *                   already makes for the real checkout path)
+     * @return matching coupons, sorted eligible-first then by real discount amount descending
+     */
+    List<RankedCoupon> listAvailableRanked(CouponTarget target, String ownerUuid, BigDecimal subtotal, BigDecimal baseAmount);
+
+    /** One {@link #listAvailableRanked} result — a {@link Coupon} plus the two values a display
+     * needs that aren't {@code Coupon} fields themselves (see that method's own Javadoc). */
+    record RankedCoupon(Coupon coupon, boolean eligible, BigDecimal discountAmount) {
+    }
 }
