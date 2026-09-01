@@ -1202,9 +1202,10 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
 
 - **Coupon ("ProductDiscount" feature) — code-driven discounts targeting either the cart subtotal
   or the shipping fee, by percentage or fixed amount, with eligibility conditions. Phase 1 (data
-  model + basic admin CRUD) is built; Phase 2 (checkout integration/redemption) and Phase 3
-  (product/category eligibility scoping) are not.** Three scope decisions confirmed before
-  building: (1) **coupon-code entry only** — no automatic/code-free promotions (that stays
+  model + basic admin CRUD) and Phase 2 (checkout integration/redemption) are both built; Phase 3
+  (product/category eligibility scoping) and Phase 4 (`gui` admin/checkout UI) are not.** Three
+  scope decisions confirmed before building: (1) **coupon-code entry only** — no automatic/code-free
+  promotions (that stays
   `shipping.FreeOverThresholdShippingFeeCalculator`'s own separate, unrelated mechanism); (2) a
   shopper may apply **at most 2 coupons per order — one per `CouponTarget`** (one `SUBTOTAL`, one
   `SHIPPING_FEE`), not open-ended stacking; (3) **"Full" eligibility conditions** — active flag,
@@ -1257,15 +1258,79 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
     file's own notes on both, and `gateway/CLAUDE.md`'s matching note): a new endpoint on this
     service is not reachable from the GUI at all without it.
   - New `CouponServiceImplTest` (mirrors `ProductTagServiceImplTest`'s shape) — value/date-range
-    validation cases plus the standard CRUD/in-use-delete-guard cases — **220 unit tests total**
-    (up from 205), verified via a real `mvn test` run (JDK 21).
-  - **Not built as part of this pass** (deliberately, per the phased plan): no redemption/
-    validation endpoint, no `CheckoutServiceImpl` integration (threading `subtotalCouponCode`/
-    `shippingCouponCode` through `preview`/`confirm`, computing the actual discount, writing
-    `CouponRedemption` rows — Phase 2), no product/category eligibility scoping (Phase 3, needs
-    join tables mirroring `ProductTagAssignment`'s explicit-join shape), and no `gui` admin
-    coupon-management page or checkout code-entry UI (Phase 4). Don't assume a shopper can redeem
-    a coupon yet — today this is admin-only CRUD with nothing wired into checkout.
+    validation cases plus the standard CRUD/in-use-delete-guard cases — 220 unit tests total
+    (up from 205) as of Phase 1, verified via a real `mvn test` run (JDK 21).
+  - **Phase 2 — checkout integration/redemption, now built.** New
+    `service/CouponRedemptionService`/`Impl` — deliberately **not** folded into `CouponService`
+    (that interface stays pure admin CRUD): `resolve(code, target, ownerUuid, subtotal)` normalizes
+    the code (uppercase/trim — the same normalization `Coupon.setCode` applies at creation, so a
+    shopper's casing never matters), then checks, in order, `active` /
+    `target == coupon.getTarget()` / `startAt`/`endAt` / `minSubtotal` (always checked against the
+    cart subtotal, regardless of target) / global `maxRedemptions` (via
+    `CouponRedemptionRepository.countByCouponId`) / per-user `maxRedemptionsPerUser` (via
+    `countByCouponIdAndOwnerUuid`) — each its own `EcommerceErrorCode`
+    (`COUPON_INACTIVE`/`COUPON_TARGET_MISMATCH`/`COUPON_NOT_YET_ACTIVE`/`COUPON_EXPIRED`/
+    `COUPON_MIN_SUBTOTAL_NOT_MET`/`COUPON_REDEMPTION_LIMIT_REACHED`/
+    `COUPON_ALREADY_REDEEMED_BY_USER`, `COUPON_006`–`012`). `calculateDiscount(coupon, baseAmount)`
+    is a **separate** method from `resolve`, not folded into it — `minSubtotal` eligibility is
+    always checked against the cart subtotal no matter which target the coupon has, but the
+    discount arithmetic itself needs a *target-specific* base amount (the subtotal for a
+    `SUBTOTAL` coupon, the shipping fee for a `SHIPPING_FEE` one); a single method computing both
+    would need two different amounts passed in for what looks like one concern. Computes
+    `value% × baseAmount` (percentage, `HALF_UP`, scale 2) or `value` directly (fixed amount),
+    clamped to `[0, baseAmount]` — a fixed-amount coupon can never make a line go negative.
+    `redeem(coupon, order, ownerUuid, discountAmount)` persists one `CouponRedemption` row — **the
+    redemption-count check inside `resolve` is a plain re-check inside the caller's own
+    transaction, not an atomic claim-style `UPDATE`** (unlike `ProductVariantRepository.reserve`'s
+    stronger guarantee) — a deliberate v1 simplification; two concurrent redemptions of the last
+    slot on a tightly-capped coupon could both pass the check in the same instant. Revisit with a
+    conditional `@Modifying` claim (mirroring `reserve`) if that gap ever matters in practice.
+  - `CheckoutService.preview`/`.confirm` both gained `subtotalCouponCode`/`shippingCouponCode`
+    parameters (`null`/blank = none — the type-level embodiment of Phase 1's "at most 2 coupons,
+    one per target" decision, not a `List`). `CheckoutServiceImpl`'s new private `resolveDiscounts`
+    resolves each non-null code independently (either, neither, or both may be present) before
+    building totals, returning a private `Discounts` record (`subtotalCoupon`/`subtotalDiscount`/
+    `shippingCoupon`/`shippingDiscount`/`finalShippingFee`). `preview` **never redeems** — no
+    `CouponRedemption` row, no limit consumed, so previewing repeatedly (or with different
+    candidate codes) never burns down a coupon's own redemption cap; `confirm` calls
+    `couponRedemptionService.redeem` for each non-null coupon **only after** `orderRepository.save`
+    succeeds (`Mockito.inOrder`-verified — same discipline the existing
+    save-then-clear-cart/save-then-reserve orderings already follow in this class). New
+    `Order.subtotalDiscountAmount`/`subtotalCouponCode`/`shippingCouponCode` columns (migration
+    `DKP-0042`, `202609020004`) — `subtotalDiscountAmount` needed its own column since
+    `Order.subtotal` itself is never reduced (the true pre-discount sum, same "never re-derive a
+    historical value" principle `shippingFee`/`originalShippingFee` already established); the
+    shipping discount needed **no** equivalent amount column — a coupon-waived shipping fee reuses
+    the exact same `shippingFee`/`originalShippingFee` pair the free-shipping-threshold follow-up
+    already added, since "actual charged vs. what it would have been absent a waiver" is exactly
+    the same shape whether the waiver came from the automatic strategy or a coupon. `confirm` sets
+    `order.setShippingFee(discounts.finalShippingFee())` (replacing the value the shipping
+    strategy quoted) while `originalShippingFee` keeps reporting the pre-discount amount from the
+    strategy's own quote — a shipping coupon and the automatic free-over-threshold waiver compose
+    for free through this same pair, with no special-casing needed for "both applied at once."
+    `CheckoutPreview`/`CheckoutPreviewResponse` gained a matching `subtotalDiscountAmount` field
+    (via `CheckoutMapper.toPreviewResponse`); `OrderResponse` gained
+    `subtotalDiscountAmount`/`subtotalCouponCode`/`shippingCouponCode` (via `OrderMapper.toResponse`).
+    **`CheckoutMapper.toConfirmResponse` was deliberately not updated** — the GUI navigates away
+    from the confirm response immediately with nothing reading it, the same precedent
+    `originalShippingFee` set when it was first added to this class. `AddressRequest` (the
+    `confirm` request body) gained matching `@Size(max = 50)` `subtotalCouponCode`/
+    `shippingCouponCode` fields; `CheckoutApi.preview` gained matching
+    `@RequestParam(required = false)` params.
+  - New `CouponRedemptionServiceImplTest` (`Resolve`/`CalculateDiscount`/`Redeem` nested classes —
+    every eligibility branch including exact-boundary cases for `startAt`/`minSubtotal`, both
+    redemption-limit checks, percentage/fixed-amount/clamped-to-base-amount arithmetic, and a
+    `redeem` case asserting every field on the persisted `CouponRedemption` via `ArgumentCaptor`)
+    plus new `CheckoutServiceImplTest` cases (a subtotal coupon applied without touching the
+    shipping fee, a shipping coupon applied on top of whatever the automatic strategy already
+    charges, an ineligible coupon's rejection propagating straight through `preview`, and
+    `confirm` persisting both coupon codes/amounts and redeeming only after the order itself
+    saved) — **242 unit tests total** (up from 220), verified via a real `mvn test` run (JDK 21).
+  - **Not built as part of this pass** (deliberately, per the phased plan): no product/category
+    eligibility scoping (Phase 3, needs join tables mirroring `ProductTagAssignment`'s explicit-join
+    shape), and no `gui` admin coupon-management page or checkout code-entry UI (Phase 4) — a
+    shopper can now have a coupon redeemed server-side, but has no actual UI anywhere to type a
+    code into yet.
 
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"

@@ -49,6 +49,19 @@ import java.util.List;
  * {@link #shippingFee} whenever nothing was waived, so the order's own detail view can show
  * "was $5.00, now free" the same way the checkout preview already does.
  *
+ * <p>{@link #subtotalDiscountAmount}/{@link #subtotalCouponCode} and
+ * {@link #shippingCouponCode} are the Coupon feature's own Phase 2 snapshots (see
+ * {@code service.CouponRedemptionService}'s own Javadoc) — a coupon targeting
+ * {@code SHIPPING_FEE} reduces {@link #shippingFee} directly (on top of whatever
+ * {@link #originalShippingFee} already reflects from the automatic pricing strategy), so there's
+ * no separate "shipping discount amount" column, only the code that was used; a coupon targeting
+ * {@code SUBTOTAL} needs its own amount column instead, since {@link #subtotal} itself is never
+ * reduced (it stays the raw sum of line totals, same meaning it always had). Both coupon-code
+ * columns are plain, nullable snapshots — not a {@code @ManyToOne} FK onto {@code Coupon} — so an
+ * order stays valid/displayable regardless of what happens to the coupon afterward, same
+ * "frozen at purchase time" reasoning as every other snapshot on this entity. {@code null} means
+ * no coupon was applied to that target.
+ *
  * <p>{@link #idempotencyKey} (US-3.3) is stamped once, immediately before the {@code PENDING} →
  * {@code PAYMENT_PROCESSING} transition, so a crash between "payment succeeded" and "order
  * confirmed" can be recovered by re-querying the gateway for this same key rather than risking a
@@ -88,6 +101,15 @@ public class Order extends AbstractEntity {
 
     @Column(name = "ORIGINAL_SHIPPING_FEE", nullable = false, precision = 12, scale = 2)
     private BigDecimal originalShippingFee;
+
+    @Column(name = "SUBTOTAL_DISCOUNT_AMOUNT", nullable = false, precision = 12, scale = 2)
+    private BigDecimal subtotalDiscountAmount = BigDecimal.ZERO;
+
+    @Column(name = "SUBTOTAL_COUPON_CODE", length = 50)
+    private String subtotalCouponCode;
+
+    @Column(name = "SHIPPING_COUPON_CODE", length = 50)
+    private String shippingCouponCode;
 
     @Column(name = "TOTAL", nullable = false, precision = 12, scale = 2)
     private BigDecimal total;

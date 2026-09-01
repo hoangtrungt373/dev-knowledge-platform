@@ -36,11 +36,18 @@ public interface CheckoutApi {
      * @param selectedVariantIds optional subset of variant ids to restrict this preview to
      *                           (repeated query param, e.g. {@code ?selectedVariantIds=1&selectedVariantIds=2});
      *                           omitted previews the whole cart
+     * @param subtotalCouponCode optional coupon code targeting the subtotal (Coupon feature,
+     *                           Phase 2); omitted/blank applies none
+     * @param shippingCouponCode optional coupon code targeting the shipping fee; omitted/blank
+     *                           applies none
      * @return {@code 200} with the reviewable preview
      */
     @GetMapping("/preview")
     ResponseEntity<CheckoutPreviewResponse> preview(
-            @CurrentUserId String userUuid, @RequestParam(required = false) List<Integer> selectedVariantIds);
+            @CurrentUserId String userUuid,
+            @RequestParam(required = false) List<Integer> selectedVariantIds,
+            @RequestParam(required = false) String subtotalCouponCode,
+            @RequestParam(required = false) String shippingCouponCode);
 
     /**
      * Creates an order from the caller's currently-available cart lines and the given shipping

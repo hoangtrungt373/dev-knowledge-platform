@@ -27,8 +27,10 @@ public class CheckoutController implements CheckoutApi {
     private final CheckoutMapper checkoutMapper;
 
     @Override
-    public ResponseEntity<CheckoutPreviewResponse> preview(String userUuid, List<Integer> selectedVariantIds) {
-        return ResponseEntity.ok(checkoutMapper.toPreviewResponse(checkoutService.preview(userUuid, selectedVariantIds)));
+    public ResponseEntity<CheckoutPreviewResponse> preview(
+            String userUuid, List<Integer> selectedVariantIds, String subtotalCouponCode, String shippingCouponCode) {
+        var preview = checkoutService.preview(userUuid, selectedVariantIds, subtotalCouponCode, shippingCouponCode);
+        return ResponseEntity.ok(checkoutMapper.toPreviewResponse(preview));
     }
 
     @Override
@@ -41,7 +43,8 @@ public class CheckoutController implements CheckoutApi {
                 request.getCity(), request.getState(), request.getPostalCode(), request.getCountry());
         var addressSelection = new CheckoutCommands.AddressSelection(
                 request.getSavedAddressId(), adHocAddress, request.isSaveAddress(), request.getAddressLabel());
-        var result = checkoutService.confirm(userUuid, addressSelection, request.getSelectedVariantIds());
+        var result = checkoutService.confirm(userUuid, addressSelection, request.getSelectedVariantIds(),
+                request.getSubtotalCouponCode(), request.getShippingCouponCode());
         return ResponseEntity.status(HttpStatus.CREATED).body(checkoutMapper.toConfirmResponse(result));
     }
 }

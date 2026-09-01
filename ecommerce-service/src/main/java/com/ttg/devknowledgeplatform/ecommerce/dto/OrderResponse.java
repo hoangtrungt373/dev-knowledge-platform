@@ -23,11 +23,19 @@ public class OrderResponse {
     private Boolean cancelRequested;
     private AddressResponse shippingAddress;
     private BigDecimal subtotal;
+    /** What a {@code subtotalCouponCode} (Coupon feature, Phase 2) deducted from {@code subtotal}
+     * — zero when none was applied. {@code subtotal} itself is never reduced. */
+    private BigDecimal subtotalDiscountAmount;
+    /** The subtotal-targeting coupon code applied to this order, if any — {@code null} if none. */
+    private String subtotalCouponCode;
     private BigDecimal shippingFee;
     /** What {@code shippingFee} would have been absent any promotional waiver — equal to
      * {@code shippingFee} whenever nothing was waived; see {@code Order.originalShippingFee}'s
      * own Javadoc. */
     private BigDecimal originalShippingFee;
+    /** The shipping-fee-targeting coupon code applied to this order, if any — {@code null} if
+     * none (this is independent of any automatic free-shipping waiver, which has no code). */
+    private String shippingCouponCode;
     private BigDecimal total;
     private List<OrderLineResponse> lines;
     private List<OrderStatusHistoryResponse> statusHistory;

@@ -2,10 +2,12 @@ package com.ttg.devknowledgeplatform.ecommerce.service.impl;
 
 import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Address;
+import com.ttg.devknowledgeplatform.ecommerce.entity.Coupon;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OrderLine;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OrderStatusHistory;
 import com.ttg.devknowledgeplatform.ecommerce.entity.SavedAddress;
+import com.ttg.devknowledgeplatform.ecommerce.enums.CouponTarget;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
@@ -17,6 +19,7 @@ import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutCommands;
 import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutPreview;
 import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutResult;
 import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutService;
+import com.ttg.devknowledgeplatform.ecommerce.service.CouponRedemptionService;
 import com.ttg.devknowledgeplatform.ecommerce.service.SavedAddressCommands;
 import com.ttg.devknowledgeplatform.ecommerce.service.SavedAddressService;
 import com.ttg.devknowledgeplatform.ecommerce.shipping.ShippingFeeCalculator;
@@ -40,6 +43,15 @@ import java.util.Set;
  * Strategy seam (see that interface's own Javadoc) — rather than a field on this class; this class
  * no longer knows or cares how the fee was priced, only that it needs one.
  *
+ * <p><strong>Coupon feature, Phase 2</strong>: {@link #resolveDiscounts} resolves both coupon
+ * slots (see {@link CouponRedemptionService}'s own Javadoc for why {@code resolve}/
+ * {@code calculateDiscount} are separate steps) into the actual discount each produces —
+ * {@code subtotalDiscount} is reported and total-adjusted separately (never touching
+ * {@link Order#getSubtotal()} itself), while a shipping-targeting coupon reduces
+ * {@code shippingFee} directly, on top of whatever {@link ShippingFeeCalculator} already waived.
+ * {@link #confirm} records a {@code CouponRedemption} for each coupon actually applied,
+ * immediately after the order itself is saved — never during {@link #preview}.
+ *
  * <p>{@link #confirm} implements US-3.1 (Epic 3): every line's stock is reserved via
  * {@link ProductVariantRepository#reserve} in this same {@code @Transactional} method, before the
  * order is ever saved — an insufficient-stock line throws, and since nothing has committed yet,
@@ -60,22 +72,28 @@ public class CheckoutServiceImpl implements CheckoutService {
     private final ProductVariantRepository productVariantRepository;
     private final SavedAddressService savedAddressService;
     private final ShippingFeeCalculator shippingFeeCalculator;
+    private final CouponRedemptionService couponRedemptionService;
 
     @Override
     @Transactional(readOnly = true)
-    public CheckoutPreview preview(String userUuid, List<Integer> selectedVariantIds) {
+    public CheckoutPreview preview(
+            String userUuid, List<Integer> selectedVariantIds, String subtotalCouponCode, String shippingCouponCode) {
         Cart cart = cartService.getCart(userUuid);
         List<CartLine> candidateLines = filterBySelection(cart.lines(), selectedVariantIds);
         List<CartLine> availableLines = requireCheckoutableCart(candidateLines);
         BigDecimal subtotal = computeSubtotal(availableLines);
         ShippingFeeQuote shippingQuote = shippingFeeCalculator.calculate(availableLines, subtotal);
+        Discounts discounts = resolveDiscounts(userUuid, subtotal, shippingQuote.fee(), subtotalCouponCode, shippingCouponCode);
+        BigDecimal total = subtotal.subtract(discounts.subtotalDiscount()).add(discounts.finalShippingFee());
         return new CheckoutPreview(
-                candidateLines, subtotal, shippingQuote.fee(), shippingQuote.originalFee(), subtotal.add(shippingQuote.fee()));
+                candidateLines, subtotal, discounts.subtotalDiscount(),
+                discounts.finalShippingFee(), shippingQuote.originalFee(), total);
     }
 
     @Override
     public CheckoutResult confirm(
-            String userUuid, CheckoutCommands.AddressSelection addressSelection, List<Integer> selectedVariantIds) {
+            String userUuid, CheckoutCommands.AddressSelection addressSelection, List<Integer> selectedVariantIds,
+            String subtotalCouponCode, String shippingCouponCode) {
         Cart cart = cartService.getCart(userUuid);
         List<CartLine> candidateLines = filterBySelection(cart.lines(), selectedVariantIds);
         List<CartLine> availableLines = requireCheckoutableCart(candidateLines);
@@ -83,8 +101,10 @@ public class CheckoutServiceImpl implements CheckoutService {
 
         BigDecimal subtotal = computeSubtotal(availableLines);
         ShippingFeeQuote shippingQuote = shippingFeeCalculator.calculate(availableLines, subtotal);
-        BigDecimal shippingFee = shippingQuote.fee();
-        BigDecimal total = subtotal.add(shippingFee);
+        // Re-resolved fresh here, never trusting a client-cached preview — same "confirm
+        // re-validates" philosophy this method already applies to cart lines/stock/address.
+        Discounts discounts = resolveDiscounts(userUuid, subtotal, shippingQuote.fee(), subtotalCouponCode, shippingCouponCode);
+        BigDecimal total = subtotal.subtract(discounts.subtotalDiscount()).add(discounts.finalShippingFee());
         Address shippingAddress = resolveAddress(userUuid, addressSelection);
 
         // US-3.1: reserve every line's stock before the order itself is ever persisted — an
@@ -99,8 +119,11 @@ public class CheckoutServiceImpl implements CheckoutService {
         order.setStatus(OrderStatus.PENDING);
         order.setShippingAddress(shippingAddress);
         order.setSubtotal(subtotal);
-        order.setShippingFee(shippingFee);
+        order.setSubtotalDiscountAmount(discounts.subtotalDiscount());
+        order.setSubtotalCouponCode(discounts.subtotalCoupon() != null ? discounts.subtotalCoupon().getCode() : null);
+        order.setShippingFee(discounts.finalShippingFee());
         order.setOriginalShippingFee(shippingQuote.originalFee());
+        order.setShippingCouponCode(discounts.shippingCoupon() != null ? discounts.shippingCoupon().getCode() : null);
         order.setTotal(total);
         for (CartLine line : availableLines) {
             order.getLines().add(toOrderLine(order, line));
@@ -108,6 +131,17 @@ public class CheckoutServiceImpl implements CheckoutService {
         order.getStatusHistory().add(toInitialStatusHistory(order));
 
         Order saved = orderRepository.save(order);
+        // Only recorded once the order is durably saved — a redemption must never be counted
+        // against a coupon's limits for an order that (due to some later failure in this same
+        // method) never actually happens; nothing after this point can fail without rolling back
+        // the whole transaction (including this save) anyway, but the ordering itself documents
+        // the intent, same reasoning US-3.1's stock reservation already established for this method.
+        if (discounts.subtotalCoupon() != null) {
+            couponRedemptionService.redeem(discounts.subtotalCoupon(), saved, userUuid, discounts.subtotalDiscount());
+        }
+        if (discounts.shippingCoupon() != null) {
+            couponRedemptionService.redeem(discounts.shippingCoupon(), saved, userUuid, discounts.shippingDiscount());
+        }
         // Only the lines actually ordered leave the cart — never a whole-cart clear() anymore, so
         // anything excluded by selectedVariantIds (or dropped by this final revalidation) stays in
         // the cart untouched, only after the order is durably saved (US-2.6).
@@ -116,6 +150,43 @@ public class CheckoutServiceImpl implements CheckoutService {
         log.info("Created order id={} for userUuid={} lineCount={} droppedLineCount={}",
                 saved.getId(), userUuid, availableLines.size(), droppedLines.size());
         return new CheckoutResult(saved, droppedLines);
+    }
+
+    /**
+     * Resolves both coupon slots (at most one {@link CouponTarget#SUBTOTAL}, one
+     * {@link CouponTarget#SHIPPING_FEE} — see this class's own Javadoc) into the actual discount
+     * each produces, and the shipping fee left after the {@code SHIPPING_FEE} one (if any) further
+     * reduces {@code shippingFee} on top of whatever {@code shippingFeeCalculator} already waived.
+     * A blank/{@code null} code for a slot means "no coupon there" and resolves to a zero discount
+     * with no {@link Coupon} — shared by both {@link #preview} and {@link #confirm} so the two
+     * apply identical validation.
+     */
+    private Discounts resolveDiscounts(
+            String userUuid, BigDecimal subtotal, BigDecimal shippingFee,
+            String subtotalCouponCode, String shippingCouponCode) {
+        Coupon subtotalCoupon = null;
+        BigDecimal subtotalDiscount = BigDecimal.ZERO;
+        if (isNotBlank(subtotalCouponCode)) {
+            subtotalCoupon = couponRedemptionService.resolve(subtotalCouponCode, CouponTarget.SUBTOTAL, userUuid, subtotal);
+            subtotalDiscount = couponRedemptionService.calculateDiscount(subtotalCoupon, subtotal);
+        }
+
+        Coupon shippingCoupon = null;
+        BigDecimal shippingDiscount = BigDecimal.ZERO;
+        if (isNotBlank(shippingCouponCode)) {
+            shippingCoupon = couponRedemptionService.resolve(shippingCouponCode, CouponTarget.SHIPPING_FEE, userUuid, subtotal);
+            shippingDiscount = couponRedemptionService.calculateDiscount(shippingCoupon, shippingFee);
+        }
+
+        BigDecimal finalShippingFee = shippingFee.subtract(shippingDiscount);
+        return new Discounts(subtotalCoupon, subtotalDiscount, shippingCoupon, shippingDiscount, finalShippingFee);
+    }
+
+    /** The resolved outcome of both coupon slots for one {@link #preview}/{@link #confirm} call —
+     * {@code subtotalCoupon}/{@code shippingCoupon} are {@code null} when that slot had no code. */
+    private record Discounts(
+            Coupon subtotalCoupon, BigDecimal subtotalDiscount, Coupon shippingCoupon, BigDecimal shippingDiscount,
+            BigDecimal finalShippingFee) {
     }
 
     /**

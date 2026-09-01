@@ -23,39 +23,61 @@ import java.util.List;
  * all for this call: excluded from the totals/order, and — the actual point of this feature —
  * left untouched in the cart afterward by {@link #confirm}, rather than wiped along with
  * whatever was actually ordered.
+ *
+ * <p><strong>{@code subtotalCouponCode}/{@code shippingCouponCode} (Coupon feature, Phase 2)</strong>:
+ * both methods accept an optional coupon code per {@link com.ttg.devknowledgeplatform.ecommerce.enums.CouponTarget} —
+ * at most one code per target, by construction (two parameters, not a list), matching this
+ * feature's own locked "at most 2 coupons per order, one per target" rule. Both are re-validated
+ * fresh on every call (never trusted from a prior {@code preview}), same "confirm doesn't trust a
+ * client-cached preview" philosophy this interface already applies to cart lines. Only
+ * {@link #confirm} actually records a redemption — {@link #preview} validates eligibility (so the
+ * shopper sees a rejection before committing) without consuming a redemption slot.
  */
 public interface CheckoutService {
 
     /**
      * Revalidates the caller's cart and computes what confirming it right now would produce.
      *
-     * @param userUuid           the caller's Keycloak UUID
-     * @param selectedVariantIds optional subset of variant ids to restrict this preview to;
-     *                           {@code null} previews the whole cart
+     * @param userUuid            the caller's Keycloak UUID
+     * @param selectedVariantIds  optional subset of variant ids to restrict this preview to;
+     *                            {@code null} previews the whole cart
+     * @param subtotalCouponCode  optional coupon code targeting the subtotal; {@code null}/blank
+     *                            applies none
+     * @param shippingCouponCode  optional coupon code targeting the shipping fee; {@code null}/blank
+     *                            applies none
      * @return the reviewable preview
      * @throws com.ttg.devknowledgeplatform.common.exception.ApiException if the cart (or the
-     *         selected subset of it) is empty, or every line in it is currently unavailable
+     *         selected subset of it) is empty, every line in it is currently unavailable, or
+     *         either coupon code is ineligible
      */
-    CheckoutPreview preview(String userUuid, List<Integer> selectedVariantIds);
+    CheckoutPreview preview(
+            String userUuid, List<Integer> selectedVariantIds, String subtotalCouponCode, String shippingCouponCode);
 
     /**
      * Creates an {@code Order} from the caller's currently-available cart lines and the given
      * shipping address, then removes only the lines actually ordered from the cart — only once
      * the order has been saved successfully, never before (US-2.6). Anything in the cart that
      * wasn't part of this checkout attempt (excluded by {@code selectedVariantIds}, or dropped by
-     * this final revalidation) stays in the cart untouched.
+     * this final revalidation) stays in the cart untouched. Records a {@code CouponRedemption} for
+     * each coupon actually applied, immediately after the order itself is saved.
      *
-     * @param userUuid           the caller's Keycloak UUID
-     * @param addressSelection   either a reference to an existing AddressBook entry or a fresh,
-     *                           one-off address (optionally saved into the AddressBook) — see
-     *                           {@link CheckoutCommands.AddressSelection}'s own Javadoc
-     * @param selectedVariantIds optional subset of variant ids to restrict this checkout to;
-     *                           {@code null} checks out the whole cart
+     * @param userUuid            the caller's Keycloak UUID
+     * @param addressSelection    either a reference to an existing AddressBook entry or a fresh,
+     *                            one-off address (optionally saved into the AddressBook) — see
+     *                            {@link CheckoutCommands.AddressSelection}'s own Javadoc
+     * @param selectedVariantIds  optional subset of variant ids to restrict this checkout to;
+     *                            {@code null} checks out the whole cart
+     * @param subtotalCouponCode  optional coupon code targeting the subtotal; {@code null}/blank
+     *                            applies none
+     * @param shippingCouponCode  optional coupon code targeting the shipping fee; {@code null}/blank
+     *                            applies none
      * @return the created order plus any lines dropped at this final revalidation
      * @throws com.ttg.devknowledgeplatform.common.exception.ApiException if the cart (or the
      *         selected subset of it) is empty, every line in it is currently unavailable, the
-     *         address selection is missing/incomplete, or {@code savedAddressId} doesn't belong
-     *         to the caller
+     *         address selection is missing/incomplete, {@code savedAddressId} doesn't belong to
+     *         the caller, or either coupon code is ineligible
      */
-    CheckoutResult confirm(String userUuid, CheckoutCommands.AddressSelection addressSelection, List<Integer> selectedVariantIds);
+    CheckoutResult confirm(
+            String userUuid, CheckoutCommands.AddressSelection addressSelection, List<Integer> selectedVariantIds,
+            String subtotalCouponCode, String shippingCouponCode);
 }

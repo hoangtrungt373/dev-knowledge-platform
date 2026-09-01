@@ -1480,7 +1480,12 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                              would have been absent any promotional waiver, equal to
 │   │                              shippingFee whenever nothing was waived (see
 │   │                              shipping.ShippingFeeQuote) — lets OrderDetailPage show a waived
-│   │                              fee the same way the checkout preview already does
+│   │                              fee the same way the checkout preview already does. Coupon
+│   │                              feature Phase 2 (DKP-0042): subtotalDiscountAmount (its own
+│   │                              column, since subtotal itself is never reduced) plus
+│   │                              subtotalCouponCode/shippingCouponCode (the redeemed codes,
+│   │                              nullable) — the shipping discount needed no amount column of its
+│   │                              own, reusing the existing shippingFee/originalShippingFee pair
 │   ├── OrderLine.java           — productVariantId is a plain column, deliberately not a
 │   │                                ProductVariant FK (ProductServiceImpl.removeVariant can
 │   │                                hard-delete a variant outright); sku/productName/unitPrice are
@@ -1507,9 +1512,10 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                four separate Strategy classes; code is immutable after
 │   │                                creation (no rename via update, unlike ProductTag.name)
 │   └── CouponRedemption.java    — the ledger Coupon.maxRedemptions/maxRedemptionsPerUser are
-│                                    enforced against once Phase 2 writes rows here; real
-│                                    @ManyToOne FKs to both Coupon and Order (neither can ever be
-│                                    hard-deleted out from under a redemption row)
+│                                    enforced against, written by CouponRedemptionServiceImpl.redeem
+│                                    once Phase 2's CheckoutServiceImpl.confirm saves the order;
+│                                    real @ManyToOne FKs to both Coupon and Order (neither can ever
+│                                    be hard-deleted out from under a redemption row)
 ├── enums/
 │   ├── OutboxEventStatus.java     — PENDING, PROCESSING, PROCESSED, FAILED
 │   ├── OutboxAggregateType.java   — PRODUCT (widen only when a later epic adds an aggregate root)
@@ -1684,7 +1690,13 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │       AddressInput — resolveAddress prefers an existing SavedAddress (ownership re-checked),
 │       otherwise validates the ad-hoc fields imperatively (no longer @NotBlank-enforceable);
 │       maybeSaveAddressForFuture persists a "save for next time" address only after the order
-│       already saved, wrapped in try/catch so a failure there can never roll back a real order
+│       already saved, wrapped in try/catch so a failure there can never roll back a real order.
+│       Coupon feature Phase 2: preview/confirm both gained subtotalCouponCode/shippingCouponCode
+│       params; new private resolveDiscounts calls CouponRedemptionService.resolve+
+│       calculateDiscount for each non-null code independently before totals are built — preview
+│       never redeems, confirm calls CouponRedemptionService.redeem for each non-null coupon only
+│       after orderRepository.save succeeds (Mockito.inOrder-verified, same discipline as the
+│       existing save-then-clear-cart ordering)
 ├── service/{SavedAddressCommands,SavedAddressService}.java / impl/SavedAddressServiceImpl.java —
 │   the AddressBook feature: every method scoped to one owner (ownerUuid, the JWT sub claim,
 │   mirroring OrderService's own convention — someone else's address id behaves exactly like a
@@ -1698,6 +1710,15 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   endAt not after startAt when both are given (both imperative via Validator, not Bean
 │   Validation, since they're cross-field rules). Code is normalized to uppercase and checked for
 │   conflicts on create only; update has no code field at all (immutable after creation)
+├── service/CouponRedemptionService.java / impl/CouponRedemptionServiceImpl.java (ProductDiscount
+│   feature, Phase 2 — checkout-side eligibility/arithmetic/redemption, called by
+│   CheckoutServiceImpl, no REST endpoint of its own). resolve(code, target, ownerUuid, subtotal)
+│   normalizes the code then checks active/target-match/date-range/min-subtotal/global-and-per-user
+│   redemption-count limits in order; calculateDiscount(coupon, baseAmount) is a separate method
+│   since the discount is computed against a target-specific base amount (subtotal vs. shipping
+│   fee) while minSubtotal is always checked against the cart subtotal regardless of target;
+│   redeem(coupon, order, ownerUuid, discountAmount) persists a CouponRedemption row — called only
+│   by confirm, never preview, and only after the order itself has already saved
 ├── service/OrderService.java / impl/OrderServiceImpl.java — Epic 3 Phases 3–5 (US-3.6–3.8, 3.3,
 │   │   3.5): thin cancel(orderId, callerUuid)/ship(orderId)/deliver(orderId) wrappers around
 │   │   orderstatus.OrderStatusHandlerRegistry (find-or-404, dispatch, save); cancel hides
@@ -1797,7 +1818,10 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                 CartApi; GET /preview (review) + POST /confirm (creates the
 │   │                                 order, 201) — confirm's AddressRequest carries either an
 │   │                                 existing SavedAddress id or a fresh one-off address
-│   │                                 (AddressBook feature, DKP-0039)
+│   │                                 (AddressBook feature, DKP-0039). Coupon feature Phase 2:
+│   │                                 preview gained subtotalCouponCode/shippingCouponCode query
+│   │                                 params, AddressRequest gained matching body fields for
+│   │                                 confirm — both optional, one per CouponTarget
 │   ├── SavedAddressApi.java      — /api/v1/addresses (AddressBook feature), authenticated-only,
 │   │                                 same rule as CartApi — but never admin-gated at all, unlike
 │   │                                 every ProductTag/ProductCategory-style resource: an
@@ -1842,14 +1866,21 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
                                      AddressRequest/AddressResponse/OrderLineResponse/
                                      CheckoutPreviewResponse/CheckoutConfirmResponse
                                      (AddressRequest now carries an optional savedAddressId/
-                                     saveAddress/addressLabel — AddressBook feature, DKP-0039),
+                                     saveAddress/addressLabel — AddressBook feature, DKP-0039 —
+                                     plus subtotalCouponCode/shippingCouponCode — Coupon feature
+                                     Phase 2; CheckoutPreviewResponse gained a matching
+                                     subtotalDiscountAmount field),
                                      UpdateProductImageSortOrderRequest,
                                      ProductSearchResponse,
-                                     OrderStatusHistoryResponse/OrderResponse (Epic 3 Phase 5),
+                                     OrderStatusHistoryResponse/OrderResponse (Epic 3 Phase 5;
+                                     OrderResponse gained subtotalDiscountAmount/
+                                     subtotalCouponCode/shippingCouponCode — Coupon feature Phase 2),
                                      ProductTagResponse/CreateProductTagRequest/
                                      UpdateProductTagRequest,
                                      SavedAddressResponse/CreateSavedAddressRequest/
-                                     UpdateSavedAddressRequest (AddressBook feature)
+                                     UpdateSavedAddressRequest (AddressBook feature),
+                                     CouponResponse/CreateCouponRequest/UpdateCouponRequest
+                                     (ProductDiscount feature Phase 1)
 ```
 
 Liquibase migrations: `ecommerce-service/.../database/sql/2026/0.0.2/202608040001__0.0.2__DKP-0023__add_ecommerce_catalog_tables.sql`

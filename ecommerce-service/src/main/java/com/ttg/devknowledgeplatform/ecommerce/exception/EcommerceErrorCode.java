@@ -82,7 +82,19 @@ public enum EcommerceErrorCode implements ErrorCode {
     // Message is always overridden at the call site (Validator.isTrue's String-message overload,
     // which bypasses this template entirely) — see CouponServiceImpl.validateValue.
     COUPON_INVALID_VALUE("COUPON_004", "Invalid coupon value", HttpStatus.BAD_REQUEST),
-    COUPON_INVALID_DATE_RANGE("COUPON_005", "End date must be after start date", HttpStatus.BAD_REQUEST);
+    COUPON_INVALID_DATE_RANGE("COUPON_005", "End date must be after start date", HttpStatus.BAD_REQUEST),
+
+    // Coupon Redemption Errors (COUPON_*, cont.) — Phase 2, CouponRedemptionServiceImpl.resolve
+    COUPON_INACTIVE("COUPON_006", "Coupon ''{0}'' is not active", HttpStatus.CONFLICT),
+    COUPON_TARGET_MISMATCH("COUPON_007", "Coupon ''{0}'' cannot be applied to {1}", HttpStatus.BAD_REQUEST),
+    COUPON_NOT_YET_ACTIVE("COUPON_008", "Coupon ''{0}'' is not active yet", HttpStatus.CONFLICT),
+    COUPON_EXPIRED("COUPON_009", "Coupon ''{0}'' has expired", HttpStatus.CONFLICT),
+    COUPON_MIN_SUBTOTAL_NOT_MET("COUPON_010",
+            "Coupon ''{0}'' requires a subtotal of at least {1}", HttpStatus.CONFLICT),
+    COUPON_REDEMPTION_LIMIT_REACHED("COUPON_011",
+            "Coupon ''{0}'' has reached its redemption limit", HttpStatus.CONFLICT),
+    COUPON_ALREADY_REDEEMED_BY_USER("COUPON_012",
+            "You have already redeemed coupon ''{0}'' the maximum number of times", HttpStatus.CONFLICT);
 
     private final String code;
     private final String message;

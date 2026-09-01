@@ -14,6 +14,9 @@ public class CheckoutPreviewResponse {
     /** Every current cart line — some may have {@code available = false} (US-2.7). */
     private List<CartLineResponse> lines;
     private BigDecimal subtotal;
+    /** What a {@code subtotalCouponCode} (Coupon feature, Phase 2) deducts from {@code subtotal} —
+     * zero when no such coupon was given or eligible. {@code subtotal} itself is never reduced. */
+    private BigDecimal subtotalDiscountAmount;
     private BigDecimal shippingFee;
     /** What {@code shippingFee} would be absent any promotional waiver — equal to
      * {@code shippingFee} whenever nothing was waived; e.g. {@code $5.00} here alongside a

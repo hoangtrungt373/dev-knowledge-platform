@@ -1,5 +1,7 @@
 package com.ttg.devknowledgeplatform.ecommerce.dto;
 
+import jakarta.validation.constraints.Size;
+
 import lombok.Data;
 
 import java.util.List;
@@ -52,4 +54,15 @@ public class AddressRequest {
      * cart, exactly this endpoint's behavior before this field existed.
      */
     private List<Integer> selectedVariantIds;
+
+    /** Optional coupon code targeting the subtotal (Coupon feature, Phase 2) — at most one per
+     * target, by construction (a second field, not a list — see {@code CheckoutService}'s own
+     * Javadoc). {@code null}/blank applies none. */
+    @Size(max = 50, message = "Coupon code must not exceed 50 characters")
+    private String subtotalCouponCode;
+
+    /** Optional coupon code targeting the shipping fee (Coupon feature, Phase 2) — independent of
+     * any automatic free-shipping waiver, which has no code. {@code null}/blank applies none. */
+    @Size(max = 50, message = "Coupon code must not exceed 50 characters")
+    private String shippingCouponCode;
 }
