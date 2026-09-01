@@ -256,9 +256,21 @@ export default function OrderDetailPage(): JSX.Element {
           <Typography variant="body2" color="text.secondary">Subtotal</Typography>
           <Typography variant="body2" color="error.main">{formatPrice(order.subtotal)}</Typography>
         </Stack>
-        <Stack direction="row" justifyContent="space-between">
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography variant="body2" color="text.secondary">Shipping</Typography>
-          <Typography variant="body2" color="error.main">{formatPrice(order.shippingFee)}</Typography>
+          {order.originalShippingFee > order.shippingFee ? (
+            // Free shipping applied at checkout (FreeOverThresholdShippingFeeCalculator's own
+            // threshold) — show the fee it would have been, struck through, same treatment
+            // CheckoutPage's own preview uses, rather than just a bare "$0.00".
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography variant="body2" color="text.secondary" sx={{ textDecoration: 'line-through' }}>
+                {formatPrice(order.originalShippingFee)}
+              </Typography>
+              <Typography variant="body2" color="success.main" fontWeight={600}>Free</Typography>
+            </Stack>
+          ) : (
+            <Typography variant="body2" color="error.main">{formatPrice(order.shippingFee)}</Typography>
+          )}
         </Stack>
         <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
           <Typography variant="subtitle1" fontWeight={700}>Total</Typography>

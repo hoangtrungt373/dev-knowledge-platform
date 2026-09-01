@@ -1475,7 +1475,12 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                              03-order-lifecycle-inventory.md) added idempotencyKey (US-3.3,
 │   │                              nullable, stamped at PENDING->PAYMENT_PROCESSING),
 │   │                              paymentProcessingStartedAt (US-3.4's reconciliation clock), and
-│   │                              cancelRequested (US-3.6's queued-cancel-mid-payment flag)
+│   │                              cancelRequested (US-3.6's queued-cancel-mid-payment flag).
+│   │                              Follow-up (DKP-0040): originalShippingFee — what shippingFee
+│   │                              would have been absent any promotional waiver, equal to
+│   │                              shippingFee whenever nothing was waived (see
+│   │                              shipping.ShippingFeeQuote) — lets OrderDetailPage show a waived
+│   │                              fee the same way the checkout preview already does
 │   ├── OrderLine.java           — productVariantId is a plain column, deliberately not a
 │   │                                ProductVariant FK (ProductServiceImpl.removeVariant can
 │   │                                hard-delete a variant outright); sku/productName/unitPrice are
@@ -1580,12 +1585,23 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 ├── shipping/                    — the checkout shipping-fee pricing seam, same "interface today,
 │   │                                swap the implementation later" shape as payment/ above
 │   ├── ShippingFeeCalculator.java     — GoF Strategy (Behavioral): calculate(lines, subtotal) ->
-│   │                                       BigDecimal; CheckoutServiceImpl depends on this
+│   │                                       ShippingFeeQuote; CheckoutServiceImpl depends on this
 │   │                                       interface only, never a concrete pricing rule
-│   └── FlatRateShippingFeeCalculator.java — the only implementation today; a single fee regardless
-│                                              of cart contents, externalized via
-│                                              app.ecommerce.checkout.flat-shipping-fee (moved here
-│                                              from CheckoutServiceImpl's own field)
+│   ├── ShippingFeeQuote.java           — record(fee, originalFee) — originalFee is what would
+│   │                                       have been charged absent any promotional waiver, equal
+│   │                                       to fee whenever nothing was waived; lets the GUI show
+│   │                                       "was $5.00, now free" instead of a bare $0.00
+│   ├── FreeOverThresholdShippingFeeCalculator.java — the active @Component bean today; free
+│   │                                                   shipping once subtotal reaches
+│   │                                                   app.ecommerce.checkout.free-shipping-threshold
+│   │                                                   (default 50.00), else the same flat fee
+│   │                                                   FlatRateShippingFeeCalculator always charged
+│   └── FlatRateShippingFeeCalculator.java — the original strategy; a single fee regardless of cart
+│                                              contents via app.ecommerce.checkout.flat-shipping-fee.
+│                                              Kept as a reference implementation but carries no
+│                                              @Component anymore (avoids two ambiguous candidates
+│                                              for the same interface — re-add it, and remove it
+│                                              from whichever strategy is active, to switch back)
 ├── security/                    — this app's own filter chain, independent of gateway's; pure
 │   │                                OAuth2 resource server (Keycloak-backed, same as every other
 │   │                                deployable — the old JJWT-based JwtVerifier/

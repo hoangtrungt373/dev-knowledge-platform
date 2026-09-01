@@ -34,7 +34,8 @@ public interface ShippingFeeCalculator {
      *                 {@code CheckoutServiceImpl.requireCheckoutableCart})
      * @param subtotal the sum of {@code lines}' own line totals, precomputed by the caller so every
      *                 strategy doesn't need to re-derive it independently
-     * @return the shipping fee to charge — never {@code null}
+     * @return the fee to charge, plus what would have been charged absent any promotional waiver —
+     *         see {@link ShippingFeeQuote}'s own Javadoc; never {@code null}
      */
-    BigDecimal calculate(List<CartLine> lines, BigDecimal subtotal);
+    ShippingFeeQuote calculate(List<CartLine> lines, BigDecimal subtotal);
 }

@@ -20,6 +20,7 @@ import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutService;
 import com.ttg.devknowledgeplatform.ecommerce.service.SavedAddressCommands;
 import com.ttg.devknowledgeplatform.ecommerce.service.SavedAddressService;
 import com.ttg.devknowledgeplatform.ecommerce.shipping.ShippingFeeCalculator;
+import com.ttg.devknowledgeplatform.ecommerce.shipping.ShippingFeeQuote;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -67,8 +68,9 @@ public class CheckoutServiceImpl implements CheckoutService {
         List<CartLine> candidateLines = filterBySelection(cart.lines(), selectedVariantIds);
         List<CartLine> availableLines = requireCheckoutableCart(candidateLines);
         BigDecimal subtotal = computeSubtotal(availableLines);
-        BigDecimal shippingFee = shippingFeeCalculator.calculate(availableLines, subtotal);
-        return new CheckoutPreview(candidateLines, subtotal, shippingFee, subtotal.add(shippingFee));
+        ShippingFeeQuote shippingQuote = shippingFeeCalculator.calculate(availableLines, subtotal);
+        return new CheckoutPreview(
+                candidateLines, subtotal, shippingQuote.fee(), shippingQuote.originalFee(), subtotal.add(shippingQuote.fee()));
     }
 
     @Override
@@ -80,7 +82,8 @@ public class CheckoutServiceImpl implements CheckoutService {
         List<CartLine> droppedLines = candidateLines.stream().filter(line -> !line.available()).toList();
 
         BigDecimal subtotal = computeSubtotal(availableLines);
-        BigDecimal shippingFee = shippingFeeCalculator.calculate(availableLines, subtotal);
+        ShippingFeeQuote shippingQuote = shippingFeeCalculator.calculate(availableLines, subtotal);
+        BigDecimal shippingFee = shippingQuote.fee();
         BigDecimal total = subtotal.add(shippingFee);
         Address shippingAddress = resolveAddress(userUuid, addressSelection);
 
@@ -97,6 +100,7 @@ public class CheckoutServiceImpl implements CheckoutService {
         order.setShippingAddress(shippingAddress);
         order.setSubtotal(subtotal);
         order.setShippingFee(shippingFee);
+        order.setOriginalShippingFee(shippingQuote.originalFee());
         order.setTotal(total);
         for (CartLine line : availableLines) {
             order.getLines().add(toOrderLine(order, line));

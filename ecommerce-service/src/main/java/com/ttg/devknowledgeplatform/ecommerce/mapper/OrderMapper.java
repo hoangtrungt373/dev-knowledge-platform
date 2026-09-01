@@ -52,6 +52,7 @@ public class OrderMapper {
                 .shippingAddress(toAddressResponse(order.getShippingAddress()))
                 .subtotal(order.getSubtotal())
                 .shippingFee(order.getShippingFee())
+                .originalShippingFee(order.getOriginalShippingFee())
                 .total(order.getTotal())
                 .lines(order.getLines().stream().map(this::toOrderLineResponse).toList())
                 .statusHistory(order.getStatusHistory().stream().map(OrderMapper::toHistoryResponse).toList())

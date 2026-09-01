@@ -22,9 +22,11 @@ app:
       ttl: ${CART_TTL:P30D}
 
     checkout:
-      # Flat-rate shipping only for v1 (docs/user-stories/02-cart-checkout.md) — externalized
-      # rather than a hardcoded constant, same convention as app.ecommerce.cart.ttl above.
+      # FreeOverThresholdShippingFeeCalculator (the active shipping.ShippingFeeCalculator bean):
+      # free shipping once the subtotal reaches free-shipping-threshold, else this flat fee —
+      # both externalized rather than hardcoded, same convention as app.ecommerce.cart.ttl above.
       flat-shipping-fee: ${CHECKOUT_FLAT_SHIPPING_FEE:5.00}
+      free-shipping-threshold: ${CHECKOUT_FREE_SHIPPING_THRESHOLD:50.00}
 
     order:
       # US-3.2: how long a PENDING order's stock reservation survives with no payment attempted

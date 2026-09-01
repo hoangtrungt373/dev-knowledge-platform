@@ -18,6 +18,7 @@ import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutResult;
 import com.ttg.devknowledgeplatform.ecommerce.service.SavedAddressCommands;
 import com.ttg.devknowledgeplatform.ecommerce.service.SavedAddressService;
 import com.ttg.devknowledgeplatform.ecommerce.shipping.ShippingFeeCalculator;
+import com.ttg.devknowledgeplatform.ecommerce.shipping.ShippingFeeQuote;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -74,7 +75,8 @@ class CheckoutServiceImplTest {
         // lenient — several tests (an empty/all-unavailable cart, a selection matching nothing)
         // reject before the fee is ever computed, and strict stubbing would flag this as unused
         // for those specific tests otherwise.
-        lenient().when(shippingFeeCalculator.calculate(any(), any())).thenReturn(FLAT_SHIPPING_FEE);
+        lenient().when(shippingFeeCalculator.calculate(any(), any()))
+                .thenReturn(new ShippingFeeQuote(FLAT_SHIPPING_FEE, FLAT_SHIPPING_FEE));
         addressInput = new CheckoutCommands.AddressInput(
                 "Ada Lovelace", "1 Analytical Engine Way", null, "London", "England", "SW1A 1AA", "UK");
         address = new CheckoutCommands.AddressSelection(null, addressInput, false, null);
@@ -106,8 +108,26 @@ class CheckoutServiceImplTest {
 
             assertThat(preview.subtotal()).isEqualByComparingTo("20.00");
             assertThat(preview.shippingFee()).isEqualByComparingTo(FLAT_SHIPPING_FEE);
+            assertThat(preview.originalShippingFee()).isEqualByComparingTo(FLAT_SHIPPING_FEE);
             assertThat(preview.total()).isEqualByComparingTo("25.00");
             assertThat(preview.lines()).containsExactly(available, unavailable);
+        }
+
+        @Test
+        void reportsAWaivedFeeSeparatelyFromWhatItWouldHaveBeen() {
+            CartLine available = availableLine(1, 1, new BigDecimal("60.00"));
+            when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(available)));
+            when(shippingFeeCalculator.calculate(any(), any()))
+                    .thenReturn(new ShippingFeeQuote(BigDecimal.ZERO, FLAT_SHIPPING_FEE));
+
+            CheckoutPreview preview = service.preview(USER_UUID, null);
+
+            // The total is built from the actually-charged fee (zero), not the waived original —
+            // this is the one thing this test exists to pin down; the shipping.* tests own the
+            // free-over-threshold business rule itself.
+            assertThat(preview.shippingFee()).isEqualByComparingTo(BigDecimal.ZERO);
+            assertThat(preview.originalShippingFee()).isEqualByComparingTo(FLAT_SHIPPING_FEE);
+            assertThat(preview.total()).isEqualByComparingTo("60.00");
         }
 
         @Test
@@ -175,6 +195,7 @@ class CheckoutServiceImplTest {
             assertThat(order.getOwnerUuid()).isEqualTo(USER_UUID);
             assertThat(order.getSubtotal()).isEqualByComparingTo("20.00");
             assertThat(order.getShippingFee()).isEqualByComparingTo(FLAT_SHIPPING_FEE);
+            assertThat(order.getOriginalShippingFee()).isEqualByComparingTo(FLAT_SHIPPING_FEE);
             assertThat(order.getTotal()).isEqualByComparingTo("25.00");
             assertThat(order.getShippingAddress().getFullName()).isEqualTo("Ada Lovelace");
             assertThat(order.getLines()).hasSize(1);
@@ -193,6 +214,23 @@ class CheckoutServiceImplTest {
             ordering.verify(productVariantRepository).reserve(1, 2);
             ordering.verify(orderRepository).save(any(Order.class));
             ordering.verify(cartService).removeItems(USER_UUID, List.of(1));
+        }
+
+        @Test
+        void persistsAWaivedFeeSeparatelyFromWhatItWouldHaveBeen() {
+            CartLine available = availableLine(1, 1, new BigDecimal("60.00"));
+            when(cartService.getCart(USER_UUID)).thenReturn(new Cart(List.of(available)));
+            when(productVariantRepository.reserve(1, 1)).thenReturn(1);
+            when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+            when(shippingFeeCalculator.calculate(any(), any()))
+                    .thenReturn(new ShippingFeeQuote(BigDecimal.ZERO, FLAT_SHIPPING_FEE));
+
+            CheckoutResult result = service.confirm(USER_UUID, address, null);
+
+            Order order = result.order();
+            assertThat(order.getShippingFee()).isEqualByComparingTo(BigDecimal.ZERO);
+            assertThat(order.getOriginalShippingFee()).isEqualByComparingTo(FLAT_SHIPPING_FEE);
+            assertThat(order.getTotal()).isEqualByComparingTo("60.00");
         }
 
         @Test

@@ -257,6 +257,11 @@ export interface CheckoutPreview {
   lines: CartLine[];
   subtotal: number;
   shippingFee: number;
+  /** What shippingFee would be absent any promotional waiver (e.g. free-shipping-over-threshold)
+   * — equal to shippingFee whenever nothing was waived. A value greater than shippingFee means a
+   * waiver applied (today: FreeOverThresholdShippingFeeCalculator's own threshold), and the GUI
+   * shows this original fee struck through rather than just the final number. */
+  originalShippingFee: number;
   total: number;
 }
 
@@ -303,6 +308,9 @@ export interface Order {
   shippingAddress: Address;
   subtotal: number;
   shippingFee: number;
+  /** What shippingFee would have been absent any promotional waiver — equal to shippingFee
+   * whenever nothing was waived; see CheckoutPreview's own note above. */
+  originalShippingFee: number;
   total: number;
   lines: OrderLine[];
   /** Oldest first, per the backend's own @OrderBy("id ASC") — read top-to-bottom as a timeline. */

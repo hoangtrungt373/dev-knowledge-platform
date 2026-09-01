@@ -44,6 +44,10 @@ import java.util.List;
  * catalog as it stood then) — {@link #subtotal}/{@link #shippingFee}/{@link #total} are stored
  * here for the same reason, rather than re-derived from current {@link OrderLine} data on every
  * read, since a flat shipping fee read from config could change after this order was placed.
+ * {@link #originalShippingFee} is what {@link #shippingFee} would have been absent any
+ * promotional waiver (see {@code shipping.ShippingFeeQuote}'s own Javadoc) — equal to
+ * {@link #shippingFee} whenever nothing was waived, so the order's own detail view can show
+ * "was $5.00, now free" the same way the checkout preview already does.
  *
  * <p>{@link #idempotencyKey} (US-3.3) is stamped once, immediately before the {@code PENDING} →
  * {@code PAYMENT_PROCESSING} transition, so a crash between "payment succeeded" and "order
@@ -81,6 +85,9 @@ public class Order extends AbstractEntity {
 
     @Column(name = "SHIPPING_FEE", nullable = false, precision = 12, scale = 2)
     private BigDecimal shippingFee;
+
+    @Column(name = "ORIGINAL_SHIPPING_FEE", nullable = false, precision = 12, scale = 2)
+    private BigDecimal originalShippingFee;
 
     @Column(name = "TOTAL", nullable = false, precision = 12, scale = 2)
     private BigDecimal total;

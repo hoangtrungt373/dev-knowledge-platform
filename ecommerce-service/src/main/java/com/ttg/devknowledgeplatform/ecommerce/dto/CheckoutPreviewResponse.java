@@ -15,5 +15,9 @@ public class CheckoutPreviewResponse {
     private List<CartLineResponse> lines;
     private BigDecimal subtotal;
     private BigDecimal shippingFee;
+    /** What {@code shippingFee} would be absent any promotional waiver — equal to
+     * {@code shippingFee} whenever nothing was waived; e.g. {@code $5.00} here alongside a
+     * {@code shippingFee} of {@code $0.00} means free shipping just kicked in. */
+    private BigDecimal originalShippingFee;
     private BigDecimal total;
 }

@@ -24,6 +24,10 @@ public class OrderResponse {
     private AddressResponse shippingAddress;
     private BigDecimal subtotal;
     private BigDecimal shippingFee;
+    /** What {@code shippingFee} would have been absent any promotional waiver — equal to
+     * {@code shippingFee} whenever nothing was waived; see {@code Order.originalShippingFee}'s
+     * own Javadoc. */
+    private BigDecimal originalShippingFee;
     private BigDecimal total;
     private List<OrderLineResponse> lines;
     private List<OrderStatusHistoryResponse> statusHistory;

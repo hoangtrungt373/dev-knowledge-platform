@@ -1291,6 +1291,15 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       before this feature existed. Threaded through to both `checkoutApi.preview` (the initial
       fetch) and `checkoutApi.confirm` (on submit) — never re-derived from `preview`'s own
       response, since `preview` already reflects whatever selection was passed to it.
+      **The Order Summary's Shipping row shows a waived fee explicitly, per request** (a follow-up
+      once `ecommerce-service` gained `FreeOverThresholdShippingFeeCalculator`, see that module's
+      `CLAUDE.md`) — `preview.originalShippingFee` is what the fee would be with no waiver applied
+      (equal to `shippingFee` whenever nothing was waived); when it's greater than the actual
+      `shippingFee`, the row renders the original fee struck through (`textDecoration:
+      'line-through'`) next to a `color="success.main"` "Free" label, instead of just a bare
+      `$0.00` that wouldn't communicate the savings. `preview.total` itself is always built from
+      the real `shippingFee`, never `originalShippingFee` — only this one row's *display* branches
+      on the two differing.
     - `components/shop/VariantSelector.tsx` resolves a picked attribute combination (e.g. size=M,
       color=Black) to one exact `ProductVariant` from the product's own real `variants[]` list —
       genuinely combo-accurate, unlike `ShopPage`'s browse-time facets (which only know "some
@@ -1441,7 +1450,15 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       "name × qty — price" row**, `Divider`-separated between lines (was a bare `Stack spacing={1}`
       with no separators). **Subtotal/Shipping/Total values are all `color="error.main"`, per
       request** (only the values — the "Subtotal"/"Shipping"/"Total" labels stay their existing
-      color/weight). **Horizontal `Stepper` (`@mui/material` core, not `@mui/lab` — no new
+      color/weight). **The Shipping value is the one exception once a waiver applied, per a later
+      follow-up** — same treatment `CheckoutPage.tsx`'s own preview uses: when
+      `order.originalShippingFee > order.shippingFee` (a `FreeOverThresholdShippingFeeCalculator`
+      waiver was persisted onto the order at checkout — `ecommerce-service/CLAUDE.md`'s `Order`
+      entity note, migration `DKP-0040`), the row instead shows `originalShippingFee` struck
+      through (`text.secondary`, not `error.main`) next to a `color="success.main"` "Free" label,
+      so an already-placed order's own detail view can show "was $5.00, now free" instead of a
+      bare `$0.00` that doesn't communicate the savings. **Horizontal `Stepper` (`@mui/material`
+      core, not `@mui/lab` — no new
       dependency) for at-a-glance order status, per request** — **its own "Order Status" `Paper`
       section, positioned right after the header row, per a follow-up "show it at the top of the
       page" request** (originally landed folded into the "Order Timeline" `Paper` further down;

@@ -37,6 +37,7 @@ public class CheckoutMapper {
                 .lines(preview.lines().stream().map(cartMapper::toLineResponse).toList())
                 .subtotal(preview.subtotal())
                 .shippingFee(preview.shippingFee())
+                .originalShippingFee(preview.originalShippingFee())
                 .total(preview.total())
                 .build();
     }

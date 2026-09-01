@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
 import {
-  Box,
   Button,
   CircularProgress,
   Paper,
