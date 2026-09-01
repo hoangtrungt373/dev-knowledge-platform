@@ -12,7 +12,7 @@ export const authApi: AuthApi = {
   },
 
   // Re-sends Keycloak's own "Verify Email" link to the authenticated caller's own account —
-  // backs Dashboard.tsx's email-verification banner. 204 on success; 409 (via showError) if
+  // backs ProfilePage.tsx's email-verification banner. 204 on success; 409 (via showError) if
   // already verified.
   resendVerificationEmail(showError?: (message: string) => void): Promise<void> {
     return httpClient.post<void>('/api/v1/auth/resend-verification-email', undefined, showError);

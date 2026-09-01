@@ -3,6 +3,15 @@
  * Types related to user data and authentication
  */
 
+/** Mirrors identity-service's UserRole enum. */
+export type Role = 'ADMIN' | 'USER';
+
+/** Mirrors identity-service's UserProvider enum. */
+export type UserProvider = 'LOCAL' | 'GOOGLE' | 'FACEBOOK';
+
+/** Mirrors identity-service's UserStatus enum. */
+export type UserStatus = 'ONLINE' | 'OFFLINE' | 'AWAY' | 'BUSY';
+
 /**
  * User entity
  */
@@ -13,10 +22,10 @@ export interface User {
   firstName?: string;
   lastName?: string;
   profilePicture?: string;
-  provider: string;
-  role?: string;
+  provider: UserProvider;
+  role?: Role;
   emailVerified: boolean;
-  status: string;
+  status: UserStatus;
   createdAt: string;
   lastModified?: string;
 }
@@ -38,7 +47,7 @@ export interface AuthTokens {
   userUuid: string;
   username: string;
   email: string;
-  role?: string;
+  role?: Role;
   /** Keycloak's OIDC id_token — needed as id_token_hint for a clean RP-initiated logout. */
   idToken?: string;
 }

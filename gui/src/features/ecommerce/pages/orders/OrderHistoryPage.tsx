@@ -76,7 +76,11 @@ export default function OrderHistoryPage(): JSX.Element {
   }
 
   return (
-    <Box sx={{ p: 3, width: '80%', mx: 'auto' }}>
+    // Just p: 3, not this page's old width: '80%', mx: 'auto' — this page now lives nested inside
+    // AccountLayout's own already-80%-wide content column (moved here from a top-level /orders
+    // route per request), and a second 80% would compound into a visibly narrow, off-center block,
+    // same fix AddressBookPage.tsx's own outer wrapper already needed for the identical reason.
+    <Box sx={{ p: 3 }}>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>Your Orders</Typography>
 
       <Tabs
@@ -98,7 +102,7 @@ export default function OrderHistoryPage(): JSX.Element {
       ) : (
         <Stack spacing={2} sx={{ mb: 3 }}>
           {orders?.map(order => (
-            <OrderCard key={order.id} order={order} onView={() => navigate(`/orders/${order.id}`)} />
+            <OrderCard key={order.id} order={order} onView={() => navigate(`/account/orders/${order.id}`)} />
           ))}
         </Stack>
       )}

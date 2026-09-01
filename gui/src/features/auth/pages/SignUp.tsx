@@ -1,32 +1,18 @@
 import React, { useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
-import {
-  Box,
-  Paper,
-  Typography,
-  Button,
-  Stack,
-  TextField,
-  Divider,
-  Link,
-  InputAdornment,
-  IconButton,
-  CircularProgress,
-} from '@mui/material';
-import GoogleIcon from '@mui/icons-material/Google';
-import FacebookIcon from '@mui/icons-material/Facebook';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import { Box, Button, CircularProgress, Divider, InputAdornment, Link, Stack, TextField, Typography } from '@mui/material';
 import EmailIcon from '@mui/icons-material/Email';
-import LockIcon from '@mui/icons-material/Lock';
 import PersonIcon from '@mui/icons-material/Person';
 import { authService } from '../services/authService';
 import { authApi } from '../api/authApi';
 import { OAuthProvider } from '../types';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
-import { PROVIDER_COLORS } from '@shared/constants/colors';
+import { isValidEmail } from '@shared/utils/validation';
 import { useCart } from '@ecommerce/context/CartContext';
+import AuthCard from '../components/AuthCard';
+import SocialLoginButtons from '../components/SocialLoginButtons';
+import PasswordField from '../components/PasswordField';
 
 interface FormErrors {
   firstName?: string;
@@ -46,8 +32,6 @@ export default function SignUp(): JSX.Element {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
 
   const loginWith = (provider: OAuthProvider): void => {
@@ -65,7 +49,7 @@ export default function SignUp(): JSX.Element {
 
     if (!email.trim()) {
       newErrors.email = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    } else if (!isValidEmail(email)) {
       newErrors.email = 'Please enter a valid email';
     }
 
@@ -110,171 +94,101 @@ export default function SignUp(): JSX.Element {
   };
 
   return (
-    <Box display="flex" justifyContent="center" alignItems="center" minHeight="90vh" sx={{ px: 2, py: 4 }}>
-      <Paper elevation={3} sx={{ p: 4, width: '100%', maxWidth: 420 }}>
-        <Typography variant="h5" fontWeight="bold" textAlign="center" gutterBottom>
-          Create Account
-        </Typography>
-        <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mb: 3 }}>
-          Join Duck Chat today
-        </Typography>
+    <AuthCard>
+      <Typography variant="h5" fontWeight="bold" textAlign="center" gutterBottom>
+        Create Account
+      </Typography>
+      <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mb: 3 }}>
+        Join Dev Knowledge Platform today
+      </Typography>
 
-        <Box component="form" onSubmit={handleSubmit}>
-          <Stack spacing={2}>
-            <Stack direction="row" spacing={1}>
-              <TextField
-                fullWidth
-                label="First Name"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                error={!!errors.firstName}
-                helperText={errors.firstName}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <PersonIcon color="action" />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              <TextField
-                fullWidth
-                label="Last Name"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-              />
-            </Stack>
-
-            <TextField
-              fullWidth
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              error={!!errors.email}
-              helperText={errors.email}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <EmailIcon color="action" />
-                  </InputAdornment>
-                ),
-              }}
-            />
-
-            <TextField
-              fullWidth
-              label="Password"
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              error={!!errors.password}
-              helperText={errors.password || 'At least 8 characters with uppercase, lowercase, and number'}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <LockIcon color="action" />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton onClick={() => setShowPassword(!showPassword)} edge="end" size="small">
-                      {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-
-            <TextField
-              fullWidth
-              label="Confirm Password"
-              type={showConfirmPassword ? 'text' : 'password'}
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              error={!!errors.confirmPassword}
-              helperText={errors.confirmPassword}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <LockIcon color="action" />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton onClick={() => setShowConfirmPassword(!showConfirmPassword)} edge="end" size="small">
-                      {showConfirmPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-
-            <Button
-              type="submit"
-              variant="contained"
-              size="large"
-              fullWidth
-              disabled={loading}
-            >
-              {loading ? <CircularProgress size={24} color="inherit" /> : 'Create Account'}
-            </Button>
-          </Stack>
-        </Box>
-
-        <Divider sx={{ my: 3 }}>
-          <Typography variant="body2" color="text.secondary">
-            or sign up with
-          </Typography>
-        </Divider>
-
+      <Box component="form" onSubmit={handleSubmit}>
         <Stack spacing={2}>
-          <Button
-            variant="outlined"
+          <Stack direction="row" spacing={1}>
+            <TextField
+              fullWidth
+              label="First Name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              error={!!errors.firstName}
+              helperText={errors.firstName}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <PersonIcon color="action" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <TextField
+              fullWidth
+              label="Last Name"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+            />
+          </Stack>
+
+          <TextField
             fullWidth
-            size="large"
-            startIcon={<GoogleIcon />}
-            onClick={() => loginWith('google')}
-            sx={{
-              borderColor: PROVIDER_COLORS.google.main,
-              color: PROVIDER_COLORS.google.main,
-              '&:hover': {
-                borderColor: PROVIDER_COLORS.google.hover,
-                backgroundColor: PROVIDER_COLORS.google.hoverBg,
-              },
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            error={!!errors.email}
+            helperText={errors.email}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <EmailIcon color="action" />
+                </InputAdornment>
+              ),
             }}
-          >
-            Continue with Google
-          </Button>
+          />
+
+          <PasswordField
+            label="Password"
+            value={password}
+            onChange={setPassword}
+            error={!!errors.password}
+            helperText={errors.password || 'At least 8 characters with uppercase, lowercase, and number'}
+          />
+
+          <PasswordField
+            label="Confirm Password"
+            value={confirmPassword}
+            onChange={setConfirmPassword}
+            error={!!errors.confirmPassword}
+            helperText={errors.confirmPassword}
+          />
 
           <Button
-            variant="outlined"
-            fullWidth
+            type="submit"
+            variant="contained"
             size="large"
-            startIcon={<FacebookIcon />}
-            onClick={() => loginWith('facebook')}
-            sx={{
-              borderColor: PROVIDER_COLORS.facebook.main,
-              color: PROVIDER_COLORS.facebook.main,
-              '&:hover': {
-                borderColor: PROVIDER_COLORS.facebook.hover,
-                backgroundColor: PROVIDER_COLORS.facebook.hoverBg,
-              },
-            }}
+            fullWidth
+            disabled={loading}
           >
-            Continue with Facebook
+            {loading ? <CircularProgress size={24} color="inherit" /> : 'Create Account'}
           </Button>
         </Stack>
+      </Box>
 
-        <Box sx={{ mt: 3, textAlign: 'center' }}>
-          <Typography variant="body2" color="text.secondary">
-            Already have an account?{' '}
-            <Link component={RouterLink} to="/login" underline="hover" fontWeight="medium">
-              Sign In
-            </Link>
-          </Typography>
-        </Box>
-      </Paper>
-    </Box>
+      <Divider sx={{ my: 3 }}>
+        <Typography variant="body2" color="text.secondary">
+          or sign up with
+        </Typography>
+      </Divider>
+
+      <SocialLoginButtons onSelect={loginWith} />
+
+      <Box sx={{ mt: 3, textAlign: 'center' }}>
+        <Typography variant="body2" color="text.secondary">
+          Already have an account?{' '}
+          <Link component={RouterLink} to="/login" underline="hover" fontWeight="medium">
+            Sign In
+          </Link>
+        </Typography>
+      </Box>
+    </AuthCard>
   );
 }

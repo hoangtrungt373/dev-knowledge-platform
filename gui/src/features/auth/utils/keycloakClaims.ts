@@ -1,4 +1,4 @@
-import { AuthTokens } from '../types';
+import { AuthTokens, Role } from '../types';
 import { decodeJwtPayload } from '@shared/utils/jwt';
 
 export interface KeycloakTokenResponse {
@@ -22,7 +22,7 @@ interface AccessTokenClaims {
  */
 export function claimsToAuthTokens(tokens: KeycloakTokenResponse): AuthTokens {
   const claims = decodeJwtPayload<AccessTokenClaims>(tokens.access_token);
-  const role = claims.realm_access?.roles?.includes('ADMIN') ? 'ADMIN' : 'USER';
+  const role: Role = claims.realm_access?.roles?.includes('ADMIN') ? 'ADMIN' : 'USER';
 
   return {
     accessToken: tokens.access_token,

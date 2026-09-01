@@ -8,7 +8,6 @@ import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import StorefrontIcon from '@mui/icons-material/Storefront';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
-import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { authService } from '@auth/services/authService';
 import { useFriendRequestsCount } from '@friends/hooks/useFriendRequestsCount';
@@ -81,9 +80,11 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
 
         {isAuthed && (
           <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-            {/* Leads into the Account shell (Profile + Addresses, AccountLayout's own sidebar) —
-                one nav entry covers both now, rather than a separate top-level button per
-                sub-page. */}
+            {/* Leads into the Account shell (Profile + Addresses + Orders, AccountLayout's own
+                sidebar) — one nav entry covers all three, rather than a separate top-level button
+                per sub-page. Orders used to have its own dedicated button here before it moved
+                into the Account shell (per request) — removed in that same change, same treatment
+                Addresses itself already had. */}
             <Button
               color="inherit"
               size="small"
@@ -174,20 +175,6 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
               }}
             >
               Cart
-            </Button>
-
-            <Button
-              color="inherit"
-              size="small"
-              startIcon={<ReceiptLongIcon fontSize="small" />}
-              onClick={() => navigate('/orders')}
-              sx={{
-                backgroundColor: location.pathname.startsWith('/orders')
-                  ? 'action.selected'
-                  : 'transparent',
-              }}
-            >
-              Orders
             </Button>
 
             <Button color="inherit" size="small" onClick={handleLogout}>

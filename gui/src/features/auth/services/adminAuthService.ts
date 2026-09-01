@@ -1,5 +1,6 @@
 import { authService } from './authService';
 import { exchangePkceCode, PkceFlowConfig, startPkceLogin } from '../utils/pkceAuthFlow';
+import { rpInitiatedLogout } from '../utils/keycloakConfig';
 
 export interface AdminUser {
   userUuid: string;
@@ -15,10 +16,6 @@ export interface AdminAuthService {
   getToken(): string | null;
   getAdminUser(): AdminUser | null;
 }
-
-const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8180';
-const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'dev-knowledge-platform';
-const REALM_BASE_URL = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect`;
 
 // The "gui" public SPA client (no secret), matching docker/keycloak/realm-export.json.
 // storageKeyPrefix distinct from authService's own regular/social login flow's ("oauth") so the
@@ -46,17 +43,11 @@ export const adminAuthService: AdminAuthService = {
     return true;
   },
 
-  // RP-initiated logout — redirects to Keycloak's own end-session endpoint so the browser's
-  // Keycloak SSO cookie is actually cleared, not just this app's local tokens.
+  // RP-initiated logout — see keycloakConfig.rpInitiatedLogout's own Javadoc.
   logout(): void {
     const idToken = authService.getIdToken();
     authService.clear();
-
-    const params = new URLSearchParams({
-      post_logout_redirect_uri: `${window.location.origin}/admin/login`,
-      ...(idToken ? { id_token_hint: idToken } : {}),
-    });
-    window.location.href = `${REALM_BASE_URL}/logout?${params.toString()}`;
+    rpInitiatedLogout(idToken, '/admin/login');
   },
 
   isAuthenticated(): boolean {

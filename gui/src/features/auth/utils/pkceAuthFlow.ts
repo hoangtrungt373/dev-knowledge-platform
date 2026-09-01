@@ -1,10 +1,7 @@
 import { generateCodeChallenge, generateCodeVerifier, generateState } from './pkce';
 import { claimsToAuthTokens, KeycloakTokenResponse } from './keycloakClaims';
+import { REALM_BASE_URL } from './keycloakConfig';
 import { AuthTokens } from '../types';
-
-const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8180';
-const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'dev-knowledge-platform';
-const REALM_BASE_URL = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect`;
 
 /**
  * One Authorization Code + PKCE flow's identity — the pieces that differ between this app's two

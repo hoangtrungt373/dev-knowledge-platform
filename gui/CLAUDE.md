@@ -2069,6 +2069,55 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   To" panel both show it conditionally, the same idiom `phone`/`line2` already use. Verified via a
   clean `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the actual
   form/display is unverified in a real browser.
+- **New site-wide `app/Footer.tsx`, per request ("Add a footer for the user page").** Legal links
+  (Privacy Policy/Terms of Service/Shipping Policy/Report a Violation), social links (Facebook/
+  TikTok), a few internal Quick Links (Shop/Cart/Your Orders/Your Account), a support email, and a
+  copyright line — every legal/social `href` is a literal `#` placeholder per request ("Use fake
+  link at the moment"; only the Quick Links use real react-router `Link`s, since those pages
+  already exist). No official `@mui/icons-material` glyph exists for TikTok, so `Footer.tsx` defines
+  a small inline `SvgIcon` for it rather than pulling in an icon-pack dependency for one glyph.
+  **Hidden on the exact same routes `NavBar.tsx` already hides itself on** (`/admin`, `/chat`,
+  `/messages` — mirrors that component's own `hidden` check verbatim): `AdminLayout` is its own
+  full-height shell with no footer of its own design, and Chat/Messages are deliberately full-page,
+  chrome-free layouts, same reasoning `NavBar` itself already documents. Wired into `App.tsx`
+  rather than a per-page import: `<NavBar/>`/`<Routes/>`/`<Footer/>` are now wrapped in one
+  `display: flex, flexDirection: column, minHeight: 100vh` `Box`, with `<Routes/>` itself wrapped in
+  a `flexGrow: 1` `Box` — the standard "sticky footer" flex shape, so `Footer` sits at the bottom of
+  the viewport even on short-content pages (e.g. `/login`) instead of floating mid-page, while still
+  being pushed further down by genuinely tall pages (e.g. `/shop`). Confirmed safe against
+  `ChatPage.tsx`/`MessagesPage.tsx`/`AdminLayout.tsx`'s own `height: '100vh'` root `Box`es before
+  adding the wrapper — each sizes itself absolutely regardless of its new flex-item parent, and none
+  of the three ever render `Footer` anyway (same hidden-routes list above), so nesting them one level
+  deeper changes nothing about their own layout. Verified via a clean `tsc --noEmit` and a
+  successful `vite build` only — no Docker in this sandbox, so the actual sticky-footer behavior
+  across routes is unverified in a real browser.
+- **Order History/Detail moved from their own top-level `/orders`/`/orders/:id` routes into
+  `AccountLayout`'s shell (`/account/orders`/`/account/orders/:id`), per request.** `AccountLayout.tsx`'s
+  `NAV_ITEMS` gained a third entry (`Orders`, `ReceiptLongOutlinedIcon` — the same outlined glyph
+  `OrderHistoryPage.tsx`'s own empty-state already used, not `NavBar.tsx`'s old filled
+  `ReceiptLongIcon`); `App.tsx`'s `<Route path="/account">` block gained `orders`/`orders/:id`
+  children (no per-child `<PrivateRoute>` wrapper — the parent `<AccountLayout>` route already
+  gates the whole shell, same as `profile`/`addresses`), and the old top-level `/orders`/
+  `/orders/:id` routes were deleted outright — no backward-compat redirect was added (unlike
+  `/dashboard`'s own kept-as-redirect precedent, which exists because multiple *login-flow* entry
+  points hardcode that literal path; nothing here has an equivalent hard dependency on the old URL).
+  **`NavBar.tsx`'s own dedicated "Orders" button was removed in the same change** (and its now-
+  unused `ReceiptLongIcon` import) — its "Account" button already covers everything under
+  `/account/**`, the same treatment `Addresses` itself already had (no dedicated top-level button of
+  its own). Every internal `navigate(...)`/`href` that used to point at `/orders`/`/orders/:id` was
+  repointed to the new `/account/orders`/`/account/orders/:id` shape:
+  `OrderHistoryPage.tsx`'s own "View Details" navigation, `OrderDetailPage.tsx`'s "Back to Your
+  Orders" button and back-arrow `IconButton`, `CheckoutPage.tsx`'s post-confirm redirect to the
+  newly-created order, and `Footer.tsx`'s own "Your Orders" Quick Link. **Both pages' own outer
+  `width: '80%', mx: 'auto'` wrapper had to come off**, replaced with plain `p: 3` — the exact same
+  fix `AddressBookPage.tsx`'s own wrapper already needed when *it* moved under `AccountLayout`
+  (see that page's own note above): nested inside a column that's already `~80%` of the viewport, a
+  second `80%` compounds into a visibly narrow, off-center block. `AddressBookPage.tsx`'s own doc
+  comment (`"a top-level PrivateRoute like /orders"`) was also fixed in passing — stale even before
+  this change (that page was never actually a *top-level* route, always nested under
+  `AccountLayout`), and actively wrong now that `/orders` isn't top-level either. Verified via a
+  clean `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the actual
+  nav-highlighting/routing/layout-width behavior is unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's
@@ -2272,7 +2321,81 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   it's still pending.
 - A few pages were already large enough before this reorg to smell like God Components mixing
   data-fetching + view + local logic (`@ai/pages/EmbeddingsPage.tsx` ~512 lines,
-  `@auth/pages/ProfilePage.tsx` (renamed from `Dashboard.tsx`) ~407, `@ai/pages/PipelineMetricsPage.tsx` ~352,
-  `@content/pages/QuestionAnswerFormPage.tsx` ~351) — worth extracting a custom hook per page if
-  you're touching one of these for a feature change anyway, but that's a finer-grained cleanup this
-  reorg didn't attempt.
+  `@auth/pages/ProfilePage.tsx` (renamed from `Dashboard.tsx`) ~407 at the time, `@ai/pages
+  /PipelineMetricsPage.tsx` ~352, `@content/pages/QuestionAnswerFormPage.tsx` ~351) — worth
+  extracting a custom hook per page if you're touching one of these for a feature change anyway,
+  but that's a finer-grained cleanup this reorg didn't attempt. **`ProfilePage.tsx` itself was
+  addressed later, during a full `@auth` folder analysis-and-cleanup pass** — see this file's own
+  note on that pass, further down — down to ~433 lines via two extracted hooks
+  (`useCurrentUserProfile`/`useEmailVerificationPolling`). `EmbeddingsPage.tsx`/
+  `PipelineMetricsPage.tsx`/`QuestionAnswerFormPage.tsx` remain untouched.
+- **Full `@auth` folder analysis-and-cleanup pass, per request ("as we did with the ecommerce
+  folder")** — every one of the 14 files under `features/auth/` was read and audited for bugs,
+  duplication, and God-Component smell; every finding was then implemented. In order:
+  - **Two real bugs fixed.** (1) `ProfilePage.tsx`'s `catch (error) { if ((error as any)?.status
+    === 401) authService.logout(); }` was dead code — `httpClient.ts`'s own `request()` already
+    intercepts *every* 401 from `/api/v1/auth/user` before it reaches the generic error path (silent
+    refresh, then either a retry or a hard redirect to `/login` with a bare `Error` carrying no
+    `.status`), so this branch could never actually fire; only non-401 failures ever attach
+    `.status`/`.errorResponse`. Removed outright (see `useCurrentUserProfile.ts` below — its own
+    empty `catch` block explains why nothing needs to replace it). (2) Stale "Duck Chat" branding in
+    `Login.tsx`/`SignUp.tsx` (the app is "Dev Knowledge Platform" everywhere else — `NavBar.tsx`,
+    `Footer.tsx`) — fixed to match. `authApi.ts`'s comment referencing the long-renamed
+    `Dashboard.tsx` was also fixed to say `ProfilePage.tsx`.
+  - **New `utils/keycloakConfig.ts`** — `KEYCLOAK_URL`/`KEYCLOAK_REALM`/`REALM_BASE_URL` used to be
+    computed identically in three files (`pkceAuthFlow.ts`, `authService.ts`, `adminAuthService.ts`);
+    all three now import from here. Also gained `rpInitiatedLogout(idToken, redirectPath)` — the
+    Keycloak end-session-endpoint redirect `authService.logout()`/`adminAuthService.logout()` used to
+    duplicate near-verbatim, differing only in `redirectPath` (`/login` vs `/admin/login`).
+  - **New `hooks/useOAuthCallback.ts` + `components/OAuthCallbackStatus.tsx`** —
+    `AuthCallback.tsx`/`AdminAuthCallback.tsx` were ~90% identical (the `hasRun`-ref StrictMode
+    guard, the try/exchange/navigate-on-success/catch-and-bounce-back-after-a-delay shape, and the
+    loading/error JSX), differing only in which service to call, the success/error redirect targets,
+    whether a post-login cart refresh runs, and a few text labels. The hook owns the flow (takes an
+    `exchange` callback + redirect targets + labels, returns `{ error }`); the component renders the
+    result. Both page files dropped from ~75 lines each to ~30.
+  - **New `@shared/utils/validation.ts#isValidEmail`** — the exact email-format regex
+    (`/^[^\s@]+@[^\s@]+\.[^\s@]+$/`) was duplicated as an inline literal in **four** places:
+    `Login.tsx`/`SignUp.tsx` here, plus `@ecommerce`'s `CheckoutPage.tsx`/`AddressFormDialog.tsx`
+    (unrelated to this folder, but the same literal, found while auditing this one). All four now
+    call the one shared function instead.
+  - **New `components/AuthCard.tsx`/`SocialLoginButtons.tsx`/`PasswordField.tsx`** —
+    `Login.tsx`/`SignUp.tsx`/`AdminLogin.tsx` all duplicated the same centered `Box`+`Paper` card
+    wrapper (`AuthCard`, now shared by all three); `Login.tsx`/`SignUp.tsx` duplicated the full
+    Google/Facebook button pair verbatim, including the per-provider hover-color styling from
+    `PROVIDER_COLORS` (`SocialLoginButtons`, taking an `onSelect: (provider: OAuthProvider) => void`
+    prop); and the password `TextField`-with-show/hide-toggle markup appeared three times total
+    across the two files (`PasswordField`, owning its own show/hide state internally). `Login.tsx`
+    went from 224 to 158 lines; `SignUp.tsx` from 281 to 202.
+  - **`ProfilePage.tsx`'s two data-effects extracted into `hooks/useCurrentUserProfile.ts`/
+    `useEmailVerificationPolling.ts`** — the God-Component note above. `useCurrentUserProfile`
+    covers the initial fetch-plus-JIT-username-drift-correction effect (own `hasFetchedRef` guard,
+    same reasoning as `useOAuthCallback`'s `hasRun`); `useEmailVerificationPolling` covers the
+    visibility-change-driven re-check effect. A genuine bonus simplification fell out of the first
+    extraction: the original effect also seeded `firstName`/`lastName`/`username` local edit-form
+    state on fetch, but that seed was provably dead — the read-only view reads `user.firstName`
+    directly (never the local state), and `handleEdit()` already re-seeds those same fields from
+    `user` the moment editing actually starts, so the fetch-time seed was always overwritten before
+    ever being read. Dropped; `useCurrentUserProfile` returns only `{ user, setUser, loading }`.
+  - **`ProfilePage.tsx`'s "provider icon + label" `Chip` markup, duplicated twice in the same file**
+    (the Profile Header chip and the Account Details "Sign-in method" row) — extracted into one
+    local `ProviderChip` component, used twice. `ProfilePage.tsx` went from ~520 lines (see the
+    God-Components note above) to ~433.
+  - **`types.ts` gained three literal-union types** (`Role = 'ADMIN' | 'USER'`,
+    `UserProvider = 'LOCAL' | 'GOOGLE' | 'FACEBOOK'`, `UserStatus = 'ONLINE' | 'OFFLINE' | 'AWAY' |
+    'BUSY'`), mirroring identity-service's own `UserRole`/`UserProvider`/`UserStatus` enums exactly
+    (verified against the actual Java source, not guessed) — `User.provider`/`role`/`status` and
+    `AuthTokens.role` were all plain `string` before. `keycloakClaims.ts#claimsToAuthTokens` needed
+    one explicit `const role: Role = ...` annotation (a ternary of two string literals otherwise
+    widens to `string` when assigned to an intermediate `const` before being returned, which no
+    longer satisfies `AuthTokens.role?: Role`). Deliberately did **not** touch `friends/types.ts`'s
+    own `status: string` — same loose-typing shape, but a different backend value set this pass
+    never verified, so left alone rather than guessed.
+  - Not touched, noted but explicitly left alone: `features/auth`'s cross-feature import of
+    `@ecommerce/context/CartContext` (`Login.tsx`/`SignUp.tsx`/`AuthCallback.tsx` all call
+    `refreshCart()` post-login) — flagged as a structural seam worth knowing about if a second
+    feature ever needs its own "run after login" hook, but not an actual bug with today's single
+    consumer, so left as-is rather than introducing an event-bus abstraction speculatively.
+  - Verified via a clean `tsc --noEmit` and a successful `vite build` only, after every step above
+    — no Docker in this sandbox, so the actual login/signup/callback/profile-edit flows are
+    unverified in a real browser.

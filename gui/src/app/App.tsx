@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { ThemeProvider, CssBaseline } from '@mui/material';
+import { Box, ThemeProvider, CssBaseline } from '@mui/material';
 import NavBar from './NavBar';
+import Footer from './Footer';
 import PrivateRoute from './PrivateRoute';
 import GuestRoute from './GuestRoute';
 import AdminLayout from './admin-shell/AdminLayout';
@@ -61,7 +62,9 @@ function App() {
       <NotificationProvider>
         <CartProvider>
         <StompConnectionProvider>
+        <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
           <NavBar mode={mode} onToggleMode={toggleMode} />
+          <Box sx={{ flexGrow: 1 }}>
           <Routes>
             {/* Guest-only routes — redirect to dashboard if already logged in */}
             <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
@@ -85,8 +88,12 @@ function App() {
                 needed to change when Profile moved under the new /account shell below. */}
             <Route path="/dashboard" element={<Navigate to="/account/profile" replace />} />
 
-            {/* Account — the shopper's own Profile + AddressBook, sharing one sidebar shell (see
-                AccountLayout's own Javadoc-style comment for why it lives outside both features). */}
+            {/* Account — the shopper's own Profile + AddressBook + Order History/Detail, sharing
+                one sidebar shell (see AccountLayout's own Javadoc-style comment for why it lives
+                outside every feature it fronts). Order History/Detail moved here from their own
+                top-level /orders routes per request — NavBar's own "Orders" button was removed in
+                the same change, folded into the existing "Account" button (same treatment
+                Addresses already had: no dedicated NavBar entry of its own). */}
             <Route
               path="/account"
               element={
@@ -97,6 +104,8 @@ function App() {
             >
               <Route path="profile" element={<ProfilePage />} />
               <Route path="addresses" element={<AddressBookPage />} />
+              <Route path="orders" element={<OrderHistoryPage />} />
+              <Route path="orders/:id" element={<OrderDetailPage />} />
               <Route index element={<Navigate to="profile" replace />} />
             </Route>
 
@@ -122,19 +131,6 @@ function App() {
             <Route path="/checkout" element={
               <PrivateRoute>
                 <CheckoutPage />
-              </PrivateRoute>
-            } />
-
-            {/* Order History & Detail — Epic 3 (US-3.3/3.5/3.6), authenticated-only like Cart/Checkout */}
-            <Route path="/orders" element={
-              <PrivateRoute>
-                <OrderHistoryPage />
-              </PrivateRoute>
-            } />
-
-            <Route path="/orders/:id" element={
-              <PrivateRoute>
-                <OrderDetailPage />
               </PrivateRoute>
             } />
 
@@ -204,6 +200,9 @@ function App() {
               }
             />
           </Routes>
+          </Box>
+          <Footer />
+        </Box>
         </StompConnectionProvider>
         </CartProvider>
       </NotificationProvider>

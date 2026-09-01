@@ -3,24 +3,31 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Box, Divider, List, ListItemButton, ListItemIcon, ListItemText, Paper, Typography } from '@mui/material';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import { profileApi } from '@auth/api/profileApi';
 import { User } from '@auth/types';
 
 const NAV_ITEMS = [
   { label: 'Profile', icon: <PersonOutlineIcon fontSize="small" />, path: '/account/profile' },
   { label: 'Addresses', icon: <LocationOnOutlinedIcon fontSize="small" />, path: '/account/addresses' },
+  { label: 'Orders', icon: <ReceiptLongOutlinedIcon fontSize="small" />, path: '/account/orders' },
 ];
 
 /**
  * Shell for the shopper's own account area — `Profile` (identity-service's own user profile,
- * `@auth/pages/ProfilePage.tsx`) and `Addresses` (ecommerce-service's AddressBook,
- * `@ecommerce/pages/AddressBookPage.tsx`). Lives directly under `app/`, not inside either feature
- * — same reasoning `admin-shell/` is neutral rather than owned by `@content`/`@ecommerce`: this
- * shell's two destinations span two unrelated features, so it can't fairly belong to either one.
+ * `@auth/pages/ProfilePage.tsx`), `Addresses` (ecommerce-service's AddressBook,
+ * `@ecommerce/pages/AddressBookPage.tsx`), and `Orders` (ecommerce-service's own order history/
+ * detail, `@ecommerce/pages/orders/{OrderHistoryPage,OrderDetailPage}.tsx` — moved here from their
+ * own top-level `/orders`/`/orders/:id` routes per request; `NavBar.tsx`'s own dedicated "Orders"
+ * button was removed in the same change, since its "Account" button already covers everything
+ * under `/account/**`, same treatment `Addresses` itself already had). Lives directly under
+ * `app/`, not inside any one feature — same reasoning `admin-shell/` is neutral rather than owned
+ * by `@content`/`@ecommerce`: this shell's destinations span multiple unrelated features, so it
+ * can't fairly belong to any one of them.
  *
  * <p>Deliberately simpler than `AdminLayout`'s own sidebar — no collapse toggle/`localStorage`
- * persistence, since there are only two destinations today; that complexity earned its keep on
- * `AdminLayout` with 9+ nav items, not here. Revisit if this grows a third or fourth section
+ * persistence, since there are only three destinations today; that complexity earned its keep on
+ * `AdminLayout` with 9+ nav items, not here. Revisit if this grows further
  * (Security, Notifications, Payment Methods, …) and the sidebar starts feeling cramped.
  *
  * <p>Unlike `AdminLayout`, the top `NavBar` stays visible above this shell — the account area is

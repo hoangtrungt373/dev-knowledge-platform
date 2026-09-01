@@ -28,10 +28,11 @@ import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import { authApi } from '../api/authApi';
 import { profileApi } from '../api/profileApi';
 import { authService } from '../services/authService';
-import { User } from '../types';
+import { UserProvider } from '../types';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
-import { decodeJwtPayload } from '@shared/utils/jwt';
+import { useCurrentUserProfile } from '../hooks/useCurrentUserProfile';
+import { useEmailVerificationPolling } from '../hooks/useEmailVerificationPolling';
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -46,10 +47,27 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function ProviderIcon({ provider }: { provider: string }) {
+function ProviderIcon({ provider }: { provider: UserProvider }) {
   if (provider === 'GOOGLE') return <GoogleIcon sx={{ fontSize: 16, color: '#db4437' }} />;
   if (provider === 'FACEBOOK') return <FacebookIcon sx={{ fontSize: 16, color: '#1877f2' }} />;
   return <LockIcon sx={{ fontSize: 16 }} />;
+}
+
+// The Profile Header chip and the Account Details "Sign-in method" row used to duplicate this
+// exact icon+label markup inline, twice, in this same file.
+function ProviderChip({ provider }: { provider: UserProvider }) {
+  return (
+    <Chip
+      size="small"
+      label={
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <ProviderIcon provider={provider} />
+          <span>{provider.charAt(0) + provider.slice(1).toLowerCase()}</span>
+        </Stack>
+      }
+      variant="outlined"
+    />
+  );
 }
 
 function formatDate(iso?: string) {
@@ -70,8 +88,9 @@ export default function ProfilePage(): JSX.Element | null {
   const [searchParams, setSearchParams] = useSearchParams();
   const { loading: saving, guard } = useSubmitGuard();
 
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, setUser, loading } = useCurrentUserProfile(showError);
+  useEmailVerificationPolling(user, setUser);
+
   const [isEditing, setIsEditing] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -80,53 +99,6 @@ export default function ProfilePage(): JSX.Element | null {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // This effect calls authService.refreshAccessToken() below on a claim mismatch — a real token
-  // rotation, not just an idempotent GET, so it can't safely run twice. StrictMode's dev-mode
-  // double-invoke would otherwise fire it twice back to back; a second concurrent refresh could
-  // hit an already-rotated-out refresh token and fail. Same guard AuthCallback.tsx/
-  // AdminAuthCallback.tsx use for their own one-time-use PKCE code exchange.
-  const hasFetchedRef = useRef(false);
-
-  useEffect(() => {
-    if (hasFetchedRef.current) return;
-    hasFetchedRef.current = true;
-
-    (async () => {
-      try {
-        const me = await profileApi.getCurrentUser(showError);
-        setUser(me);
-        setFirstName(me.firstName ?? '');
-        setLastName(me.lastName ?? '');
-        setUsername(me.username ?? '');
-
-        // A brand-new Google/Facebook login gets JIT-provisioned server-side with a derived
-        // username that differs from Keycloak's own default (identity-service's
-        // UserServiceImpl.findOrCreateFromKeycloak renames it away from username==email on first
-        // sight) — but the access token this very request was authenticated with was minted
-        // *before* that rename, so its preferred_username claim still says the old value. Left
-        // alone, the next authenticated call anywhere in the app would see that stale claim and
-        // get JIT-synced back to it, silently reverting the rename (the same staleness class
-        // handleSave's own refreshAccessToken call already guards against for a manual edit).
-        // Comparing the claim against what this response just said settles it before that can
-        // happen, regardless of which page happens to make the first authenticated call.
-        const accessToken = authService.getAccessToken();
-        if (accessToken) {
-          try {
-            const { preferred_username } = decodeJwtPayload<{ preferred_username?: string }>(accessToken);
-            if (preferred_username && preferred_username !== me.username) {
-              await authService.refreshAccessToken();
-            }
-          } catch {
-            // Best-effort — a decode failure just means the next natural token refresh catches up.
-          }
-        }
-      } catch (error) {
-        if ((error as any)?.status === 401) authService.logout();
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [showError]);
 
   // Landed here (still logged in, GuestRoute bounced /login?emailVerified=true straight through)
   // from identity-service's sendVerifyEmail redirect — same one-time confirmation toast Login.tsx
@@ -140,42 +112,6 @@ export default function ProfilePage(): JSX.Element | null {
       }, { replace: true });
     }
   }, [searchParams, setSearchParams, showSuccess]);
-
-  // Clears the email-verification banner without forcing a full re-login. Verification status is
-  // a JWT claim baked into the access token at issuance time, so a plain reload keeps showing the
-  // stale (unverified) value — Keycloak's own action-token link can't push a change into an
-  // already-open tab. Refreshing gives a real refresh_token grant a chance to pick up the new
-  // claim as soon as possible, without waiting for the current access token to actually expire.
-  // Runs once immediately (identity-service's sendVerifyEmail redirects back to /dashboard after
-  // the Keycloak confirmation click, which is often a brand-new tab/page load — one that never
-  // fires visibilitychange on its own) and again on every future tab-refocus (the case where the
-  // link was opened in a separate tab and the user comes back to this already-open one).
-  // Silent/best-effort — a failed check here just means the next trigger tries again.
-  useEffect(() => {
-    if (!user || user.emailVerified) return;
-
-    const checkVerification = async () => {
-      const refreshed = await authService.refreshAccessToken();
-      if (!refreshed) return;
-      try {
-        const me = await profileApi.getCurrentUser();
-        setUser(me);
-      } catch {
-        // Silent — next trigger retries.
-      }
-    };
-
-    checkVerification();
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        checkVerification();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [user?.emailVerified]);
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -372,16 +308,7 @@ export default function ProfilePage(): JSX.Element | null {
               {user.role && (
                 <Chip size="small" label={user.role} variant="outlined" sx={{ fontWeight: 600 }} />
               )}
-              <Chip
-                size="small"
-                label={
-                  <Stack direction="row" spacing={0.5} alignItems="center">
-                    <ProviderIcon provider={user.provider} />
-                    <span>{user.provider.charAt(0) + user.provider.slice(1).toLowerCase()}</span>
-                  </Stack>
-                }
-                variant="outlined"
-              />
+              <ProviderChip provider={user.provider} />
             </Stack>
           </Box>
 
@@ -487,21 +414,7 @@ export default function ProfilePage(): JSX.Element | null {
         <Divider sx={{ mb: 3 }} />
         <Grid container spacing={3}>
           <Grid item xs={12} sm={6}>
-            <InfoRow
-              label="Sign-in method"
-              value={
-                <Chip
-                  size="small"
-                  label={
-                    <Stack direction="row" spacing={0.5} alignItems="center">
-                      <ProviderIcon provider={user.provider} />
-                      <span>{user.provider.charAt(0) + user.provider.slice(1).toLowerCase()}</span>
-                    </Stack>
-                  }
-                  variant="outlined"
-                />
-              }
-            />
+            <InfoRow label="Sign-in method" value={<ProviderChip provider={user.provider} />} />
           </Grid>
           <Grid item xs={12} sm={6}>
             <InfoRow label="Role" value={user.role} />

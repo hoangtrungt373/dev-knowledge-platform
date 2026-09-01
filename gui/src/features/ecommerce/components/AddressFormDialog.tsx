@@ -15,9 +15,7 @@ import { SavedAddress } from '../types';
 import { addressApi } from '../api/addressApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
-
-/** Lightweight client-side sanity check only — the backend's own @Email is the real validation. */
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { isValidEmail } from '@shared/utils/validation';
 
 interface FormErrors {
   fullName?: string;
@@ -81,7 +79,7 @@ export default function AddressFormDialog({ open, address, onClose, onSaved }: P
     if (!fullName.trim()) e.fullName = 'Full name is required';
     if (!phone.trim()) e.phone = 'Phone number is required';
     if (!email.trim()) e.email = 'Email is required';
-    else if (!EMAIL_PATTERN.test(email.trim())) e.email = 'Enter a valid email address';
+    else if (!isValidEmail(email.trim())) e.email = 'Enter a valid email address';
     if (!line1.trim()) e.line1 = 'Address is required';
     if (!city.trim()) e.city = 'City is required';
     if (!state.trim()) e.state = 'State is required';

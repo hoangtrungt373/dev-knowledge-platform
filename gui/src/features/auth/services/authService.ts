@@ -3,10 +3,8 @@ import { STORAGE_KEYS } from '@shared/constants/storage';
 import { decodeJwtPayload } from '@shared/utils/jwt';
 import { claimsToAuthTokens, KeycloakTokenResponse } from '../utils/keycloakClaims';
 import { exchangePkceCode, PkceFlowConfig, startPkceLogin } from '../utils/pkceAuthFlow';
+import { REALM_BASE_URL, rpInitiatedLogout } from '../utils/keycloakConfig';
 
-const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8180';
-const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'dev-knowledge-platform';
-const REALM_BASE_URL = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect`;
 // Deliberately a *separate* client from "gui" (which backs the admin Authorization Code + PKCE
 // flow) — kept apart so that client never carries password-grant capability. This whole
 // loginWithPassword() function is Option A (direct password grant / ROPC), used here on purpose
@@ -168,18 +166,13 @@ export const authService: AuthService = {
     Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
   },
 
-  // RP-initiated logout — redirects to Keycloak's own end-session endpoint so the browser's
-  // Keycloak SSO cookie is actually cleared, not just this app's local tokens (same fix
-  // adminAuthService.logout() already got, replacing the old dead POST /api/v1/auth/logout).
+  // RP-initiated logout (see keycloakConfig.rpInitiatedLogout's own Javadoc) — replacing the old
+  // dead POST /api/v1/auth/logout. Shared with adminAuthService.logout(), which used to duplicate
+  // this near verbatim.
   logout(): void {
     const idToken = this.getIdToken();
     this.clear();
-
-    const params = new URLSearchParams({
-      post_logout_redirect_uri: `${window.location.origin}/login`,
-      ...(idToken ? { id_token_hint: idToken } : {}),
-    });
-    window.location.href = `${REALM_BASE_URL}/logout?${params.toString()}`;
+    rpInitiatedLogout(idToken, '/login');
   },
 
   // Validates the JWT's actual expiry (`exp` claim) rather than just checking a token is present —

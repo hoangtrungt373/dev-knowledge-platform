@@ -1,30 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  Box,
-  Paper,
-  Typography,
-  Button,
-  Stack,
-  TextField,
-  Divider,
-  Link,
-  InputAdornment,
-  IconButton,
-  CircularProgress,
-} from '@mui/material';
-import GoogleIcon from '@mui/icons-material/Google';
-import FacebookIcon from '@mui/icons-material/Facebook';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import { Box, Button, CircularProgress, Divider, InputAdornment, Link, Stack, TextField, Typography } from '@mui/material';
 import EmailIcon from '@mui/icons-material/Email';
-import LockIcon from '@mui/icons-material/Lock';
 import { authService } from '../services/authService';
 import { OAuthProvider } from '../types';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
-import { PROVIDER_COLORS } from '@shared/constants/colors';
+import { isValidEmail } from '@shared/utils/validation';
 import { useCart } from '@ecommerce/context/CartContext';
+import AuthCard from '../components/AuthCard';
+import SocialLoginButtons from '../components/SocialLoginButtons';
+import PasswordField from '../components/PasswordField';
+
+interface LoginFormErrors {
+  email?: string;
+  password?: string;
+}
 
 export default function Login(): JSX.Element {
   const { showError, showSuccess } = useNotification();
@@ -35,8 +26,7 @@ export default function Login(): JSX.Element {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [errors, setErrors] = useState<LoginFormErrors>({});
 
   // Landed here from identity-service's sendVerifyEmail redirect (?emailVerified=true) — a
   // one-time confirmation toast, since Keycloak's own verification flow gives no feedback of its
@@ -56,20 +46,20 @@ export default function Login(): JSX.Element {
   };
 
   const validateForm = (): boolean => {
-    const newErrors: { email?: string; password?: string } = {};
-    
+    const newErrors: LoginFormErrors = {};
+
     if (!email.trim()) {
       newErrors.email = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    } else if (!isValidEmail(email)) {
       newErrors.email = 'Please enter a valid email';
     }
-    
+
     if (!password) {
       newErrors.password = 'Password is required';
     } else if (password.length < 8) {
       newErrors.password = 'Password must be at least 8 characters';
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -93,131 +83,72 @@ export default function Login(): JSX.Element {
   };
 
   return (
-    <Box display="flex" justifyContent="center" alignItems="center" minHeight="90vh" sx={{ px: 2, py: 4 }}>
-      <Paper elevation={3} sx={{ p: 4, width: '100%', maxWidth: 420 }}>
-        <Typography variant="h5" fontWeight="bold" textAlign="center" gutterBottom>
-          Welcome Back
-        </Typography>
-        <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mb: 3 }}>
-          Sign in to continue to Duck Chat
-        </Typography>
+    <AuthCard>
+      <Typography variant="h5" fontWeight="bold" textAlign="center" gutterBottom>
+        Welcome Back
+      </Typography>
+      <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mb: 3 }}>
+        Sign in to continue to Dev Knowledge Platform
+      </Typography>
 
-        {/* Email/Password Form */}
-        <Box component="form" onSubmit={handleSubmit}>
-          <Stack spacing={2}>
-            <TextField
-              fullWidth
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              error={!!errors.email}
-              helperText={errors.email}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <EmailIcon color="action" />
-                  </InputAdornment>
-                ),
-              }}
-            />
-            
-            <TextField
-              fullWidth
-              label="Password"
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              error={!!errors.password}
-              helperText={errors.password}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <LockIcon color="action" />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => setShowPassword(!showPassword)}
-                      edge="end"
-                      size="small"
-                    >
-                      {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-
-            <Button
-              type="submit"
-              variant="contained"
-              size="large"
-              fullWidth
-              disabled={loading}
-            >
-              {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
-            </Button>
-          </Stack>
-        </Box>
-
-        {/* Divider */}
-        <Divider sx={{ my: 3 }}>
-          <Typography variant="body2" color="text.secondary">
-            or continue with
-          </Typography>
-        </Divider>
-
-        {/* OAuth Buttons */}
+      {/* Email/Password Form */}
+      <Box component="form" onSubmit={handleSubmit}>
         <Stack spacing={2}>
-          <Button
-            variant="outlined"
-            size="large"
+          <TextField
             fullWidth
-            startIcon={<GoogleIcon />}
-            onClick={() => loginWith('google')}
-            sx={{
-              borderColor: PROVIDER_COLORS.google.main,
-              color: PROVIDER_COLORS.google.main,
-              '&:hover': {
-                borderColor: PROVIDER_COLORS.google.hover,
-                backgroundColor: PROVIDER_COLORS.google.hoverBg,
-              },
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            error={!!errors.email}
+            helperText={errors.email}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <EmailIcon color="action" />
+                </InputAdornment>
+              ),
             }}
-          >
-            Continue with Google
-          </Button>
+          />
+
+          <PasswordField
+            label="Password"
+            value={password}
+            onChange={setPassword}
+            error={!!errors.password}
+            helperText={errors.password}
+          />
 
           <Button
-            variant="outlined"
+            type="submit"
+            variant="contained"
             size="large"
             fullWidth
-            startIcon={<FacebookIcon />}
-            onClick={() => loginWith('facebook')}
-            sx={{
-              borderColor: PROVIDER_COLORS.facebook.main,
-              color: PROVIDER_COLORS.facebook.main,
-              '&:hover': {
-                borderColor: PROVIDER_COLORS.facebook.hover,
-                backgroundColor: PROVIDER_COLORS.facebook.hoverBg,
-              },
-            }}
+            disabled={loading}
           >
-            Continue with Facebook
+            {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
           </Button>
         </Stack>
+      </Box>
 
-        {/* Sign Up Link */}
-        <Box sx={{ mt: 3, textAlign: 'center' }}>
-          <Typography variant="body2" color="text.secondary">
-            Don't have an account?{' '}
-            <Link component={RouterLink} to="/signup" underline="hover" fontWeight="medium">
-              Sign Up
-            </Link>
-          </Typography>
-        </Box>
-      </Paper>
-    </Box>
+      {/* Divider */}
+      <Divider sx={{ my: 3 }}>
+        <Typography variant="body2" color="text.secondary">
+          or continue with
+        </Typography>
+      </Divider>
+
+      <SocialLoginButtons onSelect={loginWith} />
+
+      {/* Sign Up Link */}
+      <Box sx={{ mt: 3, textAlign: 'center' }}>
+        <Typography variant="body2" color="text.secondary">
+          Don't have an account?{' '}
+          <Link component={RouterLink} to="/signup" underline="hover" fontWeight="medium">
+            Sign Up
+          </Link>
+        </Typography>
+      </Box>
+    </AuthCard>
   );
 }

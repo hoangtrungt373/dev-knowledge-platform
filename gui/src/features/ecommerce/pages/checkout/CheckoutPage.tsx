@@ -18,6 +18,7 @@ import {
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
+import { isValidEmail } from '@shared/utils/validation';
 import { useCart } from '../../context/CartContext';
 import { checkoutApi } from '../../api/checkoutApi';
 import { addressApi } from '../../api/addressApi';
@@ -43,9 +44,6 @@ function toOrderLine(line: CartLine): OrderLine {
     productSlug: line.productSlug ?? null,
   };
 }
-
-/** Lightweight client-side sanity check only — the backend's own @Email is the real validation. */
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface AddressFormErrors {
   fullName?: string;
@@ -168,7 +166,7 @@ export default function CheckoutPage(): JSX.Element {
     if (!(address.phone ?? '').trim()) newErrors.phone = 'Phone number is required';
     const emailTrimmed = (address.email ?? '').trim();
     if (!emailTrimmed) newErrors.email = 'Email is required';
-    else if (!EMAIL_PATTERN.test(emailTrimmed)) newErrors.email = 'Enter a valid email address';
+    else if (!isValidEmail(emailTrimmed)) newErrors.email = 'Enter a valid email address';
     if (!address.line1.trim()) newErrors.line1 = 'Address is required';
     if (!address.city.trim()) newErrors.city = 'City is required';
     if (!address.state.trim()) newErrors.state = 'State is required';
@@ -198,8 +196,9 @@ export default function CheckoutPage(): JSX.Element {
         );
         refreshCart(); // backend removes only the ordered lines on success — resync the badge/context
         // Order Detail (Epic 3) is now the canonical "here's your order" view — it has the real
-        // Pay Now button this page's own former inline confirmation never could.
-        navigate(`/orders/${result.orderId}`);
+        // Pay Now button this page's own former inline confirmation never could. Lives under the
+        // Account shell now (moved from a top-level /orders/:id route per request).
+        navigate(`/account/orders/${result.orderId}`);
       } catch (err) {
         showError(err instanceof Error ? err.message : 'Could not place your order. Please try again.');
       }

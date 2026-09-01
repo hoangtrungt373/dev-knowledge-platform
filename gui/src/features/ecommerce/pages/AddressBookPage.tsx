@@ -23,8 +23,9 @@ import { addressApi } from '../api/addressApi';
 import { SavedAddress } from '../types';
 import AddressFormDialog from '../components/AddressFormDialog';
 
-/** The shopper's own "My Addresses" page — never admin-gated, a top-level PrivateRoute like
- * /orders, since every address here belongs to exactly the caller. */
+/** The shopper's own "My Addresses" page — never admin-gated, just a plain authenticated
+ * PrivateRoute like every other page nested under AccountLayout (Profile, Orders), since every
+ * address here belongs to exactly the caller. */
 export default function AddressBookPage(): JSX.Element {
   const { showError, showSuccess } = useNotification();
 

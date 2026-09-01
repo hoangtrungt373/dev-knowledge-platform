@@ -167,7 +167,7 @@ export default function OrderDetailPage(): JSX.Element {
     return (
       <Box sx={{ p: 3, textAlign: 'center', maxWidth: 500, mx: 'auto', mt: 6 }}>
         <Typography variant="h6" sx={{ mb: 1 }}>Order not found</Typography>
-        <Button variant="contained" onClick={() => navigate('/orders')}>Back to Your Orders</Button>
+        <Button variant="contained" onClick={() => navigate('/account/orders')}>Back to Your Orders</Button>
       </Box>
     );
   }
@@ -190,10 +190,12 @@ export default function OrderDetailPage(): JSX.Element {
   const activeStep = isOffPath ? errorStepIndex : happyPathIndex;
 
   return (
-    <Box sx={{ p: 3, width: '80%', mx: 'auto' }}>
+    // Just p: 3, not this page's old width: '80%', mx: 'auto' — same "nested inside AccountLayout's
+    // own already-80%-wide content column now" fix as OrderHistoryPage.tsx's own wrapper above.
+    <Box sx={{ p: 3 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 3 }}>
         <Tooltip title="Back to Your Orders">
-          <IconButton onClick={() => navigate('/orders')} size="small">
+          <IconButton onClick={() => navigate('/account/orders')} size="small">
             <ArrowBackIcon fontSize="small" />
           </IconButton>
         </Tooltip>
