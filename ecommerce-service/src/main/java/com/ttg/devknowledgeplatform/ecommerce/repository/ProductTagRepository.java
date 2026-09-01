@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 public interface ProductTagRepository extends JpaRepository<ProductTag, Integer>, JpaSpecificationExecutor<ProductTag> {
 
@@ -16,4 +18,7 @@ public interface ProductTagRepository extends JpaRepository<ProductTag, Integer>
     boolean existsByNameIgnoreCase(String name);
 
     boolean existsByNameIgnoreCaseAndIdNot(String name, Integer id);
+
+    /** Used by {@code service.seed.ProductTagSeeder}/{@code ProductSeeder} to resolve a seed row's tag by name. */
+    Optional<ProductTag> findByNameIgnoreCase(String name);
 }

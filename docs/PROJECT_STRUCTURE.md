@@ -1647,20 +1647,30 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                    parentName column once ProductCategory gained hierarchy
 │   │                                    support — seed data nests the 5 original categories under
 │   │                                    2 new roots (Wearables, Desk & Drinkware)
+│   ├── ProductTagSeeder.java       — extends infra's CsvSeeder<ProductTag>; mirrors
+│   │                                    ProductCategorySeeder (name is the idempotency key, no
+│   │                                    seedId, direct-repository persist, no ProductTagService
+│   │                                    involved — tag creation has no outbox event to trigger)
 │   ├── ProductSeeder.java          — implements Seeder directly (joins products.csv +
 │   │                                    product_variants.csv by name); routes through
 │   │                                    ProductService.create/deactivate, not a bare repository
 │   │                                    save, so PRODUCT_CHANGED fires and ProductSearchView gets
-│   │                                    populated
+│   │                                    populated; products.csv's optional tagNames column
+│   │                                    (semicolon-joined names) resolves to ProductTag ids via
+│   │                                    ProductTagRepository.findByNameIgnoreCase and feeds
+│   │                                    ProductCommands.Create.tagIds — no separate assignment
+│   │                                    seeder exists, assignment rides along with product creation
 │   ├── ProductImageSeeder.java     — extends CsvSeeder<Void>; generates placeholder JPEGs
 │   │                                    (PlaceholderImageGenerator, java.awt/ImageIO) and uploads
 │   │                                    them through ProductService.uploadImage via a new
 │   │                                    InMemoryMultipartFile (byte-array-backed MultipartFile —
 │   │                                    Spring's MockMultipartFile is spring-test-scoped only)
 │   └── EcommerceDataSeedingRunner.java — ApplicationRunner, @ConditionalOnProperty
-│                                           ("app.seed.enabled"), explicit categories→products→images
-│                                           order, same shape as content-service's/social-service's
-│                                           own runners
+│                                           ("app.seed.enabled"), explicit
+│                                           categories→tags→products→images order (tags must exist
+│                                           before products.csv's tagNames column can reference
+│                                           them by name), same shape as content-service's/
+│                                           social-service's own runners
 ├── mapper/                      — MapStruct: ProductCategoryMapper / ProductMapper (an abstract
 │                                    class, not a plain interface — injects infra's StorageService
 │                                    to resolve each ProductImage.storageKey into a presigned url

@@ -2,8 +2,10 @@ package com.ttg.devknowledgeplatform.ecommerce.service.seed;
 
 import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategory;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductTag;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductCategoryRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductRepository;
+import com.ttg.devknowledgeplatform.ecommerce.repository.ProductTagRepository;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductCommands;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductService;
 import com.ttg.devknowledgeplatform.infra.service.seed.Seeder;
@@ -24,6 +26,7 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -48,7 +51,13 @@ import java.util.Set;
  * <p>Idempotency key is {@code name} (see {@link ProductCategorySeeder}'s Javadoc for why this
  * isn't a decoupled {@code seedId} for this first-pass sample catalog); {@code products.csv}'
  * optional {@code active} column (blank/{@code true} by default) lets one seed row demonstrate
- * US-1.7's deactivate-on-create for free, without a second pass.
+ * US-1.7's deactivate-on-create for free, without a second pass. {@code products.csv}'s optional
+ * {@code tagNames} column (semicolon-joined, same compact inline convention as
+ * {@code product_variants.csv}'s {@code attributes} cell) resolves each name to a
+ * {@link ProductTag} id via {@link ProductTagRepository} and feeds the result straight into
+ * {@link ProductCommands.Create#tagIds()} — assignment itself is exercised for free through the
+ * same {@code create} call that already handles variants/images, no separate pass needed (unlike
+ * {@link ProductTagSeeder}, which must run first so every referenced name already exists).
  *
  * @author ttg
  */
@@ -62,6 +71,7 @@ public class ProductSeeder implements Seeder {
 
     private final ProductRepository productRepository;
     private final ProductCategoryRepository productCategoryRepository;
+    private final ProductTagRepository productTagRepository;
     private final ProductService productService;
 
     @Override
@@ -101,7 +111,7 @@ public class ProductSeeder implements Seeder {
                     category.getId(),
                     variants,
                     List.of(),
-                    Set.of());
+                    resolveTagIds(record, name));
             Product created = productService.create(command);
 
             if (isExplicitlyInactive(record)) {
@@ -113,6 +123,34 @@ public class ProductSeeder implements Seeder {
 
         log.info("ProductSeeder: inserted {} product(s), skipped {} already-present product(s)", inserted, skipped);
         return inserted;
+    }
+
+    /** {@code tagNames} is optional (the column, or the cell, may be blank) — an untagged product
+     * is a perfectly normal seed row, not an error. Unlike {@code categoryName}'s lookup above, an
+     * unknown tag name fails loudly rather than being silently skipped, same reasoning: a typo'd
+     * name in seed data should surface immediately, not produce a silently under-tagged product. */
+    private Set<Integer> resolveTagIds(CSVRecord record, String productName) {
+        if (!record.isMapped("tagNames")) {
+            return Set.of();
+        }
+        String raw = record.get("tagNames");
+        if (raw == null || raw.isBlank()) {
+            return Set.of();
+        }
+
+        Set<Integer> tagIds = new LinkedHashSet<>();
+        for (String tagName : raw.split(";")) {
+            String trimmed = tagName.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            ProductTag tag = productTagRepository.findByNameIgnoreCase(trimmed)
+                    .orElseThrow(() -> new IllegalStateException("products.csv row '" + productName
+                            + "' references unknown tag '" + trimmed
+                            + "' — seed product_tags.csv first"));
+            tagIds.add(tag.getId());
+        }
+        return tagIds;
     }
 
     private static boolean isExplicitlyInactive(CSVRecord record) {

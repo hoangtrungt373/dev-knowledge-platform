@@ -7,6 +7,7 @@ import {
   CircularProgress,
   FormControl,
   IconButton,
+  InputAdornment,
   InputLabel,
   MenuItem,
   Paper,
@@ -16,6 +17,7 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import AddIcon from '@mui/icons-material/Add';
 import { Product, ProductCategoryTreeNode, ProductTag, ProductVariantInput } from '../types';
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
@@ -43,6 +45,13 @@ export default function ProductFormPage(): JSX.Element {
   // allTags/selectedTagIds/toggleTag shape @content's QuestionAnswerFormPage already established.
   const [allTags, setAllTags] = useState<ProductTag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
+  // Brand-new tag names typed into this form but not yet persisted — nothing is created on the
+  // backend until the product itself is saved (see handleSubmit's resolveStagedTagIds), so these
+  // are plain strings, not ProductTag objects with a real id. Kept separate from allTags/
+  // selectedTagIds rather than optimistically inserted into them, since a discarded form (Cancel,
+  // navigate away) must leave zero trace in the tag catalog.
+  const [stagedTagNames, setStagedTagNames] = useState<string[]>([]);
+  const [newTagInput, setNewTagInput] = useState('');
 
   // Basic fields
   const [name, setName] = useState('');
@@ -109,6 +118,47 @@ export default function ProductFormPage(): JSX.Element {
     });
   };
 
+  // Queues a brand-new tag name locally — no API call here at all. If the name already matches an
+  // existing catalog tag (case-insensitively), that existing tag is selected instead of queuing a
+  // duplicate that would only fail with PRODUCT_TAG_NAME_CONFLICT once the form is actually saved;
+  // an already-queued duplicate is likewise a silent no-op rather than a second staged entry.
+  const handleAddStagedTag = () => {
+    const trimmed = newTagInput.trim();
+    if (!trimmed) return;
+
+    const existing = allTags.find(t => t.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      setSelectedTagIds(prev => new Set(prev).add(existing.id));
+      setNewTagInput('');
+      return;
+    }
+    if (stagedTagNames.some(n => n.toLowerCase() === trimmed.toLowerCase())) {
+      setNewTagInput('');
+      return;
+    }
+    setStagedTagNames(prev => [...prev, trimmed]);
+    setNewTagInput('');
+  };
+
+  const handleRemoveStagedTag = (tagName: string) => {
+    setStagedTagNames(prev => prev.filter(n => n !== tagName));
+  };
+
+  // Actually creates every staged tag name — called from handleSubmit only, right before the
+  // product itself is created/updated, so nothing lands in the tag catalog until the product save
+  // is actually attempted. Aborts (rethrows) on the first failure rather than continuing
+  // best-effort like ProductImageStager's own upload loop: an incomplete tag set silently applied
+  // to the product would be more surprising here than a failed save the admin can simply retry.
+  const resolveStagedTagIds = async (): Promise<number[]> => {
+    const ids: number[] = [];
+    for (const tagName of stagedTagNames) {
+      const created = await ecommerceApi.createProductTag({ name: tagName }, showError);
+      setAllTags(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      ids.push(created.id);
+    }
+    return ids;
+  };
+
   useEffect(() => {
     if (isEdit) {
       loadProduct().finally(() => setLoading(false));
@@ -130,7 +180,12 @@ export default function ProductFormPage(): JSX.Element {
     setSaving(true);
     try {
       const descriptionToSave = hasVisibleHtmlContent(description) ? description : undefined;
-      const tagIds = [...selectedTagIds];
+      // Every staged (not-yet-real) tag name is created now, right before the product itself is
+      // saved — not the moment it was typed. If any creation fails, the whole submit aborts here
+      // (via the throw), before the product create/update call ever fires.
+      const newTagIds = await resolveStagedTagIds();
+      setStagedTagNames([]);
+      const tagIds = [...selectedTagIds, ...newTagIds];
       if (isEdit && id) {
         await ecommerceApi.updateProduct(Number(id), {
           name: name.trim(),
@@ -371,15 +426,23 @@ export default function ProductFormPage(): JSX.Element {
             </FormControl>
           </Paper>
 
-          {/* Tags — Chip-toggle-cloud, mirroring @content's QuestionAnswerFormPage picker */}
+          {/* Tags — split into an "Existing tags" Chip-toggle-cloud (mirroring @content's
+              QuestionAnswerFormPage picker) and a separate "New tags" section for names typed
+              here but not yet created — nothing is persisted to the tag catalog until the product
+              itself is saved (see handleSubmit's resolveStagedTagIds). Renaming/deleting an
+              already-real tag still requires /admin/product-tags — this section is add-only. */}
           <Paper variant="outlined" sx={{ p: 2, mt: 3 }}>
             <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>
               Tags
             </Typography>
+
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+              Existing tags
+            </Typography>
             {allTags.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">No tags available</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>No tags yet</Typography>
             ) : (
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2 }}>
                 {allTags.map(tag => {
                   const selected = selectedTagIds.has(tag.id);
                   return (
@@ -396,6 +459,53 @@ export default function ProductFormPage(): JSX.Element {
                 })}
               </Box>
             )}
+
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+              New tags
+            </Typography>
+            <TextField
+              placeholder="New tag name…"
+              value={newTagInput}
+              onChange={e => setNewTagInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddStagedTag(); } }}
+              size="small"
+              fullWidth
+              inputProps={{ maxLength: 100 }}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      onClick={handleAddStagedTag}
+                      disabled={!newTagInput.trim()}
+                      title="Queue tag"
+                    >
+                      <AddIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ mb: 1 }}
+            />
+            {stagedTagNames.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">No new tags queued</Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                {stagedTagNames.map(tagName => (
+                  <Chip
+                    key={tagName}
+                    label={tagName}
+                    size="small"
+                    color="warning"
+                    variant="outlined"
+                    onDelete={() => handleRemoveStagedTag(tagName)}
+                  />
+                ))}
+              </Box>
+            )}
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+              Created when you {isEdit ? 'save' : 'create'} the product.
+            </Typography>
           </Paper>
         </Box>
       </Box>

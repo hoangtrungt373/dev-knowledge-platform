@@ -135,6 +135,16 @@ both `identity-service` and `social-service` were extracted into standalone serv
   and order. Correlation-id/structured-access-logging (that backlog's item #1) **is** built now —
   see `infra/CLAUDE.md`'s `tracing/` entry; it lives in `infra`, not here, since all seven of this
   reactor's apps need the same mechanism, not just this one.
+  - **A missed route here fails silently, not loudly — watch for this on every new admin/public
+    endpoint.** `ecommerce-service`'s Product Tags feature (`ProductTagApi` at
+    `/api/v1/admin/product-tags/**`) shipped without a matching line in `ecommerceServiceRoutes()`
+    — the request wasn't rejected or 401'd, it fell all the way through to Spring's own
+    static-resource handler and came back as a `NoResourceFoundException` ("No static resource
+    api/v1/admin/product-tags"), which reads nothing like a routing bug at first glance. Fixed by
+    adding the missing `route(path("/api/v1/admin/product-tags/**"), http(baseUrl))` line. **A new
+    `@RequestMapping` on any of the six standalone services is not itself sufficient** — every PR
+    that adds one needs a matching route added to this class in the same change, or the endpoint
+    is simply unreachable from the GUI with no obvious error pointing back here.
 - `security/` — transport/security **edge** infra, **and, as of the CORS-consolidation pass, the
   sole CORS source of truth in this whole reactor — zero exceptions.** `CorsConfig` here is the
   only real CORS config left anywhere. `ai-service`'s own copy (the only other one that ever

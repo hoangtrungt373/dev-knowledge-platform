@@ -10,12 +10,14 @@ import org.springframework.stereotype.Component;
 
 /**
  * Runs this module's own CSV-based sample-catalog seeders once at application startup, in
- * dependency order — categories, then products (which need a category and at least one variant
- * to exist), then a first gallery image for a handful of featured products (which need a product
- * to exist). Gated by {@code app.seed.enabled} (off by default, enabled explicitly for the
- * `docker compose` stack) so a production-like profile never seeds unintentionally — same
- * property name and shape as {@code content-service}'s/{@code social-service}'s own
- * {@code DataSeedingRunner}.
+ * dependency order — categories and tags (independent of each other, but both needed before a
+ * product can reference either by name), then products (which need a category and at least one
+ * variant to exist, and may optionally reference already-seeded tags — see
+ * {@link ProductSeeder}'s own Javadoc), then a first gallery image for a handful of featured
+ * products (which need a product to exist). Gated by {@code app.seed.enabled} (off by default,
+ * enabled explicitly for the `docker compose` stack) so a production-like profile never seeds
+ * unintentionally — same property name and shape as {@code content-service}'s/
+ * {@code social-service}'s own {@code DataSeedingRunner}.
  *
  * @author ttg
  */
@@ -26,6 +28,7 @@ import org.springframework.stereotype.Component;
 public class EcommerceDataSeedingRunner implements ApplicationRunner {
 
     private final ProductCategorySeeder productCategorySeeder;
+    private final ProductTagSeeder productTagSeeder;
     private final ProductSeeder productSeeder;
     private final ProductImageSeeder productImageSeeder;
 
@@ -33,6 +36,7 @@ public class EcommerceDataSeedingRunner implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         log.info("Starting ecommerce-service CSV data seeding...");
         productCategorySeeder.seed();
+        productTagSeeder.seed();
         productSeeder.seed();
         productImageSeeder.seed();
         log.info("ecommerce-service CSV data seeding complete.");

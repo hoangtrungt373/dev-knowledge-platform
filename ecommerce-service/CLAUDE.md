@@ -1016,6 +1016,52 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
     `ProductSearchViewRepository`), and no `ShopPage` tag filter rail. `gui`'s own tag management
     page, `ProductFormPage`'s tag picker, and the admin product list's tag filter were Phase 2 —
     **now built**, see `gui/CLAUDE.md`'s own Product Tags note.
+  - **Follow-up: seed data for `ProductTag`/`ProductTagAssignment`, per request.** New
+    `service/seed/ProductTagSeeder` — mirrors `ProductCategorySeeder` exactly (extends `infra`'s
+    `CsvSeeder<ProductTag>`, idempotency key is `name` itself rather than a decoupled `seedId`, same
+    "fixed sample catalog, not long-lived production content" reasoning that class's own Javadoc
+    gives — consistent with `ProductTag` itself having no status/lifecycle field either). Reads new
+    `data/csv/product_tags.csv` (single `name` column: New Arrival, Best Seller, Limited Edition,
+    Sale, Eco-Friendly, Staff Pick) and persists directly via `ProductTagRepository`, bypassing
+    `ProductTagService` — creating a tag has no outbox event/read-model side effect the way creating
+    a `Product` does, so there's no reason to route through the service layer here (unlike
+    `ProductSeeder` itself, which must).
+    - **Assignment doesn't get its own seeder** — there is no dedicated "seed a
+      `ProductTagAssignment` row" step, because assignment already travels with
+      `ProductCommands.Create.tagIds` (see the Phase 1 note above), and `ProductSeeder` already
+      calls `productService.create` for every seed row. `products.csv` gained a new optional
+      `tagNames` column (semicolon-joined tag names, the same compact inline convention
+      `product_variants.csv`'s `attributes` cell already uses for its own key=value pairs) —
+      `ProductSeeder` resolves each name to a `ProductTag` id via a new
+      `ProductTagRepository.findByNameIgnoreCase` and passes the resulting `Set<Integer>` straight
+      into `ProductCommands.Create` instead of the previous hardcoded `Set.of()`. An unknown tag
+      name fails loudly (`IllegalStateException`, same "seed data typo should surface immediately"
+      reasoning `categoryName`'s own lookup already uses) rather than being silently dropped; a
+      blank/missing `tagNames` cell is a normal, valid "no tags" row, not an error — several seed
+      products (e.g. "Segfault Desk Mat") are deliberately left untagged so the admin GUI's own
+      empty-tags state isn't only ever exercised by hand.
+    - **`EcommerceDataSeedingRunner` ordering**: `productTagSeeder.seed()` now runs right after
+      `productCategorySeeder.seed()` and before `productSeeder.seed()` — tags and categories are
+      independent of each other, but both must exist before `products.csv` can reference either by
+      name (`categoryName`, now also `tagNames`).
+    - `ProductTagRepository` gained `findByNameIgnoreCase(String): Optional<ProductTag>` — the seed
+      lookup this whole change needed; the repository previously only had the `existsByNameIgnoreCase`
+      variants used by `ProductTagServiceImpl`'s own uniqueness checks.
+    - Verified via a targeted `mvn -pl ecommerce-service -am clean compile test` — all **182**
+      existing unit tests still pass unchanged (no seeder has its own dedicated test in this
+      reactor, matching `ProductCategorySeeder`/`ProductSeeder`'s own precedent — seeders are
+      exercised by actually booting the app with `app.seed.enabled=true`, not unit-tested in
+      isolation). Not run against a real database in this session, same caveat every seeder change
+      in this reactor carries until the `docker compose` stack is actually started.
+    - New `scripts/purge-seed-data.sql` (a plain dev utility, not a Liquibase changeset — lives
+      outside `database/sql/` so it's never picked up as a migration) — `TRUNCATE`s every table in
+      the `ecommerce` schema plus resets every `*_SEQ` sequence by hand (`RESTART IDENTITY` on
+      `TRUNCATE` is a no-op here, since this reactor's sequences are explicit/standalone, not
+      `OWNED BY` an identity column — see root `CLAUDE.md`'s "Sequences" convention), so every
+      seeder's natural-key idempotency check (`name` existence, per each seeder's own Javadoc) sees
+      a genuinely empty table on the next `app.seed.enabled=true` boot instead of silently skipping
+      every row. Cart state (Redis, not Postgres) is out of scope — the script's own header comment
+      notes the separate `redis-cli FLUSHDB` for that.
 
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"

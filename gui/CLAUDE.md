@@ -788,6 +788,48 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       unchanged" case documented on `UpdateProductPayload` is simply never exercised from this form
       (there's no scenario in this UI where the admin edits a product without the tag picker having
       already loaded its current tags).
+    - **Follow-up: inline tag creation, right from `ProductFormPage.tsx`'s own Tags `Paper`, per
+      request.** **Add-only, deliberately** — asked directly whether "add/remove" meant toggling a
+      tag on the product (already built, the Chip click) or managing the tag catalog itself
+      (create/delete), and the user confirmed inline *create* only; renaming or deleting a
+      `ProductTag` entirely still requires `/admin/product-tags` (`ProductTagListPage.tsx`), not
+      this form — deleting a tag inline here would also need to handle the backend's
+      `PRODUCT_TAG_IN_USE` guard against a tag already assigned to products, which was exactly the
+      complication that made "create AND delete inline" a scope question worth asking rather than
+      assuming.
+      - **Second follow-up: creation is deferred to submit, not fired the moment a name is typed —
+        per request.** The first cut called `ecommerceApi.createProductTag` immediately on
+        add/Enter, which meant a tag existed in the real catalog the instant it was typed, even if
+        the admin then hit Cancel or navigated away without ever saving the product. Reworked so
+        nothing is created until `handleSubmit` actually runs: `stagedTagNames: string[]` holds
+        plain, not-yet-real tag names (not `ProductTag` objects — there's no id yet), kept fully
+        separate from `allTags`/`selectedTagIds` (the real, already-persisted catalog + this
+        product's selection among it) rather than optimistically merged into them, so a discarded
+        form leaves zero trace in the tag catalog. `handleAddStagedTag` is a pure local-state
+        push — no network call — with two dedupe guards: a name that case-insensitively matches an
+        already-existing catalog tag selects that tag instead of queuing a doomed duplicate (which
+        would otherwise fail at submit time with `PRODUCT_TAG_NAME_CONFLICT`), and a name that
+        matches an already-queued one is a silent no-op. `handleRemoveStagedTag` lets the admin
+        un-queue a mistaken entry before ever saving, via each staged `Chip`'s own `onDelete` (the
+        built-in "×" MUI renders for a `Chip` with `onDelete` set — no custom remove button needed,
+        unlike the toggle-only existing-tag `Chip`s). New `resolveStagedTagIds()` is the only place
+        that actually calls `createProductTag` — invoked from `handleSubmit`, once, right before
+        building the `tagIds` payload for the product create/update call itself; **aborts the whole
+        submit on the first failure** (no try/catch swallowing it, unlike `ProductImageStager`'s
+        deliberately best-effort upload loop) since an incomplete tag set silently applied to the
+        product would be a more confusing outcome here than a failed save the admin can just retry.
+        A partial-failure edge case is accepted, not engineered around: if tag 2 of 3 fails (e.g. a
+        genuine name collision with a tag someone else just created), tag 1 is already a real,
+        orphaned catalog row by the time the submit aborts — there's no multi-tag-create endpoint
+        to make this atomic, and this mirrors the same kind of accepted edge case
+        `ProductImageStager`'s own partial-upload note already documents for images.
+      - **UI split into two labeled sub-sections inside the same Tags `Paper`, per request** — an
+        "Existing tags" Chip-toggle-cloud (unchanged from the first cut: click to select/deselect
+        an already-real tag) above a "New tags" section (the queue input + each staged name
+        rendered as its own removable `Chip`, `color="warning"` to read as visually distinct/
+        pending rather than looking like an already-selected real tag). A trailing caption ("Created
+        when you save/create the product") makes the deferred-creation behavior explicit rather
+        than only inferable from the two-section split.
     - **`ProductListPage.tsx`'s filter bar gained a multi-select tag filter** — a plain MUI `Select`
       with `multiple` + `Checkbox`+`ListItemText` per `MenuItem` (not a `Chip`-cloud like the form's
       own picker, since this needed to sit inline in a `Select`-based filter row alongside the
