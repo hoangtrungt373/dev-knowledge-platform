@@ -162,17 +162,21 @@ export default function CartPage(): JSX.Element {
               {selectedVariantIds.size > 0 ? `${selectedVariantIds.size} selected` : 'Select all'}
             </Typography>
           </Stack>
-          {selectedVariantIds.size > 0 && (
-            <Button
-              size="small"
-              color="error"
-              startIcon={<DeleteOutlineIcon />}
-              disabled={bulkDeleting}
-              onClick={handleDeleteSelected}
-            >
-              {bulkDeleting ? 'Deleting…' : `Delete Selected (${selectedVariantIds.size})`}
-            </Button>
-          )}
+          {/* Always mounted, just hidden when nothing's selected — conditionally rendering this
+              button altogether let the row's own height (Checkbox+label alone is shorter than a
+              Button) grow the instant a first item got selected. visibility (not display) keeps
+              the button out of the tab order and un-clickable while hidden, but still reserves
+              its layout box, so the row's height stays constant either way. */}
+          <Button
+            size="small"
+            color="error"
+            startIcon={<DeleteOutlineIcon />}
+            disabled={bulkDeleting || selectedVariantIds.size === 0}
+            onClick={handleDeleteSelected}
+            sx={{ visibility: selectedVariantIds.size > 0 ? 'visible' : 'hidden' }}
+          >
+            {bulkDeleting ? 'Deleting…' : `Delete Selected (${selectedVariantIds.size})`}
+          </Button>
         </Stack>
       </Box>
 

@@ -1140,10 +1140,18 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       `CartLineRow` (available and unavailable alike, since a bulk *delete* is just as sensible on
       a stale line as a live one) gets a leading MUI `Checkbox` bound to it. A header row above the
       list holds a "select all" `Checkbox` (checked when every line is selected, `indeterminate`
-      when some but not all are) plus a "Delete Selected (N)" button that only renders once
-      `selectedVariantIds` is non-empty — calls the new `CartContext.removeItems` (below), clears
-      the selection on success, same per-request `showError` pattern every other mutation here
-      uses. **The "Proceed to Checkout" button becomes "Checkout Selected (N)" once at least one
+      when some but not all are) plus a "Delete Selected (N)" button — calls the new
+      `CartContext.removeItems` (below), clears the selection on success, same per-request
+      `showError` pattern every other mutation here uses. **Fixed a layout-shift bug**: the button
+      was originally conditionally *rendered* only once `selectedVariantIds` was non-empty, which
+      meant the header row's own height — otherwise just the short Checkbox+label row — jumped
+      taller the instant the first item got selected, since the row's flex height tracks its
+      tallest child and a MUI `Button` is taller than that. Fixed by always mounting the button and
+      toggling `sx={{ visibility: ... }}` instead of the conditional-render — `visibility: hidden`
+      (not `display: none`) still reserves the button's layout box (keeping the row's height
+      constant either way) while taking it out of the tab order and making it un-clickable; also
+      `disabled` whenever nothing's selected, as a defensive belt-and-braces alongside the existing
+      `handleDeleteSelected`'s own empty-selection guard. **The "Proceed to Checkout" button becomes "Checkout Selected (N)" once at least one
       *available* selected line exists** (`selectedAvailableVariantIds` — unavailable lines can be
       selected for bulk delete but can never be part of a checkout attempt, so they're filtered
       out here regardless of their checkbox state) — clicking it `navigate`s to `/checkout` with
@@ -1915,30 +1923,79 @@ slice" benefit without that cost — revisit only if a genuine second deployable
         on the disabled button) — showing every offered coupon with its own condition attached
         reads better than silently hiding ones the shopper doesn't yet qualify for, matching the
         backend's own `listAvailable` design choice (see `ecommerce-service/CLAUDE.md`'s note).
-      - **`CheckoutPage.tsx`'s two coupon-entry rows (subtotal/shipping) each gained a "Browse
-        available coupons" text button below their existing code field/Apply button** (only shown
-        before a code is applied — once applied, the row becomes the existing success `Chip`, same
-        as before this feature). One shared `couponPickerTarget: 'subtotal' | 'shipping' | null`
-        piece of state drives a single `CouponPickerDialog` instance (only one target's dialog can
-        ever be open at a time, so no need for two separate dialog instances/open-flags).
-        `handleApplyCoupon` gained an optional `codeOverride` parameter so the dialog's `onSelect`
-        can call it directly with the picked code, without first round-tripping it through the
-        text field's own local state — same field-scoped error handling either way (a picked
-        coupon that turns out ineligible surfaces the same inline error a typed one would, the
-        dialog having already closed by then). `subtotal` is always passed as `preview.subtotal`
-        regardless of which target's dialog is open — `minSubtotal` is checked against the cart
-        subtotal regardless of target on the backend too (see `CouponRedemptionService`'s own
-        Javadoc), so there's only ever one subtotal value to pass.
+      - **`CheckoutPage.tsx`'s coupon-entry section originally had two separate code fields
+        (subtotal/shipping), each with its own "Browse available coupons" button opening a
+        target-scoped `CouponPickerDialog` — since superseded by a single shared field, see the
+        follow-up note below.** One shared `couponPickerTarget: 'subtotal' | 'shipping' | null`
+        piece of state drove a single dialog instance either way (only one target's dialog could
+        ever be open at once). `subtotal` was always passed as `preview.subtotal` regardless of
+        which target's dialog was open — `minSubtotal` is checked against the cart subtotal
+        regardless of target on the backend too (see `CouponRedemptionService`'s own Javadoc), so
+        there was only ever one subtotal value to pass, still true today.
       - **`gateway`'s `GatewayRoutesConfig` gained a matching `/api/v1/coupons/**` route** in the
         same change (a genuinely new top-level prefix, distinct from admin's own
         `/api/v1/admin/coupons/**`) — continuing the discipline this file's own AddressBook/Product
         Tags notes already established.
       - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
         sandbox, so the actual picker flow (opening the dialog, browsing, picking an eligible vs.
-        ineligible coupon) is unverified in a real browser. This is the last piece of the Coupon
+        ineligible coupon) is unverified in a real browser. This was the last piece of the Coupon
         feature that was still "future work" as of every earlier note in this section — only
         Phase 3 (product/category eligibility scoping) remains, per
         `ecommerce-service/CLAUDE.md`'s own note.
+    - **Follow-up: `CheckoutPage.tsx`'s two coupon fields collapsed into one, per request — "one
+      input for coupon only," with the picker dialog now showing both `CouponTarget`s at once,
+      split into two sections, rather than being opened per-target.** A coupon's own target is
+      intrinsic to its code (resolved server-side by `CouponRepository.findByCode`, not something
+      global-unique-per-target), so there was never a real need for the shopper to pre-declare
+      which slot they meant before typing — the two-field design existed only because
+      `checkoutApi.preview`/`.confirm` take two separate params, not because the UX needed it.
+      - **Manual entry**: a single `couponInput`/`couponError`/`applyingCoupon` state trio (was
+        two of each). `handleApplyCoupon(codeOverride?, targetOverride?)` — when called with no
+        `targetOverride` (a typed code, not one picked from the dialog), it doesn't know the
+        code's real target ahead of time, so it tries whichever slot(s) are still open: with
+        **both** slots open it tries `SUBTOTAL` first via a new `applyToTarget(target, code)`
+        helper, and only retries `SHIPPING_FEE` if that attempt fails with the backend's own
+        `COUPON_TARGET_MISMATCH` (`EcommerceErrorCode.COUPON_TARGET_MISMATCH`, wire code
+        `"COUPON_007"` — checked via a new `isCouponTargetMismatch` helper reading
+        `(err as {errorResponse?: {errorCode?: string}})?.errorResponse?.errorCode`, the
+        `errorResponse` field `httpClient.ts` already attaches to every thrown error, just not
+        previously read by name anywhere in `@ecommerce`). **This is deterministic, not a
+        guess that might apply the wrong thing** — a code has exactly one real target, and the
+        retry only ever fires once the first attempt has already proven it wasn't `SUBTOTAL`; any
+        other failure (not found, expired, inactive, min-subtotal, redemption limits) propagates
+        immediately with no retry, since retrying a second slot can't change a real ineligibility.
+        With only **one** slot still open (the other already applied), `handleApplyCoupon` applies
+        directly into that one slot, no guessing needed at all. With **both** slots already
+        filled, the whole code-entry `TextField`+`Apply` row (and the "Browse" button) is hidden
+        entirely — same "nothing left to apply into" reasoning `CouponPickerDialog`'s "Applied"
+        state below documents.
+      - **`CouponPickerDialog.tsx`'s `target: CouponTarget` prop was removed** — it now fetches
+        both `couponApi.listAvailable('SUBTOTAL', ...)` and `('SHIPPING_FEE', ...)` in parallel
+        (`Promise.all`) and renders two sections ("Subtotal Coupons"/"Shipping Coupons", divided
+        by a plain `Divider`) via a new local `CouponSection` component (the per-row card markup
+        extracted verbatim from the original single-list version, now parameterized by
+        `title`/`coupons`/`target`). `onSelect`'s signature gained a second `target: CouponTarget`
+        argument — the dialog always knows a picked row's real target (from `AvailableCoupon.target`
+        via which section it's in), so `CheckoutPage.tsx` never needs the try-`SUBTOTAL`-then-
+        `SHIPPING_FEE` fallback for anything selected here, only for manually typed codes.
+        **New `appliedSubtotalCode`/`appliedShippingCode` props** — the matching row (if the
+        already-applied code happens to still be in the list) renders an outlined green border
+        plus an "Applied" `Chip` instead of an `Apply` button; every *other* row in that same
+        section still shows a normal enabled `Apply` button, which **replaces** whatever was
+        previously applied to that slot rather than being blocked — "restrict one coupon per
+        type" is enforced structurally (there is only ever one `subtotalCouponCode`/
+        `shippingCouponCode` slot to begin with, both in the backend's request shape and in this
+        page's own `appliedSubtotalCoupon`/`appliedShippingCoupon` state), not by disabling every
+        other row once one is applied.
+      - `CheckoutPage.tsx`'s two `Chip`s (one per applied target) are unchanged in shape, just
+        recomputed off the single shared `couponInput` state; `handleRemoveCoupon` now takes a
+        `CouponTarget` (`'SUBTOTAL' | 'SHIPPING_FEE'`) instead of the old ad hoc
+        `'subtotal' | 'shipping'` union, matching every other coupon-related function on this page
+        for consistency — clearing `couponInput` on a successful remove too, so a stale typed code
+        doesn't linger once its slot opens back up.
+      - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+        sandbox, so the actual single-field apply flow (including the SUBTOTAL→SHIPPING_FEE retry
+        path) and the two-section dialog are unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's
