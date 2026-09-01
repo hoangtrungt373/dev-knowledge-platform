@@ -447,8 +447,14 @@ in `docker-compose.apps.yml`'s `ecommerce-service` block) same shape as `content
   comment) gained `ecommerce.COUPON`/`ecommerce.COUPON_REDEMPTION` to its `TRUNCATE` list alongside
   this seeder — without both, a re-run with `app.seed.enabled=true` would silently skip every
   coupon row on the natural-key check, same staleness trap every other seeder's own idempotency
-  check already carries. `SAVED_ADDRESS` was deliberately left off this same list — no seeder
-  creates one, so purging it would be unrelated scope creep for this change.
+  check already carries. **A later follow-up added `ecommerce.SAVED_ADDRESS` to the same list
+  too** — the script's own header promises "every ecommerce-service table," which excluding it
+  contradicted (no seeder creates a `SAVED_ADDRESS` row, but the script purges real checkout/
+  order data too, not just CSV-seeded rows, so a shopper's own AddressBook entries belong in the
+  same "genuinely clean slate" scope). The `TRUNCATE` list now covers all 14 tables this module's
+  migrations create — re-derive that count from a reactor-wide grep for
+  `CREATE TABLE IF NOT EXISTS ecommerce\.` rather than trusting this number if a new table lands
+  here later.
 
 **Epic 2 (Cart & Checkout) — the cart half (US-2.1–2.4) is built; checkout (US-2.5–2.7) is not
 yet.** Showcases this epic's own locked pattern: **Redis as a primary store, not a cache** (see
@@ -1429,10 +1435,47 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
     way `ProductImageSeeder` does for the catalog; revisit if the future picker dialog's own design
     review wants seeded coupons to look fully populated. `gui`'s `CouponFormDialog`/`CouponListPage`
     updated to match — see `gui/CLAUDE.md`'s own Coupons note.
+  - **Follow-up: the shopper-facing coupon picker dialog itself, per request — the "future gui
+    dialog" `description`/`imageUrl` were built for is now real.** New `service/CouponRedemptionService
+    #listAvailable(target, ownerUuid)` — lists every currently-redeemable coupon for a target
+    (active, within its date range, not yet exhausted globally or by the caller) — deliberately
+    does **not** filter on `minSubtotal` the way `resolve` does: a browsable list is more useful
+    showing every offered coupon with its own condition attached than silently hiding ones the
+    shopper doesn't yet qualify for (see that method's own Javadoc). New
+    `CouponRepository.findAllByTargetAndActiveTrueOrderByValueDesc` backs the cheap part of that
+    query (active+target); date-range and redemption-limit filtering happen afterward in Java,
+    mirroring `resolve`'s own per-coupon checks rather than a complex correlated-subquery
+    Specification — the list is small enough that the same N+1-count-query shape `resolve` already
+    uses per code is fine applied to a handful of coupons too. New `dto/AvailableCouponResponse`
+    — deliberately leaner than admin's own `CouponResponse` (no `id`/`active`/`startAt`/redemption-
+    limit counters — all irrelevant once a coupon is already filtered to "currently redeemable"),
+    plus one field with no admin counterpart at all: `eligible`, computed per-request against the
+    caller's live cart subtotal (not persisted) via a new hand-written `CouponMapper
+    #toAvailableResponse(Coupon, BigDecimal subtotal)` default method — hand-written for the same
+    reason `CartMapper`/`CheckoutMapper` hand-write their own aggregate methods: `eligible` isn't a
+    `Coupon` field MapStruct could ever discover on its own. New `api/CouponPickerApi`+`Controller`
+    at `GET /api/v1/coupons/available?target=&subtotal=` — a **new top-level prefix**
+    (`/api/v1/coupons/**`, distinct from admin's own `/api/v1/admin/coupons/**`), authenticated-
+    shopper-facing same as `CartApi`/`CheckoutApi`/`OrderApi` (falls under the existing default
+    `anyRequest().authenticated()` rule, no `SecurityConfig` change needed) — mirrors the
+    `OrderApi`/`AdminOrderApi` split for the identical "same resource, different audience" reason.
+    **`gateway`'s `GatewayRoutesConfig` gained a matching `/api/v1/coupons/**` route in the same
+    change** — continuing the discipline this file's own AddressBook/Product-Tags/Coupon-Phase-1
+    notes already established (see `gateway/CLAUDE.md`'s matching note): a genuinely new top-level
+    prefix needs its own route, not just a sub-path of an existing one. Never validates/redeems
+    anything itself — `CheckoutApi`'s own `preview`/`confirm` remain the real source of truth once
+    a shopper actually picks a code and it gets submitted. New `CouponRedemptionServiceImplTest
+    .ListAvailable` (8 cases: no-conditions success, not-yet-started, exactly-at-start-boundary,
+    expired, at/below the global limit, the caller's own per-user limit exhausted, and that the
+    query is scoped by the requested target) — **258 unit tests total** (up from 250), verified via
+    a real `mvn test` run (JDK 21). `gui`'s new `components/CouponPickerDialog.tsx` (opened from
+    `CheckoutPage.tsx`'s own coupon-entry section) is the actual consumer — see `gui/CLAUDE.md`'s
+    own Coupons note.
   - **Not built as part of this pass**: product/category eligibility scoping (Phase 3, needs join
     tables mirroring `ProductTagAssignment`'s explicit-join shape) — the one remaining deferred
-    phase. A shopper can redeem a coupon end-to-end today (server-side and through the GUI); the
-    only gap left is that a coupon can't yet be restricted to specific products/categories.
+    phase. A shopper can now redeem a coupon end-to-end and browse which ones are available without
+    already knowing a code; the only gap left is that a coupon can't yet be restricted to specific
+    products/categories.
 
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"

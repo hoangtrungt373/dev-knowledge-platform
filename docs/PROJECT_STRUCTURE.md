@@ -1730,7 +1730,10 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   raw calculation is then clamped to coupon.maxDiscountAmount (if set, DKP-0043 follow-up) before
 │   the existing base-amount clamp, uniformly for both CouponType values;
 │   redeem(coupon, order, ownerUuid, discountAmount) persists a CouponRedemption row — called only
-│   by confirm, never preview, and only after the order itself has already saved
+│   by confirm, never preview, and only after the order itself has already saved. Follow-up:
+│   listAvailable(target, ownerUuid) — the coupon-picker dialog's own backing query; active/
+│   date-range/redemption-limit filtering, deliberately NOT minSubtotal (a browsable list shows
+│   every offered coupon with its own condition rather than hiding ineligible ones)
 ├── service/CouponImageService.java / impl/CouponImageServiceImpl.java (ProductDiscount feature,
 │   DKP-0044 follow-up) — not part of CouponService, mirroring ProductDescriptionImageService's own
 │   split from ProductService: touches no existing Coupon row, so it works in create mode too;
@@ -1865,6 +1868,13 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                 in create mode too), nested under /api/v1/admin/coupons purely
 │   │                                 so gateway's existing route already covers it — mirrors
 │   │                                 ProductDescriptionImageApi's identical split from ProductApi
+│   ├── CouponPickerApi.java      — GET /api/v1/coupons/available?target=&subtotal= (coupon-picker
+│   │                                 follow-up) — a NEW top-level prefix (/api/v1/coupons/**,
+│   │                                 distinct from admin's /api/v1/admin/coupons/**),
+│   │                                 authenticated-shopper-facing (default anyRequest()
+│   │                                 .authenticated() rule, no admin gate) — mirrors the
+│   │                                 OrderApi/AdminOrderApi split; gateway gained a matching
+│   │                                 /api/v1/coupons/** route in the same change
 │   ├── OrderApi.java             — /api/v1/orders (Epic 3 Phase 5, US-3.3/3.5/3.6), authenticated-
 │   │                                 only, same rule as CartApi; GET (list mine, paginated, most
 │   │                                 recent first), GET /{id} (full status timeline),
@@ -1916,7 +1926,9 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
                                      maxDiscountAmount/description in a DKP-0043 follow-up, then
                                      imageUrl in a DKP-0044 follow-up),
                                      CouponImageResponse (url only, mirrors
-                                     ProductDescriptionImageResponse)
+                                     ProductDescriptionImageResponse),
+                                     AvailableCouponResponse (coupon-picker follow-up — leaner than
+                                     CouponResponse, plus a request-computed eligible field)
 ```
 
 Liquibase migrations: `ecommerce-service/.../database/sql/2026/0.0.2/202608040001__0.0.2__DKP-0023__add_ecommerce_catalog_tables.sql`

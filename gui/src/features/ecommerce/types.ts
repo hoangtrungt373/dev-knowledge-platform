@@ -391,3 +391,21 @@ export interface UpdateCouponPayload {
   description?: string;
   imageUrl?: string;
 }
+
+/** One entry in the shopper-facing coupon picker (`couponApi.listAvailable`) — mirrors the
+ * backend's `AvailableCouponResponse`, deliberately leaner than `Coupon` above (no id/active/
+ * startAt/redemption-limit counters, all irrelevant once a coupon has already been filtered to
+ * "currently redeemable" server-side). `eligible` is computed server-side against the subtotal
+ * passed to the request — not derived client-side, so the GUI never duplicates that comparison. */
+export interface AvailableCoupon {
+  code: string;
+  target: CouponTarget;
+  type: CouponType;
+  value: number;
+  minSubtotal: number | null;
+  maxDiscountAmount: number | null;
+  description: string | null;
+  imageUrl: string | null;
+  endAt: string | null;
+  eligible: boolean;
+}

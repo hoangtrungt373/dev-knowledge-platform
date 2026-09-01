@@ -23,6 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -294,6 +295,105 @@ class CouponRedemptionServiceImplTest {
             assertThat(redemption.getOrder()).isEqualTo(order);
             assertThat(redemption.getOwnerUuid()).isEqualTo(OWNER_UUID);
             assertThat(redemption.getDiscountAmount()).isEqualByComparingTo("10.00");
+        }
+    }
+
+    @Nested
+    class ListAvailable {
+
+        private Coupon candidate(String code) {
+            Coupon c = new Coupon();
+            c.setId(2);
+            c.setCode(code);
+            c.setTarget(CouponTarget.SUBTOTAL);
+            c.setType(CouponType.PERCENTAGE);
+            c.setValue(new BigDecimal("15"));
+            c.setActive(true);
+            return c;
+        }
+
+        @Test
+        void includesACurrentlyActiveCouponWithNoConditions() {
+            Coupon c = candidate("SPRING15");
+            when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SUBTOTAL))
+                    .thenReturn(List.of(c));
+
+            List<Coupon> result = service.listAvailable(CouponTarget.SUBTOTAL, OWNER_UUID);
+
+            assertThat(result).containsExactly(c);
+        }
+
+        @Test
+        void excludesACouponNotYetStarted() {
+            Coupon c = candidate("FUTURE10");
+            c.setStartAt(Instant.now().plus(1, ChronoUnit.DAYS));
+            when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SUBTOTAL))
+                    .thenReturn(List.of(c));
+
+            assertThat(service.listAvailable(CouponTarget.SUBTOTAL, OWNER_UUID)).isEmpty();
+        }
+
+        @Test
+        void includesACouponExactlyAtItsStartMoment() {
+            Coupon c = candidate("JUSTSTARTED");
+            c.setStartAt(Instant.now().minusSeconds(1));
+            when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SUBTOTAL))
+                    .thenReturn(List.of(c));
+
+            assertThat(service.listAvailable(CouponTarget.SUBTOTAL, OWNER_UUID)).containsExactly(c);
+        }
+
+        @Test
+        void excludesAnExpiredCoupon() {
+            Coupon c = candidate("EXPIRED10");
+            c.setEndAt(Instant.now().minus(1, ChronoUnit.DAYS));
+            when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SUBTOTAL))
+                    .thenReturn(List.of(c));
+
+            assertThat(service.listAvailable(CouponTarget.SUBTOTAL, OWNER_UUID)).isEmpty();
+        }
+
+        @Test
+        void excludesACouponAtItsGlobalRedemptionLimit() {
+            Coupon c = candidate("CAPPED");
+            c.setMaxRedemptions(3);
+            when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SUBTOTAL))
+                    .thenReturn(List.of(c));
+            when(couponRedemptionRepository.countByCouponId(2)).thenReturn(3L);
+
+            assertThat(service.listAvailable(CouponTarget.SUBTOTAL, OWNER_UUID)).isEmpty();
+        }
+
+        @Test
+        void includesACouponBelowItsGlobalRedemptionLimit() {
+            Coupon c = candidate("CAPPED");
+            c.setMaxRedemptions(3);
+            when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SUBTOTAL))
+                    .thenReturn(List.of(c));
+            when(couponRedemptionRepository.countByCouponId(2)).thenReturn(2L);
+
+            assertThat(service.listAvailable(CouponTarget.SUBTOTAL, OWNER_UUID)).containsExactly(c);
+        }
+
+        @Test
+        void excludesACouponTheCallerHasAlreadyExhaustedTheirOwnLimitOn() {
+            Coupon c = candidate("ONEPERUSER");
+            c.setMaxRedemptionsPerUser(1);
+            when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SUBTOTAL))
+                    .thenReturn(List.of(c));
+            when(couponRedemptionRepository.countByCouponIdAndOwnerUuid(2, OWNER_UUID)).thenReturn(1L);
+
+            assertThat(service.listAvailable(CouponTarget.SUBTOTAL, OWNER_UUID)).isEmpty();
+        }
+
+        @Test
+        void queriesTheRepositoryByTheRequestedTarget() {
+            when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SHIPPING_FEE))
+                    .thenReturn(List.of());
+
+            service.listAvailable(CouponTarget.SHIPPING_FEE, OWNER_UUID);
+
+            verify(couponRepository).findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SHIPPING_FEE);
         }
     }
 }

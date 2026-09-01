@@ -5,6 +5,7 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.enums.CouponTarget;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Phase 2 of the "ProductDiscount"/Coupon feature — validating a shopper-entered code against a
@@ -63,4 +64,22 @@ public interface CouponRedemptionService {
      *                       {@code value} could be edited by an admin afterward
      */
     void redeem(Coupon coupon, Order order, String ownerUuid, BigDecimal discountAmount);
+
+    /**
+     * Lists every currently-redeemable coupon for {@code target} — active, within its date range,
+     * and not yet exhausted (neither {@link Coupon#getMaxRedemptions()} nor
+     * {@link Coupon#getMaxRedemptionsPerUser()} for {@code ownerUuid}, if set) — for the
+     * shopper-facing coupon picker ({@code CouponPickerApi}). Deliberately does **not** filter on
+     * {@link Coupon#getMinSubtotal()} the way {@link #resolve} does: unlike a specific
+     * shopper-entered code (which either qualifies or doesn't), a *browsable list* is more useful
+     * showing every currently-offered coupon with its own condition attached (so a shopper can see
+     * "spend $20 more to unlock this") than silently hiding ones they don't yet qualify for — see
+     * {@code CouponMapper#toAvailableResponse}'s {@code eligible} flag for how the caller's own
+     * live subtotal gets surfaced instead.
+     *
+     * @param target    which slot to browse ({@code SUBTOTAL} or {@code SHIPPING_FEE})
+     * @param ownerUuid the caller's Keycloak UUID, for the per-user redemption cap
+     * @return matching coupons, biggest discount first
+     */
+    List<Coupon> listAvailable(CouponTarget target, String ownerUuid);
 }

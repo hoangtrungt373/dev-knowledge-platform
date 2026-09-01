@@ -24,6 +24,7 @@ import { addressApi } from '../../api/addressApi';
 import { Address, CartLine, CheckoutPreview, OrderLine, SavedAddress } from '../../types';
 import { formatPrice } from '../../utils/format';
 import OrderLineRow from '../../components/orders/OrderLineRow';
+import CouponPickerDialog from '../../components/CouponPickerDialog';
 
 /** An available CartLine has every one of these fields populated (see CartLine's own doc comment
  * — they're only optional to model an unavailable line, which is filtered out before this runs) —
@@ -103,6 +104,9 @@ export default function CheckoutPage(): JSX.Element {
   const [shippingCouponError, setShippingCouponError] = useState<string | null>(null);
   const [applyingSubtotalCoupon, setApplyingSubtotalCoupon] = useState(false);
   const [applyingShippingCoupon, setApplyingShippingCoupon] = useState(false);
+  // Which target's CouponPickerDialog is currently open — null when neither is. One shared dialog
+  // instance rather than two, since only one can ever be open at a time.
+  const [couponPickerTarget, setCouponPickerTarget] = useState<'subtotal' | 'shipping' | null>(null);
 
   /** Re-fetches the preview with the given coupon codes (undefined = none) — shared by the
    * initial load and every Apply/Remove action below, so they all go through the exact same
@@ -112,11 +116,16 @@ export default function CheckoutPage(): JSX.Element {
   const loadPreview = (subtotalCode?: string, shippingCode?: string): Promise<CheckoutPreview> =>
     checkoutApi.preview(selectedVariantIds, subtotalCode, shippingCode);
 
-  const handleApplyCoupon = (target: 'subtotal' | 'shipping'): void => {
-    const code = (target === 'subtotal' ? subtotalCouponInput : shippingCouponInput).trim();
+  /** `codeOverride` lets `CouponPickerDialog`'s `onSelect` apply a picked code directly, without
+   * first round-tripping it through the text field's own local state — same underlying apply flow
+   * (and the same field-scoped error handling) either way. */
+  const handleApplyCoupon = (target: 'subtotal' | 'shipping', codeOverride?: string): void => {
+    const code = (codeOverride ?? (target === 'subtotal' ? subtotalCouponInput : shippingCouponInput)).trim();
     if (!code) return;
+    const setInput = target === 'subtotal' ? setSubtotalCouponInput : setShippingCouponInput;
     const setApplying = target === 'subtotal' ? setApplyingSubtotalCoupon : setApplyingShippingCoupon;
     const setFieldError = target === 'subtotal' ? setSubtotalCouponError : setShippingCouponError;
+    setInput(code);
     setApplying(true);
     setFieldError(null);
     const subtotalCode = target === 'subtotal' ? code : (appliedSubtotalCoupon ?? undefined);
@@ -274,23 +283,32 @@ export default function CheckoutPage(): JSX.Element {
               sx={{ alignSelf: 'flex-start' }}
             />
           ) : (
-            <Stack direction="row" spacing={1} alignItems="flex-start">
-              <TextField
-                size="small"
-                label="Subtotal coupon code"
-                value={subtotalCouponInput}
-                onChange={e => { setSubtotalCouponInput(e.target.value); setSubtotalCouponError(null); }}
-                error={!!subtotalCouponError}
-                helperText={subtotalCouponError}
-                sx={{ flex: 1 }}
-              />
+            <Stack spacing={0.5}>
+              <Stack direction="row" spacing={1} alignItems="flex-start">
+                <TextField
+                  size="small"
+                  label="Subtotal coupon code"
+                  value={subtotalCouponInput}
+                  onChange={e => { setSubtotalCouponInput(e.target.value); setSubtotalCouponError(null); }}
+                  error={!!subtotalCouponError}
+                  helperText={subtotalCouponError}
+                  sx={{ flex: 1 }}
+                />
+                <Button
+                  variant="outlined"
+                  onClick={() => handleApplyCoupon('subtotal')}
+                  disabled={!subtotalCouponInput.trim() || applyingSubtotalCoupon}
+                  sx={{ height: 40 }}
+                >
+                  {applyingSubtotalCoupon ? <CircularProgress size={18} /> : 'Apply'}
+                </Button>
+              </Stack>
               <Button
-                variant="outlined"
-                onClick={() => handleApplyCoupon('subtotal')}
-                disabled={!subtotalCouponInput.trim() || applyingSubtotalCoupon}
-                sx={{ height: 40 }}
+                size="small"
+                onClick={() => setCouponPickerTarget('subtotal')}
+                sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
               >
-                {applyingSubtotalCoupon ? <CircularProgress size={18} /> : 'Apply'}
+                Browse available coupons
               </Button>
             </Stack>
           )}
@@ -304,23 +322,32 @@ export default function CheckoutPage(): JSX.Element {
               sx={{ alignSelf: 'flex-start' }}
             />
           ) : (
-            <Stack direction="row" spacing={1} alignItems="flex-start">
-              <TextField
-                size="small"
-                label="Shipping coupon code"
-                value={shippingCouponInput}
-                onChange={e => { setShippingCouponInput(e.target.value); setShippingCouponError(null); }}
-                error={!!shippingCouponError}
-                helperText={shippingCouponError}
-                sx={{ flex: 1 }}
-              />
+            <Stack spacing={0.5}>
+              <Stack direction="row" spacing={1} alignItems="flex-start">
+                <TextField
+                  size="small"
+                  label="Shipping coupon code"
+                  value={shippingCouponInput}
+                  onChange={e => { setShippingCouponInput(e.target.value); setShippingCouponError(null); }}
+                  error={!!shippingCouponError}
+                  helperText={shippingCouponError}
+                  sx={{ flex: 1 }}
+                />
+                <Button
+                  variant="outlined"
+                  onClick={() => handleApplyCoupon('shipping')}
+                  disabled={!shippingCouponInput.trim() || applyingShippingCoupon}
+                  sx={{ height: 40 }}
+                >
+                  {applyingShippingCoupon ? <CircularProgress size={18} /> : 'Apply'}
+                </Button>
+              </Stack>
               <Button
-                variant="outlined"
-                onClick={() => handleApplyCoupon('shipping')}
-                disabled={!shippingCouponInput.trim() || applyingShippingCoupon}
-                sx={{ height: 40 }}
+                size="small"
+                onClick={() => setCouponPickerTarget('shipping')}
+                sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
               >
-                {applyingShippingCoupon ? <CircularProgress size={18} /> : 'Apply'}
+                Browse available coupons
               </Button>
             </Stack>
           )}
@@ -512,6 +539,16 @@ export default function CheckoutPage(): JSX.Element {
           {submitting ? <CircularProgress size={24} color="inherit" /> : `Place Order — ${formatPrice(preview.total)}`}
         </Button>
       </Paper>
+
+      {couponPickerTarget && (
+        <CouponPickerDialog
+          open
+          target={couponPickerTarget === 'subtotal' ? 'SUBTOTAL' : 'SHIPPING_FEE'}
+          subtotal={preview.subtotal}
+          onClose={() => setCouponPickerTarget(null)}
+          onSelect={code => handleApplyCoupon(couponPickerTarget, code)}
+        />
+      )}
     </Box>
   );
 }

@@ -71,6 +71,45 @@ Cross-directory imports use path aliases (`@shared/*`, `@app/*`, `@auth/*`, `@ch
   clean `tsc --noEmit` and a successful `vite build` only, same as every other GUI change in this
   session — no Docker in this sandbox, so the actual collapse/expand interaction (and the
   persisted-preference reload behavior) hasn't been exercised in a real browser.
+  - **Follow-up: the flat `NAV_ITEMS` list replaced with a grouped parent/children structure, per
+    request** (e.g. clicking "Ecommerce" drops down Product Categories/Products/Product Tags/
+    Order Fulfillment/Coupons). New `NAV_STRUCTURE: NavEntry[]` (a `NavLeaf | NavGroup` union,
+    narrowed via an `isGroup` type guard) — grouped by which backend module each section fronts,
+    mirroring this reactor's own one-module-per-vertical-slice structure so the sidebar's own
+    grouping needed no separate design decision: **Content** (`ArticleIcon`) → Tags/Categories/
+    Questions & Answers (`content-service`), **AI** (`SmartToyIcon`) → Pipeline Metrics/Embeddings
+    (`ai-service`), **Ecommerce** (`StorefrontIcon`) → Product Categories/Products/Product Tags/
+    Order Fulfillment/Coupons (`ecommerce-service`) — the request's own example list didn't
+    explicitly mention Product Categories, but leaving it flat while grouping every other
+    `ecommerce-service` section would have been an inconsistent, arbitrary carve-out, so it joined
+    the group too. **Overview** stays a standalone leaf, not a group — it's the landing page, not
+    really "owned" by any one module.
+    - **Expanded sidebar**: each group is an accordion-style `ListItemButton` (an
+      `ExpandLess`/`ExpandMoreIcon` chevron, bold label) wrapping a MUI `Collapse` of indented
+      (`pl: 4`) child `ListItemButton`s — **not** a strict one-open-at-a-time accordion; multiple
+      groups can be expanded simultaneously (`expandedGroups: Set<string>`), matching how a
+      sidebar with independent sections (VS Code's file explorer, GitHub's own repo nav) usually
+      behaves, not a single-select radio-style accordion. A `useEffect` keyed on
+      `location.pathname` auto-expands whichever group contains the current route on every
+      navigation — **only ever adds to the set, never removes** — so navigating to a page in a
+      different section doesn't silently collapse a group the admin deliberately left open
+      elsewhere; the initial `useState` seeds the same "expand the active group" logic for a
+      direct URL load (not just an in-app navigation) so a bookmarked `/admin/coupons` link still
+      lands with Ecommerce already open.
+    - **Collapsed sidebar**: a group has no room to expand children inline (no text label at all
+      in that state), so clicking a group's icon opens a MUI `Menu` flyout instead — anchored to
+      the clicked icon (`anchorOrigin: top/right`, `transformOrigin: top/left`, opening rightward
+      out of the sidebar), listing that group's children as `MenuItem`s. Independent of the
+      expanded-sidebar `expandedGroups` state entirely — collapsing the sidebar doesn't touch
+      which groups were expanded, so toggling back to expanded restores exactly what was open
+      before. Toggling the sidebar itself (`toggleCollapsed`) closes any open flyout, since its
+      anchor element's own layout is about to change size.
+    - A leaf item keeps its original single-`ListItemButton`-with-`Tooltip` shape unchanged
+      (`Overview`, and every group's own children once expanded) — only whether an entry is a
+      `NavGroup` changes how it renders, not the leaf rendering itself.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual expand/collapse interaction, the auto-expand-on-navigate behavior,
+      and the collapsed-sidebar flyout are unverified in a real browser.
 - **No test framework is configured yet** — `package.json` only has `dev`/`build`/`preview` scripts,
   no `vitest`/`jest`, no test config file. `app/App.test.tsx` and `src/reportWebVitals.ts` are
   create-react-app-era leftovers that don't compile under `tsc --noEmit` (missing
@@ -1854,6 +1893,52 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       `UpdateCouponPayload` all gained `imageUrl`. Verified via a clean `tsc --noEmit` and a
       successful `vite build` only — no Docker in this sandbox, so the actual upload/replace/remove
       flow is unverified in a real browser.
+    - **Follow-up: the shopper-facing coupon picker dialog itself, per request — the payoff for
+      every `description`/`imageUrl` field built so far.** New `api/couponApi.ts` — a separate
+      file from `ecommerceApi.ts`'s admin-CRUD Coupon section, mirroring the backend's own
+      `CouponPickerApi`/`CouponApi` split (same underlying resource, genuinely different audience,
+      same reasoning `orderApi.ts`/`adminOrderApi.ts` already split on) — `listAvailable(target,
+      subtotal)` hits the new `GET /api/v1/coupons/available` endpoint. `types.ts` gained
+      `AvailableCoupon` (mirrors the backend's own `AvailableCouponResponse` — deliberately leaner
+      than `Coupon`, plus the one field with no admin counterpart, `eligible`, computed
+      server-side against the passed `subtotal` so the GUI never duplicates that comparison).
+      - New `components/CouponPickerDialog.tsx` — a pure **picker**, not an applier: selecting a
+        row calls `onSelect(code)` and closes; the actual `checkoutApi.preview` round trip still
+        goes through `CheckoutPage.tsx`'s own existing `handleApplyCoupon`, so a picked coupon is
+        revalidated exactly the same way a typed one already was — no second, parallel apply path
+        to keep in sync. Reuses the shared `Thumbnail` component (same reasoning as
+        `CouponFormDialog`'s/`CouponListPage`'s own reuse, above) for each row's banner/icon. Each
+        row shows the code, a computed `value`+`maxDiscountAmount` badge (e.g. "20% OFF (up to
+        $20)"), the `description` when set, `minSubtotal`/`endAt` as small condition captions, and
+        an `Apply` button — **disabled, not hidden, when `!eligible`** (dimmed row, a "spend $X
+        more to unlock" caption computed client-side from `minSubtotal - subtotal`, and a tooltip
+        on the disabled button) — showing every offered coupon with its own condition attached
+        reads better than silently hiding ones the shopper doesn't yet qualify for, matching the
+        backend's own `listAvailable` design choice (see `ecommerce-service/CLAUDE.md`'s note).
+      - **`CheckoutPage.tsx`'s two coupon-entry rows (subtotal/shipping) each gained a "Browse
+        available coupons" text button below their existing code field/Apply button** (only shown
+        before a code is applied — once applied, the row becomes the existing success `Chip`, same
+        as before this feature). One shared `couponPickerTarget: 'subtotal' | 'shipping' | null`
+        piece of state drives a single `CouponPickerDialog` instance (only one target's dialog can
+        ever be open at a time, so no need for two separate dialog instances/open-flags).
+        `handleApplyCoupon` gained an optional `codeOverride` parameter so the dialog's `onSelect`
+        can call it directly with the picked code, without first round-tripping it through the
+        text field's own local state — same field-scoped error handling either way (a picked
+        coupon that turns out ineligible surfaces the same inline error a typed one would, the
+        dialog having already closed by then). `subtotal` is always passed as `preview.subtotal`
+        regardless of which target's dialog is open — `minSubtotal` is checked against the cart
+        subtotal regardless of target on the backend too (see `CouponRedemptionService`'s own
+        Javadoc), so there's only ever one subtotal value to pass.
+      - **`gateway`'s `GatewayRoutesConfig` gained a matching `/api/v1/coupons/**` route** in the
+        same change (a genuinely new top-level prefix, distinct from admin's own
+        `/api/v1/admin/coupons/**`) — continuing the discipline this file's own AddressBook/Product
+        Tags notes already established.
+      - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+        sandbox, so the actual picker flow (opening the dialog, browsing, picking an eligible vs.
+        ineligible coupon) is unverified in a real browser. This is the last piece of the Coupon
+        feature that was still "future work" as of every earlier note in this section — only
+        Phase 3 (product/category eligibility scoping) remains, per
+        `ecommerce-service/CLAUDE.md`'s own note.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

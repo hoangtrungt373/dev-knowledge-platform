@@ -8,6 +8,12 @@
 -- skips it instead of reseeding. This script empties every table this module owns so the next
 -- startup reseeds the full sample catalog (including the fresh Product Tags data) from scratch.
 --
+-- NOTE this is a genuine "every table" purge, not just the CSV-seeded ones: it also truncates
+-- CUSTOMER_ORDER/ORDER_LINE/ORDER_STATUS_HISTORY/COUPON_REDEMPTION (real checkout activity) and
+-- SAVED_ADDRESS (a shopper's own real AddressBook entries — no seeder ever creates one, but the
+-- table is still cleared for a genuinely clean slate). Only run this against a local/dev database
+-- you're fine wiping entirely, never anything with real user data you want to keep.
+--
 -- Usage (from the host, against the docker-compose.infra.yml Postgres container):
 --   docker exec -i dev-premier-postgres psql -U postgres -d dev-premier -f - < ecommerce-service/scripts/purge-seed-data.sql
 -- or, connected via any Postgres client (psql, DBeaver, etc.) to the shared dev-premier database:
@@ -28,9 +34,12 @@ BEGIN;
 -- column (see each table's own migration), which is exactly the association Postgres's
 -- TRUNCATE ... RESTART IDENTITY looks for to decide which sequences to reset.
 -- COUPON_REDEMPTION/COUPON are included here (a seeded coupon has no FK from anything else, but
--- COUPON_REDEMPTION FKs onto both COUPON and CUSTOMER_ORDER) — SAVED_ADDRESS is deliberately not,
--- since no seeder ever creates one (there's no CSV-driven AddressBook seed, only real
--- shopper-entered data), so purging it here would just be scope creep unrelated to CouponSeeder.
+-- COUPON_REDEMPTION FKs onto both COUPON and CUSTOMER_ORDER). SAVED_ADDRESS has no seeder of its
+-- own (no CSV-driven AddressBook seed — only real shopper-entered data) but is included anyway,
+-- confirmed against every migration's own CREATE TABLE statement (14 tables total as of DKP-0044)
+-- — this script's own header promises "every ecommerce-service table," and a shopper's saved
+-- addresses are exactly the kind of leftover dev/test data a genuinely clean slate should clear
+-- too, not just whatever the CSV seeders themselves populate.
 TRUNCATE TABLE
     ecommerce.OUTBOX_EVENT,
     ecommerce.PRODUCT_SEARCH_VIEW,
@@ -38,6 +47,7 @@ TRUNCATE TABLE
     ecommerce.ORDER_STATUS_HISTORY,
     ecommerce.ORDER_LINE,
     ecommerce.CUSTOMER_ORDER,
+    ecommerce.SAVED_ADDRESS,
     ecommerce.COUPON,
     ecommerce.PRODUCT_TAG_ASSIGNMENT,
     ecommerce.PRODUCT_TAG,

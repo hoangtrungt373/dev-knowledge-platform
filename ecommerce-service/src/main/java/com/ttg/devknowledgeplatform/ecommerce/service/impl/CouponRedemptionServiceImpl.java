@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Implementation of {@link CouponRedemptionService}.
@@ -97,6 +98,20 @@ public class CouponRedemptionServiceImpl implements CouponRedemptionService {
         couponRedemptionRepository.save(redemption);
         log.info("Redeemed coupon id={} code={} for order id={} discountAmount={}",
                 coupon.getId(), coupon.getCode(), order.getId(), discountAmount);
+    }
+
+    @Override
+    public List<Coupon> listAvailable(CouponTarget target, String ownerUuid) {
+        Instant now = Instant.now();
+        return couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(target).stream()
+                .filter(c -> c.getStartAt() == null || !now.isBefore(c.getStartAt()))
+                .filter(c -> c.getEndAt() == null || !now.isAfter(c.getEndAt()))
+                .filter(c -> c.getMaxRedemptions() == null
+                        || couponRedemptionRepository.countByCouponId(c.getId()) < c.getMaxRedemptions())
+                .filter(c -> c.getMaxRedemptionsPerUser() == null
+                        || couponRedemptionRepository.countByCouponIdAndOwnerUuid(c.getId(), ownerUuid)
+                        < c.getMaxRedemptionsPerUser())
+                .toList();
     }
 
     private static String normalizeCode(String code) {
