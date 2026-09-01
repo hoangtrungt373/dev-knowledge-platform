@@ -6,6 +6,8 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.OrderStatusHistory;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductVariantRepository;
 
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * Shared static helpers for {@link OrderStatusHandler} implementations — the inventory
  * side-effects and the {@link OrderStatusHistory} bookkeeping every real transition needs, factored
@@ -23,6 +25,7 @@ import com.ttg.devknowledgeplatform.ecommerce.repository.ProductVariantRepositor
  * utility rather than an abstract base still holds regardless of how many handlers currently need
  * the repository, since a future handler with genuinely no inventory action is still possible.)
  */
+@Slf4j
 public final class OrderStatusTransitions {
 
     private OrderStatusTransitions() {
@@ -34,7 +37,8 @@ public final class OrderStatusTransitions {
      */
     public static void releaseReservations(Order order, ProductVariantRepository productVariantRepository) {
         for (OrderLine line : order.getLines()) {
-            productVariantRepository.release(line.getProductVariantId(), line.getQuantity());
+            int updated = productVariantRepository.release(line.getProductVariantId(), line.getQuantity());
+            logIfNoRowsAffected(updated, "release", line, order);
         }
     }
 
@@ -45,7 +49,8 @@ public final class OrderStatusTransitions {
      */
     public static void confirmSaleForLines(Order order, ProductVariantRepository productVariantRepository) {
         for (OrderLine line : order.getLines()) {
-            productVariantRepository.confirmSale(line.getProductVariantId(), line.getQuantity());
+            int updated = productVariantRepository.confirmSale(line.getProductVariantId(), line.getQuantity());
+            logIfNoRowsAffected(updated, "confirmSale", line, order);
         }
     }
 
@@ -56,7 +61,26 @@ public final class OrderStatusTransitions {
      */
     public static void restockSoldLines(Order order, ProductVariantRepository productVariantRepository) {
         for (OrderLine line : order.getLines()) {
-            productVariantRepository.restock(line.getProductVariantId(), line.getQuantity());
+            int updated = productVariantRepository.restock(line.getProductVariantId(), line.getQuantity());
+            logIfNoRowsAffected(updated, "restock", line, order);
+        }
+    }
+
+    /**
+     * {@code release}/{@code confirmSale}/{@code restock} all target a plain
+     * {@code v.id = :variantId} column with no availability re-check the way {@code reserve} has
+     * (see {@link ProductVariantRepository#reserve}'s own Javadoc) — so 0 rows affected here can
+     * only mean the variant no longer exists at all ({@code OrderLine.productVariantId} is
+     * deliberately not a real foreign key; {@code ProductServiceImpl.removeVariant} can hard-delete
+     * one out from under an already-placed order). A DB {@code CHECK} constraint on
+     * {@code reservedQuantity}'s range is real defense in depth against this class of bug going
+     * further, but a stuck/mismatched reservation should still be visible somewhere instead of
+     * silently no-op'ing.
+     */
+    private static void logIfNoRowsAffected(int rowsAffected, String operation, OrderLine line, Order order) {
+        if (rowsAffected == 0) {
+            log.warn("{} affected 0 rows for order id={}, productVariantId={} (variant likely deleted)",
+                    operation, order.getId(), line.getProductVariantId());
         }
     }
 

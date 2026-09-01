@@ -8,8 +8,6 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.Address;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OrderLine;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OrderStatusHistory;
-import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
-import com.ttg.devknowledgeplatform.ecommerce.entity.ProductImage;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductVariant;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductVariantRepository;
 import com.ttg.devknowledgeplatform.infra.service.StorageService;
@@ -19,7 +17,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.util.Comparator;
 
 /**
  * Maps {@link Order} (and its {@link OrderLine}/{@link OrderStatusHistory}/{@link Address}
@@ -86,17 +83,12 @@ public class OrderMapper {
     }
 
     /**
-     * Resolves the variant's product's first gallery image (by {@code sortOrder}, since
-     * {@code Product.images} carries no {@code @OrderBy} of its own) into a presigned URL — null
-     * if the product has no images yet, same nullable shape {@code CartMapper.resolvePrimaryImageUrl}
-     * uses for a cart line's own thumbnail.
+     * Resolves the variant's product's first gallery image into a presigned URL — see
+     * {@link ProductImageUrls#resolvePrimaryImageUrl} for the shared logic (also used by
+     * {@link CartMapper#toLineResponse}).
      */
     private String resolvePrimaryImageUrl(ProductVariant variant) {
-        Product product = variant.getProduct();
-        return product.getImages().stream()
-                .min(Comparator.comparing(ProductImage::getSortOrder))
-                .map(image -> storageService.getPresignedUrl(image.getStorageKey()))
-                .orElse(null);
+        return ProductImageUrls.resolvePrimaryImageUrl(variant.getProduct(), storageService);
     }
 
     public static AddressResponse toAddressResponse(Address address) {

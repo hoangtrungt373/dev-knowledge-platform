@@ -3,7 +3,6 @@ package com.ttg.devknowledgeplatform.ecommerce.mapper;
 import com.ttg.devknowledgeplatform.ecommerce.dto.CartLineResponse;
 import com.ttg.devknowledgeplatform.ecommerce.dto.CartResponse;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
-import com.ttg.devknowledgeplatform.ecommerce.entity.ProductImage;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductVariant;
 import com.ttg.devknowledgeplatform.ecommerce.service.Cart;
 import com.ttg.devknowledgeplatform.ecommerce.service.CartLine;
@@ -15,7 +14,6 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -86,15 +84,11 @@ public class CartMapper {
     }
 
     /**
-     * Resolves the product's first gallery image (by {@code sortOrder}, since {@code Product.images}
-     * carries no {@code @OrderBy} of its own) into a presigned URL — null if the product has no
-     * images yet, same nullable shape {@code ProductSearchViewMapper.resolvePrimaryImageUrl} uses
-     * for the storefront grid's own primary-image thumbnail.
+     * Resolves the product's first gallery image into a presigned URL — see
+     * {@link ProductImageUrls#resolvePrimaryImageUrl} for the shared logic (also used by
+     * {@link OrderMapper#toOrderLineResponse}).
      */
     private String resolvePrimaryImageUrl(Product product) {
-        return product.getImages().stream()
-                .min(Comparator.comparing(ProductImage::getSortOrder))
-                .map(image -> storageService.getPresignedUrl(image.getStorageKey()))
-                .orElse(null);
+        return ProductImageUrls.resolvePrimaryImageUrl(product, storageService);
     }
 }
