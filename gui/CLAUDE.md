@@ -1578,15 +1578,21 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       **never admin-gated** (every address belongs to exactly the caller, same shape as
       `/orders`/`/cart`); nested under the Account shell as `/account/addresses` (see the
       follow-up note below — its very first cut was a standalone top-level `/addresses` route
-      with its own `NavBar` button, superseded almost immediately). Each address renders as its
-      own `Paper` card: label-or-full-name heading, a "Default" `Chip` when applicable, the full
-      address text, and a row of icon actions — a star toggle (filled `StarIcon` when already
-      default, disabled; outlined `StarOutlineIcon`, clickable, otherwise) calling
-      `addressApi.setDefault`, Edit (opens `AddressFormDialog`), and Delete (routed through the
-      existing `@shared/components/ConfirmDialog`, same pattern every other delete action in this
-      app uses). `AddressFormDialog` shows a "Set as default" checkbox **only in create mode** —
-      mirrors the backend exactly: `update()` never touches the default flag at all, promoting an
-      address is its own dedicated action, not a side effect of a plain field edit.
+      with its own `NavBar` button, superseded almost immediately). **Each address is a row inside
+      one continuous `bgcolor: 'background.paper'` box, not its own separate bordered `Paper`
+      card** (a later fix, per request — the original per-card layout left the page's own grey
+      `background.default` visible in the gaps between cards) — same shape `CartPage`'s own
+      lines-list box uses: the "My Addresses" headline + "Add Address" button sit inside that same
+      box too (also per request, rather than sitting outside/above it), and every address row is
+      separated from the next via a `Stack divider={<Divider />}`, not a gap. Each row: label-or-
+      full-name heading, a "Default" `Chip` when applicable, the full address text, and a row of
+      icon actions — a star toggle (filled `StarIcon` when already default, disabled; outlined
+      `StarOutlineIcon`, clickable, otherwise) calling `addressApi.setDefault`, Edit (opens
+      `AddressFormDialog`), and Delete (routed through the existing
+      `@shared/components/ConfirmDialog`, same pattern every other delete action in this app uses).
+      `AddressFormDialog` shows a "Set as default" checkbox **only in create mode** — mirrors the
+      backend exactly: `update()` never touches the default flag at all, promoting an address is
+      its own dedicated action, not a side effect of a plain field edit.
     - **`CheckoutPage.tsx`'s Shipping Address section gained a saved-address picker above the
       existing manual form, not replacing it.** A `RadioGroup` (own bordered card per option,
       highlighted `primary.main` when selected) lists every saved address (label-or-full-name +
@@ -1648,6 +1654,75 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       - Verified via a clean `tsc --noEmit` and a successful `vite build`; grepped the whole `gui/src`
         tree for every remaining `/dashboard` reference and confirmed each one is a call site this
         redirect intentionally keeps working, not a missed spot.
+      - **Follow-up, per request — 4 fixes, all in `AccountLayout.tsx` unless noted:**
+        1. **The sidebar overlapped `NavBar`.** A real MUI gotcha, not specific to this shell:
+           `variant="permanent"` still renders its `Paper` `position: fixed` by default regardless
+           of variant — `AdminLayout`'s own sidebar has the exact same default, it's just invisible
+           there because that shell hides `NavBar` entirely (nothing sits above a fixed `top: 0`
+           drawer to overlap). Once `NavBar` stays visible here, a fixed-position sidebar renders
+           right on top of it. **First attempt**: overrode `.MuiDrawer-paper`'s `position` to
+           `static` via a nested `sx` selector. **Reported as still broken, plus a second symptom**
+           (sidebar "too close to the header," and its own rendered width visibly changing when
+           switching `/account/profile` ↔ `/account/addresses`) — root-caused to the same
+           underlying issue: a nested-selector `sx` override fighting `Drawer`'s own baked-in
+           `styled()` definition is unreliable (it can lose depending on emotion's style-injection
+           order), so the override wasn't reliably winning — and a `fixed`-position element's own
+           `%` width resolves against the *viewport*, not this flex row, so any inconsistency in
+           whether the override actually applied shows up as exactly this kind of width flicker
+           between routes. **Real fix: dropped `Drawer` entirely for a plain `Paper`** — this
+           shell never used any actual `Drawer` feature (overlay/backdrop, swipe, elevation
+           transition), so there was nothing to lose, and a plain `Paper` has no baked-in fixed
+           positioning to fight in the first place. Also added `mt: 3`/`mb: 3` on the outer shell
+           for breathing room below `NavBar` — the original overlap fix alone left the sidebar
+           flush against it with zero gap, which is what "too close to the header" was actually
+           describing once the true overlap was gone.
+        2. **Sidebar header now shows the caller's own avatar + username**, above the nav items —
+           a new, lightweight `profileApi.getCurrentUser()` fetch local to `AccountLayout` (not
+           threaded down from `ProfilePage.tsx`, which has no reason to know this shell exists).
+           Silent-fail on error (a cosmetic nicety; `ProfilePage.tsx`'s own fetch already handles a
+           real failure, e.g. a 401, as its actual concern) — same reasoning already established
+           for `CheckoutPage.tsx`'s saved-address fetch earlier this session.
+        3. **Layout is now `width: '80%', mx: 'auto'` on the outer shell, split 20% sidebar / flex-1
+           (~80%) content** — replacing the original fixed-`220px` sidebar. `flex: 1` on the content
+           column, not a second explicit `80%`, so it always takes exactly whatever the sidebar
+           doesn't, regardless of rounding — the same reasoning this app avoids bare-percentage
+           flex splits elsewhere (see `ProductDetailPage.tsx`'s own `calc()` note) doesn't apply
+           here since there's no `gap` between these two columns to compensate for.
+           **`@ecommerce/pages/AddressBookPage.tsx`'s own outer `width: '80%', mx: 'auto'` had to
+           come off** as part of this same fix — it was designed for sitting directly under
+           `NavBar` spanning the full viewport (matching `CartPage`/`OrderHistoryPage`'s own
+           top-level convention), and nested inside `AccountLayout`'s own already-80%-wide content
+           column, a second `80%` would have compounded into a visibly narrow, off-center block.
+           Now just `p: 3`, filling whatever column width it's actually given. `ProfilePage.tsx`'s
+           own `maxWidth: 800` was left alone — a cap, not a shrink-and-recenter, so it doesn't
+           compound the same way.
+        4. **Sidebar `bgcolor: 'background.paper'`, not a literal white** — same theme-token
+           reasoning already established repeatedly this session (`ProductDescriptionEditor.tsx`,
+           `ProductDetailPage.tsx`'s cards, `OrderHistoryPage.tsx`'s tabs bar): resolves to white in
+           light mode exactly as requested, while automatically becoming the correct dark surface
+           color in dark mode instead of a hardcoded value that would go stale the moment dark mode
+           is toggled.
+        - Verified via a clean `tsc --noEmit` and a successful `vite build` only, both rounds — no
+          Docker in this sandbox, so the actual overlap fix, avatar fetch, layout split, and the
+          `Drawer`→`Paper` swap are unverified in a real browser. Treat the `Drawer`-based fix
+          history above as informational only (what was tried and why it wasn't reliable) — the
+          shell's actual current implementation is the plain-`Paper` version.
+      - **Third follow-up, per request: the sidebar `Paper`'s content read as misaligned/floating,
+        not pinned to the sidebar's own top-left.** Root cause was the outer row's `alignItems`
+        never being set explicitly, so it fell back to the flex default of `stretch` — the sidebar
+        `Paper` was being stretched to match the content column's height (`ProfilePage.tsx`'s own
+        form content, or `AddressBookPage.tsx`'s address list, both typically much taller than the
+        sidebar's own compact avatar-block-plus-2-nav-items content), leaving a large empty area
+        inside the sidebar's own border below its actual content — reasonably describable as
+        "content not aligned with the sidebar" even though no single element was literally
+        `justify-content: center`. Fixed with one explicit `alignItems: 'flex-start'` on the outer
+        row: now both columns size to their own content and start flush at the same top edge,
+        rather than one stretching to match the other.
+      - **Also added a `Divider` in `AddressBookPage.tsx`, between the "My Addresses" headline row
+        and the address list/empty-state below it, per request** — the box previously went
+        straight from the headline+button row into the list with only a plain margin, no visible
+        separator; now matches the same headline-then-divider-then-content shape `OrderHistoryPage`
+        and other card-style pages already use elsewhere in this app.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

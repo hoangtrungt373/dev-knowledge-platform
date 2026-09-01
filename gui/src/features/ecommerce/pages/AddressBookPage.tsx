@@ -4,8 +4,8 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Divider,
   IconButton,
-  Paper,
   Stack,
   Tooltip,
   Typography,
@@ -90,28 +90,45 @@ export default function AddressBookPage(): JSX.Element {
   }
 
   return (
-    <Box sx={{ p: 3, width: '80%', mx: 'auto' }}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
-        <Typography variant="h5" fontWeight={700}>My Addresses</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
-          Add Address
-        </Button>
-      </Stack>
+    // No own width/maxWidth constraint here — unlike this app's other top-level pages, this one
+    // is nested inside AccountLayout's own sidebar-split content column (already narrowed to
+    // AccountLayout's own 80%-of-viewport frame), so a second width cap here would compound and
+    // look oddly narrow/off-center relative to the sidebar. Just fills the column it's given.
+    <Box sx={{ px: 3 }}>
+      {/* One continuous bgcolor: 'background.paper' box — headline row + every address row inside
+          it, separated by Divider rather than each address being its own separate bordered card
+          with page background showing through the gaps — same shape CartPage's own lines-list box
+          uses (header row + Stack divider={<Divider/>}), per request. */}
+      <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, p: 3 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+          <Typography variant="h5" fontWeight={700}>My Addresses</Typography>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
+            Add Address
+          </Button>
+        </Stack>
 
-      {addresses !== null && addresses.length === 0 ? (
-        <Box sx={{ textAlign: 'center', mt: 6 }}>
-          <HomeOutlinedIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
-          <Typography variant="h6" sx={{ mb: 1 }}>No addresses yet</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Save an address here to reuse it at checkout.
-          </Typography>
-          <Button variant="contained" onClick={openCreate}>Add Your First Address</Button>
-        </Box>
-      ) : (
-        <Stack spacing={2}>
-          {addresses?.map(address => (
-            <Paper key={address.id} variant="outlined" sx={{ p: 2.5 }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
+        <Divider sx={{ mb: 2 }} />
+
+        {addresses !== null && addresses.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 6 }}>
+            <HomeOutlinedIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
+            <Typography variant="h6" sx={{ mb: 1 }}>No addresses yet</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Save an address here to reuse it at checkout.
+            </Typography>
+            <Button variant="contained" onClick={openCreate}>Add Your First Address</Button>
+          </Box>
+        ) : (
+          <Stack divider={<Divider />}>
+            {addresses?.map(address => (
+              <Stack
+                key={address.id}
+                direction="row"
+                justifyContent="space-between"
+                alignItems="flex-start"
+                spacing={2}
+                sx={{ py: 2 }}
+              >
                 <Box sx={{ minWidth: 0 }}>
                   <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
                     <Typography variant="subtitle1" fontWeight={600}>
@@ -156,10 +173,10 @@ export default function AddressBookPage(): JSX.Element {
                   </Tooltip>
                 </Stack>
               </Stack>
-            </Paper>
-          ))}
-        </Stack>
-      )}
+            ))}
+          </Stack>
+        )}
+      </Box>
 
       <AddressFormDialog
         open={formOpen}

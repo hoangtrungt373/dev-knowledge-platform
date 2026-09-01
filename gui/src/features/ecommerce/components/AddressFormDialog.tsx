@@ -184,8 +184,16 @@ export default function AddressFormDialog({ open, address, onClose, onSaved }: P
 
           {!isEdit && (
             <FormControlLabel
-              control={<Checkbox checked={makeDefault} onChange={e => setMakeDefault(e.target.checked)} />}
+              control={
+                <Checkbox
+                  checked={makeDefault}
+                  onChange={e => setMakeDefault(e.target.checked)}
+                  disableRipple
+                  sx={{ p: 0 }}
+                />
+              }
               label="Set as default address"
+              sx={{ ml: 0 }}
             />
           )}
         </Stack>

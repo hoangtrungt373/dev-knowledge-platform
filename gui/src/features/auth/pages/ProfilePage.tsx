@@ -274,7 +274,7 @@ export default function ProfilePage(): JSX.Element | null {
     : user.username[0].toUpperCase();
 
   return (
-    <Box sx={{ maxWidth: 800, mx: 'auto', px: 2, py: 4 }}>
+    <Box sx={{ px: 3 }}>
 
       {/* Email verification banner */}
       {!user.emailVerified && (

@@ -20,8 +20,27 @@ import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import { useCart } from '../../context/CartContext';
 import { checkoutApi } from '../../api/checkoutApi';
 import { addressApi } from '../../api/addressApi';
-import { Address, CheckoutPreview, SavedAddress } from '../../types';
+import { Address, CartLine, CheckoutPreview, OrderLine, SavedAddress } from '../../types';
 import { formatPrice } from '../../utils/format';
+import OrderLineRow from '../../components/orders/OrderLineRow';
+
+/** An available CartLine has every one of these fields populated (see CartLine's own doc comment
+ * — they're only optional to model an unavailable line, which is filtered out before this runs) —
+ * this just re-shapes it into OrderLine so the Order Summary can render via the same OrderLineRow
+ * OrderHistoryPage/OrderDetailPage use, rather than a third, slightly-different inline rendering. */
+function toOrderLine(line: CartLine): OrderLine {
+  return {
+    variantId: line.variantId,
+    sku: line.sku ?? '',
+    productName: line.productName ?? '',
+    unitPrice: line.unitPrice ?? 0,
+    quantity: line.quantity,
+    lineTotal: line.lineTotal ?? 0,
+    attributes: line.attributes ?? null,
+    primaryImageUrl: line.primaryImageUrl ?? null,
+    productSlug: line.productSlug ?? null,
+  };
+}
 
 interface AddressFormErrors {
   fullName?: string;
@@ -160,12 +179,9 @@ export default function CheckoutPage(): JSX.Element {
 
       <Paper variant="outlined" sx={{ p: 2.5, mb: 3 }}>
         <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>Order Summary</Typography>
-        <Stack spacing={1}>
+        <Stack spacing={2} divider={<Divider />}>
           {preview.lines.filter(l => l.available).map(line => (
-            <Stack key={line.variantId} direction="row" justifyContent="space-between">
-              <Typography variant="body2">{line.productName} × {line.quantity}</Typography>
-              <Typography variant="body2">{formatPrice(line.lineTotal ?? 0)}</Typography>
-            </Stack>
+            <OrderLineRow key={line.variantId} line={toOrderLine(line)} />
           ))}
         </Stack>
 
@@ -213,7 +229,7 @@ export default function CheckoutPage(): JSX.Element {
                 <FormControlLabel
                   key={saved.id}
                   value={String(saved.id)}
-                  control={<Radio />}
+                  control={<Radio disableRipple />}
                   sx={{
                     m: 0,
                     p: 1,
@@ -241,7 +257,7 @@ export default function CheckoutPage(): JSX.Element {
               ))}
               <FormControlLabel
                 value={NEW_ADDRESS_OPTION}
-                control={<Radio />}
+                control={<Radio disableRipple />}
                 label="Enter a new address"
                 sx={{
                   m: 0,
@@ -317,8 +333,16 @@ export default function CheckoutPage(): JSX.Element {
             </Stack>
 
             <FormControlLabel
-              control={<Checkbox checked={saveAddress} onChange={(e) => setSaveAddress(e.target.checked)} />}
+              control={
+                <Checkbox
+                  checked={saveAddress}
+                  onChange={(e) => setSaveAddress(e.target.checked)}
+                  disableRipple
+                  sx={{ p: 0 }}
+                />
+              }
               label="Save this address for future orders"
+              sx={{ ml: 0 }}
             />
             {saveAddress && (
               <TextField
