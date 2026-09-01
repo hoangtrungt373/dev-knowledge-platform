@@ -1200,6 +1200,73 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
     address vs. a new one, with the quick-save checkbox), and the corresponding
     `types.ts`/`api/addressApi.ts` additions — see `gui/CLAUDE.md`'s own AddressBook note.
 
+- **Coupon ("ProductDiscount" feature) — code-driven discounts targeting either the cart subtotal
+  or the shipping fee, by percentage or fixed amount, with eligibility conditions. Phase 1 (data
+  model + basic admin CRUD) is built; Phase 2 (checkout integration/redemption) and Phase 3
+  (product/category eligibility scoping) are not.** Three scope decisions confirmed before
+  building: (1) **coupon-code entry only** — no automatic/code-free promotions (that stays
+  `shipping.FreeOverThresholdShippingFeeCalculator`'s own separate, unrelated mechanism); (2) a
+  shopper may apply **at most 2 coupons per order — one per `CouponTarget`** (one `SUBTOTAL`, one
+  `SHIPPING_FEE`), not open-ended stacking; (3) **"Full" eligibility conditions** — active flag,
+  date range, minimum subtotal, and (Phase 3) per-product/category scoping plus global/per-user
+  redemption limits, the last two enforced against a `CouponRedemption` ledger.
+  - New `entity/Coupon` — `code` (normalized to uppercase before persisting, so a plain database
+    `UNIQUE` constraint is correctly case-insensitive without needing `ProductTag.name`'s own
+    functional `LOWER(NAME)` index trick), `target` (`enums.CouponTarget`: `SUBTOTAL`/
+    `SHIPPING_FEE`), `type` (`enums.CouponType`: `PERCENTAGE`/`FIXED_AMOUNT`), `value`, `active`,
+    `startAt`/`endAt` (both nullable — no lower/upper bound), `minSubtotal` (nullable — no
+    minimum), `maxRedemptions`/`maxRedemptionsPerUser` (both nullable — no cap; enforced in Phase
+    2). **Deliberately one entity with two small orthogonal enums, not four separate Strategy
+    classes** (`PercentageOffSubtotal`/`FixedOffShipping`/etc.) — `target`×`type` is a genuine 2×2
+    of independent choices, and four classes for that would be exactly the
+    unnecessary-abstraction smell this reactor's own conventions warn against; a single
+    `type`-branching calculation method (Phase 2) covers all four combinations. **Code is
+    immutable after creation** — no rename via `update` (unlike `ProductTag.name`), since a coupon
+    code is typically printed/shared externally once created.
+  - New `entity/CouponRedemption` — the ledger `maxRedemptions`/`maxRedemptionsPerUser` will be
+    enforced against once Phase 2 writes rows here, and the audit trail for "which coupon, how
+    much" on a given order (`discountAmount` is a snapshot, not re-derived from the coupon's own
+    — possibly since-edited — `value`). Real `@ManyToOne` FKs to both `Coupon` and `Order` —
+    unlike `OrderLine.productVariantId`'s deliberately-plain-column shape, neither parent can ever
+    be hard-deleted out from under a redemption row (a `Coupon` still in use is rejected at delete
+    time; `Order` rows are permanent with no delete path anywhere in this module).
+  - Migration `DKP-0041` (`202609020003__0.0.2__DKP-0041__add_coupon_tables.sql`) — `COUPON` +
+    `COUPON_REDEMPTION`, own sequences, `CHECK` constraints on both enum columns
+    (`CKC_COUPON_TARGET`/`CKC_COUPON_TYPE`) and on `VALUE > 0`, indexes on `COUPON_REDEMPTION`
+    backing both the global and per-user redemption-count queries Phase 2 will run.
+  - New `EcommerceErrorCode.COUPON_*` (`NOT_FOUND`/`CODE_CONFLICT`/`IN_USE`/`INVALID_VALUE`/
+    `INVALID_DATE_RANGE`, `COUPON_001`–`005`), `repository/CouponRepository` (mirrors
+    `ProductTagRepository`'s shape — `existsByCode`/`existsByCodeAndIdNot`/`findByCode`, the last
+    for Phase 2's redemption lookup), `repository/CouponRedemptionRepository`
+    (`existsByCouponId` backing the in-use delete guard, plus `countByCouponId`/
+    `countByCouponIdAndOwnerUuid` already added for Phase 2 even though nothing calls them yet),
+    `repository/spec/CouponSpecification` (`q`/`active`/`target` filters, this module's usual
+    Specification-pattern convention for dynamic filtering), `service/CouponCommands`
+    (`Create`/`Update` records — `Update` has no `code` field, since it's immutable),
+    `service/CouponService`/`Impl` (create/update/delete/getById/paginated list — paginated, not
+    unpaginated like `ProductCategoryService.list`, mirroring `ProductTagService`'s own paginated
+    shape since coupons are expected to proliferate the same way free-form tags do),
+    `mapper/CouponMapper`, `dto/{CouponResponse,CreateCouponRequest,UpdateCouponRequest}`, and
+    `api/CouponApi`+`Controller` at `/api/v1/admin/coupons` (CRUD only — no redemption/validation
+    endpoint yet, that's Phase 2's job). `CouponServiceImpl.validateValue` rejects a non-positive
+    value and, for `PERCENTAGE` coupons specifically, a value over 100 — imperative validation via
+    `Validator`, not Bean Validation annotations, since it's a cross-field rule (depends on
+    `type`); `validateDateRange` similarly rejects `endAt` not after `startAt` when both are given.
+  - **`gateway`'s `GatewayRoutesConfig` gained a matching `/api/v1/admin/coupons/**` route in the
+    same change** — continuing the discipline established on Product Tags/AddressBook (see this
+    file's own notes on both, and `gateway/CLAUDE.md`'s matching note): a new endpoint on this
+    service is not reachable from the GUI at all without it.
+  - New `CouponServiceImplTest` (mirrors `ProductTagServiceImplTest`'s shape) — value/date-range
+    validation cases plus the standard CRUD/in-use-delete-guard cases — **220 unit tests total**
+    (up from 205), verified via a real `mvn test` run (JDK 21).
+  - **Not built as part of this pass** (deliberately, per the phased plan): no redemption/
+    validation endpoint, no `CheckoutServiceImpl` integration (threading `subtotalCouponCode`/
+    `shippingCouponCode` through `preview`/`confirm`, computing the actual discount, writing
+    `CouponRedemption` rows — Phase 2), no product/category eligibility scoping (Phase 3, needs
+    join tables mirroring `ProductTagAssignment`'s explicit-join shape), and no `gui` admin
+    coupon-management page or checkout code-entry UI (Phase 4). Don't assume a shopper can redeem
+    a coupon yet — today this is admin-only CRUD with nothing wired into checkout.
+
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"
 independently, not "one variant with both together" — see `ProductSearchView`'s Javadoc). **Epic 3

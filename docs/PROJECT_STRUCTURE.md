@@ -1490,17 +1490,31 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                (fromStatus/toStatus/optional reason); fromStatus is null only
 │   │                                for the very first row; DTE_CREATION doubles as the
 │   │                                "occurred at" timestamp, so there's no separate column for it
-│   └── SavedAddress.java        — AddressBook feature (DKP-0039): a full first-class entity, own
-│                                    create/edit/delete/set-default lifecycle, unlike Address
-│                                    above (still a lifecycle-less @Embeddable). ownerUuid is a
-│                                    plain claims-based column, same shape as Order.ownerUuid;
-│                                    defaultAddress (not isDefault, to keep Lombok's generated
-│                                    accessors unambiguous) is enforced unique-per-owner by a
-│                                    partial DB index (WHERE IS_DEFAULT = TRUE) plus
-│                                    SavedAddressServiceImpl's own unset-then-set app logic
+│   ├── SavedAddress.java        — AddressBook feature (DKP-0039): a full first-class entity, own
+│   │                                create/edit/delete/set-default lifecycle, unlike Address
+│   │                                above (still a lifecycle-less @Embeddable). ownerUuid is a
+│   │                                plain claims-based column, same shape as Order.ownerUuid;
+│   │                                defaultAddress (not isDefault, to keep Lombok's generated
+│   │                                accessors unambiguous) is enforced unique-per-owner by a
+│   │                                partial DB index (WHERE IS_DEFAULT = TRUE) plus
+│   │                                SavedAddressServiceImpl's own unset-then-set app logic
+│   ├── Coupon.java              — "ProductDiscount" feature (DKP-0041), Phase 1: code-driven
+│   │                                discount, code normalized to uppercase before persisting (a
+│   │                                plain UNIQUE constraint is then correctly case-insensitive,
+│   │                                no functional index needed unlike ProductTag.name). target
+│   │                                (CouponTarget: SUBTOTAL/SHIPPING_FEE) x type (CouponType:
+│   │                                PERCENTAGE/FIXED_AMOUNT) as two small orthogonal enums, not
+│   │                                four separate Strategy classes; code is immutable after
+│   │                                creation (no rename via update, unlike ProductTag.name)
+│   └── CouponRedemption.java    — the ledger Coupon.maxRedemptions/maxRedemptionsPerUser are
+│                                    enforced against once Phase 2 writes rows here; real
+│                                    @ManyToOne FKs to both Coupon and Order (neither can ever be
+│                                    hard-deleted out from under a redemption row)
 ├── enums/
 │   ├── OutboxEventStatus.java     — PENDING, PROCESSING, PROCESSED, FAILED
 │   ├── OutboxAggregateType.java   — PRODUCT (widen only when a later epic adds an aggregate root)
+│   ├── CouponTarget.java          — SUBTOTAL, SHIPPING_FEE — what a Coupon reduces
+│   ├── CouponType.java            — PERCENTAGE, FIXED_AMOUNT — how a Coupon's value is interpreted
 │   └── OrderStatus.java           — Epic 3's full 8-value state machine (PENDING,
 │                                      PAYMENT_PROCESSING, CONFIRMED, EXPIRED, FAILED, CANCELLED,
 │                                      SHIPPED, DELIVERED), added in one pass since the whole state
@@ -1678,6 +1692,12 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   makeDefault flag; delete() auto-promotes the most-recently-created remaining address when the
 │   deleted one was the default; update() never touches the default flag at all (that's
 │   setDefault()'s own dedicated job)
+├── service/{CouponCommands,CouponService}.java / impl/CouponServiceImpl.java (ProductDiscount
+│   feature, Phase 1: admin CRUD only, no redemption/validation yet). validateValue rejects a
+│   non-positive value and, for PERCENTAGE coupons, a value over 100; validateDateRange rejects
+│   endAt not after startAt when both are given (both imperative via Validator, not Bean
+│   Validation, since they're cross-field rules). Code is normalized to uppercase and checked for
+│   conflicts on create only; update has no code field at all (immutable after creation)
 ├── service/OrderService.java / impl/OrderServiceImpl.java — Epic 3 Phases 3–5 (US-3.6–3.8, 3.3,
 │   │   3.5): thin cancel(orderId, callerUuid)/ship(orderId)/deliver(orderId) wrappers around
 │   │   orderstatus.OrderStatusHandlerRegistry (find-or-404, dispatch, save); cancel hides
@@ -1784,6 +1804,11 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                 AddressBook entry has exactly one legitimate owner. GET
 │   │                                 (list mine, default-first), POST (create), PUT /{id},
 │   │                                 DELETE /{id}, POST /{id}/set-default
+│   ├── CouponApi.java             — /api/v1/admin/coupons (ProductDiscount feature, Phase 1),
+│   │                                 admin-gated (existing /api/v1/admin/** rule, no SecurityConfig
+│   │                                 change needed). CRUD only today: POST, PUT /{id}, DELETE
+│   │                                 /{id}, GET /{id}, GET (paginated, q/active/target filters via
+│   │                                 CouponSpecification) — no redemption/validation endpoint yet
 │   ├── OrderApi.java             — /api/v1/orders (Epic 3 Phase 5, US-3.3/3.5/3.6), authenticated-
 │   │                                 only, same rule as CartApi; GET (list mine, paginated, most
 │   │                                 recent first), GET /{id} (full status timeline),

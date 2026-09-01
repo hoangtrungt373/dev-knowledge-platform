@@ -148,6 +148,9 @@ both `identity-service` and `social-service` were extracted into standalone serv
     immediately on the very next new endpoint** — `ecommerce-service`'s AddressBook feature
     (`SavedAddressApi` at `/api/v1/addresses/**`) added its own `route(path("/api/v1/addresses/**"),
     http(baseUrl))` line in the same change that introduced the endpoint, this time with no gap.
+    **The discipline held on the next one too** — `ecommerce-service`'s Coupon/"ProductDiscount"
+    feature (`CouponApi` at `/api/v1/admin/coupons/**`) added its own
+    `route(path("/api/v1/admin/coupons/**"), http(baseUrl))` line in the same change.
 - `security/` — transport/security **edge** infra, **and, as of the CORS-consolidation pass, the
   sole CORS source of truth in this whole reactor — zero exceptions.** `CorsConfig` here is the
   only real CORS config left anywhere. `ai-service`'s own copy (the only other one that ever

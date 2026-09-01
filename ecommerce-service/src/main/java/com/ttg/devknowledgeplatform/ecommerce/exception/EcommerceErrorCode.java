@@ -73,7 +73,16 @@ public enum EcommerceErrorCode implements ErrorCode {
             "Not enough stock available for ''{0}'' — someone else may have just bought the last of it",
             HttpStatus.CONFLICT),
     ORDER_NOT_FOUND("ORDER_002", "Order not found: {0}", HttpStatus.NOT_FOUND),
-    ORDER_INVALID_STATUS_TRANSITION("ORDER_003", "Cannot {0} an order in status {1}", HttpStatus.CONFLICT);
+    ORDER_INVALID_STATUS_TRANSITION("ORDER_003", "Cannot {0} an order in status {1}", HttpStatus.CONFLICT),
+
+    // Coupon Errors (COUPON_*) — "ProductDiscount" feature, Phase 1
+    COUPON_NOT_FOUND("COUPON_001", "Coupon not found: {0}", HttpStatus.NOT_FOUND),
+    COUPON_CODE_CONFLICT("COUPON_002", "A coupon with code ''{0}'' already exists", HttpStatus.CONFLICT),
+    COUPON_IN_USE("COUPON_003", "Coupon {0} has already been redeemed and cannot be deleted", HttpStatus.CONFLICT),
+    // Message is always overridden at the call site (Validator.isTrue's String-message overload,
+    // which bypasses this template entirely) — see CouponServiceImpl.validateValue.
+    COUPON_INVALID_VALUE("COUPON_004", "Invalid coupon value", HttpStatus.BAD_REQUEST),
+    COUPON_INVALID_DATE_RANGE("COUPON_005", "End date must be after start date", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;
