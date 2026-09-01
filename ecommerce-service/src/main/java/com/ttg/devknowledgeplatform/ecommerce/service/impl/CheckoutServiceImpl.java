@@ -19,11 +19,11 @@ import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutResult;
 import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutService;
 import com.ttg.devknowledgeplatform.ecommerce.service.SavedAddressCommands;
 import com.ttg.devknowledgeplatform.ecommerce.service.SavedAddressService;
+import com.ttg.devknowledgeplatform.ecommerce.shipping.ShippingFeeCalculator;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,9 +35,9 @@ import java.util.Set;
 /**
  * Implementation of {@link CheckoutService}.
  *
- * <p>{@link #flatShippingFee} is externalized via {@code app.ecommerce.checkout.flat-shipping-fee}
- * rather than a hardcoded constant, same convention {@code CartServiceImpl}'s own
- * {@code app.ecommerce.cart.ttl} already established for a tunable business value.
+ * <p>The shipping fee itself is computed by the injected {@link ShippingFeeCalculator} — a GoF
+ * Strategy seam (see that interface's own Javadoc) — rather than a field on this class; this class
+ * no longer knows or cares how the fee was priced, only that it needs one.
  *
  * <p>{@link #confirm} implements US-3.1 (Epic 3): every line's stock is reserved via
  * {@link ProductVariantRepository#reserve} in this same {@code @Transactional} method, before the
@@ -58,9 +58,7 @@ public class CheckoutServiceImpl implements CheckoutService {
     private final OrderRepository orderRepository;
     private final ProductVariantRepository productVariantRepository;
     private final SavedAddressService savedAddressService;
-
-    @Value("${app.ecommerce.checkout.flat-shipping-fee:5.00}")
-    private BigDecimal flatShippingFee;
+    private final ShippingFeeCalculator shippingFeeCalculator;
 
     @Override
     @Transactional(readOnly = true)
@@ -69,7 +67,8 @@ public class CheckoutServiceImpl implements CheckoutService {
         List<CartLine> candidateLines = filterBySelection(cart.lines(), selectedVariantIds);
         List<CartLine> availableLines = requireCheckoutableCart(candidateLines);
         BigDecimal subtotal = computeSubtotal(availableLines);
-        return new CheckoutPreview(candidateLines, subtotal, flatShippingFee, subtotal.add(flatShippingFee));
+        BigDecimal shippingFee = shippingFeeCalculator.calculate(availableLines, subtotal);
+        return new CheckoutPreview(candidateLines, subtotal, shippingFee, subtotal.add(shippingFee));
     }
 
     @Override
@@ -81,7 +80,8 @@ public class CheckoutServiceImpl implements CheckoutService {
         List<CartLine> droppedLines = candidateLines.stream().filter(line -> !line.available()).toList();
 
         BigDecimal subtotal = computeSubtotal(availableLines);
-        BigDecimal total = subtotal.add(flatShippingFee);
+        BigDecimal shippingFee = shippingFeeCalculator.calculate(availableLines, subtotal);
+        BigDecimal total = subtotal.add(shippingFee);
         Address shippingAddress = resolveAddress(userUuid, addressSelection);
 
         // US-3.1: reserve every line's stock before the order itself is ever persisted — an
@@ -96,7 +96,7 @@ public class CheckoutServiceImpl implements CheckoutService {
         order.setStatus(OrderStatus.PENDING);
         order.setShippingAddress(shippingAddress);
         order.setSubtotal(subtotal);
-        order.setShippingFee(flatShippingFee);
+        order.setShippingFee(shippingFee);
         order.setTotal(total);
         for (CartLine line : availableLines) {
             order.getLines().add(toOrderLine(order, line));

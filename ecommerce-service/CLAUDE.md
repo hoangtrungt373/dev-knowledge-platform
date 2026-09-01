@@ -595,11 +595,26 @@ in Phase 1, then spent by Phase 2.
   (`EcommerceErrorCode.CHECKOUT_CART_EMPTY`) or a cart where every line failed revalidation
   (`CHECKOUT_NO_VALID_ITEMS`) rejects before anything is computed. `confirm` deletes the Redis cart
   key **only after** `orderRepository.save` succeeds, never before (US-2.6) — verified in
-  `CheckoutServiceImplTest` via `Mockito.inOrder`. `flatShippingFee` is externalized via
-  `app.ecommerce.checkout.flat-shipping-fee` (`CHECKOUT_FLAT_SHIPPING_FEE` env var, default
-  `5.00`), same `@Value`-on-a-field convention `CartServiceImpl`'s own `cartTtl` already
-  established for a tunable business value — flat-rate shipping only, per this epic's locked
-  decisions.
+  `CheckoutServiceImplTest` via `Mockito.inOrder`. **The shipping fee itself is now computed by a
+  `shipping.ShippingFeeCalculator` seam, not a field on this class (post-Epic-2 follow-up, per
+  request)** — a GoF **Strategy** (Behavioral), mirroring `payment.PaymentGatewayPort`'s own
+  "interface today, swap the implementation later" shape: `CheckoutServiceImpl` depends on
+  `ShippingFeeCalculator` only, never a concrete pricing rule, so a future strategy
+  (free-over-threshold, weight-tiered once `ProductVariant` gains a `weight` column, a real
+  carrier-rate API call) can replace or sit alongside `FlatRateShippingFeeCalculator` without
+  touching checkout at all. `calculate(lines, subtotal)` deliberately doesn't take a resolved
+  shipping `Address` — `preview` has no address available at all today (the shopper hasn't chosen
+  one yet at preview time), so a genuinely zone/carrier-based strategy needing a destination would
+  need to widen this method's signature (and thread an address through `preview` too) when that's
+  actually built. `FlatRateShippingFeeCalculator` is the only implementation today — a single fee
+  regardless of cart contents, externalized via `app.ecommerce.checkout.flat-shipping-fee`
+  (`CHECKOUT_FLAT_SHIPPING_FEE` env var, default `5.00`, moved here from `CheckoutServiceImpl`'s
+  own field — same `@Value`-on-a-field convention `CartServiceImpl`'s own `cartTtl` already
+  established for a tunable business value). Flat-rate shipping remains the only *pricing rule*
+  actually wired up, per this epic's locked decisions — only the seam is new, not the behavior.
+  `CheckoutServiceImplTest` mocks `ShippingFeeCalculator` (`lenient()`, since several
+  early-rejection tests never reach it) instead of the old `ReflectionTestUtils.setField` hack a
+  plain `@Value` field needed.
 - `mapper/CheckoutMapper` — **hand-written, not MapStruct**, and injects `CartMapper` to reuse
   `toLineResponse` for every cart-line shape this mapper surfaces (a preview's lines, and any lines
   silently dropped at confirm time) rather than duplicating that branching a second time.

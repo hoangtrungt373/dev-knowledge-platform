@@ -1577,6 +1577,15 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   ├── PaymentOutcome.java         — SUCCEEDED / DECLINED / PENDING
 │   └── NoOpPaymentGatewayPort.java — the only implementation today; always returns SUCCEEDED
 │                                        instantly. Delete outright once Epic 4 adds a real adapter
+├── shipping/                    — the checkout shipping-fee pricing seam, same "interface today,
+│   │                                swap the implementation later" shape as payment/ above
+│   ├── ShippingFeeCalculator.java     — GoF Strategy (Behavioral): calculate(lines, subtotal) ->
+│   │                                       BigDecimal; CheckoutServiceImpl depends on this
+│   │                                       interface only, never a concrete pricing rule
+│   └── FlatRateShippingFeeCalculator.java — the only implementation today; a single fee regardless
+│                                              of cart contents, externalized via
+│                                              app.ecommerce.checkout.flat-shipping-fee (moved here
+│                                              from CheckoutServiceImpl's own field)
 ├── security/                    — this app's own filter chain, independent of gateway's; pure
 │   │                                OAuth2 resource server (Keycloak-backed, same as every other
 │   │                                deployable — the old JJWT-based JwtVerifier/
@@ -1634,7 +1643,8 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │       CheckoutServiceImpl.java re-validates fresh on confirm (never trusts a client-cached
 │       preview), shares one requireCheckoutableCart guard (empty cart / all-lines-unavailable)
 │       between preview and confirm, and clears the Redis cart only after orderRepository.save
-│       succeeds; flatShippingFee externalized via app.ecommerce.checkout.flat-shipping-fee.
+│       succeeds; the shipping fee itself now comes from the injected shipping.ShippingFeeCalculator
+│       seam (see that package above) rather than a flatShippingFee field on this class.
 │       Epic 3 Phase 2 (US-3.1): confirm now calls ProductVariantRepository.reserve per line
 │       before building the Order, in the same transaction — insufficient stock throws
 │       ORDER_INSUFFICIENT_STOCK and rolls back the whole request; confirm also appends the

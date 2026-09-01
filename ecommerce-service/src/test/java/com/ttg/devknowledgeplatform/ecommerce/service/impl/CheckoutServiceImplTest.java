@@ -17,6 +17,7 @@ import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutPreview;
 import com.ttg.devknowledgeplatform.ecommerce.service.CheckoutResult;
 import com.ttg.devknowledgeplatform.ecommerce.service.SavedAddressCommands;
 import com.ttg.devknowledgeplatform.ecommerce.service.SavedAddressService;
+import com.ttg.devknowledgeplatform.ecommerce.shipping.ShippingFeeCalculator;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -26,7 +27,6 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -37,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -59,6 +60,8 @@ class CheckoutServiceImplTest {
     private ProductVariantRepository productVariantRepository;
     @Mock
     private SavedAddressService savedAddressService;
+    @Mock
+    private ShippingFeeCalculator shippingFeeCalculator;
 
     @InjectMocks
     private CheckoutServiceImpl service;
@@ -68,7 +71,10 @@ class CheckoutServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(service, "flatShippingFee", FLAT_SHIPPING_FEE);
+        // lenient — several tests (an empty/all-unavailable cart, a selection matching nothing)
+        // reject before the fee is ever computed, and strict stubbing would flag this as unused
+        // for those specific tests otherwise.
+        lenient().when(shippingFeeCalculator.calculate(any(), any())).thenReturn(FLAT_SHIPPING_FEE);
         addressInput = new CheckoutCommands.AddressInput(
                 "Ada Lovelace", "1 Analytical Engine Way", null, "London", "England", "SW1A 1AA", "UK");
         address = new CheckoutCommands.AddressSelection(null, addressInput, false, null);
