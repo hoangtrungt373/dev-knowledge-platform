@@ -264,51 +264,14 @@ class ProductServiceImplTest {
         }
 
         @Test
-        void rejectsVariantAttributeNotInCategorySchema() {
-            addCategoryAttribute(category, "size", false, "S", "M", "L");
-            ProductCommands.VariantInput variantInput = new ProductCommands.VariantInput(
-                    "SKU-1", BigDecimal.TEN, 5, Map.of("color", "Black"));
-            ProductCommands.Create command = new ProductCommands.Create("Tee", null, 10, List.of(variantInput), List.of(), Set.of());
-            when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
-
-            assertThatThrownBy(() -> service.create(command))
-                    .isInstanceOf(ApiException.class)
-                    .extracting(e -> ((ApiException) e).getErrorCode())
-                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_NOT_ALLOWED_FOR_CATEGORY);
-        }
-
-        @Test
-        void rejectsMissingRequiredCategoryAttribute() {
+        void toleratesAttributesOutsideTheCategorySchema() {
+            // The category's own attribute schema is advisory only (drives the admin GUI's
+            // suggested-attribute rows) — it must never reject a variant for using a key/value
+            // beyond what the category suggests, e.g. "Model" on a category that only suggests
+            // "size"/"color".
             addCategoryAttribute(category, "size", true, "S", "M", "L");
-            ProductCommands.VariantInput variantInput = new ProductCommands.VariantInput("SKU-1", BigDecimal.TEN, 5, Map.of());
-            ProductCommands.Create command = new ProductCommands.Create("Tee", null, 10, List.of(variantInput), List.of(), Set.of());
-            when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
-
-            assertThatThrownBy(() -> service.create(command))
-                    .isInstanceOf(ApiException.class)
-                    .extracting(e -> ((ApiException) e).getErrorCode())
-                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_REQUIRED_ATTRIBUTE_MISSING);
-        }
-
-        @Test
-        void rejectsAttributeValueNotInTheAllowedList() {
-            addCategoryAttribute(category, "color", true, "Red", "Blue");
             ProductCommands.VariantInput variantInput = new ProductCommands.VariantInput(
-                    "SKU-1", BigDecimal.TEN, 5, Map.of("color", "Green"));
-            ProductCommands.Create command = new ProductCommands.Create("Tee", null, 10, List.of(variantInput), List.of(), Set.of());
-            when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
-
-            assertThatThrownBy(() -> service.create(command))
-                    .isInstanceOf(ApiException.class)
-                    .extracting(e -> ((ApiException) e).getErrorCode())
-                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_VALUE_NOT_ALLOWED);
-        }
-
-        @Test
-        void succeedsWhenAttributesSatisfyTheCategorySchema() {
-            addCategoryAttribute(category, "color", true, "Red", "Blue");
-            ProductCommands.VariantInput variantInput = new ProductCommands.VariantInput(
-                    "SKU-1", BigDecimal.TEN, 5, Map.of("color", "Red"));
+                    "SKU-1", BigDecimal.TEN, 5, Map.of("Model", "X100"));
             ProductCommands.Create command = new ProductCommands.Create("Tee", null, 10, List.of(variantInput), List.of(), Set.of());
             when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
             when(slugService.generateUniqueSlug(anyString(), any(), any())).thenReturn("tee");
@@ -322,6 +285,7 @@ class ProductServiceImplTest {
             Product result = service.create(command);
 
             assertThat(result.getVariants()).hasSize(1);
+            assertThat(result.getVariants().get(0).getAttributes()).containsEntry("Model", "X100");
         }
 
         @Test
@@ -506,7 +470,10 @@ class ProductServiceImplTest {
         }
 
         @Test
-        void rejectsReassignmentToACategoryTheExistingVariantsDontSatisfy() {
+        void toleratesReassignmentToACategoryWhoseSchemaTheExistingVariantsDontSatisfy() {
+            // The target category's own attribute schema is advisory only — reassigning a product
+            // into it must never be blocked just because existing variants don't happen to match
+            // whatever that category suggests.
             Product existing = productWithId(1);
             existing.getVariants().add(variant(existing, 100, "TEE-S-BLK", Map.of()));
             ProductCategory stricter = new ProductCategory();
@@ -515,15 +482,12 @@ class ProductServiceImplTest {
 
             when(productRepository.findById(1)).thenReturn(Optional.of(existing));
             when(productCategoryRepository.findById(20)).thenReturn(Optional.of(stricter));
+            when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
             ProductCommands.Update command = new ProductCommands.Update("404 Not Found T-Shirt", null, 20, null);
+            Product result = service.update(1, command);
 
-            assertThatThrownBy(() -> service.update(1, command))
-                    .isInstanceOf(ApiException.class)
-                    .extracting(e -> ((ApiException) e).getErrorCode())
-                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_REQUIRED_ATTRIBUTE_MISSING);
-
-            verify(productRepository, never()).save(any());
+            assertThat(result.getProductCategory()).isEqualTo(stricter);
         }
     }
 
@@ -649,35 +613,19 @@ class ProductServiceImplTest {
         }
 
         @Test
-        void rejectsAddedVariantAttributeNotInCategorySchema() {
-            Product product = productWithId(1); // no variants yet — the category schema is the only check that can fire
-            addCategoryAttribute(product.getProductCategory(), "size", false, "S", "M", "L");
-            when(productRepository.findById(1)).thenReturn(Optional.of(product));
-            when(productVariantRepository.existsBySku("TEE-1")).thenReturn(false);
-
-            ProductCommands.VariantInput input = new ProductCommands.VariantInput(
-                    "TEE-1", BigDecimal.valueOf(24.99), 20, Map.of("color", "Black"));
-
-            assertThatThrownBy(() -> service.addVariant(1, input))
-                    .isInstanceOf(ApiException.class)
-                    .extracting(e -> ((ApiException) e).getErrorCode())
-                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_NOT_ALLOWED_FOR_CATEGORY);
-        }
-
-        @Test
-        void rejectsAddedVariantMissingARequiredCategoryAttribute() {
-            Product product = productWithId(1);
+        void toleratesAnAddedVariantAttributeOutsideTheCategorySchema() {
+            Product product = productWithId(1); // no variants yet — free to name its own keys
             addCategoryAttribute(product.getProductCategory(), "size", true, "S", "M", "L");
             when(productRepository.findById(1)).thenReturn(Optional.of(product));
             when(productVariantRepository.existsBySku("TEE-1")).thenReturn(false);
+            when(productVariantRepository.save(any(ProductVariant.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
+            // Neither "color" (outside the schema) nor the omission of the "required" "size" key
+            // is rejected — the category's own schema is advisory only.
             ProductCommands.VariantInput input = new ProductCommands.VariantInput(
-                    "TEE-1", BigDecimal.valueOf(24.99), 20, Map.of());
+                    "TEE-1", BigDecimal.valueOf(24.99), 20, Map.of("color", "Black"));
 
-            assertThatThrownBy(() -> service.addVariant(1, input))
-                    .isInstanceOf(ApiException.class)
-                    .extracting(e -> ((ApiException) e).getErrorCode())
-                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_REQUIRED_ATTRIBUTE_MISSING);
+            assertThat(service.addVariant(1, input).getAttributes()).containsEntry("color", "Black");
         }
     }
 
@@ -798,21 +746,22 @@ class ProductServiceImplTest {
         }
 
         @Test
-        void rejectsAttributesThatViolateTheCategorySchema() {
+        void toleratesAnAttributeValueOutsideTheCategorySchema() {
             Product product = productWithId(1);
             addCategoryAttribute(product.getProductCategory(), "color", true, "Red", "Blue");
             ProductVariant existing = variant(product, 100, "TEE-S-BLK", Map.of("color", "Red"));
             product.getVariants().add(existing);
             when(productRepository.findById(1)).thenReturn(Optional.of(product));
             when(productVariantRepository.findById(100)).thenReturn(Optional.of(existing));
+            when(productVariantRepository.save(any(ProductVariant.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
+            // "Green" isn't in the category's own suggested vocabulary for "color" — advisory
+            // only, so this must still succeed.
             ProductCommands.VariantInput input = new ProductCommands.VariantInput(
                     "TEE-S-BLK", BigDecimal.valueOf(24.99), 10, Map.of("color", "Green"));
+            ProductVariant result = service.updateVariant(1, 100, input);
 
-            assertThatThrownBy(() -> service.updateVariant(1, 100, input))
-                    .isInstanceOf(ApiException.class)
-                    .extracting(e -> ((ApiException) e).getErrorCode())
-                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_VALUE_NOT_ALLOWED);
+            assertThat(result.getAttributes()).containsEntry("color", "Green");
         }
 
         @Test

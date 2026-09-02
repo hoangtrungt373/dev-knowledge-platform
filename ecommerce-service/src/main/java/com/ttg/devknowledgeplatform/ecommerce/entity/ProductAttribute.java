@@ -30,12 +30,15 @@ import java.util.List;
  * list everywhere it's assigned, rather than being independently (and inconsistently) typed per
  * category.
  *
- * <p>{@link #name} is meant to be typed exactly as it should appear as a key in {@link
- * ProductVariant#getAttributes()} (e.g. {@code "size"}, {@code "color"}, {@code "model"}) —
- * matching against a variant's attribute map is a literal, case-sensitive string comparison, done
- * in {@code ProductServiceImpl}'s own category-schema enforcement (see that class's
- * {@code validateAttributesAgainstCategory}), not a lookup by id — a variant's {@code attributes}
- * map has no room to reference this entity's primary key.
+ * <p>{@link #name} is meant to be typed exactly as it would appear as a key in {@link
+ * ProductVariant#getAttributes()} (e.g. {@code "size"}, {@code "color"}, {@code "model"}) — a
+ * variant's {@code attributes} map has no room to reference this entity's primary key, so any
+ * matching would have to be a literal, case-sensitive string comparison. In practice, though, this
+ * is advisory only: nothing in {@code ProductServiceImpl} actually validates a variant's
+ * {@code attributes} against this registry — the admin GUI uses it purely to suggest/pre-fill a
+ * variant's attribute rows (see {@code gui}'s {@code useCategoryAttributeSuggestions}), and an
+ * admin remains free to key/value anything else entirely (see {@link ProductCategoryAttribute}'s
+ * own Javadoc).
  */
 @Entity
 @Table(name = "PRODUCT_ATTRIBUTE", schema = "ecommerce")

@@ -31,12 +31,8 @@ public enum EcommerceErrorCode implements ErrorCode {
     PRODUCT_REQUIRES_AT_LEAST_ONE_VARIANT("PRODUCT_003", "A product must have at least one variant", HttpStatus.BAD_REQUEST),
     PRODUCT_VARIANT_ATTRIBUTE_KEYS_INCONSISTENT("PRODUCT_004",
             "All variants of a product must share the same attribute keys", HttpStatus.BAD_REQUEST),
-    PRODUCT_VARIANT_ATTRIBUTE_NOT_ALLOWED_FOR_CATEGORY("PRODUCT_005",
-            "''{0}'' is not one of this product's category attributes", HttpStatus.BAD_REQUEST),
-    PRODUCT_VARIANT_REQUIRED_ATTRIBUTE_MISSING("PRODUCT_006",
-            "''{0}'' is required for this product's category", HttpStatus.BAD_REQUEST),
-    PRODUCT_VARIANT_ATTRIBUTE_VALUE_NOT_ALLOWED("PRODUCT_007",
-            "''{0}'' is not an allowed value for attribute ''{1}''", HttpStatus.BAD_REQUEST),
+    // PRODUCT_005/006/007 (category-schema enforcement) were removed once that enforcement was
+    // reversed to advisory-only — see ProductServiceImpl's own class Javadoc. Not renumbered/reused.
 
     // Product Variant Errors (PRODUCT_VARIANT_*)
     PRODUCT_VARIANT_SKU_CONFLICT("PRODUCT_VARIANT_001", "A variant with SKU ''{0}'' already exists", HttpStatus.CONFLICT),

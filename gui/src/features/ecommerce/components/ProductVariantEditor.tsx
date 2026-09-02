@@ -54,10 +54,13 @@ export default function ProductVariantEditor({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingVariant, setEditingVariant] = useState<DisplayVariant | null>(null);
 
-  // Every variant of one product must share the same attribute keys (US-1.6) — computed against
-  // the product's *other* variants, excluding whichever one is currently being edited (if any),
-  // mirroring the backend's own ProductServiceImpl.validateAttributeKeysMatchExisting: comparing
-  // an edit against its own (about-to-change) key set would trivially match and defeat the check.
+  // Every variant of one product must share the same attribute keys (US-1.6, still enforced
+  // server-side) — computed against the product's *other* variants, excluding whichever one is
+  // currently being edited (if any), mirroring the backend's own
+  // ProductServiceImpl.validateAttributeKeysMatchExisting. Passed to ProductVariantDialog as an
+  // advisory hint for its fast pre-submit message only — it must never disable a field, since any
+  // *other* variant always has this exact key set by the very invariant it's checking, which would
+  // otherwise permanently lock every row on any product with 2+ variants.
   const referenceVariant = variants.find(v => v.id !== editingVariant?.id);
   const requiredAttributeKeys = referenceVariant ? Object.keys(referenceVariant.attributes) : [];
 

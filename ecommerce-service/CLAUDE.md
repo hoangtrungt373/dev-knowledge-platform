@@ -1715,22 +1715,17 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
     parameter (a nested record, `{attributeId, required}` — no `displayOrder` field) with the same
     three-state semantics `ProductCommands.Update.tagIds` already established (`create`: `null` →
     empty; `update`: `null` → leave unchanged, `[]` → clear).
-  - **Enforcement is real, not just advisory — explicitly requested over the alternative (leave it
-    purely informational).** `ProductServiceImpl.validateAttributesAgainstCategory` runs in
-    `create`, `addVariant`, and (re-validating existing variants) `update` whenever the product's
-    category changes — but **a category with zero `ProductCategoryAttribute` assignments stays
-    exactly as free-form as before this feature**; enforcement only turns on once an admin actually
-    assigns at least one attribute, so every pre-existing category/product/seed row keeps working
-    unchanged (confirmed by the full existing test suite passing unmodified, plus new fixtures only
-    opting a category into a schema explicitly). Once a schema exists: every key present in a
-    variant's `attributes` map must be one of the category's assigned attribute names
-    (`PRODUCT_VARIANT_ATTRIBUTE_NOT_ALLOWED_FOR_CATEGORY`), every `required`-flagged name must be
-    present (`PRODUCT_VARIANT_REQUIRED_ATTRIBUTE_MISSING`), and each present value must be one of
-    that attribute's own defined values (`PRODUCT_VARIANT_ATTRIBUTE_VALUE_NOT_ALLOWED`). This
-    composes with, rather than replaces, the pre-existing `validateConsistentAttributeKeys`/
-    `validateAttributeKeysMatchExisting` checks (those enforce "every variant of this product
-    shares one key set"; this enforces "that shared key set — and each variant's own values — is
-    actually valid for the product's category").
+  - **Enforcement was originally real, not just advisory — explicitly requested at the time over
+    the alternative (leave it purely informational) — but this was later reversed, per a follow-up
+    request; see the dedicated follow-up bullet below for the full detail.** The original design:
+    `ProductServiceImpl.validateAttributesAgainstCategory` ran in `create`, `addVariant`, and
+    (re-validating existing variants) `update` whenever the product's category changed — a category
+    with zero `ProductCategoryAttribute` assignments stayed free-form; once a schema existed, every
+    key present in a variant's `attributes` map had to be one of the category's assigned attribute
+    names, every `required`-flagged name had to be present, and each present value had to be one of
+    that attribute's own defined values. **None of this is enforced anymore** — kept here only as
+    history for why `ProductCategoryAttribute`/`ProductAttribute` still exist and still shape the
+    admin GUI even though nothing server-side validates against them.
   - New `api/ProductAttributeApi`+`Controller` at `/api/v1/admin/product-attributes` (full CRUD,
     paginated list, mirrors `ProductTagApi`'s own shape exactly), `dto/{Create,Update}
     ProductAttributeRequest` (a `name` plus a `List<String> values`, both validated —
@@ -1779,8 +1774,10 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
     its own about-to-change key set (which would trivially match and defeat the check entirely) —
     it now picks its reference from the product's *other* variants, same reasoning `addVariant`'s
     reference variant already avoided by construction (a brand-new variant is never yet in the
-    list to exclude); `validateAttributesAgainstCategory` runs unchanged, against the product's
-    current category. **New guard, not present on `addVariant` at all**: a new
+    list to exclude). At the time this was written, `updateVariant` also ran
+    `validateAttributesAgainstCategory` against the product's current category — **that call, and
+    the method itself, were removed in a later follow-up below**, once category-schema enforcement
+    was reversed to advisory-only. **New guard, not present on `addVariant` at all**: a new
     `PRODUCT_VARIANT_STOCK_BELOW_RESERVED` (`PRODUCT_VARIANT_005`) rejects a stock-quantity edit
     that would drop below the variant's own `reservedQuantity` — `addVariant` never needed this
     (a brand-new variant always starts at `reservedQuantity = 0`), but an existing variant may
@@ -1799,30 +1796,65 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
       now computed excluding whichever variant is being edited, mirroring the backend's own
       `excludingVariantId` fix above. `useDraftVariants` (create-mode's local unsaved-variant
       list) gained a matching `updateDraftVariant`, and `ecommerceApi.ts` gained `updateVariant`.
-    - **GUI, suggested attributes**: new `hooks/useCategoryAttributeSuggestions.ts` resolves the
+    - **GUI, suggested attributes (superseded by the follow-up below — kept as history of the
+      original, stricter design).** New `hooks/useCategoryAttributeSuggestions.ts` resolves the
       selected category's own `ProductCategoryAttribute` assignments (ids only, per
       `CategoryAttributeAssignmentResponse`) into a ready-to-render `SuggestedAttribute[]`
       (name/required/controlled-vocabulary), by fetching the full category list and the full
       attribute registry once (the same "just fetch everything for a picker" convention
       `ProductCategoryFormDialog.tsx`'s own Attributes section already uses) and cross-referencing
-      by id. `ProductFormPage.tsx` computes this once from the selected `productCategoryId` and
-      passes it down to `ProductVariantEditor`/`ProductVariantDialog`. **When the category has a
-      schema, the dialog renders exactly those attributes** — locked key labels plus a `Select`
-      restricted to each attribute's own controlled vocabulary (required ones must have a value
-      chosen; optional ones may be left blank, which omits that key from the submitted map rather
-      than sending an empty string) — **instead of** the free-form key/value row editor, with no
-      "add a custom attribute" affordance in that mode. This is a deliberate 1:1 mirror of the
-      backend's own enforcement, not just a convenience default: once a category has *any*
-      assigned attribute, `validateAttributesAgainstCategory` rejects *any* key outside that set
-      unconditionally, so a free-text "add extra attribute" button would only ever fail at submit
-      time for such a category — offering it would be misleading. **The free-form editor
-      (unchanged from before this feature) only reappears for a category with zero assigned
-      attributes** — today's pre-"Option B" free-form behavior, and literally the "allow the user
-      to extend attributes only if the category doesn't already cover them" ask, translated
-      1:1 against the backend's actual all-or-nothing enforcement rule rather than attempting a
-      partial-coverage UI state the backend can't actually support. Verified via a clean
-      `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the actual
-      edit/suggested-attribute flow is unverified in a real browser.
+      by id — this part is unchanged by the follow-up below. `ProductFormPage.tsx` computes this
+      once from the selected `productCategoryId` and passes it down to
+      `ProductVariantEditor`/`ProductVariantDialog` — also unchanged. At the time this was
+      written, when the category had a schema, the dialog rendered *exactly* those attributes —
+      locked key labels plus a `Select` restricted to each attribute's own controlled vocabulary,
+      required ones blocking submission if left blank — **instead of** the free-form key/value row
+      editor, mirroring the backend's own (then-real) enforcement 1:1. **That whole "locked,
+      suggestion-only" mode was removed once enforcement itself was reversed** — see the follow-up
+      below for the current shape.
+
+  - **Follow-up: category-schema enforcement reversed to advisory-only, per explicit request —
+    "the `product_category_attributes` is just a suggestion, don't force the user to follow it."**
+    This directly reverses the "Enforcement is real, not just advisory" decision above; the earlier
+    choice was made deliberately at the time, but the actual catalog turned out to need attribute
+    vocabularies (and combinations) this reactor's sample data/schema couldn't fully anticipate —
+    e.g. a "Shirt" product's variant should be free to use `Size`/`Model` even though `Apparel`
+    only suggests `size`/`color`. `ProductServiceImpl.validateAttributesAgainstCategory` was
+    deleted outright (not disabled/flagged — genuinely dead code once nothing calls it), along with
+    its three call sites in `create`/`update`/`addVariant`/`updateVariant` and the now-unused
+    `PRODUCT_VARIANT_ATTRIBUTE_NOT_ALLOWED_FOR_CATEGORY`/`PRODUCT_VARIANT_REQUIRED_ATTRIBUTE_MISSING`/
+    `PRODUCT_VARIANT_ATTRIBUTE_VALUE_NOT_ALLOWED` error codes (`PRODUCT_005`–`007`, left as a
+    numbering gap rather than renumbered/reused — see `EcommerceErrorCode`'s own comment there).
+    **`ProductCategoryAttribute`/`ProductAttribute` themselves are untouched** — the data model,
+    admin CRUD, and category-assignment feature all still exist exactly as before; only the
+    *validation* of a variant's `attributes` against that schema is gone. Both entities' own
+    Javadoc (and `ProductServiceImpl`'s new class-level Javadoc) now say so explicitly: the schema
+    is purely an admin-GUI suggestion/quick-fill aid from here on. The unrelated
+    `validateConsistentAttributeKeys`/`validateAttributeKeysMatchExisting` checks (US-1.6's "every
+    variant of one product shares one key set") are **not** affected — those were never about the
+    category schema, and the user didn't ask to relax them.
+    - Every test asserting the old rejection behavior was replaced with one asserting the new
+      tolerant behavior instead (e.g. `rejectsVariantAttributeNotInCategorySchema` →
+      `toleratesAttributesOutsideTheCategorySchema`), across `Create`/`Update`/`AddVariant`/
+      `UpdateVariant` — **293 unit tests total** (down from 297, net of 4 old rejection-only tests
+      collapsing into fewer tolerance tests), verified via a real `mvn test` run (JDK 21). Treat
+      this figure, not `297` a few paragraphs up, as current.
+    - **GUI**: `ProductVariantDialog.tsx`'s "locked, suggestion-only" mode was removed — the
+      free-form key/value row editor (add/remove rows, edit any key or value) is now **always**
+      shown, regardless of whether the category has a schema. When it does, a row of clickable
+      `Chip`s ("Suggested by this product's category — click to add, edit freely below") sits
+      above the editor — clicking one quick-adds a pre-filled (empty-value) row for that attribute
+      name (a no-op if already present); a `required`-flagged suggestion is labeled
+      `"name (usually required)"`, a soft hint only, never blocking. A row whose own `Key` happens
+      to match a suggested attribute's name renders its `Value` field as an MUI `Autocomplete`
+      (`freeSolo`, options = that attribute's controlled vocabulary) instead of a plain
+      `TextField` — offers the suggested values without preventing free typing. All "required
+      value missing"/"value not in the allowed list" client-side validation was removed alongside
+      this — the only attribute-related validation this dialog still performs is the pre-existing,
+      unrelated `requiredAttributeKeys` cross-variant key-consistency check (still real, still
+      enforced server-side). Verified via a clean `tsc --noEmit` and a successful `vite build`
+      only — no Docker in this sandbox, so the actual quick-add/autocomplete flow is unverified in
+      a real browser.
 
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"

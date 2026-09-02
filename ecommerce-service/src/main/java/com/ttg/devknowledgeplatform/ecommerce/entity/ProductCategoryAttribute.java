@@ -31,11 +31,15 @@ import org.hibernate.annotations.BatchSize;
  * repository outside of that collection, mirroring {@code ProductTagAssignment}'s own ownership by
  * {@code Product.productTagAssignments}.
  *
- * <p>{@code ProductServiceImpl}'s own category-schema enforcement reads this row's
- * {@link #required} flag and its {@link #getAttribute()}'s {@link ProductAttribute#getName()} to
- * validate a product's variants against the product's category — see that class's
- * {@code validateAttributesAgainstCategory}. A category with zero assignments is unconstrained
- * (today's free-form behavior, unchanged); enforcement only turns on once at least one is added.
+ * <p><strong>Advisory only — not enforced against {@code ProductVariant.attributes}.</strong> The
+ * admin GUI reads this row's {@link #required} flag and its {@link #getAttribute()}'s {@link
+ * ProductAttribute#getName()} to pre-fill/suggest a variant's attribute rows for products in this
+ * category (see {@code gui}'s {@code useCategoryAttributeSuggestions}), but
+ * {@code ProductServiceImpl} never validates a variant's actual {@code attributes} map against
+ * this schema — an admin may freely key/value anything on a variant regardless of what its
+ * category suggests here. This was a deliberate reversal of an earlier "enforced" design (see
+ * {@code ProductServiceImpl}'s own class Javadoc and {@code ecommerce-service/CLAUDE.md}'s note on
+ * this feature).
  */
 @Entity
 @Table(
@@ -62,9 +66,10 @@ public class ProductCategoryAttribute extends AbstractEntity {
     @JoinColumn(name = "PRODUCT_ATTRIBUTE_ID", nullable = false)
     private ProductAttribute attribute;
 
-    /** Whether every variant in this category must supply this attribute — enforced at the
-     * service layer (not a DB constraint; {@code ProductVariant.attributes} stays a free-form
-     * JSONB map regardless — see that field's own Javadoc). */
+    /** Whether every variant in this category is *suggested* to supply this attribute — advisory
+     * only (see this class's own Javadoc), surfaced by the admin GUI, never enforced against
+     * {@code ProductVariant.attributes} (a free-form JSONB map regardless — see that field's own
+     * Javadoc). */
     @Column(name = "REQUIRED", nullable = false)
     private boolean required;
 

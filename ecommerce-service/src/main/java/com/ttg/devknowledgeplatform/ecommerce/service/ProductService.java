@@ -69,8 +69,8 @@ public interface ProductService {
      * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException if the product or variant does not exist
      * @throws com.ttg.devknowledgeplatform.common.exception.ApiException if the variant belongs to a different
      *         product, its new SKU conflicts with another variant, its attribute keys no longer match this
-     *         product's other variants, its attributes don't satisfy the product's category schema, or its new
-     *         stock quantity would fall below the quantity already reserved against it
+     *         product's other variants, or its new stock quantity would fall below the quantity already
+     *         reserved against it
      */
     ProductVariant updateVariant(Integer productId, Integer variantId, ProductCommands.VariantInput input);
 

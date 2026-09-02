@@ -54,15 +54,15 @@ import java.util.Map;
  * {@code seedId}.
  *
  * <p>Must run after both {@link ProductCategorySeeder} and {@link ProductAttributeSeeder} (whose
- * rows this seeder resolves by name), and before {@link ProductSeeder} — once a category has a
- * schema, {@code ProductServiceImpl}'s own enforcement applies to every variant seeded into it
- * from that point on, so the sample catalog's own {@code product_variants.csv} data must already
- * be consistent with whatever schema this seeder assigns (verified by hand against every row of
- * the current sample catalog when this seed data was written — see
- * {@code ecommerce-service/CLAUDE.md}'s own note on this feature for which categories deliberately
- * got a schema and which were deliberately left free-form because their existing sample variants
- * don't share one clean vocabulary, e.g. a "size" key meaning completely different things across
- * Apparel/Office/Accessories).
+ * rows this seeder resolves by name), and before {@link ProductSeeder} for name-resolution
+ * ordering reasons only — {@code ProductServiceImpl} never validates a variant's own
+ * {@code attributes} against a category's schema (advisory only, see {@link
+ * ProductCategoryAttribute}'s own Javadoc), so an inconsistency here would no longer fail loudly
+ * inside {@link ProductSeeder} the way it once did. The sample catalog's own
+ * {@code product_variants.csv} data is still kept consistent with whatever schema this seeder
+ * assigns, purely so the admin GUI's suggested-attribute rows stay accurate for the sample
+ * catalog — see {@code ecommerce-service/CLAUDE.md}'s own note on this feature for the full
+ * per-category breakdown.
  *
  * @author ttg
  */

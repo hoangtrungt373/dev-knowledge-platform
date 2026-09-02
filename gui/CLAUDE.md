@@ -804,26 +804,53 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       Attributes section already established) and cross-references by id; both fetches fail
       silently (a pre-fill nicety, not worth a toast on failure). `ProductFormPage.tsx` computes
       this once from `productCategoryId` and passes it straight down to `ProductVariantEditor`,
-      which forwards it to `ProductVariantDialog`. **When the category has a schema
-      (`suggestedAttributes.length > 0`), the dialog renders exactly those attributes** — a locked
-      (non-editable) key label per attribute plus a `Select` restricted to that attribute's own
-      controlled vocabulary (required attributes must have a value chosen; an unselected optional
-      one is omitted from the submitted map entirely, never sent as an empty string, since the
-      backend's own enforcement treats a present-but-blank value the same as any other
-      not-in-the-list value) — **replacing** the free-form key/value row editor, with no "add a
-      custom attribute" affordance in that mode at all. This is a deliberate 1:1 mirror of
-      `ProductServiceImpl.validateAttributesAgainstCategory`'s actual all-or-nothing rule, not just
-      a UI convenience: once a category has *any* assigned attribute, *every* key on a variant must
-      be one of that category's assigned names — there is no partial-coverage state where "some
-      keys are suggested, others are free-form" could ever succeed against a schema'd category, so
-      offering a free-text add button there would only ever fail at submit time. **The free-form
-      editor (byte-identical to before this follow-up) only reappears when the selected category
-      has zero assigned attributes** — today's pre-"Option B" free-form behavior — which is the
-      literal translation of "let the admin extend attributes only when the category doesn't
-      already cover them," matched against what the backend can actually accept rather than an
-      invented partial-coverage UI state. Verified via a clean `tsc --noEmit` and a successful
-      `vite build` only — no Docker in this sandbox, so the actual edit/suggested-attribute flow
-      is unverified in a real browser.
+      which forwards it to `ProductVariantDialog`. **Unchanged by the follow-up below** — only how
+      `ProductVariantDialog` *uses* the resulting suggestions changed, not how they're resolved.
+    - **Follow-up: category-schema suggestions are now advisory only, matching the backend's own
+      reversal (see `ecommerce-service/CLAUDE.md`'s note on this) — "the category attributes are
+      just a suggestion, don't force the user to follow them."** The dialog's original "locked,
+      suggestion-only" mode (rendering *exactly* the category's suggested attributes, with no way
+      to add anything else, once a schema existed) is gone. `ProductVariantDialog.tsx` now
+      **always** shows the free-form key/value row editor (add/remove rows, edit any key or value
+      freely) regardless of whether the category has a schema. When it does, a row of clickable
+      `Chip`s reading "Suggested by this product's category — click to add, edit freely below"
+      sits above the editor: clicking one quick-adds a pre-filled (empty-value) row for that
+      attribute name (reusing an already-blank row if one exists, rather than piling up empties;
+      a no-op if that key is already present) — a `required`-flagged suggestion's chip reads
+      `"name (usually required)"`, a soft hint only, never blocking submission. A row whose own
+      `Key` field happens to match a suggested attribute's name renders its `Value` field as an MUI
+      `Autocomplete` (`freeSolo`, options = that attribute's own controlled vocabulary,
+      `onInputChange`-driven since the value must stay freely typeable) instead of a plain
+      `TextField` — offers the suggested values without ever preventing a different one. All
+      "required value missing"/"value must be one of the allowed values" client-side checks were
+      removed from `handleSubmit`. At the time this was written, the one remaining attribute rule
+      this dialog still enforced was the pre-existing, unrelated `requiredAttributeKeys`
+      cross-variant key-consistency lock (US-1.6, still real and still enforced server-side) —
+      **that "lock" (disabling the Key field/row-delete button) was itself a bug, fixed in the very
+      next follow-up below.** New `@mui/material` import: `Autocomplete` (already a dependency, no
+      new package). Verified via a clean `tsc --noEmit` and a successful `vite build` only — no
+      Docker in this sandbox, so the actual quick-add/autocomplete flow is unverified in a real
+      browser.
+    - **Bug fix: an existing variant's attribute key (and the row's own delete button) couldn't be
+      edited/removed at all once a product had 2+ variants — reported directly ("I can not edit
+      the Variant attribute (key) and delete the Variant").** Root cause: `ProductVariantEditor`'s
+      `requiredAttributeKeys` (keys used by this product's *other* variants — meant to guide
+      **adding** a new variant so it matches its siblings, US-1.6) was also being used to `disabled`
+      the Key `TextField`/row delete `IconButton` inside `ProductVariantDialog` while **editing** an
+      existing one. Since every sibling variant already shares the exact same key set by that very
+      invariant, this check always matched — so every attribute row on any product with 2+ variants
+      came back permanently locked, for every variant, with no way out. Fixed by dropping the
+      `disabled={locked}` from both controls (and the `requiredAttributeKeys.length === 0` gate
+      that hid the "Add attribute" button) — `requiredAttributeKeys` is now purely advisory, feeding
+      only `handleSubmit`'s fast pre-submit message (unchanged) rather than disabling any control;
+      if a resulting edit genuinely breaks cross-variant key consistency, the backend's own
+      `PRODUCT_VARIANT_ATTRIBUTE_KEYS_INCONSISTENT` still rejects it, surfaced the normal way via
+      `showError`. **Deleting the variant itself was not a bug** — `ProductVariantEditor`'s Remove
+      button is disabled only when it's the product's *last* remaining variant
+      (`PRODUCT_REQUIRES_AT_LEAST_ONE_VARIANT`), which is what the reporter was actually seeing.
+      Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual edit/remove flow on a multi-variant product is unverified in a real
+      browser.
   - `components/ProductImageGallery.tsx` — upload via `httpClient.postForm` (same pattern as
     `@auth/api/profileApi.ts#uploadAvatar`), remove, and a real move-earlier/move-later reorder.
     **The reorder is a 3-step scratch-sort-order swap, not a direct 2-step swap** — the backend
