@@ -36,15 +36,15 @@ git commit -m 'fixed' Tumbler,TUMB-FIXED-SLV-16,21.99,18,color=Silver;capacity=1
 Rubber Duck Debugging Sticker Pack,STK-DUCK-5,4.99,100,packSize=5-pack
 Rubber Duck Debugging Sticker Pack,STK-DUCK-10,8.99,80,packSize=10-pack
 This Is Fine Laptop Decal,DECAL-FINE-01,3.99,150,
-Segfault Desk Mat,MAT-SEGFAULT-S,24.99,30,size=Small
-Segfault Desk Mat,MAT-SEGFAULT-L,34.99,25,size=Large
+Segfault Desk Mat,MAT-SEGFAULT-S,24.99,30,matSize=Small
+Segfault Desk Mat,MAT-SEGFAULT-L,34.99,25,matSize=Large
 TODO Fix This Later Notebook,NOTE-TODO-BLK,12.99,10,color=Black
 TODO Fix This Later Notebook,NOTE-TODO-KFT,12.99,10,color=Kraft
-Merge Conflict Laptop Sleeve,SLV-MERGE-13-BLK,29.99,18,size=13in;color=Black
-Merge Conflict Laptop Sleeve,SLV-MERGE-13-GRY,29.99,15,size=13in;color=Gray
-Merge Conflict Laptop Sleeve,SLV-MERGE-15-BLK,32.99,20,size=15in;color=Black
-Merge Conflict Laptop Sleeve,SLV-MERGE-15-GRY,32.99,16,size=15in;color=Gray
+Merge Conflict Laptop Sleeve,SLV-MERGE-13-BLK,29.99,18,sleeveSize=13in;color=Black
+Merge Conflict Laptop Sleeve,SLV-MERGE-13-GRY,29.99,15,sleeveSize=13in;color=Gray
+Merge Conflict Laptop Sleeve,SLV-MERGE-15-BLK,32.99,20,sleeveSize=15in;color=Black
+Merge Conflict Laptop Sleeve,SLV-MERGE-15-GRY,32.99,16,sleeveSize=15in;color=Gray
 I Love Semicolons Tote Bag,TOTE-SEMI-NAT,16.99,25,color=Natural
 I Love Semicolons Tote Bag,TOTE-SEMI-BLK,16.99,22,color=Black
-Compile Time Socks,SOCK-COMPILE-SM,11.99,40,size=S-M
-Compile Time Socks,SOCK-COMPILE-LXL,11.99,35,size=L-XL
+Compile Time Socks,SOCK-COMPILE-SM,11.99,40,sockSize=S-M
+Compile Time Socks,SOCK-COMPILE-LXL,11.99,35,sockSize=L-XL

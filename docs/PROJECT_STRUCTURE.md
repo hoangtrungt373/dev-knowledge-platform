@@ -1791,6 +1791,19 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                    ProductCategorySeeder (name is the idempotency key, no
 │   │                                    seedId, direct-repository persist, no ProductTagService
 │   │                                    involved — tag creation has no outbox event to trigger)
+│   ├── ProductAttributeSeeder.java — extends infra's CsvSeeder<ProductAttribute>; mirrors
+│   │                                    ProductTagSeeder (name is the idempotency key, direct-
+│   │                                    repository persist); values column is semicolon-joined,
+│   │                                    list position becomes each value's displayOrder
+│   ├── ProductCategoryAttributeSeeder.java — implements Seeder directly (one unit of work is a
+│   │                                    whole category's complete schema, not one CSV row — mirrors
+│   │                                    ProductSeeder's own "doesn't fit CsvSeeder" reasoning);
+│   │                                    assigns size/color to Apparel, color/capacity to Drinkware,
+│   │                                    packSize to Stickers — Office/Accessories deliberately left
+│   │                                    unassigned (their sample variants' own "size"-like key
+│   │                                    doesn't share one vocabulary with Apparel's); must run
+│   │                                    before ProductSeeder, since a category's schema is enforced
+│   │                                    against every variant seeded into it from that point on
 │   ├── ProductSeeder.java          — implements Seeder directly (joins products.csv +
 │   │                                    product_variants.csv by name); routes through
 │   │                                    ProductService.create/deactivate, not a bare repository

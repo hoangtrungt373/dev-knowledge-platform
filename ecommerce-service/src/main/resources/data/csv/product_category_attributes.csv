@@ -1,0 +1,11 @@
+categoryName,attributeName,required
+Apparel,size,true
+Apparel,color,false
+Drinkware,color,true
+Drinkware,capacity,false
+Stickers,packSize,false
+Office,color,false
+Office,matSize,false
+Accessories,color,false
+Accessories,sleeveSize,false
+Accessories,sockSize,false

@@ -40,6 +40,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -183,7 +184,7 @@ public class ProductServiceImpl implements ProductService {
     public ProductVariant addVariant(Integer productId, ProductCommands.VariantInput input) {
         Product product = findById(productId);
         Validator.isFalse(productVariantRepository.existsBySku(input.sku()), EcommerceErrorCode.PRODUCT_VARIANT_SKU_CONFLICT, input.sku());
-        validateAttributeKeysMatchExisting(product, input.attributes());
+        validateAttributeKeysMatchExisting(product, input.attributes(), null);
         validateAttributesAgainstCategory(product.getProductCategory(), input.attributes());
 
         ProductVariant variant = new ProductVariant();
@@ -199,6 +200,35 @@ public class ProductServiceImpl implements ProductService {
         publishProductChanged(productId);
         log.info("Added variant sku={} to product id={}", input.sku(), productId);
         return saved;
+    }
+
+    @Override
+    public ProductVariant updateVariant(Integer productId, Integer variantId, ProductCommands.VariantInput input) {
+        Product product = findById(productId);
+        ProductVariant variant = findVariantById(variantId);
+        validateVariantBelongsToProduct(variant, product);
+
+        if (!variant.getSku().equals(input.sku())) {
+            Validator.isFalse(productVariantRepository.existsBySkuAndIdNot(input.sku(), variantId),
+                    EcommerceErrorCode.PRODUCT_VARIANT_SKU_CONFLICT, input.sku());
+        }
+        Validator.isTrue(input.stockQuantity() >= variant.getReservedQuantity(),
+                EcommerceErrorCode.PRODUCT_VARIANT_STOCK_BELOW_RESERVED, input.stockQuantity(), variant.getReservedQuantity());
+        // Compared against this product's *other* variants, not including the one being edited —
+        // otherwise a variant being edited would always trivially match its own (about-to-change)
+        // key set, defeating the check entirely.
+        validateAttributeKeysMatchExisting(product, input.attributes(), variantId);
+        validateAttributesAgainstCategory(product.getProductCategory(), input.attributes());
+
+        variant.setSku(input.sku());
+        variant.setPrice(input.price());
+        variant.setStockQuantity(input.stockQuantity());
+        variant.setAttributes(input.attributes() == null ? Map.of() : input.attributes());
+        ProductVariant updated = productVariantRepository.save(variant);
+
+        publishProductChanged(productId);
+        log.info("Updated variant id={} on product id={}", variantId, productId);
+        return updated;
     }
 
     @Override
@@ -323,15 +353,24 @@ public class ProductServiceImpl implements ProductService {
     }
 
     /**
-     * A newly-added variant must share the existing variants' attribute keys (US-1.6) — the
-     * create-time check ({@code validateConsistentAttributeKeys}) only compares variants within
-     * one request; this compares against what the product already has.
+     * A newly-added or edited variant must share the product's other variants' attribute keys
+     * (US-1.6) — the create-time check ({@code validateConsistentAttributeKeys}) only compares
+     * variants within one request; this compares against what the product already has.
+     *
+     * @param excludingVariantId when editing an existing variant, that variant's own id — excluded
+     *                           from the "reference" variant lookup so a variant being edited is
+     *                           never compared against its own (about-to-change) key set, which
+     *                           would trivially match and defeat the check entirely. {@code null}
+     *                           when adding a brand-new variant (nothing to exclude).
      */
-    private static void validateAttributeKeysMatchExisting(Product product, Map<String, String> newAttributes) {
-        if (product.getVariants().isEmpty()) {
+    private static void validateAttributeKeysMatchExisting(Product product, Map<String, String> newAttributes, Integer excludingVariantId) {
+        Optional<ProductVariant> reference = product.getVariants().stream()
+                .filter(v -> excludingVariantId == null || !v.getId().equals(excludingVariantId))
+                .findFirst();
+        if (reference.isEmpty()) {
             return;
         }
-        Set<String> existingKeys = product.getVariants().get(0).getAttributes().keySet();
+        Set<String> existingKeys = reference.get().getAttributes().keySet();
         Set<String> newKeys = newAttributes == null ? Set.of() : newAttributes.keySet();
         Validator.isTrue(existingKeys.equals(newKeys), EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_KEYS_INCONSISTENT);
     }

@@ -45,6 +45,8 @@ public enum EcommerceErrorCode implements ErrorCode {
     PRODUCT_VARIANT_NOT_FOUND("PRODUCT_VARIANT_003", "Variant not found: {0}", HttpStatus.NOT_FOUND),
     PRODUCT_VARIANT_BELONGS_TO_ANOTHER_PRODUCT("PRODUCT_VARIANT_004",
             "Variant {0} does not belong to product {1}", HttpStatus.BAD_REQUEST),
+    PRODUCT_VARIANT_STOCK_BELOW_RESERVED("PRODUCT_VARIANT_005",
+            "Stock quantity ({0}) cannot be less than the {1} unit(s) already reserved", HttpStatus.BAD_REQUEST),
 
     // Product Tag Errors (PRODUCT_TAG_*)
     PRODUCT_TAG_NOT_FOUND("PRODUCT_TAG_001", "Product tag not found: {0}", HttpStatus.NOT_FOUND),

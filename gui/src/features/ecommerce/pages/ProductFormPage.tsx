@@ -31,6 +31,7 @@ import { flattenCategoryTree } from '../utils/categoryTree';
 import { useProductTags } from '../hooks/useProductTags';
 import { useDraftVariants } from '../hooks/useDraftVariants';
 import { useStagedImages } from '../hooks/useStagedImages';
+import { useCategoryAttributeSuggestions } from '../hooks/useCategoryAttributeSuggestions';
 
 /**
  * Create/edit form for one product — the largest, most-iterated page in `@ecommerce` (see
@@ -65,7 +66,7 @@ export default function ProductFormPage(): JSX.Element {
   // mode where variants are added/removed independently against a real product (handleAddLiveVariant/
   // handleRemoveLiveVariant below stay inline — a couple of lines each, already talking straight
   // to ecommerceApi, nothing worth extracting).
-  const { draftVariants, addDraftVariant, removeDraftVariant } = useDraftVariants();
+  const { draftVariants, addDraftVariant, updateDraftVariant, removeDraftVariant } = useDraftVariants();
 
   // Create-mode-only: images queued locally (no network call yet — see ProductImageStager's own
   // Javadoc for why this can't just reuse ProductImageGallery). Uploaded one at a time, in order,
@@ -76,6 +77,10 @@ export default function ProductFormPage(): JSX.Element {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [productCategoryId, setProductCategoryId] = useState<number | ''>('');
+  // The selected category's own attribute schema (if any) — passed down to ProductVariantEditor/
+  // Dialog so a variant's attribute rows can be suggested from it. Empty for a free-form category
+  // (today's pre-"Option B" behavior) or before a category is chosen.
+  const suggestedAttributes = useCategoryAttributeSuggestions(productCategoryId);
 
   // Edit-mode-only: the loaded product, re-fetched after any variant/image mutation
   const [product, setProduct] = useState<Product | null>(null);
@@ -198,6 +203,19 @@ export default function ProductFormPage(): JSX.Element {
     }
   };
 
+  const handleUpdateLiveVariant = async (variantId: number | string, input: ProductVariantInput) => {
+    if (!id) return;
+    setVariantBusy(true);
+    try {
+      await ecommerceApi.updateVariant(Number(id), Number(variantId), input, showError);
+      await loadProduct();
+    } catch {
+      // showError already called
+    } finally {
+      setVariantBusy(false);
+    }
+  };
+
   const handleRemoveLiveVariant = async (variantId: number | string) => {
     if (!id) return;
     setVariantBusy(true);
@@ -272,15 +290,19 @@ export default function ProductFormPage(): JSX.Element {
               <ProductVariantEditor
                 variants={product.variants}
                 onAdd={handleAddLiveVariant}
+                onUpdate={handleUpdateLiveVariant}
                 onRemove={handleRemoveLiveVariant}
                 busy={variantBusy}
+                suggestedAttributes={suggestedAttributes}
               />
             ) : (
               <Box>
                 <ProductVariantEditor
                   variants={draftVariants}
                   onAdd={handleAddDraftVariant}
+                  onUpdate={updateDraftVariant}
                   onRemove={removeDraftVariant}
+                  suggestedAttributes={suggestedAttributes}
                 />
                 {errors.variants && (
                   <Typography variant="body2" color="error" sx={{ mt: 1 }}>{errors.variants}</Typography>

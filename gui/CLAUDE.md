@@ -777,6 +777,53 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     client-side before ever hitting the backend's own check. The remove action is disabled
     client-side whenever only one variant remains, for the same reason (the backend rejects
     removing a product's last variant; no point round-tripping to learn that).
+    - **Follow-up: editing an existing variant, and suggesting attribute rows from the product's
+      category schema, per request.** Needed a new backend endpoint first —
+      `PUT /api/v1/admin/products/{id}/variants/{variantId}` (`ProductApi`/
+      `ProductController.updateVariant`, full-replace update, plus a new
+      `PRODUCT_VARIANT_STOCK_BELOW_RESERVED` guard) — see `ecommerce-service/CLAUDE.md`'s own
+      `ProductVariantEditor` follow-up note for the full backend detail.
+      `ProductVariantEditor.tsx` gained a per-row Edit `IconButton` opening
+      `ProductVariantDialog.tsx` in edit mode: the dialog now takes an
+      `editingVariant: DisplayVariant | null` prop that prefills every field and swaps the
+      title/submit label ("Add Variant"/"Add" ↔ "Edit Variant"/"Save"); the editor itself decides
+      whether to call `onAdd` or the new `onUpdate(id, input)` based on whether a variant is
+      currently being edited, so `ProductVariantDialog` stays agnostic to add-vs-edit beyond that.
+      `requiredAttributeKeys` (the cross-variant key-consistency lock, US-1.6) is now computed
+      against the product's *other* variants, excluding whichever one is being edited — comparing
+      an edit against its own about-to-change key set would trivially match and defeat the check
+      entirely (mirrors the backend's own matching fix to
+      `validateAttributeKeysMatchExisting`). `hooks/useDraftVariants.ts` (create mode's local
+      unsaved-variant list) gained a matching `updateDraftVariant`; `ecommerceApi.ts` gained
+      `updateVariant`.
+    - **New `hooks/useCategoryAttributeSuggestions.ts`** resolves the selected category's own
+      `ProductCategoryAttribute` schema (ids only, per `CategoryAttributeAssignmentResponse`) into
+      a ready-to-render `SuggestedAttribute[]` (`attributeId`/`name`/`required`/`values`, in
+      display order) — fetches the full category list and the full attribute registry once (the
+      same "just fetch everything for a picker" convention `ProductCategoryFormDialog.tsx`'s own
+      Attributes section already established) and cross-references by id; both fetches fail
+      silently (a pre-fill nicety, not worth a toast on failure). `ProductFormPage.tsx` computes
+      this once from `productCategoryId` and passes it straight down to `ProductVariantEditor`,
+      which forwards it to `ProductVariantDialog`. **When the category has a schema
+      (`suggestedAttributes.length > 0`), the dialog renders exactly those attributes** — a locked
+      (non-editable) key label per attribute plus a `Select` restricted to that attribute's own
+      controlled vocabulary (required attributes must have a value chosen; an unselected optional
+      one is omitted from the submitted map entirely, never sent as an empty string, since the
+      backend's own enforcement treats a present-but-blank value the same as any other
+      not-in-the-list value) — **replacing** the free-form key/value row editor, with no "add a
+      custom attribute" affordance in that mode at all. This is a deliberate 1:1 mirror of
+      `ProductServiceImpl.validateAttributesAgainstCategory`'s actual all-or-nothing rule, not just
+      a UI convenience: once a category has *any* assigned attribute, *every* key on a variant must
+      be one of that category's assigned names — there is no partial-coverage state where "some
+      keys are suggested, others are free-form" could ever succeed against a schema'd category, so
+      offering a free-text add button there would only ever fail at submit time. **The free-form
+      editor (byte-identical to before this follow-up) only reappears when the selected category
+      has zero assigned attributes** — today's pre-"Option B" free-form behavior — which is the
+      literal translation of "let the admin extend attributes only when the category doesn't
+      already cover them," matched against what the backend can actually accept rather than an
+      invented partial-coverage UI state. Verified via a clean `tsc --noEmit` and a successful
+      `vite build` only — no Docker in this sandbox, so the actual edit/suggested-attribute flow
+      is unverified in a real browser.
   - `components/ProductImageGallery.tsx` — upload via `httpClient.postForm` (same pattern as
     `@auth/api/profileApi.ts#uploadAvatar`), remove, and a real move-earlier/move-later reorder.
     **The reorder is a 3-step scratch-sort-order swap, not a direct 2-step swap** — the backend
@@ -883,6 +930,46 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       every other GUI change in this session: no Docker in this sandbox, so the actual admin
       tag-CRUD flow, the `ProductFormPage` picker, and the list-page filter haven't been exercised
       in a real browser.
+  - **Product Attributes ("Option B" global attribute registry) — admin GUI for
+    `ecommerce-service`'s new `ProductAttribute`/`ProductAttributeValue`/`ProductCategoryAttribute`
+    (see `ecommerce-service/CLAUDE.md`'s own note for the backend design/enforcement rules and the
+    seed-data phase's category-assignment caveats).** Two new files —
+    `pages/ProductAttributeListPage.tsx` + `components/ProductAttributeFormDialog.tsx` — mirror
+    `ProductTagListPage.tsx`/`ProductTagFormDialog.tsx`'s CRUD shape almost exactly, plus a Values
+    column (`Chip`s sorted by `displayOrder`) and the form's own dynamic values-list editor: add via
+    Enter/button (rejecting a case-insensitive duplicate client-side before ever hitting the
+    backend's own check), remove, reorder via the same `ArrowUpwardIcon`/`ArrowDownwardIcon` +
+    array-swap `move()` convention `ImageThumbnailGrid.tsx` established. The whole `values` array is
+    always submitted as one list on save, matching the backend's own clear-and-rebuild
+    `create`/`update` shape — list position becomes each value's `displayOrder` server-side, never a
+    caller-supplied field, so there's no separate "set order" action to build. Wired into
+    `AdminLayout.tsx`'s nav (`TuneIcon`, `/admin/product-attributes`, right after Product Tags) and
+    `App.tsx`'s admin route tree. `types.ts` gained `ProductAttribute`/`ProductAttributeValue`/
+    `Create`+`UpdateProductAttributePayload`; `ecommerceApi.ts` gained the matching
+    `listProductAttributes`/`createProductAttribute`/`updateProductAttribute`/
+    `deleteProductAttribute` + a `ProductAttributeListParams` interface.
+    - **The actual category↔attribute assignment lives in `ProductCategoryFormDialog.tsx`, not on
+      this list page** — a new "Attributes" section below the existing Parent-category picker,
+      mirroring `ProductTagIds`'s ids-only convention: `CategoryAttributeAssignmentResponse` carries
+      only `attributeId`/`required`/`displayOrder`, no denormalized name, so the dialog fetches the
+      full attribute registry once per open (`listProductAttributes({ size: 200, ... })`, same
+      "just fetch everything for a picker" shape `QuestionAnswerFormPage.tsx`'s own tag picker
+      already uses) and cross-references by id to render each row's name. Local
+      `assignments: CategoryAttributeAssignmentInput[]` state seeds from `category.attributes`
+      (sorted by `displayOrder`) in edit mode, empty in create mode; each assigned row gets a
+      Required checkbox, reorder arrows (same `move()` convention as the values editor above), and
+      a remove button, plus a trailing "Add attribute" `Select` scoped to whatever isn't assigned
+      yet. **Always sends the complete current `assignments` array on submit, never omits it** —
+      `UpdateProductCategoryPayload.attributes` supports the backend's three-state
+      `null`(unchanged)/`[]`(clear)/non-empty(replace) semantics on the wire, but this dialog is the
+      only surface that ever edits a category's schema, so there's no "admin didn't touch this
+      section" case to preserve; same reasoning `ProductFormPage.tsx`'s own tag picker already
+      applies to `tagIds`. `types.ts` gained `CategoryAttributeAssignment`/
+      `CategoryAttributeAssignmentInput`, and `ProductCategory`/`Create`+
+      `UpdateProductCategoryPayload` all gained an `attributes` field.
+    - **Verified via a clean `tsc --noEmit` and a successful `vite build` only** — no Docker in this
+      sandbox, so the actual admin CRUD flow and the category-attribute assignment UI (reordering,
+      required-toggle, add/remove) are unverified in a real browser.
   - **`pages/shop/` — the public storefront (US-1.1–1.4), the app's first genuinely public feature
     besides `/login`/`/signup`.** Every other feature in this app sits behind `PrivateRoute`;
     `/shop`/`/shop/:slug` are plain, ungated routes in `App.tsx`, matching

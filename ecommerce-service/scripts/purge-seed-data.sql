@@ -1,6 +1,6 @@
 -- Purges every ecommerce-service table so the CSV seeders (ProductCategorySeeder,
--- ProductTagSeeder, ProductSeeder, ProductImageSeeder, CouponSeeder) can be re-run from a clean
--- slate.
+-- ProductTagSeeder, ProductAttributeSeeder, ProductCategoryAttributeSeeder, ProductSeeder,
+-- ProductImageSeeder, CouponSeeder) can be re-run from a clean slate.
 --
 -- Why this is needed at all: every seeder's idempotency check is a natural-key existence check
 -- (e.g. ProductSeeder skips a row whose "name" already exists) — see ecommerce-service/CLAUDE.md.
@@ -35,11 +35,19 @@ BEGIN;
 -- TRUNCATE ... RESTART IDENTITY looks for to decide which sequences to reset.
 -- COUPON_REDEMPTION/COUPON are included here (a seeded coupon has no FK from anything else, but
 -- COUPON_REDEMPTION FKs onto both COUPON and CUSTOMER_ORDER). SAVED_ADDRESS has no seeder of its
--- own (no CSV-driven AddressBook seed — only real shopper-entered data) but is included anyway,
--- confirmed against every migration's own CREATE TABLE statement (14 tables total as of DKP-0044)
--- — this script's own header promises "every ecommerce-service table," and a shopper's saved
--- addresses are exactly the kind of leftover dev/test data a genuinely clean slate should clear
--- too, not just whatever the CSV seeders themselves populate.
+-- own (no CSV-driven AddressBook seed — only real shopper-entered data) but is included anyway —
+-- a shopper's saved addresses are exactly the kind of leftover dev/test data a genuinely clean
+-- slate should clear too, not just whatever the CSV seeders themselves populate.
+-- PRODUCT_CATEGORY_ATTRIBUTE/PRODUCT_ATTRIBUTE_VALUE/PRODUCT_ATTRIBUTE (DKP-0047, the "Option B"
+-- global attribute registry) are included the same way PRODUCT_TAG_ASSIGNMENT/PRODUCT_TAG are —
+-- ProductAttributeSeeder's/ProductCategoryAttributeSeeder's own idempotency checks are natural-key
+-- existence checks (ProductAttribute.name, ProductCategoryAttribute's per-category "already has
+-- any assignment" check) exactly like every other seeder in this module, so a surviving row here
+-- silently skips reseeding the same way a surviving PRODUCT_TAG row would.
+-- Confirmed against every migration's own CREATE TABLE statement (17 tables total as of DKP-0047)
+-- — this script's own header promises "every ecommerce-service table"; re-derive this count from
+-- a reactor-wide grep for `CREATE TABLE IF NOT EXISTS ecommerce\.` rather than trusting this
+-- number if a new table lands here later (see ecommerce-service/CLAUDE.md's own note on this).
 TRUNCATE TABLE
     ecommerce.OUTBOX_EVENT,
     ecommerce.PRODUCT_SEARCH_VIEW,
@@ -51,6 +59,9 @@ TRUNCATE TABLE
     ecommerce.COUPON,
     ecommerce.PRODUCT_TAG_ASSIGNMENT,
     ecommerce.PRODUCT_TAG,
+    ecommerce.PRODUCT_CATEGORY_ATTRIBUTE,
+    ecommerce.PRODUCT_ATTRIBUTE_VALUE,
+    ecommerce.PRODUCT_ATTRIBUTE,
     ecommerce.PRODUCT_IMAGE,
     ecommerce.PRODUCT_VARIANT,
     ecommerce.PRODUCT,

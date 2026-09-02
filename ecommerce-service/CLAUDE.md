@@ -391,6 +391,69 @@ in `docker-compose.apps.yml`'s `ecommerce-service` block) same shape as `content
   data itself now nests the 5 original leaf categories under 2 new root categories — `Wearables`
   (→ `Apparel`) and `Desk & Drinkware` (→ `Drinkware`/`Stickers`/`Office`/`Accessories`) — with
   `products.csv` untouched, since products still reference the same 5 leaf category names.
+- `ProductAttributeSeeder` (`data/csv/product_attributes.csv`, columns: `name`, `values` —
+  semicolon-joined, same compact inline convention as `product_variants.csv`'s own `attributes`
+  cell) — the "Option B" global attribute registry's sample data, per request. Extends
+  `CsvSeeder<ProductAttribute>`, mirrors `ProductTagSeeder`'s "bypass the service, no outbox
+  concern" shape exactly; each value's list position in the CSV cell becomes its
+  `displayOrder` (no caller-supplied order number, matching `ProductAttributeServiceImpl
+  .applyValues`'s own convention). Seven sample attributes: `size` (`XS;S;M;L;XL;XXL`, an
+  apparel-scale vocabulary), `color` (`Black;White;Navy;Silver;Gray;Kraft;Natural` — deliberately
+  the *union* of every color value already used anywhere in `product_variants.csv`, since this one
+  attribute is reused across four categories below), `capacity` (`12oz;16oz`), `packSize`
+  (`5-pack;10-pack`), and — added once category-schema coverage was extended to `Office`/
+  `Accessories` (see `ProductCategoryAttributeSeeder`'s own note below) — three narrow,
+  effectively single-product attributes: `matSize` (`Small;Large`, Segfault Desk Mat's own
+  dimension), `sleeveSize` (`13in;15in`, Merge Conflict Laptop Sleeve's own size), `sockSize`
+  (`S-M;L-XL`, Compile Time Socks' own size). These three exist specifically because
+  `ProductAttribute.name` is matched *literally* against a variant's map key — `Office`'s Desk Mat,
+  `Accessories`' Laptop Sleeve, and `Accessories`' own Socks each use a "size"-shaped concept with
+  a genuinely different, mutually-incompatible vocabulary, so none of them could reuse the global
+  `size` attribute (or each other) without silently colliding; a distinct attribute name per
+  product's own size concept was the way to close that gap without renaming any real product data
+  into a shared vocabulary that would misrepresent it (e.g. calling a 13-inch sleeve "S" reads as
+  simply wrong, not just inconvenient).
+- `ProductCategoryAttributeSeeder` (`data/csv/product_category_attributes.csv`, columns:
+  `categoryName`, `attributeName`, `required`) — assigns the attributes above to categories.
+  **Implements `infra`'s `Seeder` directly, not `CsvSeeder<T>`**, for the same reason `ProductSeeder`
+  does: one unit of work is a whole category's *complete* schema (clear-and-rebuild, list position
+  → `displayOrder`), not one CSV row, so every row for one category must be gathered (grouped by
+  `categoryName`) before anything is persisted. Bypasses `ProductCategoryService` and persists via
+  `ProductCategory.categoryAttributes`' own cascade (mirrors `ProductCategorySeeder`); idempotency
+  key is the category's name — a category that already has any assignment is skipped whole.
+  **All 5 sample categories now get a schema, per a follow-up request — `Office`/`Accessories`
+  were originally left deliberately unassigned (free-form) because their existing sample variants
+  didn't share one clean vocabulary for a key their products happened to collide on** (`Office`'s
+  Segfault Desk Mat used `size=Small`/`Large` while `Apparel`'s own `size` key means `XS`-`XXL` —
+  the exact "size means different things in Clothes vs. elsewhere" tension the original design
+  discussion raised). Closed by introducing the three narrow attributes above instead of
+  retrofitting `Office`/`Accessories` into the existing `size` vocabulary: `Apparel` = `size`
+  (required) + `color` (optional); `Drinkware` = `color` (required) + `capacity` (optional);
+  `Stickers` = `packSize` (optional, since one of its two products has no attributes at all);
+  `Office` = `color` (optional, TODO Fix This Later Notebook) + `matSize` (optional, Segfault Desk
+  Mat); `Accessories` = `color` (optional, Merge Conflict Laptop Sleeve/I Love Semicolons Tote
+  Bag) + `sleeveSize` (optional, the Laptop Sleeve) + `sockSize` (optional, Compile Time Socks) —
+  every attribute on `Office`/`Accessories` is optional, deliberately, since none of them applies
+  to *every* product in that category (unlike `Apparel`'s required `size`, which every apparel
+  product actually has). **Every value in `product_variants.csv` for all five categories was
+  hand-verified against the schema above before this seed data was written** (a small throwaway
+  script replaying `ProductServiceImpl.validateAttributesAgainstCategory`'s exact rules — plus the
+  separate US-1.6 "every variant of one product shares the same key set" check — against the real
+  CSV data, confirming zero violations) — this matters because, unlike every other seeder here, a
+  mistake in this one's data doesn't fail loudly in this seeder itself; it fails later, inside
+  `ProductSeeder`, the first time it tries to create a variant that violates the schema this
+  seeder just assigned.
+  **Bug fix: `seed()` needed its own `@Transactional`** — first surfaced as a real
+  `org.hibernate.LazyInitializationException: ... categoryAttributes ... no Session` when this
+  seeder actually ran. Unlike `CsvSeeder`'s per-row `repository.save()` calls (each its own
+  short-lived transaction via `SimpleJpaRepository`), this method fetches a `ProductCategory` via
+  `findByNameIgnoreCase`, then reads its lazy `categoryAttributes` collection
+  (`category.getCategoryAttributes().isEmpty()`), then saves it back — all in one unit of work.
+  Without a surrounding transaction, the Hibernate session `findByNameIgnoreCase` opened closes the
+  instant that call returns, so the very next line's lazy-collection read has no session left to
+  initialize against. `seed()` is now `@Transactional`, mirroring `ProductCategoryServiceImpl`'s own
+  class-level annotation — keeps one session open across the fetch/lazy-read/save for a given
+  category's whole batch of rows.
 - `ProductSeeder` (`data/csv/products.csv` joined with `data/csv/product_variants.csv` by product
   name) — **implements `infra`'s `Seeder` directly, not `CsvSeeder<T>`**, for two reasons: it needs
   every matching variant row before it can build one create command, and it routes through
@@ -439,10 +502,15 @@ in `docker-compose.apps.yml`'s `ecommerce-service` block) same shape as `content
   `maxRedemptionsPerUser` all default `null`, i.e. "no bound"), matching `ProductSeeder`'s own
   blank-cell conventions.
 - `EcommerceDataSeedingRunner` — `ApplicationRunner`, `@ConditionalOnProperty("app.seed.enabled")`,
-  explicit order (categories → tags → products → images → coupons, each depending on the previous
-  existing except coupons, which are independent of every other seeder here and run last purely by
-  convention) — same pattern as `content-service`'s/`social-service`'s own runners, not a
-  `List<Seeder>` loop (see `infra`'s `Seeder` Javadoc for why).
+  explicit order (categories → tags → attributes → category-attribute assignments → products →
+  images → coupons, each depending on the previous existing except coupons, which are independent
+  of every other seeder here and run last purely by convention) — same pattern as
+  `content-service`'s/`social-service`'s own runners, not a `List<Seeder>` loop (see `infra`'s
+  `Seeder` Javadoc for why). **Category-attribute assignment must run before `ProductSeeder`** —
+  once a category has a schema, `ProductServiceImpl`'s own enforcement applies to every variant
+  seeded into it from that point on, so this ordering is what makes the seed data's own internal
+  consistency (see `ProductCategoryAttributeSeeder`'s own note above) actually get exercised at
+  startup, not just asserted by a throwaway script.
 - `scripts/purge-seed-data.sql` (repo root of this module, a plain dev utility — see its own header
   comment) gained `ecommerce.COUPON`/`ecommerce.COUPON_REDEMPTION` to its `TRUNCATE` list alongside
   this seeder — without both, a re-run with `app.seed.enabled=true` would silently skip every
@@ -451,7 +519,14 @@ in `docker-compose.apps.yml`'s `ecommerce-service` block) same shape as `content
   too** — the script's own header promises "every ecommerce-service table," which excluding it
   contradicted (no seeder creates a `SAVED_ADDRESS` row, but the script purges real checkout/
   order data too, not just CSV-seeded rows, so a shopper's own AddressBook entries belong in the
-  same "genuinely clean slate" scope). The `TRUNCATE` list now covers all 14 tables this module's
+  same "genuinely clean slate" scope). **A further follow-up added
+  `ecommerce.PRODUCT_CATEGORY_ATTRIBUTE`/`ecommerce.PRODUCT_ATTRIBUTE_VALUE`/
+  `ecommerce.PRODUCT_ATTRIBUTE` (DKP-0047) to the same list** — the same staleness trap as
+  `COUPON`/`COUPON_REDEMPTION` above: `ProductAttributeSeeder`'s/`ProductCategoryAttributeSeeder`'s
+  own idempotency checks are natural-key existence checks too (`ProductAttribute.name`,
+  `ProductCategoryAttribute`'s per-category "already has any assignment" check), so a surviving
+  row here would silently skip reseeding on the next `app.seed.enabled=true` run the same way a
+  surviving `PRODUCT_TAG` row would. The `TRUNCATE` list now covers all 17 tables this module's
   migrations create — re-derive that count from a reactor-wide grep for
   `CREATE TABLE IF NOT EXISTS ecommerce\.` rather than trusting this number if a new table lands
   here later.
@@ -1686,6 +1761,68 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
     category-form integration, or `ShopPage.tsx` facet-rail consumption yet. The API shape
     (`GET /api/v1/admin/product-attributes`, `ProductCategoryResponse.attributes`) is deliberately
     already GUI-ready for that follow-up.
+  - **Follow-up: `ProductVariantEditor` GUI adapted for two things, per request — editing an
+    existing variant, and suggesting a variant's attribute rows from its product's category
+    schema (this feature's own admin GUI, deferred above, landed as part of this same change).**
+    This needed a genuinely new backend endpoint first: `ProductApi`/`ProductController` had
+    add/remove for a variant but no update — `PUT /api/v1/admin/products/{id}/variants/{variantId}`
+    (`ProductApi.updateVariant`/`ProductController.updateVariant`) is new, reusing the existing
+    `ProductVariantRequest`/`ProductVariantResponse` DTOs (no new request/response shape needed).
+    New `ProductService.updateVariant`/`ProductServiceImpl.updateVariant` — every mutable field
+    (SKU, price, stock quantity, attributes) is **fully replaced**, mirroring `update`'s own
+    "full replace, not a partial patch" contract for a product's basic fields, not a partial PATCH.
+    Runs the same validation chain `addVariant` does, adapted for "editing one of several existing
+    variants" rather than "adding a brand-new one": a SKU conflict check only fires when the SKU
+    actually changed (new `ProductVariantRepository.existsBySkuAndIdNot`, excluding the variant's
+    own row); `validateAttributeKeysMatchExisting` (US-1.6's "every variant shares one key set")
+    gained an `excludingVariantId` parameter so a variant being edited is never compared against
+    its own about-to-change key set (which would trivially match and defeat the check entirely) —
+    it now picks its reference from the product's *other* variants, same reasoning `addVariant`'s
+    reference variant already avoided by construction (a brand-new variant is never yet in the
+    list to exclude); `validateAttributesAgainstCategory` runs unchanged, against the product's
+    current category. **New guard, not present on `addVariant` at all**: a new
+    `PRODUCT_VARIANT_STOCK_BELOW_RESERVED` (`PRODUCT_VARIANT_005`) rejects a stock-quantity edit
+    that would drop below the variant's own `reservedQuantity` — `addVariant` never needed this
+    (a brand-new variant always starts at `reservedQuantity = 0`), but an existing variant may
+    already have live reservations (Epic 3's two-column reservation model), and letting
+    `stockQuantity` fall below `reservedQuantity` would otherwise only be caught later, as a raw,
+    unfriendly DB `CHECK` constraint violation on save. 9 new `ProductServiceImplTest` cases (a new
+    `UpdateVariant` nested class) — **297 unit tests total** (up from 288), verified via a real
+    `mvn test` run (JDK 21). No `gateway` route change needed — `/api/v1/admin/products/**`
+    already covers the new sub-path.
+    - **GUI**: `ProductVariantEditor.tsx` gained a per-row Edit `IconButton` (alongside the
+      existing Remove one) opening `ProductVariantDialog.tsx` in edit mode — the dialog now takes
+      an `editingVariant: DisplayVariant | null` prop that prefills every field and switches the
+      title ("Add Variant"/"Edit Variant")/submit label ("Add"/"Save"); the editor owns which
+      callback to invoke (`onAdd` vs. the new `onUpdate(id, input)`) based on whether a variant is
+      currently being edited. `requiredAttributeKeys` (the cross-variant key-consistency lock) is
+      now computed excluding whichever variant is being edited, mirroring the backend's own
+      `excludingVariantId` fix above. `useDraftVariants` (create-mode's local unsaved-variant
+      list) gained a matching `updateDraftVariant`, and `ecommerceApi.ts` gained `updateVariant`.
+    - **GUI, suggested attributes**: new `hooks/useCategoryAttributeSuggestions.ts` resolves the
+      selected category's own `ProductCategoryAttribute` assignments (ids only, per
+      `CategoryAttributeAssignmentResponse`) into a ready-to-render `SuggestedAttribute[]`
+      (name/required/controlled-vocabulary), by fetching the full category list and the full
+      attribute registry once (the same "just fetch everything for a picker" convention
+      `ProductCategoryFormDialog.tsx`'s own Attributes section already uses) and cross-referencing
+      by id. `ProductFormPage.tsx` computes this once from the selected `productCategoryId` and
+      passes it down to `ProductVariantEditor`/`ProductVariantDialog`. **When the category has a
+      schema, the dialog renders exactly those attributes** — locked key labels plus a `Select`
+      restricted to each attribute's own controlled vocabulary (required ones must have a value
+      chosen; optional ones may be left blank, which omits that key from the submitted map rather
+      than sending an empty string) — **instead of** the free-form key/value row editor, with no
+      "add a custom attribute" affordance in that mode. This is a deliberate 1:1 mirror of the
+      backend's own enforcement, not just a convenience default: once a category has *any*
+      assigned attribute, `validateAttributesAgainstCategory` rejects *any* key outside that set
+      unconditionally, so a free-text "add extra attribute" button would only ever fail at submit
+      time for such a category — offering it would be misleading. **The free-form editor
+      (unchanged from before this feature) only reappears for a category with zero assigned
+      attributes** — today's pre-"Option B" free-form behavior, and literally the "allow the user
+      to extend attributes only if the category doesn't already cover them" ask, translated
+      1:1 against the backend's actual all-or-nothing enforcement rule rather than attempting a
+      partial-coverage UI state the backend can't actually support. Verified via a clean
+      `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the actual
+      edit/suggested-attribute flow is unverified in a real browser.
 
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"

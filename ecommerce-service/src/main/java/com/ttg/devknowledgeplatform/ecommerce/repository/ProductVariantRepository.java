@@ -15,6 +15,10 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
 
     boolean existsBySku(String sku);
 
+    /** Excludes {@code id} from the uniqueness check — used when updating a variant that keeps its
+     * own existing SKU (would otherwise "conflict" with itself). */
+    boolean existsBySkuAndIdNot(String sku, Integer id);
+
     List<ProductVariant> findByProductId(Integer productId);
 
     /**

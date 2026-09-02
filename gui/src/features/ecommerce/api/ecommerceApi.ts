@@ -4,6 +4,7 @@ import { buildQueryString, QueryParams } from '@shared/utils/queryString';
 import {
   ProductCategory, ProductCategoryTreeNode, CreateProductCategoryPayload, UpdateProductCategoryPayload,
   ProductTag, CreateProductTagPayload, UpdateProductTagPayload,
+  ProductAttribute, CreateProductAttributePayload, UpdateProductAttributePayload,
   Product, CreateProductPayload, UpdateProductPayload,
   ProductVariant, ProductVariantInput, ProductImage,
   Coupon, CreateCouponPayload, UpdateCouponPayload, CouponTarget,
@@ -23,6 +24,14 @@ export interface ProductListParams {
 }
 
 export interface ProductTagListParams {
+  page?: number;
+  size?: number;
+  sortBy?: string;
+  sortDir?: string;
+  q?: string;
+}
+
+export interface ProductAttributeListParams {
   page?: number;
   size?: number;
   sortBy?: string;
@@ -90,6 +99,32 @@ export const ecommerceApi = {
     return httpClient.delete(`/api/v1/admin/product-tags/${id}`, showError);
   },
 
+  // ── Product Attributes ("Option B" global attribute registry) ────────────────
+  // Category assignment doesn't live here — it travels with create/updateProductCategory's own
+  // `attributes` field above.
+
+  listProductAttributes(
+    params: ProductAttributeListParams, showError?: ShowError,
+  ): Promise<PagedResponse<ProductAttribute>> {
+    return httpClient.get(`/api/v1/admin/product-attributes${buildQueryString(params as QueryParams)}`, showError);
+  },
+
+  createProductAttribute(
+    payload: CreateProductAttributePayload, showError?: ShowError,
+  ): Promise<ProductAttribute> {
+    return httpClient.post('/api/v1/admin/product-attributes', payload, showError);
+  },
+
+  updateProductAttribute(
+    id: number, payload: UpdateProductAttributePayload, showError?: ShowError,
+  ): Promise<ProductAttribute> {
+    return httpClient.put(`/api/v1/admin/product-attributes/${id}`, payload, showError);
+  },
+
+  deleteProductAttribute(id: number, showError?: ShowError): Promise<void> {
+    return httpClient.delete(`/api/v1/admin/product-attributes/${id}`, showError);
+  },
+
   // ── Products ─────────────────────────────────────────────────────────────────
 
   listProducts(params: ProductListParams, showError?: ShowError): Promise<PagedResponse<Product>> {
@@ -117,13 +152,19 @@ export const ecommerceApi = {
   },
 
   // ── Variants ─────────────────────────────────────────────────────────────────
-  // No update endpoint — ProductApi only supports add/remove; changing a variant means removing
-  // and re-adding it (matches the backend's own surface, see ecommerce-service/CLAUDE.md).
 
   addVariant(
     productId: number, input: ProductVariantInput, showError?: ShowError,
   ): Promise<ProductVariant> {
     return httpClient.post(`/api/v1/admin/products/${productId}/variants`, input, showError);
+  },
+
+  /** Every mutable field is fully replaced, mirroring `ProductApi.updateVariant`'s own
+   * "full replace, not a partial patch" contract. */
+  updateVariant(
+    productId: number, variantId: number, input: ProductVariantInput, showError?: ShowError,
+  ): Promise<ProductVariant> {
+    return httpClient.put(`/api/v1/admin/products/${productId}/variants/${variantId}`, input, showError);
   },
 
   removeVariant(productId: number, variantId: number, showError?: ShowError): Promise<void> {

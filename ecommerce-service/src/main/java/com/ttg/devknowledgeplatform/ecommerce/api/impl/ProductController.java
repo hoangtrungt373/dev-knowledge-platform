@@ -74,6 +74,14 @@ public class ProductController implements ProductApi {
     }
 
     @Override
+    public ResponseEntity<ProductVariantResponse> updateVariant(Integer id, Integer variantId, ProductVariantRequest request) {
+        ProductCommands.VariantInput input = new ProductCommands.VariantInput(
+                request.getSku(), request.getPrice(), request.getStockQuantity(), request.getAttributes());
+        var updated = productService.updateVariant(id, variantId, input);
+        return ResponseEntity.ok(productMapper.toVariantResponse(updated));
+    }
+
+    @Override
     public ResponseEntity<Void> removeVariant(Integer id, Integer variantId) {
         productService.removeVariant(id, variantId);
         return ResponseEntity.noContent().build();

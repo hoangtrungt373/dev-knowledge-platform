@@ -25,6 +25,7 @@ import DataArrayIcon from '@mui/icons-material/DataArray';
 import CategoryIcon from '@mui/icons-material/Category';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import SellIcon from '@mui/icons-material/Sell';
+import TuneIcon from '@mui/icons-material/Tune';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import DiscountIcon from '@mui/icons-material/Discount';
 import ArticleIcon from '@mui/icons-material/Article';
@@ -93,6 +94,7 @@ const NAV_STRUCTURE: NavEntry[] = [
       { label: 'Product Categories', icon: <CategoryIcon fontSize="small" />, path: '/admin/product-categories' },
       { label: 'Products', icon: <Inventory2Icon fontSize="small" />, path: '/admin/products' },
       { label: 'Product Tags', icon: <SellIcon fontSize="small" />, path: '/admin/product-tags' },
+      { label: 'Product Attributes', icon: <TuneIcon fontSize="small" />, path: '/admin/product-attributes' },
       { label: 'Order Fulfillment', icon: <LocalShippingIcon fontSize="small" />, path: '/admin/orders' },
       { label: 'Coupons', icon: <DiscountIcon fontSize="small" />, path: '/admin/coupons' },
     ],

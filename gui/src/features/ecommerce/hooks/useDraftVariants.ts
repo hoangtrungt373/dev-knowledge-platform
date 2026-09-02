@@ -5,6 +5,7 @@ import { ProductVariantInput } from '../types';
 export interface UseDraftVariantsResult {
   draftVariants: DisplayVariant[];
   addDraftVariant: (input: ProductVariantInput) => void;
+  updateDraftVariant: (variantId: number | string, input: ProductVariantInput) => void;
   removeDraftVariant: (variantId: number | string) => void;
 }
 
@@ -32,9 +33,19 @@ export function useDraftVariants(): UseDraftVariantsResult {
     }]);
   };
 
+  const updateDraftVariant = (variantId: number | string, input: ProductVariantInput): void => {
+    setDraftVariants(prev => prev.map(v => (v.id === variantId ? {
+      ...v,
+      sku: input.sku,
+      price: input.price,
+      stockQuantity: input.stockQuantity,
+      attributes: input.attributes ?? {},
+    } : v)));
+  };
+
   const removeDraftVariant = (variantId: number | string): void => {
     setDraftVariants(prev => prev.filter(v => v.id !== variantId));
   };
 
-  return { draftVariants, addDraftVariant, removeDraftVariant };
+  return { draftVariants, addDraftVariant, updateDraftVariant, removeDraftVariant };
 }

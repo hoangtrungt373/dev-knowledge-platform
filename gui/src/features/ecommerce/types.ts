@@ -4,11 +4,33 @@
 // parent/child hierarchy (self-referential parentId), mirroring @content's own Category/
 // CategoryTreeNode shape exactly.
 
+/** One `ProductCategory` → `ProductAttribute` assignment on a category's own attribute schema —
+ * ids only, not the full attribute (mirrors the backend's own `CategoryAttributeAssignmentResponse`
+ * and `ProductResponse.tagIds`'s "ids only" precedent); the GUI cross-references
+ * `ecommerceApi.listProductAttributes` by id to show a name. See `ProductAttribute` below for the
+ * full "Option B" global attribute registry this belongs to. */
+export interface CategoryAttributeAssignment {
+  attributeId: number;
+  required: boolean;
+  displayOrder: number;
+}
+
+/** Same shape as `CategoryAttributeAssignment` above, minus `displayOrder` — an assignment's order
+ * is its position in the array sent to `create`/`updateProductCategory`, not a field of its own
+ * (mirrors the backend's own `CategoryAttributeAssignmentRequest`). */
+export interface CategoryAttributeAssignmentInput {
+  attributeId: number;
+  required: boolean;
+}
+
 export interface ProductCategory {
   id: number;
   name: string;
   slug: string;
   parentId: number | null;
+  /** This category's attribute schema, in display order — empty if none assigned (fully
+   * free-form, today's pre-"Option B" behavior). */
+  attributes: CategoryAttributeAssignment[];
   createdAt: string;
   updatedAt: string;
 }
@@ -24,11 +46,17 @@ export interface ProductCategoryTreeNode {
 export interface CreateProductCategoryPayload {
   name: string;
   parentId?: number | null;
+  /** `undefined`/omitted means none assigned yet — see `ProductCategoryService.create`'s own
+   * Javadoc for why `create` has no "leave unchanged" case the way `update` below does. */
+  attributes?: CategoryAttributeAssignmentInput[];
 }
 
 export interface UpdateProductCategoryPayload {
   name: string;
   parentId: number | null;
+  /** `undefined`/omitted leaves the existing schema untouched; an empty array clears it — same
+   * three-state semantics as the backend's own `ProductCategoryService.update`. */
+  attributes?: CategoryAttributeAssignmentInput[];
 }
 
 // ── Product Tags ─────────────────────────────────────────────────────────────
@@ -50,6 +78,42 @@ export interface CreateProductTagPayload {
 
 export interface UpdateProductTagPayload {
   name: string;
+}
+
+// ── Product Attributes ("Option B" global attribute registry) ────────────────
+// Fronts ecommerce-service's own ProductAttribute/ProductAttributeValue — a reusable attribute
+// concept (e.g. "color") with a controlled vocabulary, assigned to whichever ProductCategory rows
+// need it via the attributes field above. See ecommerce-service/CLAUDE.md's own note on this
+// feature for the full "Option A vs. Option B" design discussion this came out of.
+
+export interface ProductAttributeValue {
+  id: number;
+  value: string;
+  /** This value's position in the list submitted on create/update — not independently editable. */
+  displayOrder: number;
+}
+
+export interface ProductAttribute {
+  id: number;
+  /** Matched literally, case-sensitively, against a `ProductVariant.attributes` map key — see the
+   * backend entity's own Javadoc. */
+  name: string;
+  /** In display order. */
+  values: ProductAttributeValue[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProductAttributePayload {
+  name: string;
+  /** The attribute's controlled vocabulary, in display order — must be non-empty. */
+  values: string[];
+}
+
+export interface UpdateProductAttributePayload {
+  name: string;
+  /** The attribute's new, complete controlled vocabulary, in display order — must be non-empty. */
+  values: string[];
 }
 
 // ── Products ─────────────────────────────────────────────────────────────────

@@ -69,6 +69,18 @@ public interface ProductApi {
             @PathVariable Integer id, @Valid @RequestBody ProductVariantRequest request);
 
     /**
+     * Updates one of a product's existing variants — every mutable field is fully replaced (US-1.6).
+     *
+     * @param id        product primary key
+     * @param variantId variant primary key
+     * @param request   validated variant payload with the variant's new field values
+     * @return {@code 200} with the updated variant
+     */
+    @PutMapping("/{id}/variants/{variantId}")
+    ResponseEntity<ProductVariantResponse> updateVariant(
+            @PathVariable Integer id, @PathVariable Integer variantId, @Valid @RequestBody ProductVariantRequest request);
+
+    /**
      * Removes one variant from a product (US-1.6). Rejected if it's the product's last variant.
      *
      * @param id        product primary key

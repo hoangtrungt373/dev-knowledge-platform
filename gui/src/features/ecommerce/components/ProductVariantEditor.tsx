@@ -16,7 +16,9 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
 import { ProductVariantInput } from '../types';
+import { SuggestedAttribute } from '../hooks/useCategoryAttributeSuggestions';
 import ProductVariantDialog from './ProductVariantDialog';
 
 export interface DisplayVariant {
@@ -32,28 +34,51 @@ export interface DisplayVariant {
 interface Props {
   variants: DisplayVariant[];
   onAdd: (input: ProductVariantInput) => void;
+  /** Full-replace update of an existing variant's fields — mirrors the backend's own
+   * `ProductApi.updateVariant`/`ProductCommands.VariantInput` "full replace" contract. */
+  onUpdate: (id: number | string, input: ProductVariantInput) => void;
   onRemove: (id: number | string) => void;
-  /** True while an add/remove is in flight against the backend (edit mode only — a draft-mode add is synchronous local state). */
+  /** True while an add/update/remove is in flight against the backend (edit mode only — a draft-mode mutation is synchronous local state). */
   busy?: boolean;
+  /** The selected product category's own attribute schema, if any (see
+   * `useCategoryAttributeSuggestions`) — passed straight through to `ProductVariantDialog`. */
+  suggestedAttributes?: SuggestedAttribute[];
 }
 
 // A product can never end up with zero variants (US-1.6) — the backend rejects removing the
 // last one, so the remove action is disabled client-side too rather than round-tripping to find
 // that out.
-export default function ProductVariantEditor({ variants, onAdd, onRemove, busy = false }: Props): JSX.Element {
+export default function ProductVariantEditor({
+  variants, onAdd, onUpdate, onRemove, busy = false, suggestedAttributes = [],
+}: Props): JSX.Element {
   const [dialogOpen, setDialogOpen] = useState(false);
-  const requiredAttributeKeys = variants.length > 0 ? Object.keys(variants[0].attributes) : [];
+  const [editingVariant, setEditingVariant] = useState<DisplayVariant | null>(null);
 
-  const handleAdd = (input: ProductVariantInput) => {
-    onAdd(input);
-    setDialogOpen(false);
+  // Every variant of one product must share the same attribute keys (US-1.6) — computed against
+  // the product's *other* variants, excluding whichever one is currently being edited (if any),
+  // mirroring the backend's own ProductServiceImpl.validateAttributeKeysMatchExisting: comparing
+  // an edit against its own (about-to-change) key set would trivially match and defeat the check.
+  const referenceVariant = variants.find(v => v.id !== editingVariant?.id);
+  const requiredAttributeKeys = referenceVariant ? Object.keys(referenceVariant.attributes) : [];
+
+  const openAddDialog = () => { setEditingVariant(null); setDialogOpen(true); };
+  const openEditDialog = (variant: DisplayVariant) => { setEditingVariant(variant); setDialogOpen(true); };
+  const closeDialog = () => { setDialogOpen(false); setEditingVariant(null); };
+
+  const handleSubmit = (input: ProductVariantInput) => {
+    if (editingVariant) {
+      onUpdate(editingVariant.id, input);
+    } else {
+      onAdd(input);
+    }
+    closeDialog();
   };
 
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
         <Typography variant="subtitle2" fontWeight={700}>Variants</Typography>
-        <Button size="small" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)} disabled={busy}>
+        <Button size="small" startIcon={<AddIcon />} onClick={openAddDialog} disabled={busy}>
           Add Variant
         </Button>
       </Stack>
@@ -68,7 +93,7 @@ export default function ProductVariantEditor({ variants, onAdd, onRemove, busy =
               <TableCell>Price</TableCell>
               <TableCell>Stock</TableCell>
               <TableCell>Attributes</TableCell>
-              <TableCell align="right">Remove</TableCell>
+              <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -91,6 +116,13 @@ export default function ProductVariantEditor({ variants, onAdd, onRemove, busy =
                   </Box>
                 </TableCell>
                 <TableCell align="right">
+                  <Tooltip title="Edit">
+                    <span>
+                      <IconButton size="small" onClick={() => openEditDialog(variant)} disabled={busy}>
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
                   <Tooltip title={variants.length <= 1 ? "Can't remove a product's last variant" : 'Remove'}>
                     <span>
                       <IconButton
@@ -111,10 +143,12 @@ export default function ProductVariantEditor({ variants, onAdd, onRemove, busy =
 
       <ProductVariantDialog
         open={dialogOpen}
+        editingVariant={editingVariant}
         requiredAttributeKeys={requiredAttributeKeys}
+        suggestedAttributes={suggestedAttributes}
         saving={busy}
-        onClose={() => setDialogOpen(false)}
-        onAdd={handleAdd}
+        onClose={closeDialog}
+        onSubmit={handleSubmit}
       />
     </Paper>
   );

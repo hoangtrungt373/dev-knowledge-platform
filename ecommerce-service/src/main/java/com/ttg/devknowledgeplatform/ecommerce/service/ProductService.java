@@ -58,6 +58,23 @@ public interface ProductService {
     ProductVariant addVariant(Integer productId, ProductCommands.VariantInput input);
 
     /**
+     * Updates one of a product's existing variants — every mutable field is fully replaced (SKU,
+     * price, stock quantity, attributes), mirroring {@link #update}'s own "full replace, not a
+     * partial patch" semantics for a product's basic fields.
+     *
+     * @param productId the product's primary key
+     * @param variantId the variant's primary key
+     * @param input     the variant's new field values
+     * @return the updated variant
+     * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException if the product or variant does not exist
+     * @throws com.ttg.devknowledgeplatform.common.exception.ApiException if the variant belongs to a different
+     *         product, its new SKU conflicts with another variant, its attribute keys no longer match this
+     *         product's other variants, its attributes don't satisfy the product's category schema, or its new
+     *         stock quantity would fall below the quantity already reserved against it
+     */
+    ProductVariant updateVariant(Integer productId, Integer variantId, ProductCommands.VariantInput input);
+
+    /**
      * Removes one variant from a product (US-1.6 — variants are independently removable).
      * Rejected if it's the product's last remaining variant — see {@code Product}'s Javadoc for
      * why a product can never end up with zero variants.

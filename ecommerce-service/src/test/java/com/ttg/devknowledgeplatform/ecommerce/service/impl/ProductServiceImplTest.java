@@ -682,6 +682,169 @@ class ProductServiceImplTest {
     }
 
     @Nested
+    class UpdateVariant {
+
+        @Test
+        void updatesFieldsWhenSkuIsUnchanged() {
+            Product product = productWithId(1);
+            ProductVariant existing = variant(product, 100, "TEE-S-BLK", Map.of("size", "S"));
+            product.getVariants().add(existing);
+            when(productRepository.findById(1)).thenReturn(Optional.of(product));
+            when(productVariantRepository.findById(100)).thenReturn(Optional.of(existing));
+            when(productVariantRepository.save(any(ProductVariant.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            ProductCommands.VariantInput input = new ProductCommands.VariantInput(
+                    "TEE-S-BLK", BigDecimal.valueOf(29.99), 15, Map.of("size", "S"));
+            ProductVariant result = service.updateVariant(1, 100, input);
+
+            assertThat(result.getPrice()).isEqualByComparingTo("29.99");
+            assertThat(result.getStockQuantity()).isEqualTo(15);
+            verify(productVariantRepository, never()).existsBySkuAndIdNot(anyString(), any());
+            verify(outboxEventRepository).save(any(OutboxEvent.class));
+        }
+
+        @Test
+        void updatesSkuWhenTheNewOneIsAvailable() {
+            Product product = productWithId(1);
+            ProductVariant existing = variant(product, 100, "TEE-S-BLK", Map.of());
+            product.getVariants().add(existing);
+            when(productRepository.findById(1)).thenReturn(Optional.of(product));
+            when(productVariantRepository.findById(100)).thenReturn(Optional.of(existing));
+            when(productVariantRepository.existsBySkuAndIdNot("TEE-S-BLACK", 100)).thenReturn(false);
+            when(productVariantRepository.save(any(ProductVariant.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            ProductCommands.VariantInput input = new ProductCommands.VariantInput(
+                    "TEE-S-BLACK", BigDecimal.valueOf(24.99), 10, Map.of());
+            ProductVariant result = service.updateVariant(1, 100, input);
+
+            assertThat(result.getSku()).isEqualTo("TEE-S-BLACK");
+        }
+
+        @Test
+        void rejectsSkuConflictWithAnotherVariant() {
+            Product product = productWithId(1);
+            ProductVariant existing = variant(product, 100, "TEE-S-BLK", Map.of());
+            product.getVariants().add(existing);
+            when(productRepository.findById(1)).thenReturn(Optional.of(product));
+            when(productVariantRepository.findById(100)).thenReturn(Optional.of(existing));
+            when(productVariantRepository.existsBySkuAndIdNot("TEE-M-BLK", 100)).thenReturn(true);
+
+            ProductCommands.VariantInput input = new ProductCommands.VariantInput(
+                    "TEE-M-BLK", BigDecimal.valueOf(24.99), 10, Map.of());
+
+            assertThatThrownBy(() -> service.updateVariant(1, 100, input))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_SKU_CONFLICT);
+
+            verify(productVariantRepository, never()).save(any());
+        }
+
+        @Test
+        void rejectsStockQuantityBelowAlreadyReservedQuantity() {
+            Product product = productWithId(1);
+            ProductVariant existing = variant(product, 100, "TEE-S-BLK", Map.of());
+            existing.setReservedQuantity(5);
+            product.getVariants().add(existing);
+            when(productRepository.findById(1)).thenReturn(Optional.of(product));
+            when(productVariantRepository.findById(100)).thenReturn(Optional.of(existing));
+
+            ProductCommands.VariantInput input = new ProductCommands.VariantInput(
+                    "TEE-S-BLK", BigDecimal.valueOf(24.99), 3, Map.of());
+
+            assertThatThrownBy(() -> service.updateVariant(1, 100, input))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_STOCK_BELOW_RESERVED);
+
+            verify(productVariantRepository, never()).save(any());
+        }
+
+        @Test
+        void rejectsAttributeKeysThatDontMatchTheProductsOtherVariants() {
+            Product product = productWithId(1);
+            ProductVariant editing = variant(product, 100, "TEE-S-BLK", Map.of("size", "S"));
+            ProductVariant other = variant(product, 101, "TEE-M-BLK", Map.of("size", "M"));
+            product.getVariants().add(editing);
+            product.getVariants().add(other);
+            when(productRepository.findById(1)).thenReturn(Optional.of(product));
+            when(productVariantRepository.findById(100)).thenReturn(Optional.of(editing));
+
+            ProductCommands.VariantInput input = new ProductCommands.VariantInput(
+                    "TEE-S-BLK", BigDecimal.valueOf(24.99), 10, Map.of("color", "Black"));
+
+            assertThatThrownBy(() -> service.updateVariant(1, 100, input))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_KEYS_INCONSISTENT);
+        }
+
+        @Test
+        void allowsKeepingItsOwnKeysWhenItIsTheOnlyVariant() {
+            Product product = productWithId(1);
+            ProductVariant onlyVariant = variant(product, 100, "TEE-S-BLK", Map.of("size", "S"));
+            product.getVariants().add(onlyVariant);
+            when(productRepository.findById(1)).thenReturn(Optional.of(product));
+            when(productVariantRepository.findById(100)).thenReturn(Optional.of(onlyVariant));
+            when(productVariantRepository.save(any(ProductVariant.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            // The sole variant's own attribute keys can be freely renamed — there is no "other"
+            // variant left to compare against once excludingVariantId excludes itself.
+            ProductCommands.VariantInput input = new ProductCommands.VariantInput(
+                    "TEE-S-BLK", BigDecimal.valueOf(24.99), 10, Map.of("color", "Black"));
+            ProductVariant result = service.updateVariant(1, 100, input);
+
+            assertThat(result.getAttributes()).containsEntry("color", "Black");
+        }
+
+        @Test
+        void rejectsAttributesThatViolateTheCategorySchema() {
+            Product product = productWithId(1);
+            addCategoryAttribute(product.getProductCategory(), "color", true, "Red", "Blue");
+            ProductVariant existing = variant(product, 100, "TEE-S-BLK", Map.of("color", "Red"));
+            product.getVariants().add(existing);
+            when(productRepository.findById(1)).thenReturn(Optional.of(product));
+            when(productVariantRepository.findById(100)).thenReturn(Optional.of(existing));
+
+            ProductCommands.VariantInput input = new ProductCommands.VariantInput(
+                    "TEE-S-BLK", BigDecimal.valueOf(24.99), 10, Map.of("color", "Green"));
+
+            assertThatThrownBy(() -> service.updateVariant(1, 100, input))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_VALUE_NOT_ALLOWED);
+        }
+
+        @Test
+        void rejectsVariantBelongingToAnotherProduct() {
+            Product product = productWithId(1);
+            Product otherProduct = productWithId(2);
+            ProductVariant otherVariant = variant(otherProduct, 200, "OTHER-SKU", Map.of());
+            when(productRepository.findById(1)).thenReturn(Optional.of(product));
+            when(productVariantRepository.findById(200)).thenReturn(Optional.of(otherVariant));
+
+            ProductCommands.VariantInput input = new ProductCommands.VariantInput("OTHER-SKU", BigDecimal.TEN, 5, Map.of());
+
+            assertThatThrownBy(() -> service.updateVariant(1, 200, input))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_BELONGS_TO_ANOTHER_PRODUCT);
+        }
+
+        @Test
+        void throwsWhenVariantDoesNotExist() {
+            Product product = productWithId(1);
+            when(productRepository.findById(1)).thenReturn(Optional.of(product));
+            when(productVariantRepository.findById(999)).thenReturn(Optional.empty());
+
+            ProductCommands.VariantInput input = new ProductCommands.VariantInput("SKU", BigDecimal.TEN, 5, Map.of());
+
+            assertThatThrownBy(() -> service.updateVariant(1, 999, input))
+                    .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
+    @Nested
     class RemoveVariant {
 
         @Test
