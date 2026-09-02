@@ -154,7 +154,13 @@ both `identity-service` and `social-service` were extracted into standalone serv
     one after that** — the same feature's shopper-facing coupon-picker follow-up
     (`CouponPickerApi`, a genuinely new top-level prefix `/api/v1/coupons/**`, distinct from
     admin's own `/api/v1/admin/coupons/**`) added its own
-    `route(path("/api/v1/coupons/**"), http(baseUrl))` line in the same change too.
+    `route(path("/api/v1/coupons/**"), http(baseUrl))` line in the same change too. **The
+    discipline held once more, then finally lapsed** — `ecommerce-service`'s
+    `ProductAttributeApi` (`/api/v1/admin/product-attributes/**`, the "Option B" global attribute
+    registry follow-up) was built before its own route line was added here; caught and fixed in
+    the same overall change once this warning was re-read, not left as a real gap, but a reminder
+    that re-reading this warning each time is the actual mechanism, not a habit that sticks on its
+    own.
 - `security/` — transport/security **edge** infra, **and, as of the CORS-consolidation pass, the
   sole CORS source of truth in this whole reactor — zero exceptions.** `CorsConfig` here is the
   only real CORS config left anywhere. `ai-service`'s own copy (the only other one that ever

@@ -3,12 +3,14 @@ package com.ttg.devknowledgeplatform.ecommerce.entity;
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
 
 import jakarta.persistence.AttributeOverride;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -34,6 +36,11 @@ import java.util.List;
  * exclusion from {@code equals}/{@code hashCode}/{@code toString} to avoid lazy-init/recursion
  * issues, same {@code ProductCategoryServiceImpl.validateParentAssignment}-style cycle guard (see
  * that class).
+ *
+ * <p>{@link #categoryAttributes} is the "Option B" global-attribute-registry follow-up — a
+ * category's own schema of expected {@link ProductAttribute}s (e.g. "Clothes" assigns "size" and
+ * "color"), cascade-owned here (unlike {@link #children} above, which is read-side navigation
+ * only) exactly the way {@code Product.productTagAssignments} owns its own many-to-many join rows.
  */
 @Entity
 @Table(name = "PRODUCT_CATEGORY", schema = "ecommerce")
@@ -41,8 +48,8 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(callSuper = true, exclude = {"parent", "children"})
-@ToString(exclude = {"parent", "children"})
+@EqualsAndHashCode(callSuper = true, exclude = {"parent", "children", "categoryAttributes"})
+@ToString(exclude = {"parent", "children", "categoryAttributes"})
 public class ProductCategory extends AbstractEntity {
 
     @Column(name = "NAME", length = 100, nullable = false)
@@ -57,4 +64,16 @@ public class ProductCategory extends AbstractEntity {
 
     @OneToMany(mappedBy = "parent", fetch = FetchType.LAZY)
     private List<ProductCategory> children = new ArrayList<>();
+
+    /**
+     * This category's own attribute schema — cascade-owned here (unlike {@link #children}, which
+     * is read-side navigation only): {@code ProductCategoryServiceImpl.applyCategoryAttributes}
+     * clears and rebuilds this collection directly, the same way {@code Product
+     * .applyTagIds} manages {@code Product.productTagAssignments}. Ordered by
+     * {@link ProductCategoryAttribute#getDisplayOrder()}, which mirrors each assignment's position
+     * in the list the admin submitted, not a caller-supplied number of its own.
+     */
+    @OneToMany(mappedBy = "category", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("displayOrder ASC")
+    private List<ProductCategoryAttribute> categoryAttributes = new ArrayList<>();
 }

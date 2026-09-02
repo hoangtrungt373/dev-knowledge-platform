@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.ecommerce.api.impl;
 
 import com.ttg.devknowledgeplatform.ecommerce.api.ProductCategoryApi;
+import com.ttg.devknowledgeplatform.ecommerce.dto.CategoryAttributeAssignmentRequest;
 import com.ttg.devknowledgeplatform.ecommerce.dto.CreateProductCategoryRequest;
 import com.ttg.devknowledgeplatform.ecommerce.dto.ProductCategoryResponse;
 import com.ttg.devknowledgeplatform.ecommerce.dto.ProductCategoryTreeNodeResponse;
@@ -31,14 +32,29 @@ public class ProductCategoryController implements ProductCategoryApi {
 
     @Override
     public ResponseEntity<ProductCategoryResponse> create(CreateProductCategoryRequest request) {
-        ProductCategory category = productCategoryService.create(request.getName(), request.getParentId());
+        ProductCategory category = productCategoryService.create(
+                request.getName(), request.getParentId(), toAttributeAssignmentInputs(request.getAttributes()));
         return ResponseEntity.status(HttpStatus.CREATED).body(productCategoryMapper.toResponse(category));
     }
 
     @Override
     public ResponseEntity<ProductCategoryResponse> update(Integer id, UpdateProductCategoryRequest request) {
-        ProductCategory category = productCategoryService.update(id, request.getName(), request.getParentId());
+        ProductCategory category = productCategoryService.update(
+                id, request.getName(), request.getParentId(), toAttributeAssignmentInputs(request.getAttributes()));
         return ResponseEntity.ok(productCategoryMapper.toResponse(category));
+    }
+
+    /** {@code null} in, {@code null} out — preserves both create's "no attributes yet" and
+     * update's "leave unchanged" three-state semantics (see {@code ProductCategoryService}'s own
+     * Javadoc); a non-null list (including empty) maps element-for-element. */
+    private static List<ProductCategoryService.AttributeAssignmentInput> toAttributeAssignmentInputs(
+            List<CategoryAttributeAssignmentRequest> requests) {
+        if (requests == null) {
+            return null;
+        }
+        return requests.stream()
+                .map(r -> new ProductCategoryService.AttributeAssignmentInput(r.getAttributeId(), r.isRequired()))
+                .toList();
     }
 
     @Override

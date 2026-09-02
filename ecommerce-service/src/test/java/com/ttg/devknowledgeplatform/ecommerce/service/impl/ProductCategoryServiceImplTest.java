@@ -2,9 +2,13 @@ package com.ttg.devknowledgeplatform.ecommerce.service.impl;
 
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductAttribute;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategory;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategoryAttribute;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
+import com.ttg.devknowledgeplatform.ecommerce.repository.ProductAttributeRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductCategoryRepository;
+import com.ttg.devknowledgeplatform.ecommerce.service.ProductCategoryService;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductCategoryTreeNode;
 import com.ttg.devknowledgeplatform.infra.service.SlugService;
 
@@ -42,6 +46,9 @@ class ProductCategoryServiceImplTest {
     private ProductCategoryRepository productCategoryRepository;
 
     @Mock
+    private ProductAttributeRepository productAttributeRepository;
+
+    @Mock
     private SlugService slugService;
 
     @InjectMocks
@@ -71,7 +78,7 @@ class ProductCategoryServiceImplTest {
                 return saved;
             });
 
-            ProductCategory result = service.create("Drinkware", null);
+            ProductCategory result = service.create("Drinkware", null, null);
 
             assertThat(result.getId()).isEqualTo(2);
             assertThat(result.getName()).isEqualTo("Drinkware");
@@ -85,7 +92,7 @@ class ProductCategoryServiceImplTest {
             when(slugService.generateUniqueSlug(anyString(), any(), any())).thenReturn("drinkware");
             when(productCategoryRepository.save(any(ProductCategory.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            ProductCategory result = service.create("  Drinkware  ", null);
+            ProductCategory result = service.create("  Drinkware  ", null, null);
 
             assertThat(result.getName()).isEqualTo("Drinkware");
         }
@@ -94,7 +101,7 @@ class ProductCategoryServiceImplTest {
         void rejectsNameThatAlreadyExists() {
             when(productCategoryRepository.existsByNameIgnoreCase("Apparel")).thenReturn(true);
 
-            assertThatThrownBy(() -> service.create("Apparel", null))
+            assertThatThrownBy(() -> service.create("Apparel", null, null))
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.PRODUCT_CATEGORY_NAME_CONFLICT);
@@ -110,7 +117,7 @@ class ProductCategoryServiceImplTest {
                     .thenReturn("outdoor-furniture");
             when(productCategoryRepository.save(any(ProductCategory.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            ProductCategory result = service.create("Outdoor furniture", 1);
+            ProductCategory result = service.create("Outdoor furniture", 1, null);
 
             assertThat(result.getParent()).isEqualTo(existing);
         }
@@ -120,7 +127,7 @@ class ProductCategoryServiceImplTest {
             when(productCategoryRepository.existsByNameIgnoreCase("Outdoor furniture")).thenReturn(false);
             when(productCategoryRepository.findById(99)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.create("Outdoor furniture", 99))
+            assertThatThrownBy(() -> service.create("Outdoor furniture", 99, null))
                     .isInstanceOf(ResourceNotFoundException.class);
 
             verify(productCategoryRepository, never()).save(any());
@@ -138,7 +145,7 @@ class ProductCategoryServiceImplTest {
                     .thenReturn("drinkware");
             when(productCategoryRepository.save(any(ProductCategory.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            ProductCategory result = service.update(1, "Drinkware", null);
+            ProductCategory result = service.update(1, "Drinkware", null, null);
 
             assertThat(result.getName()).isEqualTo("Drinkware");
             assertThat(result.getSlug()).isEqualTo("drinkware");
@@ -149,7 +156,7 @@ class ProductCategoryServiceImplTest {
             when(productCategoryRepository.findById(1)).thenReturn(Optional.of(existing));
             when(productCategoryRepository.save(any(ProductCategory.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            ProductCategory result = service.update(1, "apparel", null); // same name, different case
+            ProductCategory result = service.update(1, "apparel", null, null); // same name, different case
 
             assertThat(result.getSlug()).isEqualTo("apparel"); // unchanged
             verify(slugService, never()).generateUniqueSlug(anyString(), any(), any(), any());
@@ -160,7 +167,7 @@ class ProductCategoryServiceImplTest {
             when(productCategoryRepository.findById(1)).thenReturn(Optional.of(existing));
             when(productCategoryRepository.existsByNameIgnoreCaseAndIdNot("Drinkware", 1)).thenReturn(true);
 
-            assertThatThrownBy(() -> service.update(1, "Drinkware", null))
+            assertThatThrownBy(() -> service.update(1, "Drinkware", null, null))
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.PRODUCT_CATEGORY_NAME_CONFLICT);
@@ -170,7 +177,7 @@ class ProductCategoryServiceImplTest {
         void throwsWhenCategoryDoesNotExist() {
             when(productCategoryRepository.findById(99)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.update(99, "Drinkware", null))
+            assertThatThrownBy(() -> service.update(99, "Drinkware", null, null))
                     .isInstanceOf(ResourceNotFoundException.class);
         }
 
@@ -183,7 +190,7 @@ class ProductCategoryServiceImplTest {
             when(productCategoryRepository.findById(2)).thenReturn(Optional.of(newParent));
             when(productCategoryRepository.save(any(ProductCategory.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            ProductCategory result = service.update(1, "Apparel", 2);
+            ProductCategory result = service.update(1, "Apparel", 2, null);
 
             assertThat(result.getParent()).isEqualTo(newParent);
         }
@@ -192,7 +199,7 @@ class ProductCategoryServiceImplTest {
         void rejectsSettingItselfAsParent() {
             when(productCategoryRepository.findById(1)).thenReturn(Optional.of(existing));
 
-            assertThatThrownBy(() -> service.update(1, "Apparel", 1))
+            assertThatThrownBy(() -> service.update(1, "Apparel", 1, null))
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.PRODUCT_CATEGORY_CYCLIC_PARENT);
@@ -217,7 +224,7 @@ class ProductCategoryServiceImplTest {
             when(productCategoryRepository.findById(1)).thenReturn(Optional.of(existing));
             when(productCategoryRepository.findById(3)).thenReturn(Optional.of(grandchild));
 
-            assertThatThrownBy(() -> service.update(1, "Apparel", 3))
+            assertThatThrownBy(() -> service.update(1, "Apparel", 3, null))
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.PRODUCT_CATEGORY_CYCLIC_PARENT);
@@ -302,6 +309,106 @@ class ProductCategoryServiceImplTest {
             List<ProductCategoryTreeNode> roots = service.listTree();
 
             assertThat(roots).extracting(n -> n.category().getName()).containsExactly("Orphan");
+        }
+    }
+
+    @Nested
+    class CategoryAttributes {
+
+        private ProductAttribute color;
+        private ProductAttribute size;
+
+        @BeforeEach
+        void setUpAttributes() {
+            color = new ProductAttribute();
+            color.setId(10);
+            color.setName("color");
+            size = new ProductAttribute();
+            size.setId(11);
+            size.setName("size");
+        }
+
+        @Test
+        void assignsAttributesInListOrderOnCreate() {
+            when(productCategoryRepository.existsByNameIgnoreCase("Clothes")).thenReturn(false);
+            when(slugService.generateUniqueSlug(anyString(), any(), any())).thenReturn("clothes");
+            when(productAttributeRepository.findAllById(any())).thenReturn(List.of(size, color));
+            when(productCategoryRepository.save(any(ProductCategory.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            List<ProductCategoryService.AttributeAssignmentInput> attributes = List.of(
+                    new ProductCategoryService.AttributeAssignmentInput(11, true),
+                    new ProductCategoryService.AttributeAssignmentInput(10, false));
+
+            ProductCategory result = service.create("Clothes", null, attributes);
+
+            assertThat(result.getCategoryAttributes()).hasSize(2);
+            assertThat(result.getCategoryAttributes().get(0).getAttribute()).isEqualTo(size);
+            assertThat(result.getCategoryAttributes().get(0).isRequired()).isTrue();
+            assertThat(result.getCategoryAttributes().get(0).getDisplayOrder()).isEqualTo(0);
+            assertThat(result.getCategoryAttributes().get(1).getAttribute()).isEqualTo(color);
+            assertThat(result.getCategoryAttributes().get(1).isRequired()).isFalse();
+            assertThat(result.getCategoryAttributes().get(1).getDisplayOrder()).isEqualTo(1);
+        }
+
+        @Test
+        void rejectsADuplicateAttributeIdInTheSameRequest() {
+            when(productCategoryRepository.existsByNameIgnoreCase("Clothes")).thenReturn(false);
+            when(slugService.generateUniqueSlug(anyString(), any(), any())).thenReturn("clothes");
+            when(productCategoryRepository.save(any(ProductCategory.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            List<ProductCategoryService.AttributeAssignmentInput> attributes = List.of(
+                    new ProductCategoryService.AttributeAssignmentInput(10, true),
+                    new ProductCategoryService.AttributeAssignmentInput(10, false));
+
+            assertThatThrownBy(() -> service.create("Clothes", null, attributes))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PRODUCT_CATEGORY_ATTRIBUTE_DUPLICATE);
+        }
+
+        @Test
+        void rejectsAnAttributeIdThatDoesNotExist() {
+            when(productCategoryRepository.existsByNameIgnoreCase("Clothes")).thenReturn(false);
+            when(slugService.generateUniqueSlug(anyString(), any(), any())).thenReturn("clothes");
+            when(productCategoryRepository.save(any(ProductCategory.class))).thenAnswer(invocation -> invocation.getArgument(0));
+            when(productAttributeRepository.findAllById(any())).thenReturn(List.of());
+
+            List<ProductCategoryService.AttributeAssignmentInput> attributes =
+                    List.of(new ProductCategoryService.AttributeAssignmentInput(99, true));
+
+            // ApiException, not ResourceNotFoundException — mirrors ProductServiceImplTest
+            // .rejectsUnknownTagId's own identical precedent (a bulk existence-count check via
+            // Validator.isTrue, not Validator.notFound's own single-lookup shape).
+            assertThatThrownBy(() -> service.create("Clothes", null, attributes))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PRODUCT_ATTRIBUTE_NOT_FOUND);
+        }
+
+        @Test
+        void leavesExistingAttributesUntouchedWhenUpdateOmitsThem() {
+            when(productCategoryRepository.findById(1)).thenReturn(Optional.of(existing));
+            when(productCategoryRepository.save(any(ProductCategory.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            service.update(1, "Apparel", null, null);
+
+            verify(productAttributeRepository, never()).findAllById(any());
+        }
+
+        @Test
+        void clearsExistingAttributesWhenUpdateSendsAnEmptyList() {
+            ProductCategoryAttribute assignment = new ProductCategoryAttribute();
+            assignment.setCategory(existing);
+            assignment.setAttribute(color);
+            assignment.setRequired(true);
+            assignment.setDisplayOrder(0);
+            existing.getCategoryAttributes().add(assignment);
+            when(productCategoryRepository.findById(1)).thenReturn(Optional.of(existing));
+            when(productCategoryRepository.save(any(ProductCategory.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            ProductCategory result = service.update(1, "Apparel", null, List.of());
+
+            assertThat(result.getCategoryAttributes()).isEmpty();
         }
     }
 }

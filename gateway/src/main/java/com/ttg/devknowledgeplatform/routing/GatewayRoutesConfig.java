@@ -30,8 +30,9 @@ import lombok.RequiredArgsConstructor;
  * category filter rail, since a logged-out shopper can't reach the admin-gated
  * {@code /api/v1/admin/product-categories/**}), and {@code /api/v1/admin} (three different
  * services, but each one's own resource segment — {@code /products/**}, {@code
- * /product-categories/**}, {@code /product-tags/**}, {@code /orders/**}, {@code /articles/**},
- * {@code /embeddings/**}, etc. — never collides with another's). Confirmed via a full audit of
+ * /product-categories/**}, {@code /product-tags/**}, {@code /product-attributes/**}, {@code
+ * /orders/**}, {@code /articles/**}, {@code /embeddings/**}, etc. — never collides with another's).
+ * Confirmed via a full audit of
  * every {@code @RequestMapping} in the reactor before writing this class, not assumed from the
  * top-level prefix alone. <b>Caveat, learned the hard way:</b> that audit is only as good as
  * re-running it every time a new admin resource is added — {@code /api/v1/admin/product-tags/**}
@@ -65,11 +66,11 @@ public class GatewayRoutesConfig {
     private final GatewayServicesProperties services;
 
     /** Routes {@code /api/v1/admin/products/**}, {@code /api/v1/admin/product-categories/**},
-     * {@code /api/v1/admin/product-tags/**}, {@code /api/v1/admin/orders/**},
-     * {@code /api/v1/admin/coupons/**}, {@code /api/v1/public/products/**},
-     * {@code /api/v1/public/product-categories/**}, {@code /api/v1/cart/**},
-     * {@code /api/v1/checkout/**}, {@code /api/v1/orders/**}, {@code /api/v1/addresses/**}, and
-     * {@code /api/v1/coupons/**} to {@code ecommerce-service}. */
+     * {@code /api/v1/admin/product-tags/**}, {@code /api/v1/admin/product-attributes/**},
+     * {@code /api/v1/admin/orders/**}, {@code /api/v1/admin/coupons/**},
+     * {@code /api/v1/public/products/**}, {@code /api/v1/public/product-categories/**},
+     * {@code /api/v1/cart/**}, {@code /api/v1/checkout/**}, {@code /api/v1/orders/**},
+     * {@code /api/v1/addresses/**}, and {@code /api/v1/coupons/**} to {@code ecommerce-service}. */
     @Bean
     public RouterFunction<ServerResponse> ecommerceServiceRoutes() {
         String baseUrl = services.getEcommerceServiceBaseUrl();
@@ -77,6 +78,7 @@ public class GatewayRoutesConfig {
                 .route(path("/api/v1/admin/products/**"), http(baseUrl))
                 .route(path("/api/v1/admin/product-categories/**"), http(baseUrl))
                 .route(path("/api/v1/admin/product-tags/**"), http(baseUrl))
+                .route(path("/api/v1/admin/product-attributes/**"), http(baseUrl))
                 .route(path("/api/v1/admin/orders/**"), http(baseUrl))
                 .route(path("/api/v1/admin/coupons/**"), http(baseUrl))
                 .route(path("/api/v1/public/products/**"), http(baseUrl))

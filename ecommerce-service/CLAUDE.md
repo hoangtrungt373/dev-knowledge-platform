@@ -1606,6 +1606,87 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
   `phone`/`email` together into one contact summary (`fullName · phone · email, line1, ...`) when
   present. See `gui/CLAUDE.md`'s own note.
 
+- **`ProductVariant.attributes` category-schema follow-up — the "Option B" global attribute
+  registry, per request.** Prompted by a design discussion: variant attributes vary by category
+  (Clothes → size/color; Computer Accessories → model/color) and are sometimes split into separate
+  keys vs. combined into one ("50x50 Black"). Two options were sketched and compared before
+  building either: **Option A** (each `ProductCategory` types its own attribute names inline, no
+  reuse) vs. **Option B** (a shared, global `ProductAttribute` registry with a controlled
+  `ProductAttributeValue` vocabulary, assigned to categories via a join) — **Option B was chosen**,
+  specifically so a concept like "Color" has exactly one spelling and one shared value list
+  everywhere it's assigned, rather than typed independently (and inconsistently) per category. New
+  entities, named with this module's own `Product*` prefix convention (not the bare `Attribute`
+  sketched during the design discussion) to fit alongside `ProductTag`/`ProductCategory`, and to
+  dodge any ambiguity with `ATTRIBUTE` as a SQL identifier:
+  - `entity/ProductAttribute` — global, e.g. "color", `name` unique case-insensitively (same
+    functional-index treatment as `ProductTag.name`) and matched *literally, case-sensitively*
+    against a `ProductVariant.attributes` map key (there's no id to look up by inside that map —
+    see the entity's own Javadoc). Owns `values` by cascade (`ALL`/`orphanRemoval`, ordered by
+    `displayOrder`) — an attribute's vocabulary is always edited as one whole list in one admin
+    form, not independent add/remove-one-value endpoints, so `ProductAttributeServiceImpl.create`/
+    `.update` both take the complete `List<String>` and clear-and-rebuild, list position becoming
+    `displayOrder` (no caller-supplied order number at all — this sidestepped an entire class of
+    "duplicate sort order" validation `ProductImage`'s own sort order needed).
+  - `entity/ProductAttributeValue` — one controlled-vocabulary entry (e.g. "Red"), cascade-owned by
+    `ProductAttribute.values`, never written independently.
+  - `entity/ProductCategoryAttribute` — the many-to-many join declaring a category expects a given
+    attribute, plus a per-assignment `required` flag — an explicit join entity (not a bare
+    `@ManyToMany`), mirroring `ProductTagAssignment`'s own audit-columns-on-the-join-row reasoning
+    exactly. Cascade-owned by the new `ProductCategory.categoryAttributes` collection (mirrors
+    `Product.productTagAssignments`' own ownership shape) — `ProductCategoryServiceImpl` gained a
+    matching `applyCategoryAttributes` (clear-and-rebuild, list position → `displayOrder`, same
+    "no caller-supplied order number" simplification as `ProductAttributeValue` above).
+    `ProductCategoryService.create`/`.update` both gained a `List<AttributeAssignmentInput>`
+    parameter (a nested record, `{attributeId, required}` — no `displayOrder` field) with the same
+    three-state semantics `ProductCommands.Update.tagIds` already established (`create`: `null` →
+    empty; `update`: `null` → leave unchanged, `[]` → clear).
+  - **Enforcement is real, not just advisory — explicitly requested over the alternative (leave it
+    purely informational).** `ProductServiceImpl.validateAttributesAgainstCategory` runs in
+    `create`, `addVariant`, and (re-validating existing variants) `update` whenever the product's
+    category changes — but **a category with zero `ProductCategoryAttribute` assignments stays
+    exactly as free-form as before this feature**; enforcement only turns on once an admin actually
+    assigns at least one attribute, so every pre-existing category/product/seed row keeps working
+    unchanged (confirmed by the full existing test suite passing unmodified, plus new fixtures only
+    opting a category into a schema explicitly). Once a schema exists: every key present in a
+    variant's `attributes` map must be one of the category's assigned attribute names
+    (`PRODUCT_VARIANT_ATTRIBUTE_NOT_ALLOWED_FOR_CATEGORY`), every `required`-flagged name must be
+    present (`PRODUCT_VARIANT_REQUIRED_ATTRIBUTE_MISSING`), and each present value must be one of
+    that attribute's own defined values (`PRODUCT_VARIANT_ATTRIBUTE_VALUE_NOT_ALLOWED`). This
+    composes with, rather than replaces, the pre-existing `validateConsistentAttributeKeys`/
+    `validateAttributeKeysMatchExisting` checks (those enforce "every variant of this product
+    shares one key set"; this enforces "that shared key set — and each variant's own values — is
+    actually valid for the product's category").
+  - New `api/ProductAttributeApi`+`Controller` at `/api/v1/admin/product-attributes` (full CRUD,
+    paginated list, mirrors `ProductTagApi`'s own shape exactly), `dto/{Create,Update}
+    ProductAttributeRequest` (a `name` plus a `List<String> values`, both validated —
+    `@NotEmpty`/element-level `@NotBlank`/`@Size` via Bean Validation's container-element-constraint
+    support, `List<@NotBlank String>`), `dto/ProductAttribute{,Value}Response`,
+    `mapper/ProductAttributeMapper`. `ProductCategoryApi`'s own `Create`/`UpdateProductCategoryRequest`
+    gained an `attributes: List<CategoryAttributeAssignmentRequest>` field (same three-state
+    semantics as the service layer); `ProductCategoryResponse` gained a matching `attributes` field
+    (`CategoryAttributeAssignmentResponse` — ids only, not the full attribute, mirroring
+    `ProductResponse.tagIds`'s own "ids only" precedent; a future admin GUI cross-references its
+    own attribute list by id rather than this response denormalizing a name).
+  - **`gateway`'s `GatewayRoutesConfig` needed its own new `/api/v1/admin/product-attributes/**`
+    route** — added in the same change, though only after that module's own standing warning about
+    this exact class of gap was re-read (see `gateway/CLAUDE.md`'s own note on this).
+  - New migration `202609020009__...__DKP-0047__add_product_attribute_tables.sql` —
+    `PRODUCT_ATTRIBUTE`/`PRODUCT_ATTRIBUTE_VALUE`/`PRODUCT_CATEGORY_ATTRIBUTE`, each following this
+    module's own established sequence/audit-column/case-insensitive-functional-index conventions.
+  - New `ProductAttributeServiceImplTest` (mirrors `ProductTagServiceImplTest`'s shape, plus
+    values-list management cases) and a new `CategoryAttributes` nested class in
+    `ProductCategoryServiceImplTest`, plus new cases in `ProductServiceImplTest`'s `Create`/
+    `AddVariant`/`Update` for the enforcement itself — **288 unit tests total** (up from 261),
+    verified via a real `mvn test` run (JDK 21). `ProductServiceImplTest`'s own shared
+    `productWithId` fixture had to gain a bare `new ProductCategory()` (previously left `null`) —
+    `addVariant`'s new call to `product.getProductCategory().getCategoryAttributes()` would
+    otherwise NPE on every pre-existing test built on that fixture, a real gap the full-suite run
+    caught immediately.
+  - **Backend only this round, per explicit scope decision** — no GUI admin management page,
+    category-form integration, or `ShopPage.tsx` facet-rail consumption yet. The API shape
+    (`GET /api/v1/admin/product-attributes`, `ProductCategoryResponse.attributes`) is deliberately
+    already GUI-ready for that follow-up.
+
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"
 independently, not "one variant with both together" — see `ProductSearchView`'s Javadoc). **Epic 3

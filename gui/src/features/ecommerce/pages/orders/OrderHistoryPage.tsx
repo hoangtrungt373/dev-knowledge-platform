@@ -80,7 +80,7 @@ export default function OrderHistoryPage(): JSX.Element {
     // AccountLayout's own already-80%-wide content column (moved here from a top-level /orders
     // route per request), and a second 80% would compound into a visibly narrow, off-center block,
     // same fix AddressBookPage.tsx's own outer wrapper already needed for the identical reason.
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ px: 3 }}>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>Your Orders</Typography>
 
       <Tabs

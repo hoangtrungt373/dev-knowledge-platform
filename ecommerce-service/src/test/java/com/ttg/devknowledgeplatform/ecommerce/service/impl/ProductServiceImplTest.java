@@ -4,7 +4,10 @@ import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OutboxEvent;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductAttribute;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductAttributeValue;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategory;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategoryAttribute;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductImage;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductTag;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductTagAssignment;
@@ -97,6 +100,12 @@ class ProductServiceImplTest {
         product.setName("404 Not Found T-Shirt");
         product.setSlug("404-not-found-t-shirt");
         product.setActive(true);
+        // A bare, attribute-schema-free category — every real Product always has one
+        // (PRODUCT_CATEGORY_ID is NOT NULL), and ProductServiceImpl.addVariant now reads it via
+        // validateAttributesAgainstCategory; an empty categoryAttributes list keeps every test
+        // built on this helper free-form (today's behavior) unless a test opts into a schema via
+        // addCategoryAttribute(...) on this product's own category.
+        product.setProductCategory(new ProductCategory());
         return product;
     }
 
@@ -119,6 +128,27 @@ class ProductServiceImplTest {
         image.setStorageKey("products/1/" + id + ".jpg");
         image.setSortOrder(sortOrder);
         return image;
+    }
+
+    /** Attaches a {@code ProductCategoryAttribute} assignment directly to {@code category}'s own
+     * collection — the "Option B" global attribute registry (see {@code ProductAttribute}'s own
+     * Javadoc) — for pinning down {@code ProductServiceImpl.validateAttributesAgainstCategory}'s
+     * enforcement. Once at least one such assignment exists, that category is no longer free-form. */
+    private static void addCategoryAttribute(ProductCategory category, String name, boolean required, String... values) {
+        ProductAttribute attribute = new ProductAttribute();
+        attribute.setName(name);
+        for (String value : values) {
+            ProductAttributeValue attributeValue = new ProductAttributeValue();
+            attributeValue.setAttribute(attribute);
+            attributeValue.setValue(value);
+            attribute.getValues().add(attributeValue);
+        }
+        ProductCategoryAttribute assignment = new ProductCategoryAttribute();
+        assignment.setCategory(category);
+        assignment.setAttribute(attribute);
+        assignment.setRequired(required);
+        assignment.setDisplayOrder(category.getCategoryAttributes().size());
+        category.getCategoryAttributes().add(assignment);
     }
 
     @Nested
@@ -231,6 +261,67 @@ class ProductServiceImplTest {
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_KEYS_INCONSISTENT);
+        }
+
+        @Test
+        void rejectsVariantAttributeNotInCategorySchema() {
+            addCategoryAttribute(category, "size", false, "S", "M", "L");
+            ProductCommands.VariantInput variantInput = new ProductCommands.VariantInput(
+                    "SKU-1", BigDecimal.TEN, 5, Map.of("color", "Black"));
+            ProductCommands.Create command = new ProductCommands.Create("Tee", null, 10, List.of(variantInput), List.of(), Set.of());
+            when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
+
+            assertThatThrownBy(() -> service.create(command))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_NOT_ALLOWED_FOR_CATEGORY);
+        }
+
+        @Test
+        void rejectsMissingRequiredCategoryAttribute() {
+            addCategoryAttribute(category, "size", true, "S", "M", "L");
+            ProductCommands.VariantInput variantInput = new ProductCommands.VariantInput("SKU-1", BigDecimal.TEN, 5, Map.of());
+            ProductCommands.Create command = new ProductCommands.Create("Tee", null, 10, List.of(variantInput), List.of(), Set.of());
+            when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
+
+            assertThatThrownBy(() -> service.create(command))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_REQUIRED_ATTRIBUTE_MISSING);
+        }
+
+        @Test
+        void rejectsAttributeValueNotInTheAllowedList() {
+            addCategoryAttribute(category, "color", true, "Red", "Blue");
+            ProductCommands.VariantInput variantInput = new ProductCommands.VariantInput(
+                    "SKU-1", BigDecimal.TEN, 5, Map.of("color", "Green"));
+            ProductCommands.Create command = new ProductCommands.Create("Tee", null, 10, List.of(variantInput), List.of(), Set.of());
+            when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
+
+            assertThatThrownBy(() -> service.create(command))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_VALUE_NOT_ALLOWED);
+        }
+
+        @Test
+        void succeedsWhenAttributesSatisfyTheCategorySchema() {
+            addCategoryAttribute(category, "color", true, "Red", "Blue");
+            ProductCommands.VariantInput variantInput = new ProductCommands.VariantInput(
+                    "SKU-1", BigDecimal.TEN, 5, Map.of("color", "Red"));
+            ProductCommands.Create command = new ProductCommands.Create("Tee", null, 10, List.of(variantInput), List.of(), Set.of());
+            when(productCategoryRepository.findById(10)).thenReturn(Optional.of(category));
+            when(slugService.generateUniqueSlug(anyString(), any(), any())).thenReturn("tee");
+            when(productRepository.save(any(Product.class))).thenAnswer(invocation -> {
+                Product product = invocation.getArgument(0);
+                product.setId(1);
+                return product;
+            });
+            when(productVariantRepository.save(any(ProductVariant.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            Product result = service.create(command);
+
+            assertThat(result.getVariants()).hasSize(1);
         }
 
         @Test
@@ -413,6 +504,27 @@ class ProductServiceImplTest {
             assertThat(result.getProductTagAssignments()).containsExactly(assignment);
             verify(productTagRepository, never()).findAllById(any());
         }
+
+        @Test
+        void rejectsReassignmentToACategoryTheExistingVariantsDontSatisfy() {
+            Product existing = productWithId(1);
+            existing.getVariants().add(variant(existing, 100, "TEE-S-BLK", Map.of()));
+            ProductCategory stricter = new ProductCategory();
+            stricter.setId(20);
+            addCategoryAttribute(stricter, "size", true, "S", "M", "L");
+
+            when(productRepository.findById(1)).thenReturn(Optional.of(existing));
+            when(productCategoryRepository.findById(20)).thenReturn(Optional.of(stricter));
+
+            ProductCommands.Update command = new ProductCommands.Update("404 Not Found T-Shirt", null, 20, null);
+
+            assertThatThrownBy(() -> service.update(1, command))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_REQUIRED_ATTRIBUTE_MISSING);
+
+            verify(productRepository, never()).save(any());
+        }
     }
 
     @Nested
@@ -534,6 +646,38 @@ class ProductServiceImplTest {
                     "TEE-S-BLK", BigDecimal.valueOf(24.99), 20, Map.of("size", "S"));
 
             assertThat(service.addVariant(1, input)).isNotNull();
+        }
+
+        @Test
+        void rejectsAddedVariantAttributeNotInCategorySchema() {
+            Product product = productWithId(1); // no variants yet — the category schema is the only check that can fire
+            addCategoryAttribute(product.getProductCategory(), "size", false, "S", "M", "L");
+            when(productRepository.findById(1)).thenReturn(Optional.of(product));
+            when(productVariantRepository.existsBySku("TEE-1")).thenReturn(false);
+
+            ProductCommands.VariantInput input = new ProductCommands.VariantInput(
+                    "TEE-1", BigDecimal.valueOf(24.99), 20, Map.of("color", "Black"));
+
+            assertThatThrownBy(() -> service.addVariant(1, input))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_NOT_ALLOWED_FOR_CATEGORY);
+        }
+
+        @Test
+        void rejectsAddedVariantMissingARequiredCategoryAttribute() {
+            Product product = productWithId(1);
+            addCategoryAttribute(product.getProductCategory(), "size", true, "S", "M", "L");
+            when(productRepository.findById(1)).thenReturn(Optional.of(product));
+            when(productVariantRepository.existsBySku("TEE-1")).thenReturn(false);
+
+            ProductCommands.VariantInput input = new ProductCommands.VariantInput(
+                    "TEE-1", BigDecimal.valueOf(24.99), 20, Map.of());
+
+            assertThatThrownBy(() -> service.addVariant(1, input))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PRODUCT_VARIANT_REQUIRED_ATTRIBUTE_MISSING);
         }
     }
 

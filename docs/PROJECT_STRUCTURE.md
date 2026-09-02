@@ -1450,6 +1450,22 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                              content-service's ContentItemTag — carries its own audit columns;
 │   │                              lifecycle owned by Product.productTagAssignments (cascade ALL,
 │   │                              orphanRemoval), unlike Product's variants/images collections
+│   ├── ProductAttribute.java   — "Option B" global attribute registry (DKP-0047), e.g. "color" —
+│   │                              name matched literally/case-sensitively against a
+│   │                              ProductVariant.attributes map key (no id to look up by inside that
+│   │                              map); owns ProductAttributeValue by cascade (ALL/orphanRemoval,
+│   │                              ordered by displayOrder — a value's list position, not a
+│   │                              caller-supplied number)
+│   ├── ProductAttributeValue.java — one controlled-vocabulary entry (e.g. "Red"), cascade-owned by
+│   │                              ProductAttribute.values, never written independently
+│   ├── ProductCategoryAttribute.java — many-to-many join declaring a ProductCategory expects a
+│   │                              given ProductAttribute, plus a per-assignment required flag —
+│   │                              explicit join entity mirroring ProductTagAssignment exactly;
+│   │                              lifecycle owned by ProductCategory.categoryAttributes (cascade
+│   │                              ALL/orphanRemoval); enforced against ProductVariant.attributes by
+│   │                              ProductServiceImpl.validateAttributesAgainstCategory once a
+│   │                              category has at least one assignment (zero assignments stays
+│   │                              free-form, unchanged from before this feature)
 │   ├── ProductSearchView.java  — CQRS read model for browse/search/filter; one denormalized row per
 │   │                              Product; SEARCH_VECTOR (tsvector) is DB-generated from SEARCH_TEXT
 │   │                              and deliberately not mapped as a Java field; written only by
@@ -1852,6 +1868,11 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                 unlike ProductCategoryApi's unpaginated one); assignment
 │   │                                 itself travels with ProductApi's own create/update
 │   │                                 (tagIds), not a dedicated attach/detach endpoint here
+│   ├── ProductAttributeApi.java  — /api/v1/admin/product-attributes (DKP-0047, "Option B" global
+│   │                                 attribute registry), admin-gated CRUD (paginated, mirrors
+│   │                                 ProductTagApi's shape); category assignment travels with
+│   │                                 ProductCategoryApi's own create/update (attributes field), not
+│   │                                 a dedicated attach/detach endpoint here either
 │   ├── CartApi.java              — /api/v1/cart (US-2.1–2.4), authenticated-only — no new
 │   │                                 SecurityConfig rule needed (falls under the existing default
 │   │                                 anyRequest().authenticated()); every mutating method returns

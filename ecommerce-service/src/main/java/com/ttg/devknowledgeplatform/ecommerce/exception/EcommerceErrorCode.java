@@ -22,6 +22,8 @@ public enum EcommerceErrorCode implements ErrorCode {
     PRODUCT_CATEGORY_SLUG_CONFLICT("PRODUCT_CATEGORY_003", "Unable to generate a unique slug for product category ''{0}''", HttpStatus.CONFLICT),
     PRODUCT_CATEGORY_CYCLIC_PARENT("PRODUCT_CATEGORY_004",
             "Invalid parent: would create a cycle in the category tree", HttpStatus.BAD_REQUEST),
+    PRODUCT_CATEGORY_ATTRIBUTE_DUPLICATE("PRODUCT_CATEGORY_005",
+            "Attribute {0} appears more than once in the same request", HttpStatus.BAD_REQUEST),
 
     // Product Errors (PRODUCT_*)
     PRODUCT_NOT_FOUND("PRODUCT_001", "Product not found: {0}", HttpStatus.NOT_FOUND),
@@ -29,6 +31,12 @@ public enum EcommerceErrorCode implements ErrorCode {
     PRODUCT_REQUIRES_AT_LEAST_ONE_VARIANT("PRODUCT_003", "A product must have at least one variant", HttpStatus.BAD_REQUEST),
     PRODUCT_VARIANT_ATTRIBUTE_KEYS_INCONSISTENT("PRODUCT_004",
             "All variants of a product must share the same attribute keys", HttpStatus.BAD_REQUEST),
+    PRODUCT_VARIANT_ATTRIBUTE_NOT_ALLOWED_FOR_CATEGORY("PRODUCT_005",
+            "''{0}'' is not one of this product's category attributes", HttpStatus.BAD_REQUEST),
+    PRODUCT_VARIANT_REQUIRED_ATTRIBUTE_MISSING("PRODUCT_006",
+            "''{0}'' is required for this product's category", HttpStatus.BAD_REQUEST),
+    PRODUCT_VARIANT_ATTRIBUTE_VALUE_NOT_ALLOWED("PRODUCT_007",
+            "''{0}'' is not an allowed value for attribute ''{1}''", HttpStatus.BAD_REQUEST),
 
     // Product Variant Errors (PRODUCT_VARIANT_*)
     PRODUCT_VARIANT_SKU_CONFLICT("PRODUCT_VARIANT_001", "A variant with SKU ''{0}'' already exists", HttpStatus.CONFLICT),
@@ -43,6 +51,16 @@ public enum EcommerceErrorCode implements ErrorCode {
     PRODUCT_TAG_NAME_CONFLICT("PRODUCT_TAG_002", "A product tag with name ''{0}'' already exists", HttpStatus.CONFLICT),
     PRODUCT_TAG_SLUG_CONFLICT("PRODUCT_TAG_003", "Unable to generate a unique slug for product tag ''{0}''", HttpStatus.CONFLICT),
     PRODUCT_TAG_IN_USE("PRODUCT_TAG_004", "Product tag {0} is assigned to one or more products and cannot be deleted", HttpStatus.CONFLICT),
+
+    // Product Attribute Errors (PRODUCT_ATTRIBUTE_*) — "Option B" global attribute registry
+    PRODUCT_ATTRIBUTE_NOT_FOUND("PRODUCT_ATTRIBUTE_001", "Product attribute not found: {0}", HttpStatus.NOT_FOUND),
+    PRODUCT_ATTRIBUTE_NAME_CONFLICT("PRODUCT_ATTRIBUTE_002", "A product attribute with name ''{0}'' already exists", HttpStatus.CONFLICT),
+    PRODUCT_ATTRIBUTE_IN_USE("PRODUCT_ATTRIBUTE_003",
+            "Product attribute {0} is assigned to one or more categories and cannot be deleted", HttpStatus.CONFLICT),
+    PRODUCT_ATTRIBUTE_VALUES_REQUIRED("PRODUCT_ATTRIBUTE_004",
+            "A product attribute must have at least one value", HttpStatus.BAD_REQUEST),
+    PRODUCT_ATTRIBUTE_VALUE_DUPLICATE("PRODUCT_ATTRIBUTE_005",
+            "Value ''{0}'' appears more than once in the same request", HttpStatus.BAD_REQUEST),
 
     // Product Image Errors (PRODUCT_IMAGE_*)
     PRODUCT_IMAGE_DUPLICATE_SORT_ORDER("PRODUCT_IMAGE_001",

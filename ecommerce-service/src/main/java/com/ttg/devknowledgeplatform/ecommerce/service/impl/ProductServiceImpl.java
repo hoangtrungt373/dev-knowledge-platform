@@ -5,6 +5,7 @@ import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OutboxEvent;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategory;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategoryAttribute;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductImage;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductTag;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductTagAssignment;
@@ -73,6 +74,9 @@ public class ProductServiceImpl implements ProductService {
         validateNoDuplicateSortOrdersInRequest(images);
 
         ProductCategory category = findCategoryById(command.productCategoryId());
+        for (ProductCommands.VariantInput variant : variants) {
+            validateAttributesAgainstCategory(category, variant.attributes());
+        }
         String slug = slugService.generateUniqueSlug(
                 command.name(), productRepository::existsBySlug, EcommerceErrorCode.PRODUCT_SLUG_CONFLICT);
 
@@ -129,7 +133,14 @@ public class ProductServiceImpl implements ProductService {
                     command.name(), productRepository::existsBySlugAndIdNot, id, EcommerceErrorCode.PRODUCT_SLUG_CONFLICT));
         }
         product.setDescription(productDescriptionSanitizer.sanitize(command.description()));
-        product.setProductCategory(findCategoryById(command.productCategoryId()));
+        ProductCategory newCategory = findCategoryById(command.productCategoryId());
+        // Re-validated against the (possibly new) category even though this method never touches
+        // variants itself — moving a product into a category with its own attribute schema must
+        // not silently leave existing variants violating it.
+        for (ProductVariant variant : product.getVariants()) {
+            validateAttributesAgainstCategory(newCategory, variant.getAttributes());
+        }
+        product.setProductCategory(newCategory);
 
         if (command.tagIds() != null) {
             applyTagIds(product, command.tagIds());
@@ -173,6 +184,7 @@ public class ProductServiceImpl implements ProductService {
         Product product = findById(productId);
         Validator.isFalse(productVariantRepository.existsBySku(input.sku()), EcommerceErrorCode.PRODUCT_VARIANT_SKU_CONFLICT, input.sku());
         validateAttributeKeysMatchExisting(product, input.attributes());
+        validateAttributesAgainstCategory(product.getProductCategory(), input.attributes());
 
         ProductVariant variant = new ProductVariant();
         variant.setProduct(product);
@@ -322,6 +334,46 @@ public class ProductServiceImpl implements ProductService {
         Set<String> existingKeys = product.getVariants().get(0).getAttributes().keySet();
         Set<String> newKeys = newAttributes == null ? Set.of() : newAttributes.keySet();
         Validator.isTrue(existingKeys.equals(newKeys), EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_KEYS_INCONSISTENT);
+    }
+
+    /**
+     * Enforces {@code category}'s own attribute schema (the "Option B" global {@link
+     * ProductAttribute} registry, assigned via {@link ProductCategoryAttribute}) against one
+     * variant's {@code attributes} map — a category with zero assignments is unconstrained
+     * (today's free-form behavior, unchanged); enforcement only turns on once at least one
+     * assignment exists. Every key present must be one of the category's assigned attribute
+     * names; every {@code required}-flagged name must be present; and each present value must be
+     * one of that attribute's own defined {@link ProductAttributeValue}s.
+     *
+     * <p>Composes with, rather than replaces, {@link #validateConsistentAttributeKeys}/
+     * {@link #validateAttributeKeysMatchExisting} — those two enforce "every variant of this
+     * product shares one key set"; this enforces "that shared key set (and each variant's own
+     * values) is actually valid for the product's category."
+     */
+    private static void validateAttributesAgainstCategory(ProductCategory category, Map<String, String> attributes) {
+        List<ProductCategoryAttribute> definitions = category.getCategoryAttributes();
+        if (definitions.isEmpty()) {
+            return;
+        }
+        Map<String, String> actual = attributes == null ? Map.of() : attributes;
+
+        for (String key : actual.keySet()) {
+            boolean allowed = definitions.stream().anyMatch(d -> d.getAttribute().getName().equals(key));
+            Validator.isTrue(allowed, EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_NOT_ALLOWED_FOR_CATEGORY, key);
+        }
+        for (ProductCategoryAttribute definition : definitions) {
+            String name = definition.getAttribute().getName();
+            if (definition.isRequired()) {
+                Validator.isTrue(actual.containsKey(name), EcommerceErrorCode.PRODUCT_VARIANT_REQUIRED_ATTRIBUTE_MISSING, name);
+            }
+            String value = actual.get(name);
+            if (value == null) {
+                continue;
+            }
+            boolean allowedValue = definition.getAttribute().getValues().stream()
+                    .anyMatch(v -> v.getValue().equals(value));
+            Validator.isTrue(allowedValue, EcommerceErrorCode.PRODUCT_VARIANT_ATTRIBUTE_VALUE_NOT_ALLOWED, value, name);
+        }
     }
 
     /**

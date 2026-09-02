@@ -1,8 +1,10 @@
 package com.ttg.devknowledgeplatform.ecommerce.mapper;
 
+import com.ttg.devknowledgeplatform.ecommerce.dto.CategoryAttributeAssignmentResponse;
 import com.ttg.devknowledgeplatform.ecommerce.dto.ProductCategoryResponse;
 import com.ttg.devknowledgeplatform.ecommerce.dto.ProductCategoryTreeNodeResponse;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategory;
+import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategoryAttribute;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductCategoryTreeNode;
 
 import org.mapstruct.Mapper;
@@ -14,7 +16,11 @@ public interface ProductCategoryMapper {
     @Mapping(source = "dteCreation", target = "createdAt")
     @Mapping(source = "dteLastModification", target = "updatedAt")
     @Mapping(source = "parent.id", target = "parentId")
+    @Mapping(source = "categoryAttributes", target = "attributes")
     ProductCategoryResponse toResponse(ProductCategory category);
+
+    @Mapping(source = "attribute.id", target = "attributeId")
+    CategoryAttributeAssignmentResponse toAttributeAssignmentResponse(ProductCategoryAttribute assignment);
 
     @Mapping(source = "category.id", target = "id")
     @Mapping(source = "category.name", target = "name")

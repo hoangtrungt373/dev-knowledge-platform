@@ -8,19 +8,15 @@ import lombok.Data;
 import java.time.Instant;
 import java.util.List;
 
-/** REST response shape for {@code ProductCategory}. */
+/** REST response shape for {@code ProductAttribute}, its {@code values} in display order. */
 @Data
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class ProductCategoryResponse {
+public class ProductAttributeResponse {
 
     private Integer id;
     private String name;
-    private String slug;
-    /** Null for a root category. */
-    private Integer parentId;
-    /** This category's attribute schema, in display order — empty if none assigned. */
-    private List<CategoryAttributeAssignmentResponse> attributes;
+    private List<ProductAttributeValueResponse> values;
     private Instant createdAt;
     private Instant updatedAt;
 }
