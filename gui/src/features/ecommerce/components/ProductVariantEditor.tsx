@@ -20,6 +20,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import { ProductVariantInput } from '../types';
 import { SuggestedAttribute } from '../hooks/useCategoryAttributeSuggestions';
 import ProductVariantDialog from './ProductVariantDialog';
+import ConfirmDialog from '@shared/components/ConfirmDialog';
 
 export interface DisplayVariant {
   /** Server id once persisted (edit mode); a locally-generated key while still a draft (create mode). */
@@ -37,7 +38,10 @@ interface Props {
   /** Full-replace update of an existing variant's fields — mirrors the backend's own
    * `ProductApi.updateVariant`/`ProductCommands.VariantInput` "full replace" contract. */
   onUpdate: (id: number | string, input: ProductVariantInput) => void;
-  onRemove: (id: number | string) => void;
+  /** May return a promise (edit mode's real backend call) or plain `void` (create mode's
+   * synchronous local-array edit) — awaited either way so the confirm dialog closes only once the
+   * removal has actually gone through. */
+  onRemove: (id: number | string) => void | Promise<void>;
   /** True while an add/update/remove is in flight against the backend (edit mode only — a draft-mode mutation is synchronous local state). */
   busy?: boolean;
   /** The selected product category's own attribute schema, if any (see
@@ -53,6 +57,7 @@ export default function ProductVariantEditor({
 }: Props): JSX.Element {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingVariant, setEditingVariant] = useState<DisplayVariant | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DisplayVariant | null>(null);
 
   // Every variant of one product must share the same attribute keys (US-1.6, still enforced
   // server-side) — computed against the product's *other* variants, excluding whichever one is
@@ -75,6 +80,12 @@ export default function ProductVariantEditor({
       onAdd(input);
     }
     closeDialog();
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    await onRemove(deleteTarget.id);
+    setDeleteTarget(null);
   };
 
   return (
@@ -130,7 +141,8 @@ export default function ProductVariantEditor({
                     <span>
                       <IconButton
                         size="small"
-                        onClick={() => onRemove(variant.id)}
+                        color="error"
+                        onClick={() => setDeleteTarget(variant)}
                         disabled={variants.length <= 1 || busy}
                       >
                         <DeleteIcon fontSize="small" />
@@ -152,6 +164,15 @@ export default function ProductVariantEditor({
         saving={busy}
         onClose={closeDialog}
         onSubmit={handleSubmit}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete Variant"
+        message={`Delete variant "${deleteTarget?.sku}"? This cannot be undone.`}
+        loading={busy}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteTarget(null)}
       />
     </Paper>
   );

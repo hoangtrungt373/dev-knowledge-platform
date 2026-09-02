@@ -11,6 +11,7 @@ import { ProductImage } from '../types';
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import ImageThumbnailGrid from './ImageThumbnailGrid';
+import ConfirmDialog from '@shared/components/ConfirmDialog';
 
 interface Props {
   productId: number;
@@ -29,6 +30,7 @@ export default function ProductImageGallery({ productId, images, onChanged }: Pr
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [busyImageId, setBusyImageId] = useState<number | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
 
   const sorted = [...images].sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -49,16 +51,23 @@ export default function ProductImageGallery({ productId, images, onChanged }: Pr
     }
   };
 
-  const handleRemove = async (imageId: number) => {
+  const handleRemove = async (imageId: number): Promise<boolean> => {
     setBusyImageId(imageId);
     try {
       await ecommerceApi.removeImage(productId, imageId, showError);
       onChanged();
+      return true;
     } catch {
-      // showError already called
+      return false; // showError already called
     } finally {
       setBusyImageId(null);
     }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (deleteTargetId === null) return;
+    const success = await handleRemove(deleteTargetId);
+    if (success) setDeleteTargetId(null);
   };
 
   const handleMove = async (imageId: number, direction: -1 | 1) => {
@@ -108,8 +117,17 @@ export default function ProductImageGallery({ productId, images, onChanged }: Pr
         }))}
         busyId={busyImageId}
         onMove={handleMove}
-        onRemove={handleRemove}
+        onRemove={setDeleteTargetId}
         emptyMessage="No images yet."
+      />
+
+      <ConfirmDialog
+        open={deleteTargetId !== null}
+        title="Delete Image"
+        message="Delete this image? This cannot be undone."
+        loading={busyImageId === deleteTargetId}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteTargetId(null)}
       />
     </Paper>
   );

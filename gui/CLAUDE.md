@@ -851,6 +851,17 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
       sandbox, so the actual edit/remove flow on a multi-variant product is unverified in a real
       browser.
+    - **Follow-up: a confirmation dialog before actually removing a variant, plus a red delete
+      icon, per request.** Clicking the row's Remove button no longer calls `onRemove` directly —
+      it opens the shared `@shared/components/ConfirmDialog` (same component every other
+      admin-list delete flow in this app already uses, e.g. `ProductAttributeListPage.tsx`) with
+      the variant's own SKU in the message; `onRemove` was widened to
+      `(id) => void | Promise<void>` (create mode's `removeDraftVariant` is synchronous, edit
+      mode's `handleRemoveLiveVariant` is a real async backend call) so the dialog can `await` it
+      and only close once the removal has actually gone through, with `loading={busy}` disabling
+      Cancel/showing a spinner on Confirm while it's in flight. The Remove `IconButton` gained
+      `color="error"` (red) — it previously used the default icon color; `ImageThumbnailGrid`'s own
+      remove button (below) already had `color="error"`, so this brings the two into visual parity.
   - `components/ProductImageGallery.tsx` — upload via `httpClient.postForm` (same pattern as
     `@auth/api/profileApi.ts#uploadAvatar`), remove, and a real move-earlier/move-later reorder.
     **The reorder is a 3-step scratch-sort-order swap, not a direct 2-step swap** — the backend
@@ -862,6 +873,24 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     first sidesteps that. `ProductImage.url` (a time-limited presigned URL, resolved server-side by
     `ProductMapper` — see `ecommerce-service/CLAUDE.md`) is what actually renders as each
     thumbnail; never construct a MinIO URL client-side from `storageKey`.
+    - **Follow-up: a confirmation dialog before actually removing an image, per request** (its
+      `ImageThumbnailGrid`-shared Remove button was already `color="error"` — no icon-color change
+      needed here, unlike the variant one above). `ImageThumbnailGrid`'s own `onRemove` prop is now
+      wired to `setDeleteTargetId` instead of `handleRemove` directly, so clicking it just opens
+      `@shared/components/ConfirmDialog` (same shared component, same convention as the variant
+      follow-up above); `handleRemove` was changed to return a `Promise<boolean>` (was
+      `Promise<void>`, swallowing its own errors) so the confirm handler can tell success from
+      failure and only close the dialog on success — a failed removal (already toasted via
+      `showError`) leaves the dialog open so the admin can retry or cancel, matching
+      `ProductAttributeListPage.tsx`'s own established "close only on success" convention.
+      **Deliberately scoped to this component only, not `ImageThumbnailGrid` itself** — that
+      component is also shared by `ProductImageStager.tsx` (create-mode's not-yet-uploaded, purely
+      local image queue), where removing a queued file is a trivial, instantly-reversible local
+      edit with no real backend consequence; adding a confirm dialog there would be unwarranted
+      friction for a "just re-pick the file" action, so `ProductImageStager` still calls its own
+      `onRemove` directly, unchanged. Verified via a clean `tsc --noEmit` and a successful
+      `vite build` only — no Docker in this sandbox, so the actual confirm/cancel/retry flow is
+      unverified in a real browser.
   - **Product Tags (post-Epic-1 follow-up) — admin-only GUI for `ecommerce-service`'s new
     `ProductTag`/`ProductTagAssignment` many-to-many (see `ecommerce-service/CLAUDE.md`'s own
     Product Tags note for the backend side and the 3 scope decisions this Phase 2 GUI pass
