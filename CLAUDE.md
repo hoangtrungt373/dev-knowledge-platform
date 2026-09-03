@@ -318,6 +318,13 @@ service's routes ever change.
   Gateway Server MVC only proxies plain HTTP, not a protocol upgrade, and `ChatStreamProxyController`
   is HTTP-only too. The GUI's `socket.ts` talks to `social-service`'s own origin directly,
   independent of wherever the REST API points.
+- `ecommerce-service`'s `/webhooks/stripe` (Epic 4 Phase 5, US-4.5) — Stripe's own servers call
+  this directly on `ecommerce-service`'s own port, authenticated via Stripe's HMAC signature over
+  the raw request body (`webhook.StripeWebhookService`), never a JWT; never meant for a browser or
+  any other external client, same "server-to-server, bypass `gateway` entirely" shape as
+  `content-service`'s `/internal/**` above, just with a different auth mechanism (Stripe's own
+  signature instead of a shared-secret header, since Stripe's servers can't be configured to send
+  one).
 
 **CORS is fully consolidated at `gateway` now — zero exceptions.** `gateway/security/CorsConfig`
 is the sole CORS source in this reactor; every other service's own copy (only `ai-service` ever had

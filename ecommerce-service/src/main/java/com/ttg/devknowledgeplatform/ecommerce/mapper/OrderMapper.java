@@ -8,7 +8,9 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.Address;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OrderLine;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OrderStatusHistory;
+import com.ttg.devknowledgeplatform.ecommerce.entity.Payment;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductVariant;
+import com.ttg.devknowledgeplatform.ecommerce.repository.PaymentRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductVariantRepository;
 import com.ttg.devknowledgeplatform.infra.service.StorageService;
 
@@ -36,15 +38,22 @@ import java.math.BigDecimal;
  * lazy collections — this only works because Spring Boot's {@code spring.jpa.open-in-view} default
  * (unchanged in this module) keeps the Hibernate session open for the whole request, the same
  * reliance {@code ProductMapper} already has on {@code Product.variants}/{@code images}.
+ *
+ * <p>{@link #toResponse} also does a best-effort live lookup of this order's own {@code Payment}
+ * row (Epic 4 Phase 7, US-4.7) — {@code null}/{@code null}/{@code null} for all three payment
+ * fields until a payment attempt has actually started, same "resolve nullable, doesn't always
+ * exist" shape {@link #toOrderLineResponse}'s own variant lookup already uses.
  */
 @Component
 @RequiredArgsConstructor
 public class OrderMapper {
 
     private final ProductVariantRepository productVariantRepository;
+    private final PaymentRepository paymentRepository;
     private final StorageService storageService;
 
     public OrderResponse toResponse(Order order) {
+        Payment payment = paymentRepository.findByOrderId(order.getId()).orElse(null);
         return OrderResponse.builder()
                 .id(order.getId())
                 .status(order.getStatus())
@@ -57,6 +66,10 @@ public class OrderMapper {
                 .originalShippingFee(order.getOriginalShippingFee())
                 .shippingCouponCode(order.getShippingCouponCode())
                 .total(order.getTotal())
+                .paymentStatus(payment == null ? null : payment.getStatus())
+                .paymentFailureCategory(payment == null ? null : payment.getFailureCategory())
+                .paymentFailureMessage(payment == null || payment.getFailureCategory() == null
+                        ? null : payment.getFailureCategory().getShopperMessage())
                 .lines(order.getLines().stream().map(this::toOrderLineResponse).toList())
                 .statusHistory(order.getStatusHistory().stream().map(OrderMapper::toHistoryResponse).toList())
                 .build();

@@ -9,9 +9,9 @@
 -- startup reseeds the full sample catalog (including the fresh Product Tags data) from scratch.
 --
 -- NOTE this is a genuine "every table" purge, not just the CSV-seeded ones: it also truncates
--- CUSTOMER_ORDER/ORDER_LINE/ORDER_STATUS_HISTORY/COUPON_REDEMPTION (real checkout activity) and
--- SAVED_ADDRESS (a shopper's own real AddressBook entries — no seeder ever creates one, but the
--- table is still cleared for a genuinely clean slate). Only run this against a local/dev database
+-- CUSTOMER_ORDER/ORDER_LINE/ORDER_STATUS_HISTORY/COUPON_REDEMPTION/PAYMENT (real checkout/payment
+-- activity) and SAVED_ADDRESS (a shopper's own real AddressBook entries — no seeder ever creates
+-- one, but the table is still cleared for a genuinely clean slate). Only run this against a local/dev database
 -- you're fine wiping entirely, never anything with real user data you want to keep.
 --
 -- Usage (from the host, against the docker-compose.infra.yml Postgres container):
@@ -44,13 +44,19 @@ BEGIN;
 -- existence checks (ProductAttribute.name, ProductCategoryAttribute's per-category "already has
 -- any assignment" check) exactly like every other seeder in this module, so a surviving row here
 -- silently skips reseeding the same way a surviving PRODUCT_TAG row would.
--- Confirmed against every migration's own CREATE TABLE statement (17 tables total as of DKP-0047)
+-- PAYMENT (DKP-0048, Epic 4 Phase 1) is included the same way COUPON_REDEMPTION is — an FK onto
+-- CUSTOMER_ORDER, no seeder of its own, real checkout/payment activity rather than CSV-seeded data.
+-- STRIPE_WEBHOOK_EVENT (DKP-0050, Epic 4 Phase 5) is included for the same reason — no seeder,
+-- real webhook-delivery dedup ledger rows rather than CSV-seeded data.
+-- Confirmed against every migration's own CREATE TABLE statement (19 tables total as of DKP-0050)
 -- — this script's own header promises "every ecommerce-service table"; re-derive this count from
 -- a reactor-wide grep for `CREATE TABLE IF NOT EXISTS ecommerce\.` rather than trusting this
 -- number if a new table lands here later (see ecommerce-service/CLAUDE.md's own note on this).
 TRUNCATE TABLE
     ecommerce.OUTBOX_EVENT,
     ecommerce.PRODUCT_SEARCH_VIEW,
+    ecommerce.STRIPE_WEBHOOK_EVENT,
+    ecommerce.PAYMENT,
     ecommerce.COUPON_REDEMPTION,
     ecommerce.ORDER_STATUS_HISTORY,
     ecommerce.ORDER_LINE,

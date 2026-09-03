@@ -3,7 +3,7 @@ package com.ttg.devknowledgeplatform.ecommerce.orderstatus;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
-import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentOutcome;
+import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentResult;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -68,9 +68,10 @@ public class OrderReconciliationJob {
             if (order == null || order.getStatus() != OrderStatus.PAYMENT_PROCESSING) {
                 return;
             }
-            PaymentOutcome outcome = paymentGatewayPort.checkStatus(order.getIdempotencyKey());
-            paymentHandoffService.resolvePayment(orderId, outcome);
-            log.info("Reconciled order id={} idempotencyKey={} outcome={}", orderId, order.getIdempotencyKey(), outcome);
+            PaymentResult result = paymentGatewayPort.checkStatus(order.getIdempotencyKey());
+            paymentHandoffService.resolvePayment(orderId, result);
+            log.info("Reconciled order id={} idempotencyKey={} outcome={}",
+                    orderId, order.getIdempotencyKey(), result.outcome());
         } catch (Exception e) {
             // One poison order must not stop the rest of the batch from reconciling — log and move
             // on; it stays PAYMENT_PROCESSING and will be retried on the next poll tick.

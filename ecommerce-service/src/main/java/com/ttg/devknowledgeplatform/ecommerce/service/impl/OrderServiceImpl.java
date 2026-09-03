@@ -7,7 +7,8 @@ import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.OrderStatusHandlerRegistry;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentHandoffService;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
-import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentOutcome;
+import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentResult;
+import com.ttg.devknowledgeplatform.ecommerce.payment.RefundResult;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.spec.OrderSpecification;
 import com.ttg.devknowledgeplatform.ecommerce.service.OrderService;
@@ -34,6 +35,10 @@ import java.util.Collection;
  * durable-commit sequence needs two independent transactions rather than one wrapping the whole
  * method (which would let a crash mid-gateway-call silently roll back the very
  * {@code PAYMENT_PROCESSING} marker US-3.4's reconciliation job depends on existing).
+ * {@link #cancel} (Epic 4 Phase 6, US-4.6) is the same shape for the opposite direction: it's not
+ * {@code @Transactional} either, since a refund is owed only when {@link PaymentHandoffService
+ * #applyCancellation} reports one, and that refund gateway call must happen outside any local
+ * transaction for the identical reason.
  */
 @Service
 @RequiredArgsConstructor
@@ -65,13 +70,13 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    @Transactional(rollbackFor = Throwable.class)
     public Order cancel(Integer orderId, String callerUuid) {
-        Order order = Validator.notFound(
-                orderRepository.findById(orderId).filter(o -> o.getOwnerUuid().equals(callerUuid)),
-                EcommerceErrorCode.ORDER_NOT_FOUND, orderId);
-        orderStatusHandlerRegistry.cancel(order);
-        return orderRepository.save(order);
+        PaymentHandoffService.CancellationResult cancellation = paymentHandoffService.applyCancellation(orderId, callerUuid);
+        if (cancellation.refundNeeded()) {
+            RefundResult result = paymentGatewayPort.refund(cancellation.gatewayReference(), cancellation.amount());
+            paymentHandoffService.applyRefundResult(cancellation.paymentId(), result);
+        }
+        return cancellation.order();
     }
 
     @Override
@@ -93,8 +98,8 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public Order initiatePayment(Integer orderId, String callerUuid) {
         Order pending = paymentHandoffService.startPaymentProcessing(orderId, callerUuid);
-        PaymentOutcome outcome = paymentGatewayPort.charge(pending.getIdempotencyKey(), pending.getTotal());
-        return paymentHandoffService.resolvePayment(orderId, outcome);
+        PaymentResult result = paymentGatewayPort.charge(pending.getIdempotencyKey(), pending.getTotal());
+        return paymentHandoffService.resolvePayment(orderId, result);
     }
 
     private Order findOrder(Integer orderId) {

@@ -1,6 +1,8 @@
 package com.ttg.devknowledgeplatform.ecommerce.dto;
 
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
+import com.ttg.devknowledgeplatform.ecommerce.enums.PaymentFailureCategory;
+import com.ttg.devknowledgeplatform.ecommerce.enums.PaymentStatus;
 
 import lombok.Builder;
 import lombok.Data;
@@ -13,6 +15,14 @@ import java.util.List;
  * and its full transition history in one shape, reused for both the list-mine and get-by-id
  * endpoints (same "one response DTO for list and detail" convention {@code ProductResponse}
  * already established in this module).
+ *
+ * <p>{@link #paymentStatus}/{@link #paymentFailureCategory}/{@link #paymentFailureMessage} (Epic 4
+ * Phase 7, US-4.7) are a live lookup of this order's own {@code Payment} row, resolved by
+ * {@code mapper.OrderMapper} — all {@code null} until a payment attempt has actually started
+ * (a {@code PENDING} order that never called {@code POST /{id}/pay} has no {@code Payment} row at
+ * all). {@link #paymentFailureMessage} is a small, non-technical, server-owned string
+ * ({@code PaymentFailureCategory#getShopperMessage()}) — <b>never</b> the gateway's own raw decline
+ * string, which this reactor never sends to a client at all.
  */
 @Data
 @Builder
@@ -37,6 +47,9 @@ public class OrderResponse {
      * none (this is independent of any automatic free-shipping waiver, which has no code). */
     private String shippingCouponCode;
     private BigDecimal total;
+    private PaymentStatus paymentStatus;
+    private PaymentFailureCategory paymentFailureCategory;
+    private String paymentFailureMessage;
     private List<OrderLineResponse> lines;
     private List<OrderStatusHistoryResponse> statusHistory;
 }

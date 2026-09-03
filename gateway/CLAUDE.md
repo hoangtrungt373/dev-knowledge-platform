@@ -93,7 +93,11 @@ both `identity-service` and `social-service` were extracted into standalone serv
   "one value changes, the routing code doesn't" convention `ai-service`'s own
   `ContentServiceClientProperties` already established. `content-service`'s
   `/internal/content-items/**` is deliberately not routed — service-to-service traffic, not for
-  external clients (see the class Javadoc). **`ai-service`'s `/api/v1/chat/stream` is also not
+  external clients (see the class Javadoc). `ecommerce-service`'s `/webhooks/stripe` (Epic 4 Phase
+  5) is deliberately not routed either, for the same reason — Stripe's own servers call it
+  directly on `ecommerce-service`'s own port, authenticated via Stripe's HMAC signature rather than
+  a JWT, so there's nothing for this app's own security filter chain to usefully sit in front of.
+  **`ai-service`'s `/api/v1/chat/stream` is also not
   routed through this class — but it's still proxied by this app.** Spring Cloud Gateway Server
   MVC has real, documented problems proxying Server-Sent Events, so a second, purpose-built class
   handles just this one path instead:

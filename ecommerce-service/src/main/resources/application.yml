@@ -48,6 +48,27 @@ app:
         grace-period: ${ORDER_RECONCILIATION_GRACE_PERIOD:PT2M}
         poll-interval: ${ORDER_RECONCILIATION_POLL_INTERVAL:PT1M}
 
+    payment:
+      # Epic 4 Phase 2: which PaymentGatewayPort strategy is the active bean — "mock"
+      # (MockPaymentGateway, the default, no real credentials needed) or "stripe"
+      # (StripePaymentGateway, real calls against Stripe's test-mode API). A property, not a Spring
+      # profile, drives this — see StripePaymentGateway's own Javadoc for why.
+      gateway: ${PAYMENT_GATEWAY:mock}
+      stripe:
+        # A real Stripe TEST-MODE secret key (sk_test_...) — only read when gateway=stripe above.
+        # Never commit a real value; this has no default on purpose.
+        secret-key: ${STRIPE_SECRET_KEY:}
+        currency: ${STRIPE_CURRENCY:usd}
+        # No real checkout UI collects a card yet (see StripePaymentGateway's own Javadoc) — this
+        # stands in for one, using Stripe's own built-in test-mode PaymentMethod ids. Point it at
+        # pm_card_chargeDeclined to exercise the decline path against the real API.
+        test-payment-method-id: ${STRIPE_TEST_PAYMENT_METHOD_ID:pm_card_visa}
+        # Epic 4 Phase 5 (US-4.5): the signing secret (whsec_...) from this webhook endpoint's own
+        # entry in the Stripe Dashboard/CLI — webhook.StripeWebhookService verifies every inbound
+        # request's Stripe-Signature header against it before trusting the payload. Never commit a
+        # real value; this has no default on purpose.
+        webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+
 spring:
   application:
     name: ecommerce-service

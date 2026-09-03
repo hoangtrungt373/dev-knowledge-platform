@@ -8,7 +8,8 @@ import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.OrderStatusHandlerRegistry;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentHandoffService;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
-import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentOutcome;
+import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentResult;
+import com.ttg.devknowledgeplatform.ecommerce.payment.RefundResult;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
 
 import org.junit.jupiter.api.Nested;
@@ -36,12 +37,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for {@link OrderServiceImpl} — US-3.5's ownership-checked get/list, US-3.6's
- * ownership-checked cancel, US-3.7/3.8's admin ship/deliver (all thin wrappers around a mocked
- * {@link OrderStatusHandlerRegistry}), and US-3.3's {@link OrderServiceImpl#initiatePayment}
- * orchestration (mocked {@link PaymentHandoffService}/{@link PaymentGatewayPort} — the two durable
- * steps and the gateway call are each covered by their own dedicated test class, not re-verified
- * here).
+ * Unit tests for {@link OrderServiceImpl} — US-3.5's ownership-checked get/list, US-3.7/3.8's
+ * admin ship/deliver (thin wrappers around a mocked {@link OrderStatusHandlerRegistry}), and
+ * US-3.3's {@link OrderServiceImpl#initiatePayment}/US-4.6's {@link OrderServiceImpl#cancel}
+ * orchestration (mocked {@link PaymentHandoffService}/{@link PaymentGatewayPort} — the durable
+ * steps and the gateway calls themselves are each covered by their own dedicated test class, not
+ * re-verified here; this class only pins down the calling order/conditional-refund wiring).
  */
 @ExtendWith(MockitoExtension.class)
 class OrderServiceImplTest {
@@ -157,39 +158,48 @@ class OrderServiceImplTest {
     class Cancel {
 
         @Test
-        void dispatchesToTheRegistryAndSavesWhenTheCallerOwnsTheOrder() {
-            Order order = orderOwnedBy(OWNER_UUID);
-            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
-            when(orderRepository.save(order)).thenReturn(order);
+        void returnsTheCancelledOrderAndNeverTouchesTheGatewayWhenNoRefundIsOwed() {
+            Order cancelled = orderOwnedBy(OWNER_UUID);
+            cancelled.setStatus(OrderStatus.CANCELLED);
+            PaymentHandoffService.CancellationResult cancellation =
+                    new PaymentHandoffService.CancellationResult(cancelled, false, null, null, null);
+            when(paymentHandoffService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
 
             Order result = service.cancel(1, OWNER_UUID);
 
-            verify(orderStatusHandlerRegistry).cancel(order);
-            verify(orderRepository).save(order);
-            assertThat(result).isSameAs(order);
+            assertThat(result).isSameAs(cancelled);
+            verify(paymentGatewayPort, never()).refund(any(), any());
+            verify(paymentHandoffService, never()).applyRefundResult(any(), any());
         }
 
         @Test
-        void rejectsAsNotFoundWhenTheOrderBelongsToSomeoneElse() {
-            Order order = orderOwnedBy(OWNER_UUID);
-            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+        void issuesARefundAndAppliesTheResultWhenOneIsOwed() {
+            Order cancelled = orderOwnedBy(OWNER_UUID);
+            cancelled.setStatus(OrderStatus.CANCELLED);
+            PaymentHandoffService.CancellationResult cancellation = new PaymentHandoffService.CancellationResult(
+                    cancelled, true, 100, "gw-ref-1", new BigDecimal("25.00"));
+            when(paymentHandoffService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
+            RefundResult refundResult = RefundResult.succeeded("gw-refund-1");
+            when(paymentGatewayPort.refund("gw-ref-1", new BigDecimal("25.00"))).thenReturn(refundResult);
+
+            Order result = service.cancel(1, OWNER_UUID);
+
+            assertThat(result).isSameAs(cancelled);
+            verify(paymentGatewayPort).refund("gw-ref-1", new BigDecimal("25.00"));
+            verify(paymentHandoffService).applyRefundResult(100, refundResult);
+        }
+
+        @Test
+        void propagatesAnyExceptionFromApplyCancellationWithoutTouchingTheGateway() {
+            when(paymentHandoffService.applyCancellation(1, OTHER_UUID))
+                    .thenThrow(new BusinessException(EcommerceErrorCode.ORDER_NOT_FOUND, 1));
 
             assertThatThrownBy(() -> service.cancel(1, OTHER_UUID))
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.ORDER_NOT_FOUND);
-            verify(orderStatusHandlerRegistry, never()).cancel(any());
-            verify(orderRepository, never()).save(any());
-        }
-
-        @Test
-        void rejectsAsNotFoundWhenTheOrderDoesNotExist() {
-            when(orderRepository.findById(1)).thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> service.cancel(1, OWNER_UUID))
-                    .isInstanceOf(ApiException.class)
-                    .extracting(e -> ((ApiException) e).getErrorCode())
-                    .isEqualTo(EcommerceErrorCode.ORDER_NOT_FOUND);
+            verify(paymentGatewayPort, never()).refund(any(), any());
+            verify(paymentHandoffService, never()).applyRefundResult(any(), any());
         }
     }
 
@@ -260,16 +270,17 @@ class OrderServiceImplTest {
             pending.setTotal(new BigDecimal("25.00"));
             Order confirmed = orderOwnedBy(OWNER_UUID);
             confirmed.setStatus(OrderStatus.CONFIRMED);
+            PaymentResult result = PaymentResult.succeeded("gw-ref-1");
             when(paymentHandoffService.startPaymentProcessing(1, OWNER_UUID)).thenReturn(pending);
-            when(paymentGatewayPort.charge("1", new BigDecimal("25.00"))).thenReturn(PaymentOutcome.SUCCEEDED);
-            when(paymentHandoffService.resolvePayment(1, PaymentOutcome.SUCCEEDED)).thenReturn(confirmed);
+            when(paymentGatewayPort.charge("1", new BigDecimal("25.00"))).thenReturn(result);
+            when(paymentHandoffService.resolvePayment(1, result)).thenReturn(confirmed);
 
-            Order result = service.initiatePayment(1, OWNER_UUID);
+            Order returned = service.initiatePayment(1, OWNER_UUID);
 
-            assertThat(result).isSameAs(confirmed);
+            assertThat(returned).isSameAs(confirmed);
             verify(paymentHandoffService).startPaymentProcessing(1, OWNER_UUID);
             verify(paymentGatewayPort).charge("1", new BigDecimal("25.00"));
-            verify(paymentHandoffService).resolvePayment(1, PaymentOutcome.SUCCEEDED);
+            verify(paymentHandoffService).resolvePayment(1, result);
         }
 
         @Test

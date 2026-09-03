@@ -1856,12 +1856,313 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
       only — no Docker in this sandbox, so the actual quick-add/autocomplete flow is unverified in
       a real browser.
 
+**Epic 4 (Payments, `docs/user-stories/04-payments.md`) — Phases 1–7 (data model, gateway
+abstraction/Strategy pair, synchronous confirmation, outbox publishing, Stripe webhook handling,
+refund on cancellation, user-facing failure reasons) are built; Phase 8 (GUI) is not.** Confirmed
+shape realized: the Stripe webhook (Phase 5) is exposed directly on this service's own origin,
+bypassing `gateway` entirely (signature verification replaces JWT auth, the same way
+`content-service`'s `/internal/**` bypasses `gateway`) — not a `gateway`-routed path; the Stripe
+integration (Phase 2) uses the real `stripe-java` SDK against Stripe's test-mode API, not a
+structural-only adapter.
+
+- New `entity/Payment` — one payment attempt per `Order`, written with `PaymentStatus.PENDING`
+  **before** `payment.PaymentGatewayPort#charge` is ever called, inside the same transaction as
+  `orderstatus.PaymentHandoffService#startPaymentProcessing`'s own `PENDING -> PAYMENT_PROCESSING`
+  transition — this is exactly what Epic 3's own reconciliation job (US-3.4) already queries
+  against on a crash, now with a real row behind it instead of just `Order.idempotencyKey`. Real
+  `@ManyToOne` FK to `Order` (mirrors `CouponRedemption`'s own FK — an `Order` row is permanent, no
+  delete path in this module). `idempotencyKey` is denormalized from `Order.idempotencyKey`
+  (unique) rather than read through the association, so a webhook handler (Phase 5) can find the
+  right row without loading its `Order` too. `gatewayReference`/`failureCategory`/
+  `gatewayFailureMessage` are all added now (nullable) but stay unpopulated until Phase 2 (a real
+  gateway's own charge/PaymentIntent id) and Phase 7 (US-4.7's decline-category mapping) actually
+  write them — the full row shape was added in one pass, the same way every one of Epic 3's own
+  `Order` columns was, since Epic 4's own user stories already specify it end to end.
+- New `enums/PaymentStatus` (`PENDING`/`SUCCEEDED`/`DECLINED`/`REFUNDED`) — deliberately not the
+  same enum as `payment.PaymentOutcome` (Epic 3's gateway seam) despite the vocabulary overlap; see
+  that enum's own Javadoc for why the two `PENDING`s mean different things.
+- New `enums/PaymentFailureCategory` (`INSUFFICIENT_FUNDS`/`CARD_DECLINED`/`GATEWAY_ERROR`) — added
+  now for the same "full shape up front" reason as the entity's nullable columns; nothing writes it
+  yet.
+- New `repository/PaymentRepository` — `findByOrderId` (this module's current one-shot charge flow
+  never retries a declined charge, so exactly one row per order is correct today; not enforced at
+  the schema level, since a future retry flow would legitimately need more than one — see the
+  repository's own Javadoc) and `findByIdempotencyKey` (the webhook-correlation lookup Phase 5 will
+  use).
+- Migration `202609020010__0.0.2__DKP-0048__add_payment_table.sql` — `PAYMENT` table/sequence, FK
+  onto `CUSTOMER_ORDER`, a unique constraint on `IDEMPOTENCY_KEY`, `CHECK`s on `STATUS`/
+  `FAILURE_CATEGORY`/`AMOUNT > 0`, and an index on `CUSTOMER_ORDER_ID` backing `findByOrderId`.
+  `scripts/purge-seed-data.sql` gained `ecommerce.PAYMENT` to its `TRUNCATE` list (18 tables total
+  now) — same "real activity, no seeder of its own" reasoning as `SAVED_ADDRESS`/`COUPON_REDEMPTION`.
+- **Phase 2 (US-4.1) — the gateway abstraction, a GoF Strategy pair behind the existing Adapter
+  seam.** `PaymentGatewayPort` gained `refund(gatewayReference, amount)` — deliberately keyed by
+  the gateway's own charge/PaymentIntent id (`entity.Payment#getGatewayReference()`), not this
+  module's internal `paymentId` the user story's own prose names, since the gateway itself has no
+  notion of our numeric PK. `charge`/`checkStatus` now return a new `payment.PaymentResult` record
+  (`outcome` + `gatewayReference` + `failureCategory` + `gatewayFailureMessage`) instead of a bare
+  `PaymentOutcome` — widens Epic 3's original return type with exactly what Phase 3 will need to
+  persist onto `Payment`, without yet touching persistence itself (the three existing callers —
+  `service.impl.OrderServiceImpl#initiatePayment`, `orderstatus.OrderReconciliationJob`, and
+  `orderstatus.PaymentHandoffService#resolvePayment`, whose own signature is unchanged — were
+  updated mechanically to unwrap `.outcome()`). New `payment.RefundOutcome`/`RefundResult` mirror
+  `PaymentOutcome`/`PaymentResult` for the narrower refund vocabulary (deliberately not the same
+  enum — a refund failure isn't a charge decline). New `payment.PaymentGatewayException`
+  (unchecked) — thrown for a genuine gateway/network/API error, never for a card decline (a
+  decline is a definitive `PaymentResult.declined`/`RefundResult.failed`, not an exception) — so a
+  transient Stripe outage during `initiatePayment` leaves the order safely `PAYMENT_PROCESSING` for
+  `OrderReconciliationJob` to resolve later, the same crash-safety Epic 3 already built.
+  - `payment.MockPaymentGateway` — the default active bean (`app.ecommerce.payment.gateway`,
+    default `mock`); deterministically declines one magic amount
+    (`MockPaymentGateway.MAGIC_DECLINE_AMOUNT`, `13.13`) instead of Epic 3's old
+    `NoOpPaymentGatewayPort`'s always-succeed (now deleted outright, superseded by this class and
+    `StripePaymentGateway` — same "don't leave an ambiguous placeholder around" precedent
+    `shipping`'s own calculators already follow, just via `@ConditionalOnProperty` instead of a
+    manual `@Component` swap, since Stripe credentials being absent is a real, common local-dev
+    state this reactor's existing `local`/`docker` profiles don't already encode).
+  - `payment.StripePaymentGateway` — the real adapter (`app.ecommerce.payment.gateway=stripe` +
+    `app.ecommerce.payment.stripe.secret-key`/`STRIPE_SECRET_KEY`, a real test-mode `sk_test_...`
+    key). No real checkout UI collects a card anywhere in this reactor yet, so
+    `app.ecommerce.payment.stripe.test-payment-method-id` (default `pm_card_visa`, one of Stripe's
+    own built-in test-mode PaymentMethod ids) stands in for one — point it at
+    `pm_card_chargeDeclined` to exercise a real-API decline instead of `MockPaymentGateway`'s own
+    sentinel. A synchronous decline during `PaymentIntent` confirm surfaces as a thrown
+    `CardException`, translated via a new `categorize(StripeError)` helper (Stripe's own
+    `decline_code`/`code` → `PaymentFailureCategory`) — this Adapter-level translation is a
+    deliberate consolidation of most of US-4.7's own mapping work into Phase 2, since it's squarely
+    the Adapter's job to translate Stripe's vocabulary into this codebase's; Phase 7 is now mostly
+    just *exposing* the already-populated category over REST, not building the mapping itself. Any
+    other `StripeException` (a genuine API/network error) is rethrown as `PaymentGatewayException`.
+    **`checkStatus` has no native Stripe endpoint to call** — Stripe exposes no "look up by
+    idempotency key" query, so this method replays the exact same `charge` request under the same
+    `Idempotency-Key` header, and Stripe returns its original cached response instead of performing
+    the operation again; this is the one concrete reason this class (unlike `MockPaymentGateway`)
+    depends on `PaymentRepository` — `checkStatus` only receives an `idempotencyKey`, so it looks
+    the original `amount` up from the `Payment` row Phase 1 guarantees exists. New `stripe-java`
+    Maven dependency (version-managed in the root `pom.xml`, declared only in this module's own
+    `pom.xml` — same "no second consumer yet" precedent as `owasp-java-html-sanitizer`).
+  - New `MockPaymentGatewayTest` (its one piece of real logic — the magic-amount decline — pinned
+    down, same shape as `shipping.FreeOverThresholdShippingFeeCalculatorTest`).
+    **`StripePaymentGateway` has no dedicated unit test** — it makes genuine calls against a real
+    external SDK/API with no local test harness for it (unlike Testcontainers for Postgres), so
+    it's left unverified-at-runtime the same way this module already treats Docker-dependent code;
+    the old `NoOpPaymentGatewayPortTest` was deleted alongside the class it tested. **295 unit
+    tests total** (up from 293 as of Epic 3's own count elsewhere in this file — treat this figure
+    as current), verified via a real `mvn test` run (JDK 21); a targeted
+    `mvn -pl ecommerce-service -am compile` also confirmed the new `stripe-java` SDK usage
+    (`PaymentIntent`/`Refund`/`RequestOptions`/`CardException`/`StripeError`) compiles against the
+    real dependency, catching one real API mismatch along the way (`StripeError.getPaymentIntent()`
+    returns a `PaymentIntent` object, not a bare `String` id, contrary to an initial assumption).
+- **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
+  flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
+  `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)
+  in the exact same transaction as the order's own `PENDING -> PAYMENT_PROCESSING` transition —
+  this is what `Payment`'s own Javadoc has promised since Phase 1, now actually true.
+  `resolvePayment`'s signature changed from `(orderId, PaymentOutcome)` to
+  `(orderId, PaymentResult)` — a `SUCCEEDED`/`DECLINED` result now also updates that same
+  `Payment` row's `status`/`gatewayReference` (and, for a decline, `failureCategory`/
+  `gatewayFailureMessage`) in the same transaction as the order's `CONFIRMED`/`FAILED` transition;
+  a `PENDING` result (the reconciliation job's "still not resolved" case) leaves both the order and
+  the `Payment` row untouched, exactly as before. **The `Payment` row's own `status` always
+  reflects what the gateway actually decided, independent of the order's own final status** — a
+  queued cancel racing a gateway success (`PaymentProcessingOrderStatusHandler.confirmPayment`)
+  still records the payment as `SUCCEEDED` even though the order itself ends up `CANCELLED` with a
+  restock, since the money really was captured; Phase 6 (refund on cancellation) is what will turn
+  that `SUCCEEDED` row into a real `REFUNDED` one. A missing `Payment` row at resolve time throws a
+  plain `IllegalStateException` (a genuine invariant violation, not a business error — rolls back
+  the order transition alongside it rather than leaving a corrupted trail). The two existing
+  callers (`service.impl.OrderServiceImpl#initiatePayment`, `orderstatus.OrderReconciliationJob`)
+  needed only a one-line change each (pass the whole `PaymentResult` instead of unwrapping
+  `.outcome()` first). `PaymentHandoffServiceTest`/`OrderServiceImplTest`/
+  `OrderReconciliationJobTest` all updated for the new signature; `PaymentHandoffServiceTest`
+  gained a new case for the missing-row invariant plus richer assertions on the persisted `Payment`
+  row's fields for its existing cases. **296 unit tests total** (up from 295), verified via a real
+  `mvn test` run (JDK 21). **Not built yet**: no `EcommerceErrorCode.PAYMENT_*` codes; the webhook
+  path (Phase 5) will need its own way into `resolvePayment`-equivalent logic, not built here.
+- **Phase 4 (US-4.4) — outbox publishing on a determined payment outcome, with a deliberate
+  design deviation flagged and confirmed before building.** This module already has a precedent
+  the *opposite* way: it chose **not** to publish an `ORDER_CREATED` outbox event back when
+  checkout was built, specifically because nothing consumed it yet — an event with no registered
+  handler just retries 5× and dies `FAILED` (`outbox.OutboxEventProcessor`'s own
+  `IllegalStateException("No handler registered for eventType=...")`), which was judged worse than
+  not publishing at all (see this file's own Epic 2/Epic 3 history). Asked whether payment outcomes
+  should follow that same deferral or get a real (if lightweight) consumer instead — **chose to
+  publish, with a placeholder consumer**, since US-4.4/US-4.6 name `PAYMENT_SUCCEEDED`/
+  `PAYMENT_FAILED`/`PAYMENT_REFUNDED` as real acceptance criteria, not a speculative nice-to-have
+  the way an order-creation event was.
+  - `enums/OutboxAggregateType` gained `PAYMENT` (migration `202609020011__0.0.2__DKP-0049`,
+    widening `CKC_OUTBOX_EVENT_AGGREGATE_TYPE` — Postgres has no `ALTER CHECK`, so drop-and-recreate,
+    same shape as `DKP-0035`'s own `CKC_CUSTOMER_ORDER_STATUS` widening).
+  - New `orderstatus/PaymentSucceededOutboxEventHandler`/`PaymentFailedOutboxEventHandler` — each
+    with its own `EVENT_TYPE` constant + nested `Payload` record, this module's usual per-handler
+    convention (see `service.impl.ProductChangedOutboxEventHandler`'s own Javadoc for why neither
+    is shared across handlers). **Each `handle()` is a deliberate, documented placeholder** — same
+    spirit as Epic 3's own (deleted) `payment.NoOpPaymentGatewayPort`: a structured audit log line,
+    since this reactor has no real email/Slack/analytics integration to hand the event to yet.
+    Replace the body with a real integration when one is actually needed; don't assume more exists
+    than a log line.
+  - New `orderstatus/PaymentRefundedOutboxEventHandler` — built alongside its two siblings for
+    symmetry (all three of US-4.4's named events exist together); this phase left it with no
+    publisher — Phase 6 (US-4.6) is what gave it one, see that section below.
+  - `orderstatus.PaymentHandoffService#resolvePayment`'s private `applyResultToPayment` now
+    publishes `PAYMENT_SUCCEEDED`/`PAYMENT_FAILED` (via new private `publishPaymentSucceeded`/
+    `publishPaymentFailed` helpers, mirroring `ProductServiceImpl.publishProductChanged`'s own
+    shape) right after saving the `Payment` row's new status — same transaction, addressing the
+    dual-write problem this pattern exists for. `aggregateId` is the `Payment` row's own id (not
+    the order's) — `OutboxAggregateType.PAYMENT` names `Payment` as the aggregate root. New
+    `OutboxEventRepository` dependency on this bean.
+  - `PaymentHandoffServiceTest` gained outbox-event assertions (event type/aggregate
+    type/aggregate id/payload contents) to its existing `SUCCEEDED`/`DECLINED` cases, plus a
+    `never()` assertion for the `PENDING` case and the missing-payment-row case; new
+    `PaymentSucceededOutboxEventHandlerTest`/`PaymentFailedOutboxEventHandlerTest`/
+    `PaymentRefundedOutboxEventHandlerTest` (each: `eventType()` returns the published constant, a
+    `Payload` map round-trip, and `handle()` doesn't throw for a well-formed event — these handlers
+    have no business logic beyond the log line, so nothing more to test). **305 unit tests total**
+    (up from 296), verified via a real `mvn test` run (JDK 21).
+  - **Not built yet**: no `EcommerceErrorCode.PAYMENT_*` codes; the webhook path (Phase 5) will
+    need its own transactional write into this same outbox mechanism, not built here; the refund
+    path (Phase 6) is what will finally give `PaymentRefundedOutboxEventHandler` a publisher.
+- **Phase 5 (US-4.5) — Stripe webhook handling, confirmed shape realized: exposed directly on this
+  service's own origin, bypassing `gateway` entirely.** New top-level `/webhooks/stripe` (not
+  under `/api/v1/**` — this is Stripe's server calling us, never an end-user/admin client, and it
+  carries no JWT). `security.SecurityConfig` gained a `permitAll()` rule for `/webhooks/**`, for
+  the same reason `content-service`'s own `/internal/**` is `permitAll()` — nothing for Spring
+  Security's JWT-based filter chain to verify here; unlike that path's shared-secret header
+  (enforceable by a header-only `OncePerRequestFilter`), Stripe's own HMAC signature needs the raw
+  request body too, so verification happens inside the handler itself instead. `gateway`'s own
+  `GatewayRoutesConfig`/`CLAUDE.md` both gained a note that this path is deliberately never
+  routed, mirroring `content-service`'s `/internal/content-items/**` precedent.
+  - New `entity/StripeWebhookEvent` — the at-least-once-delivery dedup ledger US-4.5 calls for
+    (`stripeEventId` unique). Deliberately its own small table, not folded into `Payment` — a
+    single `Payment` row can legitimately receive more than one distinct Stripe event over its
+    lifetime, so "one row per event id" and "one row per payment attempt" are different
+    cardinalities. New `repository/StripeWebhookEventRepository` (`existsByStripeEventId`).
+  - `Payment.gatewayReference` gained a partial unique index (`UX_PAYMENT_GATEWAY_REFERENCE`,
+    `WHERE GATEWAY_REFERENCE IS NOT NULL`) — the webhook's own correlation key back to exactly one
+    `Payment` row, since a webhook payload only ever names a PaymentIntent id, never this reactor's
+    `orderId`/`paymentId`. New `PaymentRepository.findByGatewayReference`. Migration
+    `202609020012__0.0.2__DKP-0050`.
+  - New `payment/StripeFailureCategoryMapper` — the Stripe decline-code → `PaymentFailureCategory`
+    translation **extracted out of `StripePaymentGateway`** (its Phase 2 home) into its own shared
+    class, once the webhook path needed the exact same mapping for an async decline that
+    `StripePaymentGateway.charge`'s synchronous path already had inline — both call sites must
+    agree on one mapping, so this is now the single source of truth rather than two copies that
+    could silently drift apart.
+  - New `webhook/StripeWebhookService` — the whole mechanism lives in one `@Transactional`
+    `handleWebhook(byte[] rawPayload, String signatureHeader)` method: verifies the signature (via
+    `com.stripe.net.Webhook.constructEvent`), ignores any event type other than
+    `payment_intent.succeeded`/`payment_intent.payment_failed`, then delegates to a package-private
+    `applyPaymentIntentEvent(...)` taking plain Java primitives/enums (deliberately not Stripe's
+    own `Event`/`PaymentIntent` types) that does the real dedup-check/correlate-by-
+    `gatewayReference`/resolve work — this split is what makes the business logic unit-testable at
+    all, since constructing a real, fully-functional Stripe `Event` (backed by its own
+    `EventDataObjectDeserializer`) in a plain Mockito test is impractical; `handleWebhook` itself
+    has no dedicated test, same "unverified at runtime, no local harness for a real external SDK"
+    precedent `StripePaymentGateway` already set. **Atomicity is achieved by transaction
+    propagation, not a manual multi-step orchestration**: `applyPaymentIntentEvent` calls
+    `orderstatus.PaymentHandoffService#resolvePayment` — a *different* bean's own `@Transactional`
+    method — which joins `handleWebhook`'s already-open transaction (Spring's default `REQUIRED`
+    propagation) rather than starting a new one, so the dedup-ledger insert, the `Payment`/`Order`
+    update, and the `PAYMENT_SUCCEEDED`/`PAYMENT_FAILED` outbox publish (Phase 4) all commit or
+    roll back together — exactly US-4.5's "write the outbox event + update Payment/Order
+    atomically" requirement, reusing Phase 3/4's transactional logic entirely rather than
+    duplicating it. A `Payment`-row miss (no match for the webhook's own PaymentIntent id) is
+    handled defensively: the dedup row is still recorded (so a redelivery doesn't repeat the
+    warning forever), but nothing is resolved.
+  - New `api/StripeWebhookApi`+`api/impl/StripeWebhookController` — `payload` is bound as
+    `byte[]`, not `String`, specifically so no `HttpMessageConverter` re-encodes the exact bytes
+    Stripe's HMAC signature was computed over before verification runs. The controller is a thin
+    pass-through: catches `SignatureVerificationException` → `400`; any other failure propagates
+    as a `5xx`, the correct outcome for a genuine unexpected error, since Stripe interprets a
+    non-2xx response as "retry this delivery later."
+  - New `app.ecommerce.payment.stripe.webhook-secret` (env var `STRIPE_WEBHOOK_SECRET`, no default)
+    — the signing secret from this endpoint's own Stripe Dashboard/CLI registration.
+    `docker-compose.apps.yml` gained a matching passthrough env var.
+    `scripts/purge-seed-data.sql` gained `ecommerce.STRIPE_WEBHOOK_EVENT` to its `TRUNCATE` list
+    (19 tables total now).
+  - New `StripeWebhookServiceTest` (4 cases: already-processed event is a safe no-op; no matching
+    `Payment` row records-but-doesn't-resolve; succeeded/failed each resolve with the right
+    `PaymentResult` and record processed afterward, `Mockito.inOrder`-verified for the succeeded
+    case). **309 unit tests total** (up from 305), verified via a real `mvn test` run (JDK 21); a
+    targeted `mvn -pl ecommerce-service -am compile` also confirmed the webhook path's own new
+    Stripe SDK usage (`Event`/`Webhook`/`SignatureVerificationException`) compiles against the
+    real dependency.
+  - **Not built yet**: `EcommerceErrorCode.PAYMENT_*` codes still don't exist; nothing has
+    exercised this endpoint against a real Stripe test account/CLI yet (same unverified-at-runtime
+    caveat as `StripePaymentGateway`'s own SDK calls).
+- **Phase 6 (US-4.6) — refund on cancellation, scoped to this user story's own literal acceptance
+  criterion.** `orderstatus.PaymentHandoffService` gained the identical durable-step/gateway-call/
+  durable-step shape Phase 3 already established for charges, applied to refunds:
+  `applyCancellation(orderId, callerUuid)` (transitions the order via
+  `OrderStatusHandlerRegistry.cancel`, then reports whether a refund is owed — a new nested
+  `CancellationResult(order, refundNeeded, paymentId, gatewayReference, amount)` record) and
+  `applyRefundResult(paymentId, result)` (applies a `RefundResult`: `SUCCEEDED` →
+  `Payment.status = REFUNDED` + `PAYMENT_REFUNDED` outbox publish — finally giving Phase 4's
+  `PaymentRefundedOutboxEventHandler` its publisher; `FAILED`/`PENDING` just log, leaving the row
+  `SUCCEEDED`). `service.impl.OrderServiceImpl#cancel` is no longer `@Transactional` (same reason
+  `initiatePayment` isn't — see that method's own updated Javadoc): it calls `applyCancellation`,
+  then, only if `refundNeeded()`, calls `payment.PaymentGatewayPort#refund` outside any
+  transaction, then `applyRefundResult`.
+  - **No new intermediate status/durable "refund in flight" marker was added, unlike
+    `PAYMENT_PROCESSING`'s own precedent** — `StripePaymentGateway#refund`'s own idempotency key is
+    deterministic (derived from `gatewayReference`, not a fresh key per call, see that class's own
+    Phase 2 Javadoc), so retrying the whole cancel-then-refund operation after a crash can never
+    double-refund at the gateway, unlike a charge attempt retried with a fresh key — this asymmetry
+    is why the simpler shape is correct here, not a corner cut. If the refund call itself fails,
+    `Payment` is simply left `SUCCEEDED` (the order is already durably `CANCELLED` from step one) —
+    a known, undone-money gap with no automatic recovery built, since US-4.6 didn't ask for one.
+  - **Deliberately does not cover the rarer race in `PaymentProcessingOrderStatusHandler
+    #confirmPayment`** (a cancel queued while payment is still processing, that then loses the
+    race to a gateway success moments later — that handler still only restocks, exactly as
+    before this phase) — US-4.6's own acceptance criterion is a shopper cancelling an already-
+    `CONFIRMED` order, not this narrower race; both handlers' own Javadoc were updated to say so
+    precisely (no longer "deferred to Epic 4," since Epic 4's gateway integration now exists —
+    it's just not wired to this one path). Revisit if that gap ever turns out to matter in
+    practice — `orderstatus.PaymentHandoffService#resolvePayment` (that race's own caller) would
+    need the identical restructuring `OrderServiceImpl#cancel` already got.
+  - `OrderServiceImplTest.Cancel` rewritten around the new orchestration (no-refund-needed,
+    refund-needed, and exception-propagation cases); its old direct ownership-check tests moved to
+    new `PaymentHandoffServiceTest.ApplyCancellation`/`ApplyRefundResult` nested classes (mirroring
+    `StartPaymentProcessing`/`ResolvePayment`'s own shape). Two pre-existing tests
+    (`ConfirmedOrderStatusHandlerTest`/`PaymentProcessingOrderStatusHandlerTest`) needed their own
+    hardcoded `OrderStatusHistory` reason-string assertions updated to match the corrected wording.
+    **317 unit tests total** (up from 309), verified via a real `mvn test` run (JDK 21).
+  - **Not built yet**: no automatic retry/reconciliation for a failed refund call; the
+    confirmPayment-race case above.
+- **Phase 7 (US-4.7) — user-facing failure reasons, a thin REST-exposure phase by design.** The
+  actual Stripe-decline-code → `PaymentFailureCategory` mapping was already built in Phase 2
+  (`payment.StripeFailureCategoryMapper`) — a deliberate consolidation flagged at the time, since
+  translating a gateway's own vocabulary is squarely the Adapter's job. What was still missing was
+  a real "clear but non-technical reason" a shopper actually reads, and a way to reach it over
+  REST. `enums.PaymentFailureCategory` gained a constructor-supplied `shopperMessage` field per
+  constant (`@Getter`, mirroring `common.exception.ErrorCode`'s own `getCode()`+`getMessage()`
+  convention — server-owned copy, not left for the client to invent): a short, plain-language
+  sentence per category (insufficient funds / card declined / gateway error), never the gateway's
+  own raw string. `dto.OrderResponse` gained `paymentStatus`/`paymentFailureCategory`/
+  `paymentFailureMessage`, resolved by a new best-effort live lookup in `mapper.OrderMapper#toResponse`
+  (new `PaymentRepository` dependency on that mapper) — all three `null` until a payment attempt has
+  actually started (a `PENDING` order that never called `POST /{id}/pay` has no `Payment` row at
+  all), same "resolve nullable, doesn't always exist" shape `toOrderLineResponse`'s own variant
+  lookup already uses. `paymentFailureMessage` is always `PaymentFailureCategory#getShopperMessage()`
+  — **never** `Payment#getGatewayFailureMessage()` itself, which this reactor still never sends to
+  a client anywhere. Reaches the shopper through the exact same three endpoints that already
+  returned `OrderResponse` — `GET /api/v1/orders`, `GET /api/v1/orders/{id}`, and, notably,
+  `POST /api/v1/orders/{id}/pay`'s own synchronous response (so a shopper whose card is declined
+  right at checkout sees the reason immediately, not just on a later order-detail visit) — no new
+  endpoint needed. A pleasant side effect of the same live lookup: `paymentStatus` now also
+  surfaces `REFUNDED` after Phase 6's cancellation flow runs, though showing that wasn't this
+  phase's own goal. **No new unit tests** — `mapper.OrderMapper` has no dedicated test suite
+  (matches this module's existing convention for its hand-written mappers, same as `CartMapper`/
+  `CheckoutMapper`), and the new field population is a simple null-guarded field read with no
+  branching logic worth isolating. 317 unit tests total, unchanged; verified via a real
+  `mvn -pl ecommerce-service -am compile`+`test` run (JDK 21).
+  - **Not built yet**: Phase 8 (GUI) — nothing in `gui` renders any of these three new fields yet.
+
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"
 independently, not "one variant with both together" — see `ProductSearchView`'s Javadoc). **Epic 3
 (Order Lifecycle & Inventory) is now fully built, all 6 phases** — see its own section above.
-Epics 4–5 (a real payment gateway adapter and everything else in Payments beyond Epic 3's own seam,
-plus reviews/recommendations) are not built. Check
+Epic 4 (Payments) Phases 1–7 are built — see its own section just above; Phase 8 and Epic 5
+(reviews/recommendations) are not. Check
 `docs/CHANGELOG.md`'s `[Unreleased]` entry and this file's own freshness before assuming more
 exists than what's listed above. **Compiles cleanly** (verified via
 a targeted `-pl ecommerce-service,gateway -am compile`/`test`; needs `JAVA_HOME` pointed at a JDK

@@ -1549,21 +1549,53 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                for that same future dialog, a permanent StorageService.
 │   │                                uploadPublicImage URL (not presigned — a Coupon has no
 │   │                                access-control concern the way a Product does), also nullable
-│   └── CouponRedemption.java    — the ledger Coupon.maxRedemptions/maxRedemptionsPerUser are
-│                                    enforced against, written by CouponRedemptionServiceImpl.redeem
-│                                    once Phase 2's CheckoutServiceImpl.confirm saves the order;
-│                                    real @ManyToOne FKs to both Coupon and Order (neither can ever
-│                                    be hard-deleted out from under a redemption row)
+│   ├── CouponRedemption.java    — the ledger Coupon.maxRedemptions/maxRedemptionsPerUser are
+│   │                                enforced against, written by CouponRedemptionServiceImpl.redeem
+│   │                                once Phase 2's CheckoutServiceImpl.confirm saves the order;
+│   │                                real @ManyToOne FKs to both Coupon and Order (neither can ever
+│   │                                be hard-deleted out from under a redemption row)
+│   ├── Payment.java             — Epic 4 Phase 1 (US-4.2, DKP-0048): one payment attempt per
+│   │                                Order, written PENDING before payment.PaymentGatewayPort#charge
+│   │                                is ever called, in the same transaction as
+│   │                                orderstatus.PaymentHandoffService#startPaymentProcessing's own
+│   │                                order transition — what Epic 3's reconciliation job (US-3.4)
+│   │                                now has a real row to query against on a crash. Real @ManyToOne
+│   │                                FK to Order (same reasoning as CouponRedemption's own FK);
+│   │                                idempotencyKey is denormalized from Order.idempotencyKey
+│   │                                (unique). gatewayReference/failureCategory/
+│   │                                gatewayFailureMessage are nullable, populated by later Epic 4
+│   │                                phases (a real gateway adapter; US-4.7's decline-category
+│   │                                mapping). gatewayReference also carries a partial unique index
+│   │                                (Phase 5, DKP-0050, WHERE NOT NULL) — the webhook's own
+│   │                                correlation key back to exactly one row
+│   └── StripeWebhookEvent.java  — Epic 4 Phase 5 (US-4.5, DKP-0050): at-least-once Stripe
+│                                    webhook-delivery dedup ledger — stripeEventId unique; one row
+│                                    per already-processed event id, checked then inserted inside
+│                                    the same transaction as the Payment/Order update it guards.
+│                                    Its own small table, not folded into Payment — a single
+│                                    Payment row can legitimately receive more than one distinct
+│                                    Stripe event over its lifetime
 ├── enums/
 │   ├── OutboxEventStatus.java     — PENDING, PROCESSING, PROCESSED, FAILED
-│   ├── OutboxAggregateType.java   — PRODUCT (widen only when a later epic adds an aggregate root)
+│   ├── OutboxAggregateType.java   — PRODUCT, PAYMENT (Epic 4 Phase 4, DKP-0049) — widen only when
+│   │                                  a later epic adds a new aggregate root
 │   ├── CouponTarget.java          — SUBTOTAL, SHIPPING_FEE — what a Coupon reduces
 │   ├── CouponType.java            — PERCENTAGE, FIXED_AMOUNT — how a Coupon's value is interpreted
-│   └── OrderStatus.java           — Epic 3's full 8-value state machine (PENDING,
-│                                      PAYMENT_PROCESSING, CONFIRMED, EXPIRED, FAILED, CANCELLED,
-│                                      SHIPPED, DELIVERED), added in one pass since the whole state
-│                                      machine is fully specified by that epic's own user stories —
-│                                      unlike OutboxAggregateType's incremental, one-per-epic growth
+│   ├── OrderStatus.java           — Epic 3's full 8-value state machine (PENDING,
+│   │                                  PAYMENT_PROCESSING, CONFIRMED, EXPIRED, FAILED, CANCELLED,
+│   │                                  SHIPPED, DELIVERED), added in one pass since the whole state
+│   │                                  machine is fully specified by that epic's own user stories —
+│   │                                  unlike OutboxAggregateType's incremental, one-per-epic growth
+│   ├── PaymentStatus.java         — Epic 4 Phase 1: PENDING, SUCCEEDED, DECLINED, REFUNDED — not
+│   │                                  the same enum as payment.PaymentOutcome despite the
+│   │                                  vocabulary overlap; see its own Javadoc for why the two
+│   │                                  PENDINGs mean different things
+│   └── PaymentFailureCategory.java — Epic 4 Phase 1: INSUFFICIENT_FUNDS, CARD_DECLINED,
+│                                       GATEWAY_ERROR; populated by payment.StripeFailureCategoryMapper
+│                                       (Phase 2) and exposed via dto.OrderResponse (Phase 7, US-4.7)
+│                                       — each constant carries its own shopperMessage field, a
+│                                       small, non-technical, server-owned string mirroring
+│                                       common.exception.ErrorCode's own getMessage() convention
 ├── exception/
 │   └── EcommerceErrorCode.java  — PRODUCT_CATEGORY_*/PRODUCT_*/PRODUCT_VARIANT_*/PRODUCT_IMAGE_*/
 │                                    CART_*/CHECKOUT_* codes, implements common's ErrorCode interface
@@ -1587,7 +1619,11 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │   for ownership-scoped lookups, findByOwnerUuidOrderByDefaultAddressDescIdDesc for "list
 │   │   mine, default-first", and clearDefaultForOwner — a bulk @Modifying UPDATE unsetting any
 │   │   existing default in one statement, so the partial unique index never sees two defaults
-│   │   for one owner at once even transiently)
+│   │   for one owner at once even transiently) / PaymentRepository.java (Epic 4 Phase 1:
+│   │   findByOrderId — one payment attempt per order today, not schema-enforced; Phase 2's own
+│   │   findByIdempotencyKey; Phase 5's findByGatewayReference — the webhook's own correlation
+│   │   lookup, backed by a partial unique index) / StripeWebhookEventRepository.java (Epic 4
+│   │   Phase 5: existsByStripeEventId, the whole dedup mechanism)
 │   └── spec/
 │       └── ProductCategorySpecification.java / ProductSpecification.java / OrderSpecification.java
 │           (withFilters(OrderStatus) — the admin order-fulfillment queue's own dynamic filtering,
@@ -1624,22 +1660,95 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │   (default PT1M)
 │   ├── PaymentHandoffService.java — US-3.3's two independent @Transactional steps:
 │   │   startPaymentProcessing(orderId, callerUuid) commits PENDING -> PAYMENT_PROCESSING before
-│   │   any gateway call; resolvePayment(orderId, outcome) applies the verdict afterward in a
+│   │   any gateway call; resolvePayment(orderId, result) applies the verdict afterward in a
 │   │   second transaction — a crash between the two must leave the order durably
-│   │   PAYMENT_PROCESSING, not silently roll back and risk a double charge on retry
-│   └── OrderReconciliationJob.java — US-3.4, @Scheduled: polls
-│       OrderRepository.findIdsByStatusAndPaymentProcessingStartedAtBefore for orders stuck in
-│       PAYMENT_PROCESSING past app.ecommerce.order.reconciliation.grace-period (default PT2M),
-│       calls payment.PaymentGatewayPort.checkStatus for the ground truth (never assumes an
-│       outcome), applies it via PaymentHandoffService.resolvePayment; one poison order's
-│       exception is caught/logged so it doesn't block the rest of the batch
-├── payment/                     — Epic 4's eventual home, seeded now since Epic 3 Phase 4 needs a
-│   │                                seam to call
+│   │   PAYMENT_PROCESSING, not silently roll back and risk a double charge on retry. Epic 4
+│   │   Phase 3 (US-4.2/4.3): startPaymentProcessing also writes the entity.Payment row (PENDING)
+│   │   in the same transaction as the order's own transition; resolvePayment now takes the full
+│   │   payment.PaymentResult (not just the bare outcome) and updates that same row's
+│   │   status/gatewayReference/failureCategory/gatewayFailureMessage in the same transaction as
+│   │   the order's CONFIRMED/FAILED transition — the Payment row's status always reflects what
+│   │   the gateway actually decided, independent of the order's own final status (a queued cancel
+│   │   racing a gateway success still records SUCCEEDED, since the money really was captured).
+│   │   Epic 4 Phase 4 (US-4.4): resolvePayment also publishes a PAYMENT_SUCCEEDED/PAYMENT_FAILED
+│   │   OutboxEvent in that same transaction, right alongside the Payment row update. Epic 4 Phase
+│   │   6 (US-4.6): applyCancellation(orderId, callerUuid)/applyRefundResult(paymentId, result) —
+│   │   the identical durable-step/gateway-call/durable-step shape applied to refunds;
+│   │   service.impl.OrderServiceImpl#cancel calls applyCancellation (transitions to CANCELLED,
+│   │   reports whether a refund is owed via a new nested CancellationResult record), then, only if
+│   │   one is, calls payment.PaymentGatewayPort#refund outside any transaction, then
+│   │   applyRefundResult (Payment -> REFUNDED + PAYMENT_REFUNDED outbox publish). No new
+│   │   intermediate status/durable "refund in flight" marker was added — StripePaymentGateway's
+│   │   own refund idempotency key is deterministic, so retrying the whole operation after a crash
+│   │   can't double-refund, unlike a charge retried with a fresh key. Scoped to US-4.6's own
+│   │   literal case (cancelling an already-CONFIRMED order) — the rarer race in
+│   │   PaymentProcessingOrderStatusHandler#confirmPayment (a queued cancel beating a gateway
+│   │   success) still isn't wired to a refund
+│   ├── OrderReconciliationJob.java — US-3.4, @Scheduled: polls
+│   │   OrderRepository.findIdsByStatusAndPaymentProcessingStartedAtBefore for orders stuck in
+│   │   PAYMENT_PROCESSING past app.ecommerce.order.reconciliation.grace-period (default PT2M),
+│   │   calls payment.PaymentGatewayPort.checkStatus for the ground truth (never assumes an
+│   │   outcome), applies it via PaymentHandoffService.resolvePayment; one poison order's
+│   │   exception is caught/logged so it doesn't block the rest of the batch
+│   ├── PaymentSucceededOutboxEventHandler.java / PaymentFailedOutboxEventHandler.java — Epic 4
+│   │   Phase 4 (US-4.4): the PAYMENT_SUCCEEDED/PAYMENT_FAILED OutboxEventHandlers, published by
+│   │   PaymentHandoffService#resolvePayment in the same transaction as the Payment row's own
+│   │   status update. Deliberate, documented placeholder consumers — each just logs a structured
+│   │   audit line (no real email/Slack/analytics integration exists yet) — chosen over the
+│   │   opposite "don't publish until there's a real consumer" call this module made for
+│   │   ORDER_CREATED, since US-4.4/US-4.6 name these events as real acceptance criteria
+│   └── PaymentRefundedOutboxEventHandler.java — Epic 4 Phase 4: the PAYMENT_REFUNDED handler,
+│       built alongside its two siblings for symmetry; Phase 6 (US-4.6) gave it its publisher —
+│       PaymentHandoffService#applyRefundResult, once a refund actually succeeds
+├── payment/                     — Epic 4's home; seeded in Epic 3 Phase 4 as just the
+│   │                                Adapter interface, now (Phase 1-2) has a real Strategy pair
 │   ├── PaymentGatewayPort.java     — GoF Adapter (Structural): charge(idempotencyKey, amount) /
-│   │                                    checkStatus(idempotencyKey), both -> PaymentOutcome
-│   ├── PaymentOutcome.java         — SUCCEEDED / DECLINED / PENDING
-│   └── NoOpPaymentGatewayPort.java — the only implementation today; always returns SUCCEEDED
-│                                        instantly. Delete outright once Epic 4 adds a real adapter
+│   │                                    checkStatus(idempotencyKey) -> PaymentResult;
+│   │                                    refund(gatewayReference, amount) -> RefundResult (Phase 2,
+│   │                                    keyed by the gateway's own charge id, not this module's
+│   │                                    internal paymentId)
+│   ├── PaymentOutcome.java         — SUCCEEDED / DECLINED / PENDING (always carried inside a
+│   │                                    PaymentResult now, not returned bare)
+│   ├── PaymentResult.java          — Phase 2: record(outcome, gatewayReference, failureCategory,
+│   │                                    gatewayFailureMessage) — widens the bare PaymentOutcome
+│   │                                    Epic 3 originally returned with what Payment persistence
+│   │                                    (Phase 3) will need
+│   ├── RefundOutcome.java / RefundResult.java — Phase 2: SUCCEEDED/FAILED/PENDING, mirroring
+│   │                                    PaymentOutcome/PaymentResult for the refund vocabulary —
+│   │                                    deliberately not the same enum/record (a refund failure
+│   │                                    isn't a charge decline)
+│   ├── PaymentGatewayException.java — Phase 2: unchecked, thrown for a genuine gateway/network/API
+│   │                                    error (never for a card decline, which is a definitive
+│   │                                    PaymentResult.declined/RefundResult.failed instead)
+│   ├── MockPaymentGateway.java     — Phase 2: the default active PaymentGatewayPort bean
+│   │                                    (app.ecommerce.payment.gateway=mock, the default);
+│   │                                    deterministically declines one magic amount (13.13),
+│   │                                    supersedes Epic 3's old always-succeed
+│   │                                    NoOpPaymentGatewayPort (deleted outright)
+│   ├── StripePaymentGateway.java   — Phase 2: real stripe-java SDK calls against Stripe's
+│   │                                    test-mode API (app.ecommerce.payment.gateway=stripe +
+│   │                                    a real STRIPE_SECRET_KEY); checkStatus has no native
+│   │                                    Stripe endpoint, so it replays the original charge request
+│   │                                    under the same Idempotency-Key header instead — the one
+│   │                                    reason this class depends on PaymentRepository
+│   └── StripeFailureCategoryMapper.java — Phase 5: the Stripe decline-code -> PaymentFailureCategory
+│       translation, extracted out of StripePaymentGateway (its original Phase 2 home) once
+│       webhook.StripeWebhookService needed the identical mapping for an async decline — one
+│       shared source of truth instead of two copies that could drift apart
+├── webhook/                     — Epic 4 Phase 5 (US-4.5): Stripe webhook handling, exposed
+│   │                                directly on this service's own origin (never gateway-routed —
+│   │                                see root CLAUDE.md's Routing section)
+│   └── StripeWebhookService.java — one @Transactional handleWebhook(byte[] rawPayload, String
+│       signatureHeader): verifies the signature (com.stripe.net.Webhook.constructEvent), ignores
+│       any event type other than payment_intent.succeeded/payment_intent.payment_failed, then
+│       delegates to package-private applyPaymentIntentEvent(...) — plain Java primitives/enums,
+│       not Stripe's own Event/PaymentIntent types, which is what makes the dedup/correlate/resolve
+│       logic unit-testable at all. Atomicity comes from transaction propagation, not manual
+│       orchestration: applyPaymentIntentEvent calls orderstatus.PaymentHandoffService#resolvePayment
+│       (a different bean's own @Transactional method), which joins this method's already-open
+│       transaction instead of starting a new one, so the dedup-ledger insert, the Payment/Order
+│       update, and the PAYMENT_SUCCEEDED/PAYMENT_FAILED outbox publish (Phase 4) all commit or
+│       roll back together
 ├── shipping/                    — the checkout shipping-fee pricing seam, same "interface today,
 │   │                                swap the implementation later" shape as payment/ above
 │   ├── ShippingFeeCalculator.java     — GoF Strategy (Behavioral): calculate(lines, subtotal) ->
@@ -1921,6 +2030,13 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                 .authenticated() rule, no admin gate) — mirrors the
 │   │                                 OrderApi/AdminOrderApi split; gateway gained a matching
 │   │                                 /api/v1/coupons/** route in the same change
+│   ├── StripeWebhookApi.java     — POST /webhooks/stripe (Epic 4 Phase 5, US-4.5) — a fresh
+│   │                                 top-level prefix outside /api/v1/** entirely (Stripe's own
+│   │                                 server calling us, never an end-user/admin client, no JWT);
+│   │                                 permitAll() in SecurityConfig, never gateway-routed (see root
+│   │                                 CLAUDE.md's Routing section). payload bound as byte[], not
+│   │                                 String, so no HttpMessageConverter re-encodes the exact bytes
+│   │                                 Stripe's HMAC signature was computed over
 │   ├── OrderApi.java             — /api/v1/orders (Epic 3 Phase 5, US-3.3/3.5/3.6), authenticated-
 │   │                                 only, same rule as CartApi; GET (list mine, paginated, most
 │   │                                 recent first), GET /{id} (full status timeline),
@@ -1962,7 +2078,12 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
                                      ProductSearchResponse,
                                      OrderStatusHistoryResponse/OrderResponse (Epic 3 Phase 5;
                                      OrderResponse gained subtotalDiscountAmount/
-                                     subtotalCouponCode/shippingCouponCode — Coupon feature Phase 2),
+                                     subtotalCouponCode/shippingCouponCode — Coupon feature Phase 2;
+                                     paymentStatus/paymentFailureCategory/paymentFailureMessage —
+                                     Epic 4 Phase 7, US-4.7, a live OrderMapper lookup of the
+                                     order's own Payment row; paymentFailureMessage is
+                                     PaymentFailureCategory's own server-owned shopper copy, never
+                                     the gateway's raw decline string),
                                      ProductTagResponse/CreateProductTagRequest/
                                      UpdateProductTagRequest,
                                      SavedAddressResponse/CreateSavedAddressRequest/

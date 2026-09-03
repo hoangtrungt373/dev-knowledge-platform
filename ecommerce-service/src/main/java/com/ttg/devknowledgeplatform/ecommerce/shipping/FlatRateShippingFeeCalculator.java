@@ -21,9 +21,11 @@ import java.util.List;
  * second, automatic waiver left to collide with them. {@link FreeOverThresholdShippingFeeCalculator}
  * stays in the codebase as a reference implementation/an easy strategy to switch back to, but
  * deliberately carries **no `@Component`** anymore, so it doesn't compete with this class for
- * Spring's single-bean-per-interface wiring — same "don't leave two ambiguous candidates wired in
- * at once" reasoning {@code payment.NoOpPaymentGatewayPort}'s Javadoc already documents for that
- * seam. Re-add {@code @Component} there (and remove it from this class) to switch back.
+ * Spring's single-bean-per-interface wiring — the same "don't leave two ambiguous candidates
+ * wired in at once" discipline this reactor's other single-active-strategy seams follow (e.g.
+ * {@code payment.PaymentGatewayPort}'s own {@code MockPaymentGateway}/{@code StripePaymentGateway}
+ * pair, gated by a property instead of a manual {@code @Component} swap). Re-add {@code @Component}
+ * there (and remove it from this class) to switch back.
  */
 @Component
 public class FlatRateShippingFeeCalculator implements ShippingFeeCalculator {

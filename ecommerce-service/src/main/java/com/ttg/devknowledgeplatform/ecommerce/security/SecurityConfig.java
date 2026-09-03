@@ -22,6 +22,14 @@ import com.ttg.devknowledgeplatform.infra.security.KeycloakJwtAuthenticationConv
  * ({@code spring.security.oauth2.resourceserver.jwt.issuer-uri}); it never issues tokens or
  * handles a login flow. {@link KeycloakJwtAuthenticationConverter} is shared via {@code infra} now
  * (see that class's own Javadoc), not a local copy.
+ *
+ * <p>{@code /webhooks/**} (Epic 4 Phase 5, US-4.5) is {@code permitAll()} for the same reason
+ * {@code content-service}'s own {@code /internal/**} is: it carries no end-user JWT at all —
+ * Stripe's own servers call it, authenticated via an HMAC signature over the raw request body
+ * (see {@code webhook.StripeWebhookService}), which Spring Security's JWT-based filter chain plays
+ * no part in verifying. Unlike {@code /internal/**}'s shared-secret header (enforceable by a
+ * header-only {@code OncePerRequestFilter}), Stripe's signature needs the raw body too, so
+ * verification happens inside the handler itself rather than a separate filter.
  */
 @Configuration
 @EnableWebSecurity
@@ -36,6 +44,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(authz -> authz
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
+                .requestMatchers("/webhooks/**").permitAll()
                 .requestMatchers("/api/v1/public/**").permitAll()
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()

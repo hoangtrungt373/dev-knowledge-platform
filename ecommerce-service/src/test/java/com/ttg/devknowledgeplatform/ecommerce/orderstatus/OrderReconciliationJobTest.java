@@ -3,7 +3,7 @@ package com.ttg.devknowledgeplatform.ecommerce.orderstatus;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
-import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentOutcome;
+import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentResult;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
 
 import org.junit.jupiter.api.Test;
@@ -61,13 +61,15 @@ class OrderReconciliationJobTest {
         Order order2 = stuckOrder(2);
         when(orderRepository.findById(1)).thenReturn(Optional.of(order1));
         when(orderRepository.findById(2)).thenReturn(Optional.of(order2));
-        when(paymentGatewayPort.checkStatus("1")).thenReturn(PaymentOutcome.SUCCEEDED);
-        when(paymentGatewayPort.checkStatus("2")).thenReturn(PaymentOutcome.DECLINED);
+        PaymentResult result1 = PaymentResult.succeeded("gw-1");
+        PaymentResult result2 = PaymentResult.declined("gw-2", null, null);
+        when(paymentGatewayPort.checkStatus("1")).thenReturn(result1);
+        when(paymentGatewayPort.checkStatus("2")).thenReturn(result2);
 
         job.reconcileStuckPayments();
 
-        verify(paymentHandoffService).resolvePayment(1, PaymentOutcome.SUCCEEDED);
-        verify(paymentHandoffService).resolvePayment(2, PaymentOutcome.DECLINED);
+        verify(paymentHandoffService).resolvePayment(1, result1);
+        verify(paymentHandoffService).resolvePayment(2, result2);
     }
 
     @Test
@@ -110,12 +112,13 @@ class OrderReconciliationJobTest {
         Order order2 = stuckOrder(2);
         when(orderRepository.findById(1)).thenReturn(Optional.of(order1));
         when(orderRepository.findById(2)).thenReturn(Optional.of(order2));
+        PaymentResult result2 = PaymentResult.succeeded("gw-2");
         when(paymentGatewayPort.checkStatus("1")).thenThrow(new RuntimeException("gateway timeout"));
-        when(paymentGatewayPort.checkStatus("2")).thenReturn(PaymentOutcome.SUCCEEDED);
+        when(paymentGatewayPort.checkStatus("2")).thenReturn(result2);
 
         job.reconcileStuckPayments();
 
         verify(paymentHandoffService, never()).resolvePayment(eq(1), any());
-        verify(paymentHandoffService).resolvePayment(2, PaymentOutcome.SUCCEEDED);
+        verify(paymentHandoffService).resolvePayment(2, result2);
     }
 }

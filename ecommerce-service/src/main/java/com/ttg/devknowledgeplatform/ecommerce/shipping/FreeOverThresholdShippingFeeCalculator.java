@@ -29,9 +29,10 @@ import java.util.List;
  * — see that class's own Javadoc. This class stays in the codebase as a reference implementation/an
  * easy strategy to switch back to (re-add {@code @Component} here, and remove it from whichever
  * strategy is active at that point) if a genuinely automatic, code-free promotion is wanted again
- * later — same "don't leave two ambiguous candidates wired in at once" reasoning
- * {@code payment.NoOpPaymentGatewayPort}'s own Javadoc documents for that seam's future real-adapter
- * swap.
+ * later — the same "don't leave two ambiguous candidates wired in at once" discipline this
+ * reactor's other single-active-strategy seams follow (e.g. {@code payment.PaymentGatewayPort}'s
+ * own {@code MockPaymentGateway}/{@code StripePaymentGateway} pair, gated by a property instead of
+ * a manual {@code @Component} swap).
  *
  * <p>Both thresholds are externalized the same {@code @Value}-on-a-field way every other tunable
  * business value in this module already is: {@code app.ecommerce.checkout.free-shipping-threshold}

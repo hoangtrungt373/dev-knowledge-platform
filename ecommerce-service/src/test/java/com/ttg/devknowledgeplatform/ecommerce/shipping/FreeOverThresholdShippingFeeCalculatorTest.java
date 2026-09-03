@@ -12,8 +12,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Unit tests for {@link FreeOverThresholdShippingFeeCalculator} — pinning down the
  * free-over-threshold boundary (at, above, below), and that {@code originalFee} always reports the
  * below-threshold fee even once it's waived, so a future strategy swap has an explicit contrast
- * point — same reasoning {@link com.ttg.devknowledgeplatform.ecommerce.payment.NoOpPaymentGatewayPortTest}
- * already documents for its own placeholder.
+ * point — same reasoning {@link com.ttg.devknowledgeplatform.ecommerce.payment.MockPaymentGatewayTest}
+ * follows for that seam's own placeholder strategy.
  */
 class FreeOverThresholdShippingFeeCalculatorTest {
 

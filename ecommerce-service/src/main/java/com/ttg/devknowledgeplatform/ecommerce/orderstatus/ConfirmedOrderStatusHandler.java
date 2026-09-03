@@ -16,10 +16,13 @@ import org.springframework.stereotype.Component;
  * payment-success path), so undoing it means restocking, not releasing a reservation that no
  * longer exists — see {@link OrderStatusTransitions#restockSoldLines}.
  *
- * <p><b>Refunding the payment itself is deliberately not done here</b> — there is no payment
- * gateway to call yet (Epic 4). The inventory side of "cancel after confirmation" is real and built
- * now; the money side is only recorded as a note on the {@code OrderStatusHistory} row, ready to be
- * wired to an actual refund call once Epic 4's gateway integration exists.
+ * <p><b>Refunding the payment itself deliberately isn't done here</b> — this handler only ever
+ * runs inside {@code orderstatus.PaymentHandoffService#applyCancellation}'s own transaction, and a
+ * real gateway call must never happen inside an open DB transaction (see that method's own
+ * Javadoc). {@code service.impl.OrderServiceImpl#cancel} is what actually issues the refund
+ * (Epic 4 Phase 6, US-4.6), afterward and outside any transaction, once
+ * {@code PaymentHandoffService#applyCancellation} reports one is owed — this handler's own job
+ * stays scoped to the inventory/status side only, same as before that phase existed.
  */
 @Component
 @RequiredArgsConstructor
@@ -36,8 +39,8 @@ public class ConfirmedOrderStatusHandler implements OrderStatusHandler {
     public void cancel(Order order) {
         OrderStatusTransitions.restockSoldLines(order, productVariantRepository);
         OrderStatusTransitions.transitionTo(order, OrderStatus.CANCELLED,
-                "Cancelled by shopper after payment was confirmed — refund handling is deferred "
-                        + "to Epic 4's payment-gateway integration");
+                "Cancelled by shopper after payment was confirmed — a refund is issued by the caller "
+                        + "once this transaction commits (US-4.6)");
     }
 
     @Override

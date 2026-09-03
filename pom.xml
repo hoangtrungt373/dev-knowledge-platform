@@ -55,6 +55,9 @@
              description HTML (from a TipTap WYSIWYG editor) server-side, before it's ever
              persisted or rendered. -->
         <owasp-html-sanitizer.version>20240325.1</owasp-html-sanitizer.version>
+        <!-- ecommerce-service's StripePaymentGateway (Epic 4, Payments) — real Stripe test-mode API
+             calls, see that module's own pom.xml comment -->
+        <stripe-java.version>33.4.0</stripe-java.version>
         <spring-cloud.version>2023.0.3</spring-cloud.version>
         <!-- Matches the quay.io/keycloak/keycloak:26.0 server image in docker-compose.infra.yml —
              identity-service's KeycloakAdminService uses this to call Keycloak's Admin REST API
@@ -181,6 +184,14 @@
                 <groupId>com.googlecode.owasp-java-html-sanitizer</groupId>
                 <artifactId>owasp-java-html-sanitizer</artifactId>
                 <version>${owasp-html-sanitizer.version}</version>
+            </dependency>
+
+            <!-- Stripe Java SDK — ecommerce-service only, for now (StripePaymentGateway, Epic 4:
+                 Payments) -->
+            <dependency>
+                <groupId>com.stripe</groupId>
+                <artifactId>stripe-java</artifactId>
+                <version>${stripe-java.version}</version>
             </dependency>
 
             <!-- JWT Dependencies -->

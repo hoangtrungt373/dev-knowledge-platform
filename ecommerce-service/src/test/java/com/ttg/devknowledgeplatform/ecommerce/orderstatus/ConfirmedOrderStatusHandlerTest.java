@@ -54,7 +54,7 @@ class ConfirmedOrderStatusHandlerTest {
         verify(productVariantRepository, never()).release(any(Integer.class), any(Integer.class));
         assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
         assertThat(order.getStatusHistory().get(0).getFromStatus()).isEqualTo(OrderStatus.CONFIRMED);
-        assertThat(order.getStatusHistory().get(0).getReason()).contains("Epic 4");
+        assertThat(order.getStatusHistory().get(0).getReason()).contains("US-4.6");
     }
 
     @Test

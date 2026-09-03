@@ -60,6 +60,14 @@ services:
       APP_SEED_ENABLED: "true"
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD:-password}
+      # Epic 4 Phase 2: defaults to MockPaymentGateway (no real credentials needed) — set
+      # PAYMENT_GATEWAY=stripe and a real Stripe test-mode STRIPE_SECRET_KEY in your own shell
+      # env/.env before bringing this container up to exercise StripePaymentGateway instead.
+      PAYMENT_GATEWAY: ${PAYMENT_GATEWAY:-mock}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      # Epic 4 Phase 5: the signing secret for this container's own /webhooks/stripe endpoint —
+      # only meaningful once that endpoint's URL is registered in the Stripe Dashboard/CLI.
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
     ports:
       - "8081:8081"
     depends_on:

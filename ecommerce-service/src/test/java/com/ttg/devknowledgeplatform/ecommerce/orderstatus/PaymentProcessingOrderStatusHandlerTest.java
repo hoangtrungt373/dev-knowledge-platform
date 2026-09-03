@@ -82,7 +82,7 @@ class PaymentProcessingOrderStatusHandlerTest {
             verify(productVariantRepository).confirmSale(1, 2);
             verify(productVariantRepository).restock(1, 2);
             assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
-            assertThat(order.getStatusHistory().get(0).getReason()).contains("Epic 4");
+            assertThat(order.getStatusHistory().get(0).getReason()).contains("isn't wired");
         }
     }
 
