@@ -156,12 +156,28 @@ export default function AdminOrderListPage(): JSX.Element {
                       <Typography variant="body2">{formatPrice(order.total)}</Typography>
                     </TableCell>
                     <TableCell>
-                      <Chip
-                        label={ORDER_STATUS_LABELS[order.status]}
-                        color={ORDER_STATUS_COLORS[order.status]}
-                        variant="outlined"
-                        size="small"
-                      />
+                      <Stack spacing={0.5} alignItems="flex-start">
+                        <Chip
+                          label={ORDER_STATUS_LABELS[order.status]}
+                          color={ORDER_STATUS_COLORS[order.status]}
+                          variant="outlined"
+                          size="small"
+                        />
+                        {/* Only shown when it adds information the order-status chip above doesn't
+                            already carry (a FAILED order already reads "Payment Failed"; DECLINED
+                            just gets the why via tooltip). CONFIRMED+/PENDING payment states carry
+                            nothing new here, so no chip renders for those. */}
+                        {order.paymentStatus === 'DECLINED' && (
+                          <Tooltip title={order.paymentFailureMessage ?? 'Payment declined'}>
+                            <Chip label="Declined" color="error" size="small" />
+                          </Tooltip>
+                        )}
+                        {order.paymentStatus === 'REFUNDED' && (
+                          <Tooltip title={`${formatPrice(order.total)} refunded`}>
+                            <Chip label="Refunded" color="secondary" size="small" />
+                          </Tooltip>
+                        )}
+                      </Stack>
                     </TableCell>
                     <TableCell align="right">
                       <Tooltip title={canShip ? 'Mark Shipped' : 'Only valid from Confirmed'}>

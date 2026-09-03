@@ -386,6 +386,13 @@ export interface OrderStatusHistoryEntry {
   occurredAt: string;
 }
 
+// ── Payments (Epic 4 Phase 7, US-4.7) ────────────────────────────────────────
+// Mirrors ecommerce-service's PaymentStatus/PaymentFailureCategory enums — surfaced read-only on
+// Order below, resolved server-side from a live lookup of the order's own Payment row.
+
+export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'DECLINED' | 'REFUNDED';
+export type PaymentFailureCategory = 'INSUFFICIENT_FUNDS' | 'CARD_DECLINED' | 'GATEWAY_ERROR';
+
 export interface Order {
   id: number;
   status: OrderStatus;
@@ -404,6 +411,14 @@ export interface Order {
    * applied. */
   subtotalCouponCode: string | null;
   shippingCouponCode: string | null;
+  /** Null until a payment attempt has actually started (a PENDING order that never called
+   * `pay()` has no Payment row on the backend yet). */
+  paymentStatus: PaymentStatus | null;
+  /** Only ever set alongside a DECLINED paymentStatus. */
+  paymentFailureCategory: PaymentFailureCategory | null;
+  /** A short, non-technical, server-owned reason for a DECLINED payment (US-4.7) — never the
+   * gateway's own raw error string, which this app never receives at all. */
+  paymentFailureMessage: string | null;
   lines: OrderLine[];
   /** Oldest first, per the backend's own @OrderBy("id ASC") — read top-to-bottom as a timeline. */
   statusHistory: OrderStatusHistoryEntry[];

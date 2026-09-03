@@ -124,9 +124,14 @@ export default function OrderHistoryPage(): JSX.Element {
 function OrderCard({ order, onView }: { order: Order; onView: () => void }): JSX.Element {
   const placedAt = order.statusHistory[0]?.occurredAt;
 
+  // A decline can happen asynchronously (webhook/reconciliation), so this hint has to come from
+  // the order's own persisted paymentFailureMessage (US-4.7) — never a one-time toast the shopper
+  // may have already missed. Kept to one compact line here; the full Alert lives on the detail page.
+  const showFailureReason = order.status === 'FAILED' && order.paymentFailureMessage;
+
   return (
     <Paper variant="outlined" sx={{ p: 2.5 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2} sx={{ mb: 2 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2} sx={{ mb: showFailureReason ? 0.5 : 2 }}>
         <Box>
           {placedAt && (
             <Typography variant="body2" color="text.secondary">Placed {formatOrderDate(placedAt)}</Typography>
@@ -141,6 +146,12 @@ function OrderCard({ order, onView }: { order: Order; onView: () => void }): JSX
           <Button size="small" onClick={onView}>View Details</Button>
         </Stack>
       </Stack>
+
+      {showFailureReason && (
+        <Typography variant="body2" color="error.main" sx={{ mb: 2 }}>
+          {order.paymentFailureMessage}
+        </Typography>
+      )}
 
       <Stack spacing={2} divider={<Divider />}>
         {order.lines.map(line => (

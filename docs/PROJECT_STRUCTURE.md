@@ -2127,8 +2127,10 @@ the entity note above). All seven applied via the consolidated `services-liquiba
 
 **Epic 3 (Order Lifecycle & Inventory) is now fully built — all 6 phases**, including the REST
 surface (`OrderApi`/`AdminOrderApi`, Phase 5) — see `ecommerce-service/CLAUDE.md`'s own Epic 3
-section for the full phase-by-phase detail. Not yet built: `ProductCategory` delete, a real payment
-gateway adapter and the rest of Epic 4 beyond Epic 3's own seam, and Epic 5
+section for the full phase-by-phase detail. **Epic 4 (Payments) is now fully built too — all 8
+phases**, including the real Stripe gateway adapter, outbox publishing, webhook handling, refund
+on cancellation, user-facing failure reasons, and the `gui` wiring for the last one — see that
+same file's own Epic 4 section. Not yet built: `ProductCategory` delete, and Epic 5
 (reviews/recommendations). The `gateway`-side HTTP proxy, variant/image add/remove/reorder
 endpoints, and Epic 2's checkout half (all listed as not yet built in earlier revisions of this
 section) are all done now — see above.

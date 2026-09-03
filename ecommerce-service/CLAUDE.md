@@ -1856,9 +1856,10 @@ Phase 6: integration tests across the real wiring, plus a documentation consiste
       only — no Docker in this sandbox, so the actual quick-add/autocomplete flow is unverified in
       a real browser.
 
-**Epic 4 (Payments, `docs/user-stories/04-payments.md`) — Phases 1–7 (data model, gateway
-abstraction/Strategy pair, synchronous confirmation, outbox publishing, Stripe webhook handling,
-refund on cancellation, user-facing failure reasons) are built; Phase 8 (GUI) is not.** Confirmed
+**Epic 4 (Payments, `docs/user-stories/04-payments.md`) — all 8 phases are now built** (data model,
+gateway abstraction/Strategy pair, synchronous confirmation, outbox publishing, Stripe webhook
+handling, refund on cancellation, user-facing failure reasons, and now the `gui` wiring for the
+last one — see `gui/CLAUDE.md`'s own note). Confirmed
 shape realized: the Stripe webhook (Phase 5) is exposed directly on this service's own origin,
 bypassing `gateway` entirely (signature verification replaces JWT auth, the same way
 `content-service`'s `/internal/**` bypasses `gateway`) — not a `gateway`-routed path; the Stripe
@@ -2155,14 +2156,16 @@ structural-only adapter.
   `CheckoutMapper`), and the new field population is a simple null-guarded field read with no
   branching logic worth isolating. 317 unit tests total, unchanged; verified via a real
   `mvn -pl ecommerce-service -am compile`+`test` run (JDK 21).
-  - **Not built yet**: Phase 8 (GUI) — nothing in `gui` renders any of these three new fields yet.
+  - **Phase 8 (GUI) is now built too** — see `gui/CLAUDE.md`'s own note for
+    `OrderDetailPage.tsx`/`OrderHistoryPage.tsx`'s wiring of these three fields. This closes out
+    Epic 4 in full.
 
 **Not built yet** (do not assume these exist): `ProductCategory` delete, combo-accurate attribute
 filtering (the current filter checks "some variant has size M" and "some variant has color Blue"
 independently, not "one variant with both together" — see `ProductSearchView`'s Javadoc). **Epic 3
 (Order Lifecycle & Inventory) is now fully built, all 6 phases** — see its own section above.
-Epic 4 (Payments) Phases 1–7 are built — see its own section just above; Phase 8 and Epic 5
-(reviews/recommendations) are not. Check
+**Epic 4 (Payments) is now fully built, all 8 phases** — see its own section just above; Epic 5
+(reviews/recommendations) is not. Check
 `docs/CHANGELOG.md`'s `[Unreleased]` entry and this file's own freshness before assuming more
 exists than what's listed above. **Compiles cleanly** (verified via
 a targeted `-pl ecommerce-service,gateway -am compile`/`test`; needs `JAVA_HOME` pointed at a JDK

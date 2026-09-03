@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -131,7 +132,7 @@ export default function OrderDetailPage(): JSX.Element {
         if (result.status === 'CONFIRMED') {
           showSuccess('Payment successful! Your order is confirmed.');
         } else if (result.status === 'FAILED') {
-          showError('Payment was declined. Please try again.');
+          showError(result.paymentFailureMessage ?? 'Payment was declined. Please try again.');
         }
         // Otherwise still PAYMENT_PROCESSING (a real gateway may not resolve instantly) — the
         // page's own status chip already reflects that, no extra notification needed.
@@ -238,6 +239,20 @@ export default function OrderDetailPage(): JSX.Element {
           })}
         </Stepper>
       </Paper>
+
+      {/* A payment can decline asynchronously (webhook/reconciliation, Epic 4 Phase 5), not just
+          from this page's own Pay Now click — so the reason has to be shown persistently here too,
+          not only as the one-time toast handlePay fires. paymentFailureMessage is always the
+          server-owned, non-technical category message (US-4.7), never the gateway's raw string. */}
+      {order.status === 'FAILED' && order.paymentFailureMessage && (
+        <Alert severity="error" sx={{ mb: 3 }}>{order.paymentFailureMessage}</Alert>
+      )}
+
+      {order.paymentStatus === 'REFUNDED' && (
+        <Alert severity="success" sx={{ mb: 3 }}>
+          This order was cancelled and {formatPrice(order.total)} has been refunded.
+        </Alert>
+      )}
 
       {cancelPending && (
         <Paper variant="outlined" sx={{ p: 2, mb: 3, borderColor: 'warning.main', bgcolor: 'action.hover' }}>
