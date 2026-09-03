@@ -1717,6 +1717,36 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       already uses) rather than a new one; a `PAYMENT_PROCESSING` order with `cancelRequested`
       already `true` shows an informational banner instead of a second button, since clicking it
       again would just re-set an already-set flag.
+    - **Epic 4 Phase 8 (US-4.7) — payment status/failure-reason wiring, closing out Payments in
+      full.** `types.ts` gained `PaymentStatus`/`PaymentFailureCategory` unions (mirroring the
+      backend's own enums) and three matching fields on `Order` (`paymentStatus`/
+      `paymentFailureCategory`/`paymentFailureMessage`, all nullable — a `PENDING` order that
+      never called `pay()` has no `Payment` row on the backend yet). `OrderDetailPage.tsx`'s
+      `handlePay` FAILED branch now shows the real `result.paymentFailureMessage` in its error
+      toast instead of a hardcoded generic string (falling back to one only if that field somehow
+      comes back null). **A toast alone isn't enough, though** — a decline can also arrive
+      asynchronously (the Stripe webhook or reconciliation job, neither of which this page's own
+      `handlePay` call is involved in), so the reason has to be visible on a plain page load too,
+      not just at the moment of an in-page action: a persistent `Alert severity="error"` (new
+      import — already an established component elsewhere in this app, e.g.
+      `ProfilePage.tsx`'s verification banner, not a new pattern) renders whenever
+      `status === 'FAILED' && paymentFailureMessage`, positioned with the existing
+      `cancelPending`/`cancelRequested` banner. A second `Alert severity="success"` renders
+      whenever `paymentStatus === 'REFUNDED'` (Epic 4 Phase 6's own outcome) — a real gap before
+      this phase, since `order.status` alone stays `CANCELLED` either way and never itself
+      indicated whether the refund actually happened. `OrderHistoryPage.tsx`'s own `OrderCard` gets
+      a compact, one-line version of the same failure reason (plain `error.main` text under the
+      header row, not a full `Alert` — the list view stays a summary; the full alert lives on the
+      detail page) for the identical "don't rely on a toast the shopper may have already missed"
+      reason. **Deliberately not added**: any indication of `REFUNDED`/failure reason in the list
+      view itself, or a dedicated `PaymentStatus`-keyed label/color map (`ORDER_STATUS_LABELS`'s
+      own shape) — neither `paymentStatus` nor `paymentFailureCategory` (the enum, as opposed to
+      the message) is rendered anywhere on its own; only the ready-made `paymentFailureMessage`
+      string and a hardcoded "refunded" sentence are, since that's all either page actually needed.
+      Verified via a clean `tsc --noEmit` (only the same pre-existing `App.test.tsx`/
+      `reportWebVitals.ts`/`@chat` errors this file already documents elsewhere) and a successful
+      `vite build` — no Docker in this sandbox, so the actual declined-payment/refunded-order
+      banners are unverified in a real browser.
     - **`CheckoutPage.tsx`'s successful `confirm` now `navigate`s straight to `/orders/:id`**
       instead of swapping in an inline `OrderConfirmationView` — that component (and the now-dead
       `CheckCircleOutlineIcon` import) was deleted outright. It existed only because no "get order
@@ -1765,6 +1795,21 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     - **Verified** the same way as `OrderHistoryPage`/`OrderDetailPage` above: clean `tsc --noEmit`
       (no new errors) and a successful `vite build`; no interactive browser testing was possible in
       this environment (no Docker to run the backend stack).
+    - **Follow-up (Epic 4 Phase 8's own admin half, per request) — a small payment-status chip in
+      the Status column, deliberately not the full `Alert` treatment the shopper-facing pages
+      got.** Asked first, since this table defaults to `CONFIRMED` orders (already-paid) and has no
+      per-order admin detail page to put a rich explanation into — the payment fields only really
+      help when an admin switches the filter to browse `FAILED`/etc. rows for support triage, not
+      the queue's everyday ship/deliver job. Landed on: only render an extra `Chip` when
+      `paymentStatus` carries information the existing order-status `Chip` above it doesn't already
+      convey — a `FAILED` order already reads "Payment Failed," so a `DECLINED` payment chip's own
+      job is just to carry the *why*, via a `Tooltip` wrapping `paymentFailureMessage`; a
+      `REFUNDED` payment chip is sheer new information (`order.status` alone stays `Cancelled`
+      either way), tooltipped with the refunded amount. `SUCCEEDED`/`PENDING` payment states render
+      no extra chip at all — nothing new to say. No new shared `PAYMENT_STATUS_LABELS`/`_COLORS`
+      map in `utils/orderStatus.ts` — only two of the four `PaymentStatus` values ever render
+      anything here, so a full enum-keyed map would be speculative infrastructure for values
+      nothing yet needs. Verified the same way as the rest of this page.
   - **AddressBook — a shopper's own reusable, multi-address book with a designated default, per
     request. Both the standalone management page and `CheckoutPage` integration landed together**
     (confirmed via 3 scope questions before building: checkout wiring in scope, an optional label
