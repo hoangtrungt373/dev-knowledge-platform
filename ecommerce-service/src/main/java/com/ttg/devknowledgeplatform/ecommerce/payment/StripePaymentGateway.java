@@ -59,15 +59,22 @@ import java.math.RoundingMode;
  * mutable static state, which matters once more than one Spring context could plausibly exist in
  * the same JVM (tests, in particular).
  *
- * <p><b>{@link #checkStatus} has no native Stripe endpoint to call</b> — Stripe exposes no "look up
- * by idempotency key" query. Instead, this method replays the <i>exact same</i> {@link #charge}
- * request (same amount and currency) under the same
- * {@code Idempotency-Key} header; Stripe recognizes the identical fingerprint and returns its
- * original cached response rather than performing the operation again — the standard, documented
- * way to achieve an idempotent "what did you decide" query against Stripe's own API. This is why
- * this class (unlike {@link MockPaymentGateway}) needs {@link PaymentRepository}: {@code
- * checkStatus} only receives an {@code idempotencyKey}, so it looks the original {@code amount} up
- * from the {@code Payment} row Epic 4 Phase 1 guarantees was written before the original charge.
+ * <p><b>{@link #checkStatus} retrieves the {@link PaymentIntent} by id — it does <i>not</i> replay
+ * {@link #charge}.</b> An earlier revision of this class did replay {@code charge()} under the same
+ * {@code Idempotency-Key}, on the (then-correct) theory that Stripe's idempotency mechanism would
+ * hand back "what did you decide." That relied on {@link #charge}'s own original response already
+ * being terminal, which was true back when {@code charge()} called {@code setConfirm(true)}
+ * synchronously — it stopped being true once {@code charge()} was rebuilt around Option A's
+ * client-side confirmation (see above): Stripe's idempotent replay returns the exact response
+ * <i>captured at the original {@code create()} call</i>, never a live re-fetch, so replaying a
+ * since-confirmed intent's original {@code create()} call would keep returning its permanently
+ * frozen {@code requires_payment_method} snapshot forever, regardless of what the shopper's own
+ * {@code stripe.confirmPayment()} call already resolved on Stripe's side. A plain
+ * {@code PaymentIntent.retrieve(id)} (a GET, not a replayed POST) is what actually answers "what is
+ * this intent's status right now." This is why this class (unlike {@link MockPaymentGateway}) needs
+ * {@link PaymentRepository}: {@code checkStatus} only receives an {@code idempotencyKey}, so it
+ * looks the original charge's {@code gatewayReference} (the PaymentIntent id) up from the
+ * {@code Payment} row Epic 4 Phase 1 guarantees was written before the original charge.
  */
 @Component
 @ConditionalOnProperty(prefix = "app.ecommerce.payment", name = "gateway", havingValue = "stripe")
@@ -110,9 +117,26 @@ public class StripePaymentGateway implements PaymentGatewayPort {
         Payment payment = paymentRepository.findByIdempotencyKey(idempotencyKey)
                 .orElseThrow(() -> new PaymentGatewayException(
                         "No Payment row found for idempotencyKey=" + idempotencyKey));
-        // Deliberately re-runs charge() with the same key/amount — see this class's own Javadoc for
-        // why that's the correct way to ask Stripe "what did you already decide for this attempt."
-        return charge(idempotencyKey, payment.getAmount());
+        if (payment.getGatewayReference() == null) {
+            // charge() never even reached Stripe for this attempt (e.g. crashed before the create
+            // call returned) — nothing to look up yet; leave it PENDING for the next poll.
+            return PaymentResult.pending(null, null);
+        }
+        try {
+            // A live retrieve by PaymentIntent id — NOT a replayed charge() call. Option A's charge()
+            // no longer confirms synchronously, so Stripe's idempotency mechanism (which returns the
+            // frozen response captured at the ORIGINAL create() call, never a live re-fetch) would
+            // otherwise hand back the same permanently-unconfirmed "requires_payment_method" snapshot
+            // forever, regardless of whatever the shopper's own stripe.confirmPayment() call already
+            // resolved on Stripe's side. Retrieving the intent by id is the only way to see its
+            // current, possibly-since-changed status.
+            PaymentIntent intent = PaymentIntent.retrieve(
+                    payment.getGatewayReference(), RequestOptions.builder().setApiKey(secretKey).build());
+            return resultFromIntent(intent);
+        } catch (StripeException e) {
+            throw new PaymentGatewayException(
+                    "Stripe retrieve failed for gatewayReference=" + payment.getGatewayReference(), e);
+        }
     }
 
     @Override
