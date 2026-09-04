@@ -324,10 +324,12 @@ export default function CheckoutPage(): JSX.Element {
       </Stepper>
 
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'flex-start' }}>
-        {/* Left column — the actively-changing form for the current phase. Sized to lose the flex-
-            wrap tug-of-war against the sticky right column's own basis (calc(...) gap-compensation,
-            same technique ProductDetailPage/ProductFormPage already use — see gui/CLAUDE.md). */}
-        <Box sx={{ flex: '1 1 calc(55% - 16px)', minWidth: 400 }}>
+        {/* Visually the RIGHT column (order: 2) — the actively-changing form for the current
+            phase. Sized to lose the flex-wrap tug-of-war against the sticky summary column's own
+            basis (calc(...) gap-compensation, same technique ProductDetailPage/ProductFormPage
+            already use — see gui/CLAUDE.md). Kept second in DOM order (tab/reading order still
+            reaches the summary first) and repositioned purely via `order`, so no JSX had to move. */}
+        <Box sx={{ flex: '1 1 calc(55% - 16px)', minWidth: 400, order: 2 }}>
           {phase === 'review' && (
             <Stack spacing={3}>
               <Paper variant="outlined" sx={{ p: 2.5 }}>
@@ -565,11 +567,13 @@ export default function CheckoutPage(): JSX.Element {
           )}
         </Box>
 
-        {/* Right column — Order Summary only (no coupon management UI here; that lives in the
-            left column's own Coupons Paper during review, and is frozen/read-only once payment
-            starts). Stays visible while the shopper scrolls a taller left column — first use of
-            sticky positioning in this codebase; top offset matches the app shell's fixed header
-            height so the summary settles just beneath it rather than under it. */}
+        {/* Visually the LEFT column (order: 1, per request) — Order Summary only (no coupon
+            management UI here; that lives in the form column's own Coupons Paper during review,
+            and is frozen/read-only once payment starts). Stays visible while the shopper scrolls a
+            taller form column — first use of sticky positioning in this codebase; top offset
+            matches the app shell's fixed header height so the summary settles just beneath it
+            rather than under it. Placed second in the JSX (after the form column) so keyboard/
+            screen-reader order still reaches the form first — only the visual position moved. */}
         <Box
           sx={{
             flex: '1 1 calc(45% - 16px)',
@@ -577,6 +581,7 @@ export default function CheckoutPage(): JSX.Element {
             position: 'sticky',
             top: 88,
             alignSelf: 'flex-start',
+            order: 1,
           }}
         >
           <Paper variant="outlined" sx={{ p: 2.5 }}>

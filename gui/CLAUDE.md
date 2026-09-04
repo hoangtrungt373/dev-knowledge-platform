@@ -1874,6 +1874,12 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       - Verified via a clean `tsc --noEmit` (only the same pre-existing errors) and a successful
         `vite build` — the sticky-scroll behavior itself and both phases' actual on-screen layout
         are unverified in a real browser (no Docker in this sandbox).
+      - **Follow-up: the two columns' visual left/right positions swapped, per request (product
+        list on the left).** Done via flexbox `order` (`order: 1` on the sticky Order Summary
+        `Box`, `order: 2` on the form `Box`) rather than moving either block's JSX — the form `Box`
+        stays first in the DOM, so keyboard/screen-reader order still reaches it before the summary
+        even though it now renders on the right. Both `flex-basis`/`minWidth` values were left
+        unchanged (summary ~45%, form ~55%) since only position moved, not proportion.
     - **`CheckoutPage.tsx`'s successful `confirm` used to `navigate` straight to `/orders/:id`
       unconditionally** instead of swapping in an inline `OrderConfirmationView` — that component
       (and the now-dead `CheckCircleOutlineIcon` import) was deleted outright back when Epic 3's
