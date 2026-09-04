@@ -6,6 +6,7 @@ import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.OrderStatusHandlerRegistry;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentHandoffService;
+import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentCancellationResult;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentResult;
 import com.ttg.devknowledgeplatform.ecommerce.payment.RefundResult;
@@ -38,7 +39,11 @@ import java.util.Collection;
  * {@link #cancel} (Epic 4 Phase 6, US-4.6) is the same shape for the opposite direction: it's not
  * {@code @Transactional} either, since a refund is owed only when {@link PaymentHandoffService
  * #applyCancellation} reports one, and that refund gateway call must happen outside any local
- * transaction for the identical reason.
+ * transaction for the identical reason. An Option A follow-up added a third branch alongside
+ * refund: when {@code applyCancellation} instead reports {@code gatewayCancellationNeeded()} (the
+ * cancel only queued because payment is still an unconfirmed Stripe PaymentIntent — see {@link
+ * PaymentHandoffService}'s own Javadoc), this method actively voids that charge attempt at the
+ * gateway, again outside any transaction, before applying the result.
  */
 @Service
 @RequiredArgsConstructor
@@ -75,6 +80,11 @@ public class OrderServiceImpl implements OrderService {
         if (cancellation.refundNeeded()) {
             RefundResult result = paymentGatewayPort.refund(cancellation.gatewayReference(), cancellation.amount());
             paymentHandoffService.applyRefundResult(cancellation.paymentId(), result);
+            return cancellation.order();
+        }
+        if (cancellation.gatewayCancellationNeeded()) {
+            PaymentCancellationResult result = paymentGatewayPort.cancelUnconfirmed(cancellation.gatewayReference());
+            return paymentHandoffService.applyGatewayCancellation(orderId, result);
         }
         return cancellation.order();
     }

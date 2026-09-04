@@ -9,6 +9,7 @@ import com.ttg.devknowledgeplatform.ecommerce.enums.OutboxAggregateType;
 import com.ttg.devknowledgeplatform.ecommerce.enums.PaymentFailureCategory;
 import com.ttg.devknowledgeplatform.ecommerce.enums.PaymentStatus;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
+import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentCancellationResult;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentResult;
 import com.ttg.devknowledgeplatform.ecommerce.payment.RefundResult;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
@@ -276,6 +277,7 @@ class PaymentHandoffServiceTest {
 
             assertThat(result.order()).isSameAs(order);
             assertThat(result.refundNeeded()).isFalse();
+            assertThat(result.gatewayCancellationNeeded()).isFalse();
         }
 
         @Test
@@ -298,25 +300,70 @@ class PaymentHandoffServiceTest {
             PaymentHandoffService.CancellationResult result = service.applyCancellation(1, OWNER_UUID);
 
             assertThat(result.refundNeeded()).isTrue();
+            assertThat(result.gatewayCancellationNeeded()).isFalse();
             assertThat(result.paymentId()).isEqualTo(100);
             assertThat(result.gatewayReference()).isEqualTo("gw-ref-1");
             assertThat(result.amount()).isEqualByComparingTo("25.00");
         }
 
         @Test
-        void reportsNoRefundWhenTheCancelOnlyQueuesAndDoesNotTransitionYet() {
+        void reportsNeitherWhenTheCancelOnlyQueuesAndNoPaymentRowExistsYet() {
             Order order = orderOwnedBy(OWNER_UUID);
             order.setStatus(OrderStatus.PAYMENT_PROCESSING);
             // The mocked registry doesn't mutate the order's status at all here, mirroring
             // PaymentProcessingOrderStatusHandler.cancel — it only queues (cancelRequested), it
-            // never transitions.
+            // never transitions. No Payment row at all is the (rare) window right before
+            // startPaymentProcessing's own write — nothing to cancel at the gateway yet either.
             when(orderRepository.findById(1)).thenReturn(Optional.of(order));
             when(orderRepository.save(order)).thenReturn(order);
+            when(paymentRepository.findByOrderId(1)).thenReturn(Optional.empty());
 
             PaymentHandoffService.CancellationResult result = service.applyCancellation(1, OWNER_UUID);
 
             assertThat(result.refundNeeded()).isFalse();
-            verify(paymentRepository, never()).findByOrderId(any());
+            assertThat(result.gatewayCancellationNeeded()).isFalse();
+        }
+
+        @Test
+        void reportsGatewayCancellationNeededWhenTheCancelOnlyQueuesAndPaymentIsStillPendingWithAGatewayReference() {
+            // The realistic Option A case: the shopper cancels while their Stripe PaymentIntent is
+            // still unconfirmed — nothing else will ever resolve the queued cancel, so the caller
+            // must actively void the charge attempt at the gateway (see this class's own Javadoc).
+            Order order = orderOwnedBy(OWNER_UUID);
+            order.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+            when(orderRepository.save(order)).thenReturn(order);
+            Payment payment = new Payment();
+            payment.setId(100);
+            payment.setStatus(PaymentStatus.PENDING);
+            payment.setGatewayReference("gw-ref-1");
+            when(paymentRepository.findByOrderId(1)).thenReturn(Optional.of(payment));
+
+            PaymentHandoffService.CancellationResult result = service.applyCancellation(1, OWNER_UUID);
+
+            assertThat(result.refundNeeded()).isFalse();
+            assertThat(result.gatewayCancellationNeeded()).isTrue();
+            assertThat(result.paymentId()).isEqualTo(100);
+            assertThat(result.gatewayReference()).isEqualTo("gw-ref-1");
+        }
+
+        @Test
+        void reportsNoGatewayCancellationNeededWhenThePendingPaymentHasNoGatewayReferenceYet() {
+            // charge() hasn't even reached Stripe for this attempt yet (e.g. crashed right after
+            // startPaymentProcessing committed) — nothing exists at the gateway to cancel.
+            Order order = orderOwnedBy(OWNER_UUID);
+            order.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+            when(orderRepository.save(order)).thenReturn(order);
+            Payment payment = new Payment();
+            payment.setId(100);
+            payment.setStatus(PaymentStatus.PENDING);
+            when(paymentRepository.findByOrderId(1)).thenReturn(Optional.of(payment));
+
+            PaymentHandoffService.CancellationResult result = service.applyCancellation(1, OWNER_UUID);
+
+            assertThat(result.refundNeeded()).isFalse();
+            assertThat(result.gatewayCancellationNeeded()).isFalse();
         }
 
         @Test
@@ -336,6 +383,81 @@ class PaymentHandoffServiceTest {
             when(orderRepository.findById(1)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.applyCancellation(1, OWNER_UUID))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.ORDER_NOT_FOUND);
+        }
+    }
+
+    @Nested
+    class ApplyGatewayCancellation {
+
+        @Test
+        void cancelledDispatchesToFailPaymentAndMarksThePaymentRowCancelledWithNoOutboxEvent() {
+            Order order = orderOwnedBy(OWNER_UUID);
+            order.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            doAnswer(invocation -> {
+                order.setStatus(OrderStatus.CANCELLED);
+                return null;
+            }).when(orderStatusHandlerRegistry).failPayment(order);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+            when(orderRepository.save(order)).thenReturn(order);
+            Payment payment = new Payment();
+            payment.setId(100);
+            payment.setStatus(PaymentStatus.PENDING);
+            payment.setGatewayReference("gw-ref-1");
+            when(paymentRepository.findByOrderId(1)).thenReturn(Optional.of(payment));
+
+            Order result = service.applyGatewayCancellation(1, PaymentCancellationResult.cancelled());
+
+            assertThat(result.getStatus()).isEqualTo(OrderStatus.CANCELLED);
+            verify(orderStatusHandlerRegistry).failPayment(order);
+            verify(orderStatusHandlerRegistry, never()).confirmPayment(any());
+            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CANCELLED);
+            verify(paymentRepository).save(payment);
+            verify(outboxEventRepository, never()).save(any());
+        }
+
+        @Test
+        void alreadyResolvedDelegatesStraightToResolvePaymentWithTheGatewaysRealResult() {
+            // The race this branch exists for: the shopper confirmed on another tab a moment
+            // before the gateway cancel call arrived — the caller must not force a cancellation
+            // that never actually happened.
+            Order order = orderOwnedBy(OWNER_UUID);
+            order.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            Payment payment = new Payment();
+            payment.setId(100);
+            payment.setAmount(new BigDecimal("25.00"));
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+            when(orderRepository.save(order)).thenReturn(order);
+            when(paymentRepository.findByOrderId(1)).thenReturn(Optional.of(payment));
+
+            PaymentResult succeeded = PaymentResult.succeeded("gw-ref-1");
+            Order result = service.applyGatewayCancellation(1, PaymentCancellationResult.alreadyResolved(succeeded));
+
+            verify(orderStatusHandlerRegistry).confirmPayment(order);
+            verify(orderStatusHandlerRegistry, never()).failPayment(any());
+            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+            assertThat(result).isSameAs(order);
+        }
+
+        @Test
+        void throwsIllegalStateWhenNoPaymentRowExistsForTheCancelledOutcome() {
+            Order order = orderOwnedBy(OWNER_UUID);
+            order.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+            when(orderRepository.save(order)).thenReturn(order);
+            when(paymentRepository.findByOrderId(1)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.applyGatewayCancellation(1, PaymentCancellationResult.cancelled()))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        void rejectsAsNotFoundWhenTheOrderDoesNotExist() {
+            when(orderRepository.findById(1)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.applyGatewayCancellation(1, PaymentCancellationResult.cancelled()))
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.ORDER_NOT_FOUND);

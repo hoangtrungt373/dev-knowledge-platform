@@ -47,4 +47,12 @@ class MockPaymentGatewayTest {
         assertThat(result.outcome()).isEqualTo(RefundOutcome.SUCCEEDED);
         assertThat(result.gatewayReference()).isEqualTo("mock-refund-mock-order-1");
     }
+
+    @Test
+    void cancelUnconfirmedAlwaysReportsCancelled() {
+        PaymentCancellationResult result = gateway.cancelUnconfirmed("mock-order-1");
+
+        assertThat(result.outcome()).isEqualTo(CancellationOutcome.CANCELLED);
+        assertThat(result.resolvedResult()).isNull();
+    }
 }

@@ -30,6 +30,14 @@ import java.math.BigDecimal;
  * <p>A genuine gateway/network/API failure (as opposed to a definitive card decline) is signaled by
  * throwing {@link PaymentGatewayException}, never by returning a {@code DECLINED}/{@code FAILED}
  * result — see that exception's own Javadoc for why the distinction matters.
+ *
+ * <p>{@link #cancelUnconfirmed} (an Option A follow-up) closes a real gap the client-side-
+ * confirmation flow opened: a shopper who explicitly cancels an order while its charge attempt is
+ * still an unconfirmed Stripe PaymentIntent leaves nothing that will ever resolve it on its own — no
+ * webhook is coming (the shopper never confirmed), and a reconciliation poll just keeps re-reporting
+ * {@link PaymentOutcome#PENDING} forever. This method actively voids the charge attempt at the
+ * gateway instead of waiting on an outcome that will never arrive — see
+ * {@code orderstatus.PaymentHandoffService#applyCancellation}'s own Javadoc for the full incident.
  */
 public interface PaymentGatewayPort {
 
@@ -72,4 +80,18 @@ public interface PaymentGatewayPort {
      *         than definitively failing the refund
      */
     RefundResult refund(String gatewayReference, BigDecimal amount);
+
+    /**
+     * Cancels a not-yet-confirmed charge attempt at the gateway (Stripe: {@code
+     * PaymentIntent.cancel}) — for an order whose cancel only queued because payment was still
+     * unresolved, when nothing else will ever pick that queued cancel up.
+     *
+     * @param gatewayReference the gateway's own id for the unconfirmed charge attempt (from that
+     *                          charge's own {@link PaymentResult#gatewayReference()})
+     * @return the gateway's own definitive verdict — see {@link PaymentCancellationResult}'s own
+     *         Javadoc for the two possible outcomes
+     * @throws PaymentGatewayException if the gateway call itself failed (network/API error) rather
+     *         than definitively resolving one way or the other
+     */
+    PaymentCancellationResult cancelUnconfirmed(String gatewayReference);
 }

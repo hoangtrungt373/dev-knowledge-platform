@@ -7,6 +7,7 @@ import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.OrderStatusHandlerRegistry;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentHandoffService;
+import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentCancellationResult;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentResult;
 import com.ttg.devknowledgeplatform.ecommerce.payment.RefundResult;
@@ -158,11 +159,11 @@ class OrderServiceImplTest {
     class Cancel {
 
         @Test
-        void returnsTheCancelledOrderAndNeverTouchesTheGatewayWhenNoRefundIsOwed() {
+        void returnsTheCancelledOrderAndNeverTouchesTheGatewayWhenNoRefundOrGatewayCancelIsOwed() {
             Order cancelled = orderOwnedBy(OWNER_UUID);
             cancelled.setStatus(OrderStatus.CANCELLED);
             PaymentHandoffService.CancellationResult cancellation =
-                    new PaymentHandoffService.CancellationResult(cancelled, false, null, null, null);
+                    new PaymentHandoffService.CancellationResult(cancelled, false, false, null, null, null);
             when(paymentHandoffService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
 
             Order result = service.cancel(1, OWNER_UUID);
@@ -170,6 +171,8 @@ class OrderServiceImplTest {
             assertThat(result).isSameAs(cancelled);
             verify(paymentGatewayPort, never()).refund(any(), any());
             verify(paymentHandoffService, never()).applyRefundResult(any(), any());
+            verify(paymentGatewayPort, never()).cancelUnconfirmed(any());
+            verify(paymentHandoffService, never()).applyGatewayCancellation(any(), any());
         }
 
         @Test
@@ -177,7 +180,7 @@ class OrderServiceImplTest {
             Order cancelled = orderOwnedBy(OWNER_UUID);
             cancelled.setStatus(OrderStatus.CANCELLED);
             PaymentHandoffService.CancellationResult cancellation = new PaymentHandoffService.CancellationResult(
-                    cancelled, true, 100, "gw-ref-1", new BigDecimal("25.00"));
+                    cancelled, true, false, 100, "gw-ref-1", new BigDecimal("25.00"));
             when(paymentHandoffService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
             RefundResult refundResult = RefundResult.succeeded("gw-refund-1");
             when(paymentGatewayPort.refund("gw-ref-1", new BigDecimal("25.00"))).thenReturn(refundResult);
@@ -187,6 +190,32 @@ class OrderServiceImplTest {
             assertThat(result).isSameAs(cancelled);
             verify(paymentGatewayPort).refund("gw-ref-1", new BigDecimal("25.00"));
             verify(paymentHandoffService).applyRefundResult(100, refundResult);
+            verify(paymentGatewayPort, never()).cancelUnconfirmed(any());
+        }
+
+        @Test
+        void cancelsTheUnconfirmedChargeAtTheGatewayAndReturnsTheAppliedResultWhenOneIsOwed() {
+            // Option A follow-up — a shopper cancelling while their Stripe PaymentIntent is still
+            // unconfirmed must actively void it at the gateway, since nothing else would ever
+            // resolve the order otherwise (see PaymentHandoffService's own Javadoc for the incident).
+            Order stillProcessing = orderOwnedBy(OWNER_UUID);
+            stillProcessing.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            PaymentHandoffService.CancellationResult cancellation = new PaymentHandoffService.CancellationResult(
+                    stillProcessing, false, true, 100, "gw-ref-1", null);
+            when(paymentHandoffService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
+            PaymentCancellationResult gatewayResult = PaymentCancellationResult.cancelled();
+            when(paymentGatewayPort.cancelUnconfirmed("gw-ref-1")).thenReturn(gatewayResult);
+            Order finallyCancelled = orderOwnedBy(OWNER_UUID);
+            finallyCancelled.setStatus(OrderStatus.CANCELLED);
+            when(paymentHandoffService.applyGatewayCancellation(1, gatewayResult)).thenReturn(finallyCancelled);
+
+            Order result = service.cancel(1, OWNER_UUID);
+
+            assertThat(result).isSameAs(finallyCancelled);
+            verify(paymentGatewayPort).cancelUnconfirmed("gw-ref-1");
+            verify(paymentHandoffService).applyGatewayCancellation(1, gatewayResult);
+            verify(paymentGatewayPort, never()).refund(any(), any());
+            verify(paymentHandoffService, never()).applyRefundResult(any(), any());
         }
 
         @Test
@@ -200,6 +229,8 @@ class OrderServiceImplTest {
                     .isEqualTo(EcommerceErrorCode.ORDER_NOT_FOUND);
             verify(paymentGatewayPort, never()).refund(any(), any());
             verify(paymentHandoffService, never()).applyRefundResult(any(), any());
+            verify(paymentGatewayPort, never()).cancelUnconfirmed(any());
+            verify(paymentHandoffService, never()).applyGatewayCancellation(any(), any());
         }
     }
 

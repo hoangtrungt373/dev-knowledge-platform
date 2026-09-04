@@ -1992,10 +1992,13 @@ structural-only adapter.
   still-pending case) — **319 unit tests total**, verified via a real `mvn test` run (JDK 21).
   **Not built as part of this change**: no automatic expiry/failure for an order that sits
   `PAYMENT_PROCESSING` forever because the shopper simply abandoned the payment dialog without
-  ever confirming or declining — `OrderReconciliationJob`'s own "still `PENDING`, check again
-  later" handling of a `requires_payment_method` intent is exactly correct for a shopper who's
-  still filling out the form, but has no distinct signal for "genuinely gave up," so a stuck order
-  in that state is a known, accepted gap, not a bug; revisit with a real timeout if it matters.
+  ever confirming, declining, **or explicitly cancelling** — `OrderReconciliationJob`'s own "still
+  `PENDING`, check again later" handling of a `requires_payment_method` intent is exactly correct
+  for a shopper who's still filling out the form, but has no distinct signal for "genuinely gave
+  up and closed the tab," so a silently-abandoned order in that state is a known, accepted gap, not
+  a bug; revisit with a real timeout if it matters. **An explicit Cancel Order click *is* now
+  handled — see the follow-up below** — this remaining gap is narrower than it first looks: only
+  "walked away with no click at all," not "clicked cancel."
   - **Bug fix, found via a real end-to-end `stripe listen` session: `Payment.gatewayReference`
     was never actually persisted for the common case, breaking both the webhook and the
     reconciliation fallback.** Symptom: `stripe listen --forward-to localhost:8081/webhooks/stripe`
@@ -2033,6 +2036,75 @@ structural-only adapter.
     order, matching `WARN` line expected in the app's own log), but re-running the same live Stripe
     CLI session against the fixed code to confirm the order now reaches `CONFIRMED` is still up to
     whoever's running the stack.
+  - **Follow-up: an explicit Cancel Order click during the payment phase used to leave the order
+    stuck `PAYMENT_PROCESSING` forever too — closed by actively cancelling the still-unconfirmed
+    Stripe PaymentIntent at the gateway, per request (Option A chosen over a cheaper,
+    correctness-losing alternative — see below).** Symptom, reported directly: clicking `Cancel
+    Order` in `gui`'s payment phase called `POST /{id}/cancel` successfully, but neither `Order`
+    nor `Payment` ever changed status. Root cause: `PaymentProcessingOrderStatusHandler.cancel`
+    only ever sets `Order.cancelRequested` when the order is `PAYMENT_PROCESSING` — it never
+    transitions the order itself, on the (once-correct) assumption that "a gateway call is in
+    flight, it'll resolve any moment." That assumption held for the old synchronous-charge shape; it
+    doesn't hold under Option A, where a charge attempt can sit unconfirmed indefinitely while the
+    shopper is simply looking at the card form — no gateway call is "in flight" to wait out at all.
+    Nothing was ever going to consult the queued flag either: `resolvePayment`'s own `PENDING`
+    branch (what every repeat `checkStatus`/webhook delivery for a never-confirmed intent produces)
+    never even looks at `cancelRequested` — only its `SUCCEEDED`/`DECLINED` branches do.
+    - **Two designs were compared before building either.** Option A (chosen): actually cancel the
+      Stripe PaymentIntent via a real gateway call before transitioning the order, mirroring Phase
+      6's own durable-step/gateway-call/durable-step shape for refunds. Option B (rejected, cheaper
+      to build): just make `resolvePayment`'s `PENDING` branch check `cancelRequested` and
+      transition to `CANCELLED` locally, no gateway call at all — rejected because it's a real
+      correctness gap, not just a smaller feature: nothing would ever tell Stripe to stop honoring
+      that PaymentIntent, so a shopper who still had the payment form open on another tab could
+      complete it moments later, capturing real money against an order this reactor already marked
+      `CANCELLED` — with no refund, since nothing would know one was owed.
+    - **New `payment.PaymentGatewayPort#cancelUnconfirmed(gatewayReference)`** — a third gateway
+      operation alongside `charge`/`checkStatus`/`refund`, returning a new
+      `payment.PaymentCancellationResult` (`payment.CancellationOutcome`: `CANCELLED`/
+      `ALREADY_RESOLVED`) rather than reusing `PaymentResult`/`PaymentOutcome` — mirrors
+      `RefundResult`/`RefundOutcome`'s own "narrow, dedicated vocabulary" precedent (Phase 2's own
+      Javadoc) for the identical reason: a shopper-initiated cancel is not a card decline, and
+      reusing `PaymentOutcome.DECLINED` would show a misleading "payment declined" reason on an
+      order the shopper themselves cancelled. `StripePaymentGateway#cancelUnconfirmed` retrieves the
+      `PaymentIntent` and calls its own `cancel` — if Stripe rejects that because the intent already
+      reached a real terminal state (the shopper confirmed on another tab a moment earlier), a
+      second retrieve reports that real outcome (`ALREADY_RESOLVED`, carrying the gateway's actual
+      result) instead of masking a cancellation that never happened. `MockPaymentGateway`'s own
+      implementation just logs and reports `CANCELLED` unconditionally — this gateway never actually
+      leaves a charge unconfirmed in the first place, so it should never really be reached.
+    - **New `enums.PaymentStatus.CANCELLED`** (migration `DKP-0051`, widening
+      `CKC_PAYMENT_STATUS` — Postgres has no `ALTER CHECK`, drop-and-recreate, same shape as
+      `DKP-0035`'s own `CKC_CUSTOMER_ORDER_STATUS` widening) — deliberately distinct from
+      `DECLINED` for the identical shopper-facing-message reason above.
+    - **`orderstatus.PaymentHandoffService.applyCancellation`** now detects the exact stuck state
+      (order still `PAYMENT_PROCESSING` after the cancel only queued, with a still-`PENDING`
+      `Payment` row carrying a real `gatewayReference`) and reports a new
+      `CancellationResult.gatewayCancellationNeeded()` flag alongside the existing
+      `refundNeeded()` — the two are mutually exclusive states of the same order (a refund only
+      ever applies to an order that became `CANCELLED` outright; a gateway cancellation only ever
+      applies to one whose cancel merely queued). New `applyGatewayCancellation(orderId,
+      PaymentCancellationResult)` — the second durable step: `CANCELLED` dispatches through the
+      same `failPayment` release-and-respect-`cancelRequested` logic `resolvePayment`'s own
+      `DECLINED` branch already uses (ends the order `CANCELLED`), but marks the `Payment` row
+      `CANCELLED` rather than `DECLINED`, and publishes no outbox event (a shopper-initiated cancel
+      isn't the `PAYMENT_FAILED` business event); `ALREADY_RESOLVED` delegates straight to the
+      existing `resolvePayment` with the gateway's own real result, reusing that method's
+      already-correct `cancelRequested`-aware handling rather than duplicating it.
+    - **`service.impl.OrderServiceImpl#cancel`** gained a third branch alongside its existing
+      no-refund/refund-needed ones: when `gatewayCancellationNeeded()`, it calls
+      `paymentGatewayPort.cancelUnconfirmed` (outside any transaction, same reason every other
+      gateway call in this class is) and then `applyGatewayCancellation`, returning *that* call's
+      result — unlike the refund branch (which returns the already-`CANCELLED` order from step one
+      unchanged), this branch's order is still `PAYMENT_PROCESSING` until the gateway call resolves
+      it.
+    - `PaymentHandoffServiceTest`'s `ApplyCancellation` nested class gained cases for both new
+      branches (no-Payment-row-yet, `PENDING`-with-reference, `PENDING`-without-reference-yet) plus
+      a new `ApplyGatewayCancellation` nested class (`CANCELLED`/`ALREADY_RESOLVED`/missing-row/
+      not-found cases); `OrderServiceImplTest.Cancel` gained the third-branch case;
+      `MockPaymentGatewayTest` gained one case. **328 unit tests total** (up from 320), verified via
+      a real `mvn test` run (JDK 21). Not verified against a real `stripe listen` session in this
+      sandbox, same standing caveat as the bug fix directly above.
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)

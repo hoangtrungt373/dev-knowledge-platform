@@ -61,4 +61,13 @@ public class MockPaymentGateway implements PaymentGatewayPort {
         log.info("MockPaymentGateway refunding gatewayReference={} amount={}", gatewayReference, amount);
         return RefundResult.succeeded("mock-refund-" + gatewayReference);
     }
+
+    @Override
+    public PaymentCancellationResult cancelUnconfirmed(String gatewayReference) {
+        log.warn("MockPaymentGateway.cancelUnconfirmed called for gatewayReference={} — this gateway "
+                + "never actually leaves a charge unconfirmed in the first place (charge() always "
+                + "resolves synchronously), so this should never be reached in practice; treating it "
+                + "as a successful cancellation regardless", gatewayReference);
+        return PaymentCancellationResult.cancelled();
+    }
 }
