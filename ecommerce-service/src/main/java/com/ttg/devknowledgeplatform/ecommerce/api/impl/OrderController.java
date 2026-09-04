@@ -47,6 +47,9 @@ public class OrderController implements OrderApi {
 
     @Override
     public ResponseEntity<OrderResponse> pay(String userUuid, Integer id) {
-        return ResponseEntity.ok(orderMapper.toResponse(orderService.initiatePayment(id, userUuid)));
+        OrderService.PaymentInitiationResult result = orderService.initiatePayment(id, userUuid);
+        OrderResponse response = orderMapper.toResponse(result.order());
+        response.setPaymentClientSecret(result.clientSecret());
+        return ResponseEntity.ok(response);
     }
 }

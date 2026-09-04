@@ -23,6 +23,14 @@ import java.util.List;
  * all). {@link #paymentFailureMessage} is a small, non-technical, server-owned string
  * ({@code PaymentFailureCategory#getShopperMessage()}) — <b>never</b> the gateway's own raw decline
  * string, which this reactor never sends to a client at all.
+ *
+ * <p>{@link #paymentClientSecret} (Option A, Stripe Elements) is deliberately <b>not</b> resolved by
+ * {@code OrderMapper} the way the payment fields above are — it's never persisted anywhere, only set
+ * by {@code api.impl.OrderController#pay} straight from that one call's own
+ * {@code OrderService.PaymentInitiationResult}, since a Stripe client secret only has meaning for
+ * the one HTTP response that triggered the charge attempt. {@code null} on every other response
+ * this DTO backs (list/get-by-id/cancel) and whenever the gateway already resolved the charge
+ * synchronously (e.g. {@code MockPaymentGateway}, or a Stripe charge that came back declined).
  */
 @Data
 @Builder
@@ -50,6 +58,7 @@ public class OrderResponse {
     private PaymentStatus paymentStatus;
     private PaymentFailureCategory paymentFailureCategory;
     private String paymentFailureMessage;
+    private String paymentClientSecret;
     private List<OrderLineResponse> lines;
     private List<OrderStatusHistoryResponse> statusHistory;
 }

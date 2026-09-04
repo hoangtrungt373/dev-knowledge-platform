@@ -17,6 +17,8 @@
     "@mui/icons-material": "^6.1.7",
     "@mui/material": "^6.1.7",
     "@stomp/stompjs": "^7.0.0",
+    "@stripe/react-stripe-js": "^2.9.0",
+    "@stripe/stripe-js": "^4.10.0",
     "@tiptap/core": "^3.30.5",
     "@tiptap/extension-image": "^3.30.5",
     "@tiptap/extension-link": "^3.30.5",

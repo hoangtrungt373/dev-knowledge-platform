@@ -89,21 +89,35 @@ public interface OrderService {
     Order deliver(Integer orderId);
 
     /**
+     * The result of {@link #initiatePayment} — the order after the gateway's verdict (or lack of
+     * one) was applied, plus the Stripe PaymentIntent's {@link #clientSecret} when the charge is
+     * still awaiting the shopper's own client-side confirmation (Option A: Stripe Elements — see
+     * {@code payment.StripePaymentGateway}'s own Javadoc). {@code null} whenever the gateway already
+     * resolved the charge synchronously — every {@code MockPaymentGateway} verdict, or a Stripe
+     * charge that came back definitively declined.
+     */
+    record PaymentInitiationResult(Order order, String clientSecret) {
+    }
+
+    /**
      * Runs the full payment handoff for {@code orderId} on the caller's behalf (US-3.3): commits
      * {@code PENDING -> PAYMENT_PROCESSING} durably, calls the payment gateway, then commits the
      * outcome (US-3.3's idempotent-handoff design — see {@code orderstatus.PaymentHandoffService}'s
      * own Javadoc for why those are two separate transactions, not one). If the gateway call itself
      * throws, the order is deliberately left {@code PAYMENT_PROCESSING} rather than force-failed —
      * that's exactly the state {@code orderstatus.OrderReconciliationJob} (US-3.4) exists to
-     * recover later, not an error to swallow here.
+     * recover later, not an error to swallow here. Safe to call again on an order already
+     * {@code PAYMENT_PROCESSING} — see {@code orderstatus.PaymentHandoffService#startPaymentProcessing}'s
+     * own Javadoc for why that's a deliberate re-entry, not a bug.
      *
      * @param orderId    the order to attempt payment for
      * @param callerUuid the caller's Keycloak UUID — the order must belong to this caller
-     * @return the order after the gateway's verdict has been applied
+     * @return the order after the gateway's verdict has been applied, plus a client secret if the
+     *         shopper still needs to confirm the charge themselves
      * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException if the order
      *         doesn't exist or doesn't belong to {@code callerUuid}
      * @throws com.ttg.devknowledgeplatform.common.exception.BusinessException if the order isn't
-     *         currently {@code PENDING}
+     *         currently {@code PENDING} or {@code PAYMENT_PROCESSING}
      */
-    Order initiatePayment(Integer orderId, String callerUuid);
+    PaymentInitiationResult initiatePayment(Integer orderId, String callerUuid);
 }

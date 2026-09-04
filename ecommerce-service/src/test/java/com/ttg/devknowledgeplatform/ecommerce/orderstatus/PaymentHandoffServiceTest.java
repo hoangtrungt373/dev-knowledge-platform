@@ -100,6 +100,23 @@ class PaymentHandoffServiceTest {
             verify(orderStatusHandlerRegistry, never()).startPaymentProcessing(order);
             verify(paymentRepository, never()).save(any());
         }
+
+        @Test
+        void isReentrantWhenTheOrderIsAlreadyPaymentProcessing() {
+            // Option A (Stripe Elements): the shopper can call pay() again before ever confirming
+            // the first PaymentIntent client-side — this must hand the same order back rather than
+            // rejecting the transition or writing a second Payment row.
+            Order order = orderOwnedBy(OWNER_UUID);
+            order.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+
+            Order result = service.startPaymentProcessing(1, OWNER_UUID);
+
+            assertThat(result).isSameAs(order);
+            verify(orderStatusHandlerRegistry, never()).startPaymentProcessing(any());
+            verify(orderRepository, never()).save(any());
+            verify(paymentRepository, never()).save(any());
+        }
     }
 
     @Nested
@@ -175,7 +192,7 @@ class PaymentHandoffServiceTest {
             when(orderRepository.findById(1)).thenReturn(Optional.of(order));
             when(orderRepository.save(order)).thenReturn(order);
 
-            service.resolvePayment(1, PaymentResult.pending("gw-ref-1"));
+            service.resolvePayment(1, PaymentResult.pending("gw-ref-1", "secret_1"));
 
             verify(orderStatusHandlerRegistry, never()).confirmPayment(order);
             verify(orderStatusHandlerRegistry, never()).failPayment(order);

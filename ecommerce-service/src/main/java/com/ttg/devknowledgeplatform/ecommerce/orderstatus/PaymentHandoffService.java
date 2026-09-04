@@ -106,13 +106,23 @@ public class PaymentHandoffService {
      * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException if the order
      *         doesn't exist or doesn't belong to {@code callerUuid}
      * @throws com.ttg.devknowledgeplatform.common.exception.BusinessException if the order isn't
-     *         currently {@code PENDING}
+     *         currently {@code PENDING} (or already {@code PAYMENT_PROCESSING} — see below)
      */
     @Transactional(rollbackFor = Throwable.class)
     public Order startPaymentProcessing(Integer orderId, String callerUuid) {
         Order order = Validator.notFound(
                 orderRepository.findById(orderId).filter(o -> o.getOwnerUuid().equals(callerUuid)),
                 EcommerceErrorCode.ORDER_NOT_FOUND, orderId);
+        if (order.getStatus() == OrderStatus.PAYMENT_PROCESSING) {
+            // Re-entrant on purpose (Option A, Stripe Elements): the shopper can call pay() again
+            // while a PaymentIntent is still awaiting client-side confirmation (e.g. they closed the
+            // payment dialog before finishing, or just reloaded the page) — there's already a
+            // PENDING Payment row and an idempotency key from the first call, and
+            // payment.PaymentGatewayPort#charge is itself idempotent on that same key (see
+            // StripePaymentGateway's own Javadoc), so the caller just needs the same order handed
+            // back to retry the gateway call, not a second Payment row or a rejected transition.
+            return order;
+        }
         orderStatusHandlerRegistry.startPaymentProcessing(order);
         Order saved = orderRepository.save(order);
         paymentRepository.save(newPendingPayment(saved));

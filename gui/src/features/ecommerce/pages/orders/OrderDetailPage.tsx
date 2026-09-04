@@ -28,6 +28,7 @@ import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import { orderApi } from '../../api/orderApi';
 import { Order } from '../../types';
 import OrderLineRow from '../../components/orders/OrderLineRow';
+import PaymentDialog from '../../components/orders/PaymentDialog';
 import {
   ORDER_HAPPY_PATH,
   ORDER_HAPPY_PATH_ICONS,
@@ -115,6 +116,7 @@ export default function OrderDetailPage(): JSX.Element {
   const [notFound, setNotFound] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -124,22 +126,48 @@ export default function OrderDetailPage(): JSX.Element {
       .finally(() => setLoading(false));
   }, [orderId]);
 
+  const notifyPaymentOutcome = (result: Order): void => {
+    if (result.status === 'CONFIRMED') {
+      showSuccess('Payment successful! Your order is confirmed.');
+    } else if (result.status === 'FAILED') {
+      showError(result.paymentFailureMessage ?? 'Payment was declined. Please try again.');
+    }
+    // Otherwise still PAYMENT_PROCESSING (a real gateway may not resolve instantly) — the page's
+    // own status chip already reflects that, no extra notification needed.
+  };
+
   const handlePay = (): void => {
     guardPay(async () => {
       try {
         const result = await orderApi.pay(orderId);
         setOrder(result);
-        if (result.status === 'CONFIRMED') {
-          showSuccess('Payment successful! Your order is confirmed.');
-        } else if (result.status === 'FAILED') {
-          showError(result.paymentFailureMessage ?? 'Payment was declined. Please try again.');
+        if (result.paymentClientSecret) {
+          // Option A (Stripe Elements): the PaymentIntent isn't confirmed yet — open the dialog
+          // and let the shopper's own browser do that; notifyPaymentOutcome runs once the dialog
+          // reports back, not now (result.status is still PAYMENT_PROCESSING at this point).
+          setPaymentClientSecret(result.paymentClientSecret);
+          return;
         }
-        // Otherwise still PAYMENT_PROCESSING (a real gateway may not resolve instantly) — the
-        // page's own status chip already reflects that, no extra notification needed.
+        // MockPaymentGateway (or an already-declined Stripe charge) — the gateway already
+        // resolved synchronously, nothing for the shopper to confirm.
+        notifyPaymentOutcome(result);
       } catch (err) {
         showError(err instanceof Error ? err.message : 'Could not process payment. Please try again.');
       }
     });
+  };
+
+  const handlePaymentDialogCompleted = async (): Promise<void> => {
+    setPaymentClientSecret(null);
+    try {
+      const refreshed = await orderApi.getById(orderId);
+      setOrder(refreshed);
+      notifyPaymentOutcome(refreshed);
+    } catch {
+      // The confirmation itself already succeeded (or the shopper would have seen an inline
+      // error inside the dialog) — a failed refetch here just means the status chip is stale
+      // until the next reload, not that anything about the payment failed.
+    }
   };
 
   const handleCancel = async (): Promise<void> => {
@@ -389,6 +417,15 @@ export default function OrderDetailPage(): JSX.Element {
         onConfirm={handleCancel}
         onCancel={() => setCancelDialogOpen(false)}
       />
+
+      {paymentClientSecret && (
+        <PaymentDialog
+          open
+          clientSecret={paymentClientSecret}
+          onClose={() => setPaymentClientSecret(null)}
+          onCompleted={handlePaymentDialogCompleted}
+        />
+      )}
     </Box>
   );
 }
