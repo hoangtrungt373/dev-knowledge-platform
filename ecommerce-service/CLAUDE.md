@@ -1996,26 +1996,6 @@ structural-only adapter.
   later" handling of a `requires_payment_method` intent is exactly correct for a shopper who's
   still filling out the form, but has no distinct signal for "genuinely gave up," so a stuck order
   in that state is a known, accepted gap, not a bug; revisit with a real timeout if it matters.
-  - **Bug fix, caught by direct question during a follow-up review, not found proactively:
-    `checkStatus()` was left replaying `charge()` (its pre-Option-A implementation, unchanged by
-    the follow-up above) — correct back when `charge()` called `setConfirm(true)` synchronously
-    (the original `create()` response was already terminal, so replaying it under the same
-    `Idempotency-Key` genuinely returned "what Stripe decided"), silently wrong once `charge()`
-    stopped confirming: Stripe's idempotent replay returns the response **captured at the original
-    `create()` call**, never a live re-fetch, so replaying a since-confirmed intent's original
-    create call returned its permanently frozen `requires_payment_method` snapshot forever — meaning
-    `OrderReconciliationJob` could never actually discover a payment Stripe had already resolved if
-    the webhook was ever delayed or lost, defeating the whole point of the reconciliation safety net
-    for exactly the case it exists to cover. Fixed: `checkStatus()` now calls
-    `PaymentIntent.retrieve(gatewayReference)` — a live GET by id, not a replayed POST — using
-    `Payment.gatewayReference` (already stored) rather than replaying the create request at all.
-    `resultFromIntent`'s `"succeeded"` branch, unreachable via `charge()` in the Option A flow (a
-    fresh, unconfirmed intent can never come back `succeeded`), is what this fix actually makes
-    reachable — separately from (and a genuine backstop for) `webhook.StripeWebhookService`, which
-    builds its own `PaymentResult` directly from the webhook event type and remains the primary,
-    faster path. 319 unit tests unchanged (no dedicated `StripePaymentGateway` test exists, same
-    "real external SDK, no local harness" precedent as always), verified via a real `mvn test` run
-    (JDK 21).
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)

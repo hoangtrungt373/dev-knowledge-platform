@@ -1846,6 +1846,34 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       - Verified via a clean `tsc --noEmit` (only the same pre-existing errors) and a successful
         `vite build` — no Docker in this sandbox, so the actual merged review→payment flow (coupon
         apply/remove, submit, card entry, Cancel Order) is unverified in a real browser.
+    - **Follow-up: `CheckoutPage.tsx` restyled into a two-column "sticky Order Summary" layout, per
+      request — the single-`maxWidth: 700` column made a one-product cart scroll for no reason, and
+      neither phase used the screen's actual width.** Outer wrapper widened from `maxWidth: 700` to
+      `width: '80%'` (still `mx: 'auto'`), and a plain MUI `Stepper` (`Details`/`Payment`, driven by
+      the existing `phase` state, not itself clickable — clicking a step still isn't "go back to
+      review," see above) sits above the columns. The old single combined "Order Summary" `Paper`
+      (lines + Coupons + totals in one block) is split in two:
+      - **Right column** — `Order Summary` `Paper` only (lines + Subtotal/Shipping/Discount/Total),
+        `position: 'sticky', top: 88, alignSelf: 'flex-start'` so it stays put while the left column
+        scrolls — the first sticky-positioned element in this codebase. No coupon management UI
+        lives here anymore; it's read-only totals in both phases now. The dropped-lines warning
+        Chips moved into this Paper too, but gated to `phase === 'review'` only — once the order is
+        placed from whatever lines were available at `confirm()` time, re-showing that warning
+        during the payment phase would just be stale noise.
+      - **Left column** — the actively-changing form: review phase stacks a new standalone
+        `Coupons` `Paper` (the `Chip`s/Add-a-coupon trigger, unchanged logic, just relocated) above
+        the existing `Shipping Address` `Paper` (picker/form/submit button, untouched); payment
+        phase stacks the existing read-only `Shipping To` `Paper` above the existing `Payment`
+        `Paper` (`Elements`+`PaymentElementForm`, untouched) — same content as before this pass in
+        both phases, only the column it renders in changed.
+      - Columns use the same flex gap-compensation technique `ProductDetailPage.tsx`/
+        `ProductFormPage.tsx` already established (`display: 'flex', flexWrap: 'wrap', gap: 4`
+        wrapper; `flex: '1 1 calc(55% - 16px)', minWidth: 400` left, `flex: '1 1 calc(45% - 16px)',
+        minWidth: 320` right) rather than a new pattern, so a narrow viewport still stacks cleanly
+        instead of squeezing.
+      - Verified via a clean `tsc --noEmit` (only the same pre-existing errors) and a successful
+        `vite build` — the sticky-scroll behavior itself and both phases' actual on-screen layout
+        are unverified in a real browser (no Docker in this sandbox).
     - **`CheckoutPage.tsx`'s successful `confirm` used to `navigate` straight to `/orders/:id`
       unconditionally** instead of swapping in an inline `OrderConfirmationView` — that component
       (and the now-dead `CheckCircleOutlineIcon` import) was deleted outright back when Epic 3's
