@@ -13,6 +13,9 @@ import {
   Radio,
   RadioGroup,
   Stack,
+  Step,
+  StepLabel,
+  Stepper,
   TextField,
   Typography,
 } from '@mui/material';
@@ -308,312 +311,342 @@ export default function CheckoutPage(): JSX.Element {
   const droppedLines = preview.lines.filter(l => !l.available);
 
   return (
-    <Box sx={{ p: 3, maxWidth: 700, mx: 'auto' }}>
+    <Box sx={{ p: 3, width: '80%', mx: 'auto' }}>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>Checkout</Typography>
 
-      <Paper variant="outlined" sx={{ p: 2.5, mb: 3 }}>
-        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>Order Summary</Typography>
-        <Stack spacing={2} divider={<Divider />}>
-          {preview.lines.filter(l => l.available).map(line => (
-            <OrderLineRow key={line.variantId} line={toOrderLine(line)} />
-          ))}
-        </Stack>
+      {/* Purely a progress indicator — phase is still driven entirely by the state machine above
+          (handleSubmit/handlePaymentCompleted/handleCancelOrder), the Stepper itself is never
+          clickable and doesn't let the shopper jump between steps (see this page's own note on why
+          "go back to review" isn't supported yet). */}
+      <Stepper activeStep={phase === 'review' ? 0 : 1} sx={{ mb: 4, maxWidth: 480 }}>
+        <Step><StepLabel>Details</StepLabel></Step>
+        <Step><StepLabel>Payment</StepLabel></Step>
+      </Stepper>
 
-        {droppedLines.length > 0 && (
-          <Box sx={{ mt: 2 }}>
-            {droppedLines.map(line => (
-              <Chip
-                key={line.variantId}
-                label={`Variant #${line.variantId} is no longer available and won't be included`}
-                size="small"
-                color="warning"
-                variant="outlined"
-                sx={{ mb: 0.5 }}
-              />
-            ))}
-          </Box>
-        )}
-
-        <Divider sx={{ my: 1.5 }} />
-
-        {/* Coupon feature follow-up — both slots are chosen together inside CouponPickerDialog
-            now (a radio per CouponTarget section); the backend still enforces "at most 2 coupons,
-            1 subtotal + 1 shipping" via two independent slots either way. Shipping shown before
-            Subtotal throughout this page, matching the dialog's own section order. */}
-        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1 }}>
-          <LocalOfferIcon fontSize="small" color="action" />
-          <Typography variant="body2" fontWeight={600}>Coupons</Typography>
-        </Stack>
-        <Stack spacing={1} sx={{ mb: 1.5 }}>
-          {appliedShippingCoupon && (
-            <Chip
-              label={`${appliedShippingCoupon} — shipping discount applied`}
-              color="success"
-              variant="outlined"
-              onDelete={phase === 'review' ? () => handleRemoveCoupon('SHIPPING_FEE') : undefined}
-              sx={{ alignSelf: 'flex-start' }}
-            />
-          )}
-          {appliedSubtotalCoupon && (
-            <Chip
-              label={`${appliedSubtotalCoupon} — subtotal discount applied`}
-              color="success"
-              variant="outlined"
-              onDelete={phase === 'review' ? () => handleRemoveCoupon('SUBTOTAL') : undefined}
-              sx={{ alignSelf: 'flex-start' }}
-            />
-          )}
-          {/* Once payment starts, the order (and its redeemed coupons) is already committed
-              server-side — no way to change it in place yet, so this trigger disappears rather
-              than opening a picker that can no longer do anything. */}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'flex-start' }}>
+        {/* Left column — the actively-changing form for the current phase. Sized to lose the flex-
+            wrap tug-of-war against the sticky right column's own basis (calc(...) gap-compensation,
+            same technique ProductDetailPage/ProductFormPage already use — see gui/CLAUDE.md). */}
+        <Box sx={{ flex: '1 1 calc(55% - 16px)', minWidth: 400 }}>
           {phase === 'review' && (
-            <Button
-              size="small"
-              onClick={() => setCouponPickerOpen(true)}
-              sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
-            >
-              {appliedSubtotalCoupon || appliedShippingCoupon ? 'Manage coupons' : 'Add a coupon'}
-            </Button>
-          )}
-        </Stack>
+            <Stack spacing={3}>
+              <Paper variant="outlined" sx={{ p: 2.5 }}>
+                {/* Coupon feature follow-up — both slots are chosen together inside
+                    CouponPickerDialog now (a radio per CouponTarget section); the backend still
+                    enforces "at most 2 coupons, 1 subtotal + 1 shipping" via two independent slots
+                    either way. Shipping shown before Subtotal throughout this page, matching the
+                    dialog's own section order. */}
+                <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1 }}>
+                  <LocalOfferIcon fontSize="small" color="action" />
+                  <Typography variant="subtitle1" fontWeight={600}>Coupons</Typography>
+                </Stack>
+                <Stack spacing={1}>
+                  {appliedShippingCoupon && (
+                    <Chip
+                      label={`${appliedShippingCoupon} — shipping discount applied`}
+                      color="success"
+                      variant="outlined"
+                      onDelete={() => handleRemoveCoupon('SHIPPING_FEE')}
+                      sx={{ alignSelf: 'flex-start' }}
+                    />
+                  )}
+                  {appliedSubtotalCoupon && (
+                    <Chip
+                      label={`${appliedSubtotalCoupon} — subtotal discount applied`}
+                      color="success"
+                      variant="outlined"
+                      onDelete={() => handleRemoveCoupon('SUBTOTAL')}
+                      sx={{ alignSelf: 'flex-start' }}
+                    />
+                  )}
+                  <Button
+                    size="small"
+                    onClick={() => setCouponPickerOpen(true)}
+                    sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
+                  >
+                    {appliedSubtotalCoupon || appliedShippingCoupon ? 'Manage coupons' : 'Add a coupon'}
+                  </Button>
+                </Stack>
+              </Paper>
 
-        <Divider sx={{ my: 1.5 }} />
-        <Stack direction="row" justifyContent="space-between">
-          <Typography variant="body2" color="text.secondary">Subtotal</Typography>
-          <Typography variant="body2">{formatPrice(preview.subtotal)}</Typography>
-        </Stack>
-        {/* Shipping shown before the subtotal Discount row, matching the Coupons section/dialog's
-            own Shipping-before-Subtotal ordering throughout this page. */}
-        <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Typography variant="body2" color="text.secondary">Shipping</Typography>
-          {preview.originalShippingFee > preview.shippingFee ? (
-            // A SHIPPING_FEE coupon discounted the fee — the only mechanism that can do this now
-            // (FreeOverThresholdShippingFeeCalculator's automatic threshold waiver was demoted
-            // once it turned out to conflict with shipping coupons, see that class's own Javadoc)
-            // — which can be *partial* (percentage/fixed, not necessarily down to zero), so show
-            // the fee it would have been, struck through, next to what's actually charged now.
-            // Only label it "Free" when the charge is genuinely zero; a partial discount still
-            // shows its own discounted price, not a misleading "Free".
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Typography variant="body2" color="text.secondary" sx={{ textDecoration: 'line-through' }}>
-                {formatPrice(preview.originalShippingFee)}
-              </Typography>
-              {preview.shippingFee === 0 ? (
-                <Typography variant="body2" color="success.main" fontWeight={600}>Free</Typography>
+              <Paper variant="outlined" sx={{ p: 2.5 }} component="form" onSubmit={handleSubmit}>
+                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>Shipping Address</Typography>
+
+                {savedAddresses.length > 0 && (
+                  <RadioGroup
+                    value={addressChoice}
+                    onChange={(e) => setAddressChoice(e.target.value)}
+                    sx={{ mb: 2 }}
+                  >
+                    <Stack spacing={1}>
+                      {savedAddresses.map(saved => (
+                        <FormControlLabel
+                          key={saved.id}
+                          value={String(saved.id)}
+                          control={<Radio disableRipple />}
+                          sx={{
+                            m: 0,
+                            p: 1,
+                            border: '1px solid',
+                            borderColor: addressChoice === String(saved.id) ? 'primary.main' : 'divider',
+                            borderRadius: 1,
+                            alignItems: 'flex-start',
+                          }}
+                          label={
+                            <Box sx={{ pt: 0.5 }}>
+                              <Stack direction="row" alignItems="center" spacing={1}>
+                                <Typography variant="body2" fontWeight={600}>
+                                  {saved.label || saved.fullName}
+                                </Typography>
+                                {saved.defaultAddress && (
+                                  <Chip label="Default" size="small" color="primary" variant="outlined" />
+                                )}
+                              </Stack>
+                              <Typography variant="body2" color="text.secondary">
+                                {formatSavedAddress(saved)}
+                              </Typography>
+                            </Box>
+                          }
+                        />
+                      ))}
+                      <FormControlLabel
+                        value={NEW_ADDRESS_OPTION}
+                        control={<Radio disableRipple />}
+                        label="Enter a new address"
+                        sx={{
+                          m: 0,
+                          p: 1,
+                          border: '1px solid',
+                          borderColor: addressChoice === NEW_ADDRESS_OPTION ? 'primary.main' : 'divider',
+                          borderRadius: 1,
+                        }}
+                      />
+                    </Stack>
+                  </RadioGroup>
+                )}
+        
+                {!usingSavedAddress && (
+                  <Stack spacing={2}>
+                    <TextField
+                      label="Full Name"
+                      fullWidth
+                      value={address.fullName}
+                      onChange={(e) => setAddress({ ...address, fullName: e.target.value })}
+                      error={!!errors.fullName}
+                      helperText={errors.fullName}
+                    />
+                    <TextField
+                      label="Phone Number"
+                      fullWidth
+                      value={address.phone ?? ''}
+                      onChange={(e) => setAddress({ ...address, phone: e.target.value })}
+                      error={!!errors.phone}
+                      helperText={errors.phone}
+                      inputProps={{ maxLength: 30 }}
+                    />
+                    <TextField
+                      label="Email"
+                      type="email"
+                      fullWidth
+                      value={address.email ?? ''}
+                      onChange={(e) => setAddress({ ...address, email: e.target.value })}
+                      error={!!errors.email}
+                      helperText={errors.email}
+                      inputProps={{ maxLength: 255 }}
+                    />
+                    <TextField
+                      label="Address Line 1"
+                      fullWidth
+                      value={address.line1}
+                      onChange={(e) => setAddress({ ...address, line1: e.target.value })}
+                      error={!!errors.line1}
+                      helperText={errors.line1}
+                    />
+                    <TextField
+                      label="Address Line 2 (optional)"
+                      fullWidth
+                      value={address.line2}
+                      onChange={(e) => setAddress({ ...address, line2: e.target.value })}
+                    />
+                    <Stack direction="row" spacing={2}>
+                      <TextField
+                        label="City"
+                        fullWidth
+                        value={address.city}
+                        onChange={(e) => setAddress({ ...address, city: e.target.value })}
+                        error={!!errors.city}
+                        helperText={errors.city}
+                      />
+                      <TextField
+                        label="State"
+                        fullWidth
+                        value={address.state}
+                        onChange={(e) => setAddress({ ...address, state: e.target.value })}
+                        error={!!errors.state}
+                        helperText={errors.state}
+                      />
+                    </Stack>
+                    <Stack direction="row" spacing={2}>
+                      <TextField
+                        label="Postal Code"
+                        fullWidth
+                        value={address.postalCode}
+                        onChange={(e) => setAddress({ ...address, postalCode: e.target.value })}
+                        error={!!errors.postalCode}
+                        helperText={errors.postalCode}
+                      />
+                      <TextField
+                        label="Country"
+                        fullWidth
+                        value={address.country}
+                        onChange={(e) => setAddress({ ...address, country: e.target.value })}
+                        error={!!errors.country}
+                        helperText={errors.country}
+                      />
+                    </Stack>
+        
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={saveAddress}
+                          onChange={(e) => setSaveAddress(e.target.checked)}
+                          disableRipple
+                          sx={{ p: 0 }}
+                        />
+                      }
+                      label="Save this address for future orders"
+                      sx={{ ml: 0 }}
+                    />
+                    {saveAddress && (
+                      <TextField
+                        label="Label (optional)"
+                        placeholder="Home, Work…"
+                        fullWidth
+                        value={addressLabel}
+                        onChange={(e) => setAddressLabel(e.target.value)}
+                        inputProps={{ maxLength: 50 }}
+                      />
+                    )}
+                  </Stack>
+                )}
+
+                <Button type="submit" variant="contained" size="large" fullWidth disabled={submitting} sx={{ mt: 2 }}>
+                  {submitting ? <CircularProgress size={24} color="inherit" /> : `Place Order & Pay — ${formatPrice(preview.total)}`}
+                </Button>
+              </Paper>
+            </Stack>
+          )}
+
+          {phase === 'payment' && (
+            <Stack spacing={3}>
+              <Paper variant="outlined" sx={{ p: 2.5 }}>
+                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Shipping To</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {(() => {
+                    const saved = usingSavedAddress ? savedAddresses.find(a => String(a.id) === addressChoice) : undefined;
+                    return saved ? formatSavedAddress(saved) : formatAddressState(address);
+                  })()}
+                </Typography>
+              </Paper>
+
+              <Paper variant="outlined" sx={{ p: 2.5 }}>
+                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>Payment</Typography>
+                {publishableKey && paymentClientSecret && (
+                  <Elements stripe={getStripePromise(publishableKey)} options={{ clientSecret: paymentClientSecret }}>
+                    <PaymentElementForm
+                      onCompleted={handlePaymentCompleted}
+                      secondaryAction={{ label: 'Cancel Order', onClick: handleCancelOrder, disabled: cancellingOrder }}
+                      payButtonLabel={`Pay ${formatPrice(preview.total)}`}
+                    />
+                  </Elements>
+                )}
+              </Paper>
+            </Stack>
+          )}
+        </Box>
+
+        {/* Right column — Order Summary only (no coupon management UI here; that lives in the
+            left column's own Coupons Paper during review, and is frozen/read-only once payment
+            starts). Stays visible while the shopper scrolls a taller left column — first use of
+            sticky positioning in this codebase; top offset matches the app shell's fixed header
+            height so the summary settles just beneath it rather than under it. */}
+        <Box
+          sx={{
+            flex: '1 1 calc(45% - 16px)',
+            minWidth: 320,
+            position: 'sticky',
+            top: 88,
+            alignSelf: 'flex-start',
+          }}
+        >
+          <Paper variant="outlined" sx={{ p: 2.5 }}>
+            <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>Order Summary</Typography>
+            <Stack spacing={2} divider={<Divider />}>
+              {preview.lines.filter(l => l.available).map(line => (
+                <OrderLineRow key={line.variantId} line={toOrderLine(line)} />
+              ))}
+            </Stack>
+
+            {/* Once payment starts the order is already placed from whatever lines were available
+                at confirm() time — a dropped-line warning would just be stale noise here. */}
+            {phase === 'review' && droppedLines.length > 0 && (
+              <Box sx={{ mt: 2 }}>
+                {droppedLines.map(line => (
+                  <Chip
+                    key={line.variantId}
+                    label={`Variant #${line.variantId} is no longer available and won't be included`}
+                    size="small"
+                    color="warning"
+                    variant="outlined"
+                    sx={{ mb: 0.5 }}
+                  />
+                ))}
+              </Box>
+            )}
+
+            <Divider sx={{ my: 1.5 }} />
+            <Stack direction="row" justifyContent="space-between">
+              <Typography variant="body2" color="text.secondary">Subtotal</Typography>
+              <Typography variant="body2">{formatPrice(preview.subtotal)}</Typography>
+            </Stack>
+            {/* Shipping shown before the subtotal Discount row, matching the Coupons section/
+                dialog's own Shipping-before-Subtotal ordering throughout this page. */}
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="body2" color="text.secondary">Shipping</Typography>
+              {preview.originalShippingFee > preview.shippingFee ? (
+                // A SHIPPING_FEE coupon discounted the fee — the only mechanism that can do this
+                // now (FreeOverThresholdShippingFeeCalculator's automatic threshold waiver was
+                // demoted once it turned out to conflict with shipping coupons, see that class's
+                // own Javadoc) — which can be *partial* (percentage/fixed, not necessarily down to
+                // zero), so show the fee it would have been, struck through, next to what's
+                // actually charged now. Only label it "Free" when the charge is genuinely zero.
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="body2" color="text.secondary" sx={{ textDecoration: 'line-through' }}>
+                    {formatPrice(preview.originalShippingFee)}
+                  </Typography>
+                  {preview.shippingFee === 0 ? (
+                    <Typography variant="body2" color="success.main" fontWeight={600}>Free</Typography>
+                  ) : (
+                    <Typography variant="body2" color="success.main">{formatPrice(preview.shippingFee)}</Typography>
+                  )}
+                </Stack>
               ) : (
-                <Typography variant="body2" color="success.main">{formatPrice(preview.shippingFee)}</Typography>
+                <Typography variant="body2">{formatPrice(preview.shippingFee)}</Typography>
               )}
             </Stack>
-          ) : (
-            <Typography variant="body2">{formatPrice(preview.shippingFee)}</Typography>
-          )}
-        </Stack>
-        {preview.subtotalDiscountAmount > 0 && (
-          <Stack direction="row" justifyContent="space-between">
-            <Typography variant="body2" color="text.secondary">Discount</Typography>
-            <Typography variant="body2" color="success.main">−{formatPrice(preview.subtotalDiscountAmount)}</Typography>
-          </Stack>
-        )}
-        <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
-          <Typography variant="subtitle1" fontWeight={700}>Total</Typography>
-          <Typography variant="subtitle1" fontWeight={700}>{formatPrice(preview.total)}</Typography>
-        </Stack>
-      </Paper>
-
-      {phase === 'review' && (
-      <Paper variant="outlined" sx={{ p: 2.5 }} component="form" onSubmit={handleSubmit}>
-        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>Shipping Address</Typography>
-
-        {savedAddresses.length > 0 && (
-          <RadioGroup
-            value={addressChoice}
-            onChange={(e) => setAddressChoice(e.target.value)}
-            sx={{ mb: 2 }}
-          >
-            <Stack spacing={1}>
-              {savedAddresses.map(saved => (
-                <FormControlLabel
-                  key={saved.id}
-                  value={String(saved.id)}
-                  control={<Radio disableRipple />}
-                  sx={{
-                    m: 0,
-                    p: 1,
-                    border: '1px solid',
-                    borderColor: addressChoice === String(saved.id) ? 'primary.main' : 'divider',
-                    borderRadius: 1,
-                    alignItems: 'flex-start',
-                  }}
-                  label={
-                    <Box sx={{ pt: 0.5 }}>
-                      <Stack direction="row" alignItems="center" spacing={1}>
-                        <Typography variant="body2" fontWeight={600}>
-                          {saved.label || saved.fullName}
-                        </Typography>
-                        {saved.defaultAddress && (
-                          <Chip label="Default" size="small" color="primary" variant="outlined" />
-                        )}
-                      </Stack>
-                      <Typography variant="body2" color="text.secondary">
-                        {formatSavedAddress(saved)}
-                      </Typography>
-                    </Box>
-                  }
-                />
-              ))}
-              <FormControlLabel
-                value={NEW_ADDRESS_OPTION}
-                control={<Radio disableRipple />}
-                label="Enter a new address"
-                sx={{
-                  m: 0,
-                  p: 1,
-                  border: '1px solid',
-                  borderColor: addressChoice === NEW_ADDRESS_OPTION ? 'primary.main' : 'divider',
-                  borderRadius: 1,
-                }}
-              />
-            </Stack>
-          </RadioGroup>
-        )}
-
-        {!usingSavedAddress && (
-          <Stack spacing={2}>
-            <TextField
-              label="Full Name"
-              fullWidth
-              value={address.fullName}
-              onChange={(e) => setAddress({ ...address, fullName: e.target.value })}
-              error={!!errors.fullName}
-              helperText={errors.fullName}
-            />
-            <TextField
-              label="Phone Number"
-              fullWidth
-              value={address.phone ?? ''}
-              onChange={(e) => setAddress({ ...address, phone: e.target.value })}
-              error={!!errors.phone}
-              helperText={errors.phone}
-              inputProps={{ maxLength: 30 }}
-            />
-            <TextField
-              label="Email"
-              type="email"
-              fullWidth
-              value={address.email ?? ''}
-              onChange={(e) => setAddress({ ...address, email: e.target.value })}
-              error={!!errors.email}
-              helperText={errors.email}
-              inputProps={{ maxLength: 255 }}
-            />
-            <TextField
-              label="Address Line 1"
-              fullWidth
-              value={address.line1}
-              onChange={(e) => setAddress({ ...address, line1: e.target.value })}
-              error={!!errors.line1}
-              helperText={errors.line1}
-            />
-            <TextField
-              label="Address Line 2 (optional)"
-              fullWidth
-              value={address.line2}
-              onChange={(e) => setAddress({ ...address, line2: e.target.value })}
-            />
-            <Stack direction="row" spacing={2}>
-              <TextField
-                label="City"
-                fullWidth
-                value={address.city}
-                onChange={(e) => setAddress({ ...address, city: e.target.value })}
-                error={!!errors.city}
-                helperText={errors.city}
-              />
-              <TextField
-                label="State"
-                fullWidth
-                value={address.state}
-                onChange={(e) => setAddress({ ...address, state: e.target.value })}
-                error={!!errors.state}
-                helperText={errors.state}
-              />
-            </Stack>
-            <Stack direction="row" spacing={2}>
-              <TextField
-                label="Postal Code"
-                fullWidth
-                value={address.postalCode}
-                onChange={(e) => setAddress({ ...address, postalCode: e.target.value })}
-                error={!!errors.postalCode}
-                helperText={errors.postalCode}
-              />
-              <TextField
-                label="Country"
-                fullWidth
-                value={address.country}
-                onChange={(e) => setAddress({ ...address, country: e.target.value })}
-                error={!!errors.country}
-                helperText={errors.country}
-              />
-            </Stack>
-
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={saveAddress}
-                  onChange={(e) => setSaveAddress(e.target.checked)}
-                  disableRipple
-                  sx={{ p: 0 }}
-                />
-              }
-              label="Save this address for future orders"
-              sx={{ ml: 0 }}
-            />
-            {saveAddress && (
-              <TextField
-                label="Label (optional)"
-                placeholder="Home, Work…"
-                fullWidth
-                value={addressLabel}
-                onChange={(e) => setAddressLabel(e.target.value)}
-                inputProps={{ maxLength: 50 }}
-              />
+            {preview.subtotalDiscountAmount > 0 && (
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">Discount</Typography>
+                <Typography variant="body2" color="success.main">−{formatPrice(preview.subtotalDiscountAmount)}</Typography>
+              </Stack>
             )}
-          </Stack>
-        )}
-
-        <Button type="submit" variant="contained" size="large" fullWidth disabled={submitting} sx={{ mt: 2 }}>
-          {submitting ? <CircularProgress size={24} color="inherit" /> : `Place Order & Pay — ${formatPrice(preview.total)}`}
-        </Button>
-      </Paper>
-      )}
-
-      {phase === 'payment' && (
-        <>
-          <Paper variant="outlined" sx={{ p: 2.5, mb: 3 }}>
-            <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Shipping To</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {(() => {
-                const saved = usingSavedAddress ? savedAddresses.find(a => String(a.id) === addressChoice) : undefined;
-                return saved ? formatSavedAddress(saved) : formatAddressState(address);
-              })()}
-            </Typography>
+            <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
+              <Typography variant="subtitle1" fontWeight={700}>Total</Typography>
+              <Typography variant="subtitle1" fontWeight={700}>{formatPrice(preview.total)}</Typography>
+            </Stack>
           </Paper>
-
-          <Paper variant="outlined" sx={{ p: 2.5 }}>
-            <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>Payment</Typography>
-            {publishableKey && paymentClientSecret && (
-              <Elements stripe={getStripePromise(publishableKey)} options={{ clientSecret: paymentClientSecret }}>
-                <PaymentElementForm
-                  onCompleted={handlePaymentCompleted}
-                  secondaryAction={{ label: 'Cancel Order', onClick: handleCancelOrder, disabled: cancellingOrder }}
-                  payButtonLabel={`Pay ${formatPrice(preview.total)}`}
-                />
-              </Elements>
-            )}
-          </Paper>
-        </>
-      )}
+        </Box>
+      </Box>
 
       {couponPickerOpen && (
         <CouponPickerDialog
