@@ -1792,15 +1792,72 @@ slice" benefit without that cost — revisit only if a genuine second deployable
         `reportWebVitals.ts`/`@chat` errors this file already documents elsewhere) and a successful
         `vite build` — no Docker in this sandbox, so the actual card-entry/3DS/decline flow through
         a real Stripe test account is unverified in a real browser.
-    - **`CheckoutPage.tsx`'s successful `confirm` now `navigate`s straight to `/orders/:id`**
-      instead of swapping in an inline `OrderConfirmationView` — that component (and the now-dead
-      `CheckCircleOutlineIcon` import) was deleted outright. It existed only because no "get order
-      by id" endpoint existed yet when Cart & Checkout were built (see that section's own note
-      above); now that Epic 3 built one, showing the real page — with a working **Pay Now** button
-      — is strictly better than re-deriving a read-only summary from the checkout response alone.
-      `OrderConfirmation`'s own type (`lines`/`address`/`droppedLines` etc.) is untouched and still
-      used for the dropped-lines warning `CheckoutPage` shows *before* confirming — only the
-      post-confirm view changed.
+    - **Follow-up: `CheckoutPage.tsx` merged into a two-phase page (`'review'`/`'payment'`) instead
+      of handing off to `OrderDetailPage`'s separate "Pay Now" click, per request — "so user do not
+      have to do 2 steps: Place Order -> Pay Now."** The Stripe Elements mechanics themselves were
+      extracted out of `PaymentDialog.tsx` into a new shared `components/orders/PaymentElementForm.tsx`
+      (the `PaymentElement`/`stripe.confirmPayment` logic, no `Dialog` chrome of its own) —
+      `PaymentDialog.tsx` is now a thin wrapper around it (its own secondary button just closes the
+      dialog), and `CheckoutPage.tsx`'s payment phase renders it inline inside a plain `Paper`
+      instead. The `loadStripe()` caching (`getStripePromise`, keyed by publishable key so the
+      script is only ever injected once for the app's lifetime) moved to a new shared
+      `utils/stripe.ts`, used by both.
+      - **Coupon-total safety was a real question raised before building this** (a shopper can
+        apply/remove a coupon on this same page) — resolved by the existing call ordering, not new
+        logic: `checkoutApi.confirm()` (which bakes the coupon-adjusted total into the just-created
+        `Order` and consumes the redemption) always completes *before* `orderApi.pay()` ever reads
+        `Order.total` to create the PaymentIntent, so there is no window where a coupon could
+        change after the intent's amount is already fixed — same guarantee the old two-page flow
+        already had, just without a page navigation in between. The Coupons section's `Chip`
+        `onDelete`/"Add a coupon" trigger are hidden once `phase === 'payment'` (`onDelete` passed
+        as `undefined` rather than a handler — MUI's own way to render a chip with no delete
+        affordance) — editing a coupon after the order is already committed isn't supported (see
+        below).
+      - **`handleSubmit` now chains `checkoutApi.confirm()` → `orderApi.pay()` → (Option A only)
+        `paymentConfigApi.get()`**, all before ever flipping `phase` to `'payment'` — this is why
+        the payment-phase `Paper` needs no loading/error state of its own for the config fetch
+        (unlike `PaymentDialog.tsx`, which fetches it *after* opening): by the time that `Paper`
+        can render at all, `publishableKey`/`paymentClientSecret` are already known. A `pay()`
+        failure **after** `confirm()` already succeeded doesn't strand the shopper on this page —
+        the order genuinely exists at that point, so the fallback is `navigate` to
+        `/account/orders/{orderId}` (with an error toast), where the existing Pay Now button can
+        retry (`PaymentHandoffService`'s own re-entrant `startPaymentProcessing`, from the earlier
+        `checkStatus` fix session, makes that safe).
+      - **"Go back to review" (editing address/coupon after payment starts) was explicitly scoped
+        out, per request, for a real reason: nothing about the order is actually a draft by that
+        point.** `confirm()` has already reserved stock, redeemed any coupon, removed the ordered
+        lines from the cart, and snapshotted the address onto the `Order` row — there's no backend
+        capability today to amend a `PENDING` order's address or swap its coupon in place (and
+        doing so would also mean cancelling/recreating the PaymentIntent, since its amount can't
+        be changed after creation). Instead, the payment phase's secondary button is **Cancel
+        Order** (`handleCancelOrder`, wired as `PaymentElementForm`'s `secondaryAction`) — calls
+        the existing `orderApi.cancel` (releases the stock reservation, same as `OrderDetailPage`'s
+        own Cancel Order) and returns to `/cart`. Honest about the real limitation: the cart is
+        already empty at that point (emptied by `confirm()`), so this is a genuine "start over,"
+        not a seamless resume — flagged as a known, deliberate gap, not a bug; real in-place
+        amendment is a bigger follow-up (new backend endpoints, PaymentIntent cancel/recreate) if
+        it turns out shoppers actually want it.
+      - **`handlePaymentCompleted` deliberately shows no success toast** — `stripe.confirmPayment`
+        resolving without an error only means the shopper's own confirmation attempt went through,
+        not that `webhook.StripeWebhookService` has actually resolved `CONFIRMED` yet (same
+        "don't announce an outcome you don't actually know" caution `OrderDetailPage`'s own
+        `PaymentDialog` flow already established) — it just navigates to the order's detail page,
+        whose own status chip/`Stepper`/alerts show whatever the true state turns out to be.
+      - Verified via a clean `tsc --noEmit` (only the same pre-existing errors) and a successful
+        `vite build` — no Docker in this sandbox, so the actual merged review→payment flow (coupon
+        apply/remove, submit, card entry, Cancel Order) is unverified in a real browser.
+    - **`CheckoutPage.tsx`'s successful `confirm` used to `navigate` straight to `/orders/:id`
+      unconditionally** instead of swapping in an inline `OrderConfirmationView` — that component
+      (and the now-dead `CheckCircleOutlineIcon` import) was deleted outright back when Epic 3's
+      "get order by id" endpoint first landed, since showing the real page (with a working **Pay
+      Now** button) was strictly better than re-deriving a read-only summary from the checkout
+      response alone. **The follow-up directly above supersedes the "unconditionally" part** — a
+      successful `confirm` now navigates away immediately only when the gateway resolves
+      synchronously (`MockPaymentGateway`, or an outright-declined Stripe charge); a real Stripe
+      charge instead stays on this page for the new payment phase. `OrderConfirmation`'s own type
+      (`lines`/`address`/`droppedLines` etc.) is untouched and still used for the dropped-lines
+      warning `CheckoutPage` shows *before* confirming — only the post-confirm view's own branching
+      changed.
     - `NavBar.tsx` gained an "Orders" button (`ReceiptLongIcon`, no badge — unlike Cart's
       item-count badge, there's no obviously-right count to show, e.g. "orders needing payment" vs.
       "orders in transit" would be arbitrary choices) next to Cart, same `isActive`/

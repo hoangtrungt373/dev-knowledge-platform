@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { Elements } from '@stripe/react-stripe-js';
 import {
   Box,
   Button,
@@ -22,10 +23,14 @@ import { isValidEmail } from '@shared/utils/validation';
 import { useCart } from '../../context/CartContext';
 import { checkoutApi } from '../../api/checkoutApi';
 import { addressApi } from '../../api/addressApi';
+import { orderApi } from '../../api/orderApi';
+import { paymentConfigApi } from '../../api/paymentConfigApi';
 import { Address, CartLine, CheckoutPreview, CouponTarget, OrderLine, SavedAddress } from '../../types';
 import { formatPrice } from '../../utils/format';
+import { getStripePromise } from '../../utils/stripe';
 import OrderLineRow from '../../components/orders/OrderLineRow';
 import CouponPickerDialog from '../../components/CouponPickerDialog';
+import PaymentElementForm from '../../components/orders/PaymentElementForm';
 
 /** An available CartLine has every one of these fields populated (see CartLine's own doc comment
  * — they're only optional to model an unavailable line, which is filtered out before this runs) —
@@ -68,12 +73,35 @@ function formatSavedAddress(a: SavedAddress): string {
   return `${a.fullName}${contact ? ` · ${contact}` : ''}, ${a.line1}${a.line2 ? `, ${a.line2}` : ''}, ${a.city}, ${a.state} ${a.postalCode}, ${a.country}`;
 }
 
+/** Same shape as `formatSavedAddress`, for the fresh-address form's own local `Address` state —
+ * used by the payment phase's read-only "Shipping To" summary when the shopper typed a new
+ * address rather than picking a saved one. */
+function formatAddressState(a: Address): string {
+  const contact = [a.phone, a.email].filter(Boolean).join(' · ');
+  return `${a.fullName}${contact ? ` · ${contact}` : ''}, ${a.line1}${a.line2 ? `, ${a.line2}` : ''}, ${a.city}, ${a.state} ${a.postalCode}, ${a.country}`;
+}
+
 export default function CheckoutPage(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
-  const { showError } = useNotification();
+  const { showError, showSuccess } = useNotification();
   const { refresh: refreshCart } = useCart();
   const { loading: submitting, guard } = useSubmitGuard();
+
+  // Two-phase checkout (per request — merges what used to be a separate "Place Order" ->
+  // OrderDetailPage "Pay Now" hop into one page): 'review' is everything below (address/coupons/
+  // Place Order button); 'payment' swaps in a read-only summary + inline Stripe Elements once the
+  // order's been created and its PaymentIntent is awaiting client-side confirmation. Going back to
+  // 'review' to edit address/coupons isn't supported yet (see handleCancelOrder's own note) —
+  // deliberately deferred, not an oversight.
+  const [phase, setPhase] = useState<'review' | 'payment'>('review');
+  const [createdOrderId, setCreatedOrderId] = useState<number | null>(null);
+  const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null);
+  // Fetched synchronously in handleSubmit before phase ever flips to 'payment' — unlike
+  // PaymentDialog.tsx (which fetches it after opening, so it needs its own loading/error states),
+  // this is always non-null by the time the payment Paper below renders at all.
+  const [publishableKey, setPublishableKey] = useState<string | null>(null);
+  const [cancellingOrder, setCancellingOrder] = useState(false);
 
   // Set by CartPage's "Checkout Selected" flow (post-Epic-2 follow-up) — undefined for the
   // ordinary "Proceed to Checkout" flow (whole cart) or a direct navigation to this page.
@@ -180,6 +208,7 @@ export default function CheckoutPage(): JSX.Element {
     e.preventDefault();
     if (!validate()) return;
     guard(async () => {
+      let orderId: number;
       try {
         const addressInput = usingSavedAddress
           ? { savedAddressId: Number(addressChoice) }
@@ -194,15 +223,66 @@ export default function CheckoutPage(): JSX.Element {
           appliedSubtotalCoupon ?? undefined,
           appliedShippingCoupon ?? undefined,
         );
+        orderId = result.orderId;
         refreshCart(); // backend removes only the ordered lines on success — resync the badge/context
-        // Order Detail (Epic 3) is now the canonical "here's your order" view — it has the real
-        // Pay Now button this page's own former inline confirmation never could. Lives under the
-        // Account shell now (moved from a top-level /orders/:id route per request).
-        navigate(`/account/orders/${result.orderId}`);
       } catch (err) {
         showError(err instanceof Error ? err.message : 'Could not place your order. Please try again.');
+        return;
+      }
+
+      // The order now exists — from here on, any failure still leaves a real, recoverable order
+      // behind, so the fallback is always "send the shopper to its detail page" (below), never a
+      // dead-end error on this one.
+      try {
+        const paid = await orderApi.pay(orderId);
+        if (paid.paymentClientSecret) {
+          // Option A: the PaymentIntent still needs the shopper's own client-side confirmation —
+          // stay on this page and swap into the payment phase instead of navigating away.
+          const config = await paymentConfigApi.get();
+          if (!config.publishableKey) {
+            throw new Error('Payment is not configured.');
+          }
+          setCreatedOrderId(orderId);
+          setPaymentClientSecret(paid.paymentClientSecret);
+          setPublishableKey(config.publishableKey);
+          setPhase('payment');
+          return;
+        }
+        // MockPaymentGateway (or an outright-declined Stripe charge) already resolved the charge
+        // synchronously — nothing left for the shopper to confirm.
+        navigate(`/account/orders/${orderId}`);
+      } catch (err) {
+        showError(err instanceof Error
+          ? err.message
+          : 'Your order was placed, but payment could not be started. You can retry from your order.');
+        navigate(`/account/orders/${orderId}`);
       }
     });
+  };
+
+  /** Cancels the just-created order outright (releases its stock reservation) rather than
+   * supporting "go back and edit the coupon/address" — the order/coupon-redemption/cart-removal
+   * are all already committed server-side by this point, and there's no backend capability yet to
+   * amend a PENDING order in place. See this page's own top-of-state comment. */
+  const handleCancelOrder = (): void => {
+    if (!createdOrderId) return;
+    setCancellingOrder(true);
+    orderApi.cancel(createdOrderId)
+      .then(() => {
+        showSuccess('Order cancelled — nothing was charged.');
+        navigate('/cart');
+      })
+      .catch(err => showError(err instanceof Error ? err.message : 'Could not cancel this order.'))
+      .finally(() => setCancellingOrder(false));
+  };
+
+  /** `stripe.confirmPayment` resolved with no error — the definitive CONFIRMED/FAILED outcome
+   * still comes from `webhook.StripeWebhookService`, not this call, so this deliberately doesn't
+   * announce a verdict it doesn't actually know yet; OrderDetailPage's own status chip/alerts pick
+   * up whatever the webhook (or a still-in-flight PAYMENT_PROCESSING) ends up showing. */
+  const handlePaymentCompleted = (): void => {
+    if (!createdOrderId) return;
+    navigate(`/account/orders/${createdOrderId}`);
   };
 
   if (previewLoading) {
@@ -270,7 +350,7 @@ export default function CheckoutPage(): JSX.Element {
               label={`${appliedShippingCoupon} — shipping discount applied`}
               color="success"
               variant="outlined"
-              onDelete={() => handleRemoveCoupon('SHIPPING_FEE')}
+              onDelete={phase === 'review' ? () => handleRemoveCoupon('SHIPPING_FEE') : undefined}
               sx={{ alignSelf: 'flex-start' }}
             />
           )}
@@ -279,17 +359,22 @@ export default function CheckoutPage(): JSX.Element {
               label={`${appliedSubtotalCoupon} — subtotal discount applied`}
               color="success"
               variant="outlined"
-              onDelete={() => handleRemoveCoupon('SUBTOTAL')}
+              onDelete={phase === 'review' ? () => handleRemoveCoupon('SUBTOTAL') : undefined}
               sx={{ alignSelf: 'flex-start' }}
             />
           )}
-          <Button
-            size="small"
-            onClick={() => setCouponPickerOpen(true)}
-            sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
-          >
-            {appliedSubtotalCoupon || appliedShippingCoupon ? 'Manage coupons' : 'Add a coupon'}
-          </Button>
+          {/* Once payment starts, the order (and its redeemed coupons) is already committed
+              server-side — no way to change it in place yet, so this trigger disappears rather
+              than opening a picker that can no longer do anything. */}
+          {phase === 'review' && (
+            <Button
+              size="small"
+              onClick={() => setCouponPickerOpen(true)}
+              sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
+            >
+              {appliedSubtotalCoupon || appliedShippingCoupon ? 'Manage coupons' : 'Add a coupon'}
+            </Button>
+          )}
         </Stack>
 
         <Divider sx={{ my: 1.5 }} />
@@ -335,6 +420,7 @@ export default function CheckoutPage(): JSX.Element {
         </Stack>
       </Paper>
 
+      {phase === 'review' && (
       <Paper variant="outlined" sx={{ p: 2.5 }} component="form" onSubmit={handleSubmit}>
         <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>Shipping Address</Typography>
 
@@ -497,9 +583,37 @@ export default function CheckoutPage(): JSX.Element {
         )}
 
         <Button type="submit" variant="contained" size="large" fullWidth disabled={submitting} sx={{ mt: 2 }}>
-          {submitting ? <CircularProgress size={24} color="inherit" /> : `Place Order — ${formatPrice(preview.total)}`}
+          {submitting ? <CircularProgress size={24} color="inherit" /> : `Place Order & Pay — ${formatPrice(preview.total)}`}
         </Button>
       </Paper>
+      )}
+
+      {phase === 'payment' && (
+        <>
+          <Paper variant="outlined" sx={{ p: 2.5, mb: 3 }}>
+            <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Shipping To</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {(() => {
+                const saved = usingSavedAddress ? savedAddresses.find(a => String(a.id) === addressChoice) : undefined;
+                return saved ? formatSavedAddress(saved) : formatAddressState(address);
+              })()}
+            </Typography>
+          </Paper>
+
+          <Paper variant="outlined" sx={{ p: 2.5 }}>
+            <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>Payment</Typography>
+            {publishableKey && paymentClientSecret && (
+              <Elements stripe={getStripePromise(publishableKey)} options={{ clientSecret: paymentClientSecret }}>
+                <PaymentElementForm
+                  onCompleted={handlePaymentCompleted}
+                  secondaryAction={{ label: 'Cancel Order', onClick: handleCancelOrder, disabled: cancellingOrder }}
+                  payButtonLabel={`Pay ${formatPrice(preview.total)}`}
+                />
+              </Elements>
+            )}
+          </Paper>
+        </>
+      )}
 
       {couponPickerOpen && (
         <CouponPickerDialog
