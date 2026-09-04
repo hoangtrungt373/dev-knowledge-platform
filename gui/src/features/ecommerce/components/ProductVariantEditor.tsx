@@ -4,8 +4,6 @@ import {
   Button,
   Chip,
   IconButton,
-  Paper,
-  Stack,
   Table,
   TableBody,
   TableCell,
@@ -21,6 +19,7 @@ import { ProductVariantInput } from '../types';
 import { SuggestedAttribute } from '../hooks/useCategoryAttributeSuggestions';
 import ProductVariantDialog from './ProductVariantDialog';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
+import SectionPanel from './common/SectionPanel';
 
 export interface DisplayVariant {
   /** Server id once persisted (edit mode); a locally-generated key while still a draft (create mode). */
@@ -89,14 +88,14 @@ export default function ProductVariantEditor({
   };
 
   return (
-    <Paper variant="outlined" sx={{ p: 2 }}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
-        <Typography variant="subtitle2" fontWeight={700}>Variants</Typography>
+    <SectionPanel
+      title="Variants"
+      action={(
         <Button size="small" startIcon={<AddIcon />} onClick={openAddDialog} disabled={busy}>
           Add Variant
         </Button>
-      </Stack>
-
+      )}
+    >
       {variants.length === 0 ? (
         <Typography variant="body2" color="text.secondary">No variants yet — add at least one.</Typography>
       ) : (
@@ -174,6 +173,6 @@ export default function ProductVariantEditor({
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </Paper>
+    </SectionPanel>
   );
 }

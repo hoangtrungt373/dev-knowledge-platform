@@ -132,9 +132,25 @@ public class PaymentHandoffService {
     /**
      * Applies the gateway's (or the reconciliation job's) verdict for {@code orderId} — the second
      * durable step, called after the external gateway call has already happened (or, for
-     * reconciliation, after re-querying it). A {@link PaymentOutcome#PENDING} verdict leaves both
-     * the order and its {@code Payment} row untouched — still {@code PAYMENT_PROCESSING}/
-     * {@code PENDING} respectively, to be checked again later.
+     * reconciliation, after re-querying it). A {@link PaymentOutcome#PENDING} verdict leaves the
+     * order's own status untouched — still {@code PAYMENT_PROCESSING}, to be checked again later —
+     * but {@link #applyResultToPayment} still persists {@code result.gatewayReference()} onto the
+     * {@code Payment} row when one is present. That matters as of the Option A (Stripe Elements)
+     * follow-up: {@code payment.StripePaymentGateway#charge}'s very first call now routinely
+     * resolves {@code PENDING} (an unconfirmed {@code PaymentIntent}, status
+     * {@code "requires_payment_method"}) rather than the rarer edge case it used to be — an earlier
+     * revision of this method skipped the {@code Payment} row entirely on {@code PENDING},
+     * which meant {@code gatewayReference} was never recorded for the *common* case at all. Both
+     * {@code webhook.StripeWebhookService} (correlates an incoming event by
+     * {@code Payment.gatewayReference}) and this class's own {@link #startPaymentProcessing}'s
+     * re-entrant retry path (via {@code payment.StripePaymentGateway#checkStatus}, which looks the
+     * same column up by idempotency key) depend on it being set from the very first {@code charge}
+     * call — without it, a real {@code payment_intent.succeeded} webhook event finds no matching
+     * row and silently no-ops (still returns Stripe a {@code 200}, so nothing about the delivery
+     * looks like a failure), and the reconciliation job's own fallback poll is broken the identical
+     * way. Caught via a real end-to-end `stripe listen` session where the order stayed durably
+     * stuck {@code PAYMENT_PROCESSING} despite Stripe's own event log showing
+     * {@code payment_intent.succeeded} having fired and been delivered with a {@code 200}.
      *
      * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException if the order
      *         no longer exists
@@ -248,24 +264,33 @@ public class PaymentHandoffService {
     }
 
     private void applyResultToPayment(Order order, PaymentResult result) {
-        if (result.outcome() == PaymentOutcome.PENDING) {
-            return;
-        }
         Payment payment = paymentRepository.findByOrderId(order.getId())
                 .orElseThrow(() -> new IllegalStateException(
                         "No Payment row found for order id=" + order.getId() + " — startPaymentProcessing "
                                 + "should always have written one before any gateway call"));
-        payment.setGatewayReference(result.gatewayReference());
-        if (result.outcome() == PaymentOutcome.SUCCEEDED) {
-            payment.setStatus(PaymentStatus.SUCCEEDED);
-            paymentRepository.save(payment);
-            publishPaymentSucceeded(order, payment);
-        } else {
-            payment.setStatus(PaymentStatus.DECLINED);
-            payment.setFailureCategory(result.failureCategory());
-            payment.setGatewayFailureMessage(result.gatewayFailureMessage());
-            paymentRepository.save(payment);
-            publishPaymentFailed(order, payment);
+        // Always record a real gatewayReference as soon as one exists — even for PENDING, whose
+        // very first occurrence (Option A's unconfirmed PaymentIntent) is exactly when this column
+        // gets its only chance to be set before a later webhook/reconciliation call needs to look
+        // this row up by it. See this method's own call site (resolvePayment) for the incident this
+        // guards against. A reconciliation poll's own repeat PENDING carries the same reference
+        // already stored — this is then just a harmless overwrite with the same value.
+        if (result.gatewayReference() != null) {
+            payment.setGatewayReference(result.gatewayReference());
+        }
+        switch (result.outcome()) {
+            case PENDING -> paymentRepository.save(payment);
+            case SUCCEEDED -> {
+                payment.setStatus(PaymentStatus.SUCCEEDED);
+                paymentRepository.save(payment);
+                publishPaymentSucceeded(order, payment);
+            }
+            case DECLINED -> {
+                payment.setStatus(PaymentStatus.DECLINED);
+                payment.setFailureCategory(result.failureCategory());
+                payment.setGatewayFailureMessage(result.gatewayFailureMessage());
+                paymentRepository.save(payment);
+                publishPaymentFailed(order, payment);
+            }
         }
     }
 

@@ -3,7 +3,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Divider,
   IconButton,
   Stack,
@@ -19,6 +18,9 @@ import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
+import FullPageLoader from '@shared/components/FullPageLoader';
+import EmptyState from '@shared/components/EmptyState';
+import SectionPanel from '../components/common/SectionPanel';
 import { addressApi } from '../api/addressApi';
 import { SavedAddress } from '../types';
 import AddressFormDialog from '../components/AddressFormDialog';
@@ -90,11 +92,7 @@ export default function AddressBookPage(): JSX.Element {
   };
 
   if (loading && addresses === null) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <FullPageLoader />;
   }
 
   return (
@@ -103,11 +101,11 @@ export default function AddressBookPage(): JSX.Element {
     // AccountLayout's own 80%-of-viewport frame), so a second width cap here would compound and
     // look oddly narrow/off-center relative to the sidebar. Just fills the column it's given.
     <Box sx={{ px: 3 }}>
-      {/* One continuous bgcolor: 'background.paper' box — headline row + every address row inside
-          it, separated by Divider rather than each address being its own separate bordered card
-          with page background showing through the gaps — same shape CartPage's own lines-list box
-          uses (header row + Stack divider={<Divider/>}), per request. */}
-      <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, p: 3 }}>
+      {/* One continuous panel — headline row + every address row inside it, separated by Divider
+          rather than each address being its own separate bordered card with page background
+          showing through the gaps — same shape CartPage's own lines-list panel uses (header row +
+          Stack divider={<Divider/>}), per request. */}
+      <SectionPanel padding={3}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
           <Typography variant="h5" fontWeight={700}>My Addresses</Typography>
           <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
@@ -118,14 +116,12 @@ export default function AddressBookPage(): JSX.Element {
         <Divider sx={{ mb: 2 }} />
 
         {addresses !== null && addresses.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 6 }}>
-            <HomeOutlinedIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
-            <Typography variant="h6" sx={{ mb: 1 }}>No addresses yet</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Save an address here to reuse it at checkout.
-            </Typography>
-            <Button variant="contained" onClick={openCreate}>Add Your First Address</Button>
-          </Box>
+          <EmptyState
+            icon={<HomeOutlinedIcon sx={{ fontSize: 64, color: 'text.disabled' }} />}
+            title="No addresses yet"
+            description="Save an address here to reuse it at checkout."
+            action={{ label: 'Add Your First Address', onClick: openCreate }}
+          />
         ) : (
           <Stack divider={<Divider />}>
             {addresses?.map(address => (
@@ -190,7 +186,7 @@ export default function AddressBookPage(): JSX.Element {
             ))}
           </Stack>
         )}
-      </Box>
+      </SectionPanel>
 
       <AddressFormDialog
         open={formOpen}

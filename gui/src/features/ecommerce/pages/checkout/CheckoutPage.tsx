@@ -6,7 +6,6 @@ import {
   Button,
   Checkbox,
   Chip,
-  CircularProgress,
   Divider,
   FormControlLabel,
   Paper,
@@ -23,6 +22,10 @@ import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import { isValidEmail } from '@shared/utils/validation';
+import FullPageLoader from '@shared/components/FullPageLoader';
+import EmptyState from '@shared/components/EmptyState';
+import SubmitButton from '@shared/components/SubmitButton';
+import WideContentContainer from '../../components/common/WideContentContainer';
 import { useCart } from '../../context/CartContext';
 import { checkoutApi } from '../../api/checkoutApi';
 import { addressApi } from '../../api/addressApi';
@@ -289,29 +292,23 @@ export default function CheckoutPage(): JSX.Element {
   };
 
   if (previewLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <FullPageLoader />;
   }
 
   if (previewError || !preview) {
     return (
-      <Box sx={{ p: 3, textAlign: 'center', maxWidth: 500, mx: 'auto', mt: 6 }}>
-        <Typography variant="h6" sx={{ mb: 1 }}>Can't check out right now</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          {previewError ?? 'Something went wrong.'}
-        </Typography>
-        <Button variant="contained" onClick={() => navigate('/cart')}>Back to Cart</Button>
-      </Box>
+      <EmptyState
+        title="Can't check out right now"
+        description={previewError ?? 'Something went wrong.'}
+        action={{ label: 'Back to Cart', onClick: () => navigate('/cart') }}
+      />
     );
   }
 
   const droppedLines = preview.lines.filter(l => !l.available);
 
   return (
-    <Box sx={{ p: 3, width: '80%', mx: 'auto' }}>
+    <WideContentContainer>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>Checkout</Typography>
 
       {/* Purely a progress indicator — phase is still driven entirely by the state machine above
@@ -324,10 +321,12 @@ export default function CheckoutPage(): JSX.Element {
       </Stepper>
 
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'flex-start' }}>
-        {/* Left column — the actively-changing form for the current phase. Sized to lose the flex-
-            wrap tug-of-war against the sticky right column's own basis (calc(...) gap-compensation,
-            same technique ProductDetailPage/ProductFormPage already use — see gui/CLAUDE.md). */}
-        <Box sx={{ flex: '1 1 calc(55% - 16px)', minWidth: 400 }}>
+        {/* Visually the RIGHT column (order: 2) — the actively-changing form for the current
+            phase. Sized to lose the flex-wrap tug-of-war against the sticky summary column's own
+            basis (calc(...) gap-compensation, same technique ProductDetailPage/ProductFormPage
+            already use — see gui/CLAUDE.md). Kept second in DOM order (tab/reading order still
+            reaches the summary first) and repositioned purely via `order`, so no JSX had to move. */}
+        <Box sx={{ flex: '1 1 calc(55% - 16px)', minWidth: 400, order: 2 }}>
           {phase === 'review' && (
             <Stack spacing={3}>
               <Paper variant="outlined" sx={{ p: 2.5 }}>
@@ -530,9 +529,14 @@ export default function CheckoutPage(): JSX.Element {
                   </Stack>
                 )}
 
-                <Button type="submit" variant="contained" size="large" fullWidth disabled={submitting} sx={{ mt: 2 }}>
-                  {submitting ? <CircularProgress size={24} color="inherit" /> : `Place Order & Pay — ${formatPrice(preview.total)}`}
-                </Button>
+                <SubmitButton
+                  type="submit"
+                  size="large"
+                  fullWidth
+                  saving={submitting}
+                  label={`Place Order & Pay — ${formatPrice(preview.total)}`}
+                  sx={{ mt: 2 }}
+                />
               </Paper>
             </Stack>
           )}
@@ -565,11 +569,13 @@ export default function CheckoutPage(): JSX.Element {
           )}
         </Box>
 
-        {/* Right column — Order Summary only (no coupon management UI here; that lives in the
-            left column's own Coupons Paper during review, and is frozen/read-only once payment
-            starts). Stays visible while the shopper scrolls a taller left column — first use of
-            sticky positioning in this codebase; top offset matches the app shell's fixed header
-            height so the summary settles just beneath it rather than under it. */}
+        {/* Visually the LEFT column (order: 1, per request) — Order Summary only (no coupon
+            management UI here; that lives in the form column's own Coupons Paper during review,
+            and is frozen/read-only once payment starts). Stays visible while the shopper scrolls a
+            taller form column — first use of sticky positioning in this codebase; top offset
+            matches the app shell's fixed header height so the summary settles just beneath it
+            rather than under it. Placed second in the JSX (after the form column) so keyboard/
+            screen-reader order still reaches the form first — only the visual position moved. */}
         <Box
           sx={{
             flex: '1 1 calc(45% - 16px)',
@@ -577,6 +583,7 @@ export default function CheckoutPage(): JSX.Element {
             position: 'sticky',
             top: 88,
             alignSelf: 'flex-start',
+            order: 1,
           }}
         >
           <Paper variant="outlined" sx={{ p: 2.5 }}>
@@ -663,6 +670,6 @@ export default function CheckoutPage(): JSX.Element {
           onApply={applyCoupons}
         />
       )}
-    </Box>
+    </WideContentContainer>
   );
 }

@@ -19,6 +19,7 @@ import { Coupon, CouponTarget, CouponType } from '../types';
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
+import SubmitButton from '@shared/components/SubmitButton';
 import Thumbnail from './Thumbnail';
 
 interface Props {
@@ -359,9 +360,7 @@ export default function CouponFormDialog({ open, coupon, onClose, onSaved }: Pro
 
       <DialogActions>
         <Button onClick={onClose} disabled={saving}>Cancel</Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={saving}>
-          {saving ? <CircularProgress size={16} color="inherit" /> : (isEdit ? 'Save' : 'Create')}
-        </Button>
+        <SubmitButton saving={saving} onClick={handleSubmit} label={isEdit ? 'Save' : 'Create'} />
       </DialogActions>
     </Dialog>
   );

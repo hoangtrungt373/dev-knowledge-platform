@@ -23,6 +23,7 @@ import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import { AvailableCoupon } from '../types';
 import { couponApi } from '../api/couponApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import SubmitButton from '@shared/components/SubmitButton';
 import Thumbnail from './Thumbnail';
 import { formatDate, formatPrice } from '../utils/format';
 
@@ -294,9 +295,7 @@ export default function CouponPickerDialog({
 
       <DialogActions sx={{ px: 3, py: 2 }}>
         <Button onClick={onClose} disabled={applying}>Cancel</Button>
-        <Button variant="contained" onClick={handleApply} disabled={applying || !hasChanges}>
-          {applying ? <CircularProgress size={18} color="inherit" /> : 'Apply'}
-        </Button>
+        <SubmitButton saving={applying} onClick={handleApply} disabled={!hasChanges} label="Apply" />
       </DialogActions>
     </Dialog>
   );

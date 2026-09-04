@@ -27,7 +27,7 @@ gui/src/
 │                    account-shell/ (AccountLayout — the shopper's own Profile+Addresses sidebar)
 └── shared/        — httpClient, common.types-equivalent (types.ts, incl. PagedResponse), the
                       NotificationContext, storage.ts (STORAGE_KEYS), colors.ts, errorHandler.ts,
-                      useSubmitGuard, ConfirmDialog
+                      useSubmitGuard, ConfirmDialog, FullPageLoader, EmptyState, SubmitButton
 ```
 
 Each `features/<name>/` folder owns its own `api/`, `types.ts`, `pages/`, `components/`, `hooks/` —
@@ -1874,6 +1874,12 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       - Verified via a clean `tsc --noEmit` (only the same pre-existing errors) and a successful
         `vite build` — the sticky-scroll behavior itself and both phases' actual on-screen layout
         are unverified in a real browser (no Docker in this sandbox).
+      - **Follow-up: the two columns' visual left/right positions swapped, per request (product
+        list on the left).** Done via flexbox `order` (`order: 1` on the sticky Order Summary
+        `Box`, `order: 2` on the form `Box`) rather than moving either block's JSX — the form `Box`
+        stays first in the DOM, so keyboard/screen-reader order still reaches it before the summary
+        even though it now renders on the right. Both `flex-basis`/`minWidth` values were left
+        unchanged (summary ~45%, form ~55%) since only position moved, not proportion.
     - **`CheckoutPage.tsx`'s successful `confirm` used to `navigate` straight to `/orders/:id`
       unconditionally** instead of swapping in an inline `OrderConfirmationView` — that component
       (and the now-dead `CheckCircleOutlineIcon` import) was deleted outright back when Epic 3's
@@ -2717,3 +2723,57 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   - Verified via a clean `tsc --noEmit` and a successful `vite build` only, after every step above
     — no Docker in this sandbox, so the actual login/signup/callback/profile-edit flows are
     unverified in a real browser.
+- **`@ecommerce` style-consistency audit + cleanup, per request** — see `docs/CHANGELOG.md`'s
+  `[Unreleased]` entry for the full per-file detail. Four new shared components:
+  `@shared/components/FullPageLoader.tsx` (the centered 50vh spinner), `@shared/components/
+  EmptyState.tsx` (icon/title/description/action, for an empty list or a "not found" page alike),
+  `@shared/components/SubmitButton.tsx` (the "contained button that swaps its label for a spinner
+  while saving" pattern — `spinnerSize` now derives from `size`, 24 for `"large"` else 16, instead
+  of the drifting 16/18/20/24px picked ad hoc per call site before this), and `@ecommerce/
+  components/common/SectionPanel.tsx` (the shared bordered-panel wrapper — `Paper variant="outlined"`
+  plus an optional title/action header row). `SectionPanel` standardizes this feature's panels on
+  the bordered look (already the theme's own default `Paper` styling) over the borderless
+  `Box`-with-`bgcolor: 'background.paper'` variant a few pages had drifted onto — **new code in
+  this feature should reach for `SectionPanel`, not a bare `Paper`/`Box`, for any bordered content
+  panel.** Deliberately left `CheckoutPage.tsx`/`OrderDetailPage.tsx`'s own `Paper` panels
+  unmigrated — they use a different title convention (`subtitle1`/600 vs. `SectionPanel`'s
+  `subtitle2`/700) that's still an open style question, not resolved as a side effect of this pass.
+  Several other findings from the same audit (page-container width, `ShopPage`'s `h4` vs. every
+  other page's `h5` title, secondary-button variant, `ProductDetailPage`'s oversized CTAs, dialog
+  close-button inconsistency) were deliberately left alone pending a product decision — don't
+  "fix" any of those unilaterally without confirming first. Verified via a clean `tsc --noEmit` and
+  a successful `vite build` only — no Docker in this sandbox, so the actual visual result is
+  unverified in a real browser.
+  - **Follow-up: page-container width unified across `ShopPage`/`CartPage`/`CheckoutPage`/
+    `ProductDetailPage`, per request.** These four pages had split between plain `width: '80%'`
+    (three of them — unbounded growth on very wide monitors) and a flat `maxWidth: 1400`
+    (`ShopPage` alone — no fluid behavior on narrower screens). Landed on a hybrid rather than
+    picking one side: new `@ecommerce/components/common/WideContentContainer.tsx` wraps
+    `sx={{ p: 3, width: '80%', maxWidth: 1400, mx: 'auto' }}` — identical to today's plain `80%` on
+    anything under ~1750px wide, capped only on genuinely wide screens. **New code for one of these
+    four pages should use `WideContentContainer`, not a bare `Box` with its own width sx.**
+    Deliberately not used by the three `AccountLayout`-nested pages (`AddressBookPage`/
+    `OrderHistoryPage`/`OrderDetailPage`) — that layout already applies its own width cap, and this
+    component's role is specifically the four *top-level* shopper-facing pages. `ShopPage`'s own
+    `h4` page title (vs. every other page's `h5`) was a separate, still-open finding from the
+    original audit at the time — resolved in a further follow-up, below.
+  - **Follow-up: remaining judgment-call findings resolved one at a time, per request.**
+    `ShopPage.tsx`'s page title changed `h4` → `h5` (now matches every other page). `CartPage.tsx`'s
+    "Continue Shopping" changed from plain text to `variant="outlined"`, matching
+    `ProductFormPage.tsx`'s page-level "Cancel" — **the convention going forward is that a
+    page-level secondary action (next to a contained primary button) is `outlined`; a
+    *dialog*-level Cancel (in `DialogActions`) stays plain text**, which is why these two were
+    different roles, not the same role rendered inconsistently, once decided explicitly.
+    `ProductDetailPage.tsx`'s three large CTAs ("Add to Cart"/"Buy Now"/"Log in to buy") had their
+    `sx={{ px: 4, py: 1.25, fontSize: '1rem', fontWeight: 600 }}` override removed outright —
+    reverted to the plain theme `sizeLarge` default, matching every other `size="large"` button in
+    the app; don't reintroduce a custom size override on a `size="large"` button here without a
+    real, confirmed reason. **The CRUD-dialog vs. picker-dialog close-button (✕) split was
+    confirmed as the intended convention, not a bug**: a short-form CRUD dialog (all 6 admin
+    create/edit dialogs — `AddressFormDialog`/`CouponFormDialog`/`ProductAttributeFormDialog`/
+    `ProductCategoryFormDialog`/`ProductTagFormDialog`/`ProductVariantDialog`) relies solely on its
+    `DialogActions` Cancel button, since the whole form (Cancel included) is always visible without
+    scrolling; a dialog with longer/scrollable content (`CouponPickerDialog`, `PaymentDialog`)
+    additionally carries a `CloseIcon` in its `DialogTitle` for a close affordance that doesn't
+    require scrolling back down. **Follow this rule for any new dialog in this feature** — a short
+    form gets no ✕, a longer/scrollable one does.

@@ -4,13 +4,11 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   FormControl,
   IconButton,
   InputAdornment,
   InputLabel,
   MenuItem,
-  Paper,
   Select,
   Stack,
   TextField,
@@ -22,10 +20,13 @@ import { Product, ProductCategoryTreeNode, ProductVariantInput } from '../types'
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
+import FullPageLoader from '@shared/components/FullPageLoader';
+import SubmitButton from '@shared/components/SubmitButton';
 import ProductVariantEditor from '../components/ProductVariantEditor';
 import ProductImageGallery from '../components/ProductImageGallery';
 import ProductImageStager from '../components/ProductImageStager';
 import ProductDescriptionEditor from '../components/ProductDescriptionEditor';
+import SectionPanel from '../components/common/SectionPanel';
 import { hasVisibleHtmlContent } from '../utils/htmlContent';
 import { flattenCategoryTree } from '../utils/categoryTree';
 import { useProductTags } from '../hooks/useProductTags';
@@ -230,11 +231,7 @@ export default function ProductFormPage(): JSX.Element {
   };
 
   if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <FullPageLoader />;
   }
 
   return (
@@ -254,9 +251,7 @@ export default function ProductFormPage(): JSX.Element {
           <Button variant="outlined" onClick={() => navigate('/admin/products')} disabled={saving}>
             Cancel
           </Button>
-          <Button variant="contained" onClick={handleSubmit} disabled={saving}>
-            {saving ? <CircularProgress size={16} color="inherit" /> : isEdit ? 'Save' : 'Create'}
-          </Button>
+          <SubmitButton saving={saving} onClick={handleSubmit} label={isEdit ? 'Save' : 'Create'} />
         </Stack>
       </Stack>
 
@@ -271,8 +266,7 @@ export default function ProductFormPage(): JSX.Element {
       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <Box sx={{ flex: '1 1 calc(68% - 12px)', minWidth: 420 }}>
           <Stack spacing={3}>
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Basic Info</Typography>
+            <SectionPanel title="Basic Info">
               <TextField
                 label="Name"
                 value={name}
@@ -283,7 +277,7 @@ export default function ProductFormPage(): JSX.Element {
                 autoFocus
                 inputProps={{ maxLength: 150 }}
               />
-            </Paper>
+            </SectionPanel>
 
             {/* Variants */}
             {isEdit && product ? (
@@ -329,8 +323,7 @@ export default function ProductFormPage(): JSX.Element {
         </Box>
 
         <Box sx={{ flex: '1 1 calc(32% - 12px)', minWidth: 260 }}>
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Organization</Typography>
+          <SectionPanel title="Organization">
             <FormControl fullWidth error={!!errors.productCategoryId}>
               <InputLabel>Category</InputLabel>
               <Select
@@ -348,18 +341,14 @@ export default function ProductFormPage(): JSX.Element {
                 ))}
               </Select>
             </FormControl>
-          </Paper>
+          </SectionPanel>
 
           {/* Tags — split into an "Existing tags" Chip-toggle-cloud (mirroring @content's
               QuestionAnswerFormPage picker) and a separate "New tags" section for names typed
               here but not yet created — nothing is persisted to the tag catalog until the product
               itself is saved (see useProductTags' own resolveStagedTagIds). Renaming/deleting an
               already-real tag still requires /admin/product-tags — this section is add-only. */}
-          <Paper variant="outlined" sx={{ p: 2, mt: 3 }}>
-            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>
-              Tags
-            </Typography>
-
+          <SectionPanel title="Tags" sx={{ mt: 3 }}>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
               Existing tags
             </Typography>
@@ -430,7 +419,7 @@ export default function ProductFormPage(): JSX.Element {
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
               Created when you {isEdit ? 'save' : 'create'} the product.
             </Typography>
-          </Paper>
+          </SectionPanel>
         </Box>
       </Box>
     </Box>

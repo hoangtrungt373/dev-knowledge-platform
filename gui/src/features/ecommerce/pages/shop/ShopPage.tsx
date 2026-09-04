@@ -10,7 +10,6 @@ import {
   ListItemButton,
   ListItemText,
   Pagination,
-  Paper,
   Stack,
   Switch,
   TextField,
@@ -22,6 +21,8 @@ import { shopApi } from '../../api/shopApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useDebouncedValue } from '@shared/hooks/useDebouncedValue';
 import ProductCard from '../../components/shop/ProductCard';
+import SectionPanel from '../../components/common/SectionPanel';
+import WideContentContainer from '../../components/common/WideContentContainer';
 
 const PAGE_SIZE = 12;
 
@@ -100,8 +101,8 @@ export default function ShopPage(): JSX.Element {
   };
 
   return (
-    <Box sx={{ p: 3, maxWidth: 1400, mx: 'auto' }}>
-      <Typography variant="h4" fontWeight={700} sx={{ mb: 0.5 }}>Shop</Typography>
+    <WideContentContainer>
+      <Typography variant="h5" fontWeight={700} sx={{ mb: 0.5 }}>Shop</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         {total} product{total !== 1 ? 's' : ''}
       </Typography>
@@ -111,8 +112,7 @@ export default function ShopPage(): JSX.Element {
         {/* ── Sidebar: categories + filters ── */}
         <Grid item xs={12} md={3}>
           <Stack spacing={2}>
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Categories</Typography>
+            <SectionPanel title="Categories">
               <List dense disablePadding>
                 <ListItemButton
                   selected={categoryId === null}
@@ -132,10 +132,9 @@ export default function ShopPage(): JSX.Element {
                   </ListItemButton>
                 ))}
               </List>
-            </Paper>
+            </SectionPanel>
 
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Price</Typography>
+            <SectionPanel title="Price">
               <Stack direction="row" spacing={1}>
                 <TextField
                   label="Min" type="number" size="small" value={minPrice}
@@ -159,11 +158,10 @@ export default function ShopPage(): JSX.Element {
                 }
                 label={<Typography variant="body2">In stock only</Typography>}
               />
-            </Paper>
+            </SectionPanel>
 
             {Object.keys(facetOptions).length > 0 && (
-              <Paper variant="outlined" sx={{ p: 2 }}>
-                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Attributes</Typography>
+              <SectionPanel title="Attributes">
                 <Stack spacing={1.5}>
                   {Object.entries(facetOptions).map(([key, values]) => (
                     <Box key={key}>
@@ -186,7 +184,7 @@ export default function ShopPage(): JSX.Element {
                     </Box>
                   ))}
                 </Stack>
-              </Paper>
+              </SectionPanel>
             )}
           </Stack>
         </Grid>
@@ -240,6 +238,6 @@ export default function ShopPage(): JSX.Element {
           )}
         </Grid>
       </Grid>
-    </Box>
+    </WideContentContainer>
   );
 }

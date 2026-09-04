@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   Button,
   Checkbox,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -16,6 +15,7 @@ import { addressApi } from '../api/addressApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import { isValidEmail } from '@shared/utils/validation';
+import SubmitButton from '@shared/components/SubmitButton';
 
 interface FormErrors {
   fullName?: string;
@@ -232,9 +232,7 @@ export default function AddressFormDialog({ open, address, onClose, onSaved }: P
 
       <DialogActions>
         <Button onClick={onClose} disabled={saving}>Cancel</Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={saving}>
-          {saving ? <CircularProgress size={16} color="inherit" /> : (isEdit ? 'Save' : 'Add Address')}
-        </Button>
+        <SubmitButton saving={saving} onClick={handleSubmit} label={isEdit ? 'Save' : 'Add Address'} />
       </DialogActions>
     </Dialog>
   );

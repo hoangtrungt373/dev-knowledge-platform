@@ -3051,6 +3051,104 @@ entries start fresh below `[Unreleased]`.
     card form is unverified in a real browser. See `ecommerce-service/CLAUDE.md`'s and
     `gui/CLAUDE.md`'s own notes for full detail.
 
+### Added (cont.)
+
+- **`gui`: ecommerce-feature style-consistency audit + cleanup, per request.** A full read-through
+  of every page/component under `features/ecommerce/` (pages + components, not api/hooks/utils)
+  found several genuine same-role-rendered-differently inconsistencies — a full-page loading
+  spinner duplicated byte-for-byte across 7 pages, two competing "boxed panel" visual languages
+  (bordered `Paper variant="outlined"` vs. a borderless `Box` with `bgcolor: 'background.paper'`
+  and a differently-rounded corner) with no semantic rule distinguishing them, a dialog
+  primary-submit button duplicated across all 6 admin CRUD dialogs plus 4 more near-duplicates with
+  a drifting, undocumented spinner size (16/18/20/24px), and a centered empty/"not found" state
+  rendered at three different completeness levels for the same role. Four new shared components
+  extracted to fix the pure-duplication findings:
+  - **`shared/components/FullPageLoader.tsx`** — the centered 50vh spinner; replaces the identical
+    inline block in `AddressBookPage`/`ProductFormPage`/`CartPage`/`CheckoutPage`/
+    `OrderDetailPage`/`OrderHistoryPage`/`ProductDetailPage`.
+  - **`shared/components/EmptyState.tsx`** — icon/title/description/action, for an empty list or a
+    "not found" detail page alike; replaces the ad hoc versions in the same pages above, and closes
+    the completeness gap on `OrderDetailPage`'s ("Order not found") and `ProductDetailPage`'s
+    ("Product not found") own states, which previously rendered without the icon/wrapper treatment
+    every other instance already had.
+  - **`shared/components/SubmitButton.tsx`** — the "contained button that swaps its label for a
+    spinner while saving" pattern; `spinnerSize` now derives from `size` (24 for a `"large"` CTA,
+    16 otherwise) instead of being picked ad hoc per call site. Wired into all 6 admin CRUD dialogs
+    (`AddressFormDialog`/`CouponFormDialog`/`ProductAttributeFormDialog`/
+    `ProductCategoryFormDialog`/`ProductTagFormDialog`/`ProductVariantDialog`),
+    `CouponPickerDialog`'s Apply button, `PaymentElementForm`'s Pay button, `CheckoutPage`'s
+    "Place Order & Pay" submit, `OrderDetailPage`'s "Pay Now", and `ProductFormPage`'s Save/Create.
+  - **`features/ecommerce/components/common/SectionPanel.tsx`** — the shared bordered-panel
+    wrapper (`Paper variant="outlined"` plus an optional title/action header row), standardizing on
+    the bordered look as the one convention (already the theme's own default `Paper` styling and
+    already the majority usage) over the borderless variant. Applied to `AddressBookPage`'s list
+    panel, `CartPage`'s two panels, `ProductDetailPage`'s gallery/info and description panels
+    (fixing the actual bordered-vs-borderless inconsistency), plus — as a zero-visual-change dedup
+    — `ProductFormPage`'s Basic Info/Organization/Tags panels, `ShopPage`'s Categories/Price/
+    Attributes sidebar panels, `ProductImageGallery`, `ProductVariantEditor`, and
+    `ProductImageStager` (all of which already used the identical bordered-panel-plus-title
+    markup). **Deliberately left untouched**: `CheckoutPage`/`OrderDetailPage`'s own `Paper`
+    panels, which use a different title convention (`subtitle1`/600 vs. this component's
+    `subtitle2`/700) — folding those in would have silently changed their heading weight/size as a
+    side effect of a "pure dedup" pass, so that split stays a separate, still-open style decision
+    rather than one resolved implicitly here.
+  - A handful of lower-priority/judgment-call findings from the same audit were deliberately **not**
+    acted on in this pass (need a product decision, not just deduplication): `ShopPage`'s
+    `maxWidth: 1400` page-container width vs. Cart/Checkout/ProductDetail's `width: '80%'`
+    (resolved in a follow-up, below); `ShopPage`'s `h4` page title vs. every other page's `h5`; the
+    page-level secondary/"Cancel" button's `outlined` (`ProductFormPage`) vs. plain-text
+    (`CartPage`'s "Continue Shopping") variant; `ProductDetailPage`'s three large CTAs overriding
+    the theme's own `sizeLarge` default padding; and the CRUD-dialog vs. picker-dialog close-button
+    (✕) split. Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker
+    in this sandbox, so the actual visual result (in particular the border/radius change on the
+    three migrated borderless panels) is unverified in a real browser.
+
+### Added (cont.)
+
+- **`gui`: ecommerce style-audit follow-up — unified the four shopper-facing top-level pages
+  (`ShopPage`, `CartPage`, `CheckoutPage`, `ProductDetailPage`) onto one page-width convention, per
+  request.** Three of the four used plain `width: '80%'` (unbounded growth on very wide monitors —
+  80% of a 3840px screen is ~3072px, stretching form fields/line-item rows/gallery+info panels
+  uncomfortably wide); `ShopPage` alone used a flat `maxWidth: 1400` (no fluid behavior on narrower
+  screens). Landed on a hybrid rather than picking one side: `width: '80%'` capped at
+  `maxWidth: 1400` — behaves identically to today's plain `80%` on anything under ~1750px wide, and
+  only engages the cap on genuinely wide monitors. New
+  `features/ecommerce/components/common/WideContentContainer.tsx` (children + optional `sx`
+  override, always includes the page's own `p: 3`) — not app-wide, since this "wide storefront
+  page" role is specific to these four shopper-facing pages; the three `AccountLayout`-nested pages
+  (`AddressBookPage`/`OrderHistoryPage`/`OrderDetailPage`) are explicitly out of scope (that layout
+  already applies its own width cap). `ShopPage`'s own page title (`h4` vs. every other page's
+  `h5`) was a separate, still-undecided finding from the original audit at the time — resolved in
+  a further follow-up, below. Verified via a clean `tsc --noEmit` and a successful `vite build`
+  only — no Docker in this sandbox, so the actual visual result on a wide monitor is unverified in
+  a real browser.
+
+### Changed (cont.)
+
+- **`gui`: ecommerce style-audit — remaining judgment-call findings resolved one at a time, per
+  request.**
+  - **`ShopPage.tsx`'s page title changed from `h4` to `h5`** — matches every other ecommerce
+    page's page-title convention exactly; no other ecommerce page used `h4` for this role.
+  - **`CartPage.tsx`'s "Continue Shopping" button changed from the plain text variant to
+    `variant="outlined"`**, matching `ProductFormPage.tsx`'s own page-level "Cancel" button — both
+    are a page-level secondary action sitting next to a contained primary button, and an outline
+    reads more clearly as an equally-weighted action at that prominence than plain text (which is
+    reserved for a *dialog*-level Cancel in this app's own convention).
+  - **`ProductDetailPage.tsx`'s three large CTAs ("Add to Cart"/"Buy Now"/"Log in to buy") had
+    their custom `sx={{ px: 4, py: 1.25, fontSize: '1rem', fontWeight: 600 }}` override removed
+    outright** — reverted to the plain theme `sizeLarge` default (`padding: '7px 18px'`,
+    `fontWeight: 600` is already the theme's own global `MuiButton` default), matching every other
+    `size="large"` button in the app (`CheckoutPage`'s "Place Order", `OrderDetailPage`'s
+    "Pay Now"). No visual intent lost — the override's only non-default value was the padding.
+  - **The CRUD-dialog vs. picker-dialog close-button (✕) split was confirmed as the intended
+    convention, not a bug — no code change.** The 6 admin CRUD dialogs (short forms, Cancel always
+    visible without scrolling) rely solely on their `DialogActions` Cancel button; `
+    CouponPickerDialog`/`PaymentDialog` (longer/scrollable content) additionally carry a `CloseIcon`
+    in their `DialogTitle`. Documented explicitly in `gui/CLAUDE.md` so this reads as a deliberate
+    rule going forward, not an accidental omission on 6 dialogs.
+  - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+    sandbox, so the actual visual result is unverified in a real browser.
+
 ## [0.0.2] — 2026-08-11
 
 Retroactive cut of everything that had accumulated under `[Unreleased]` up to this point — the

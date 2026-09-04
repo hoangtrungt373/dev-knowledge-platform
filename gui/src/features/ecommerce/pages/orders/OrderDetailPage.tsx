@@ -5,7 +5,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Divider,
   IconButton,
   Paper,
@@ -22,9 +21,13 @@ import { styled } from '@mui/material/styles';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
+import FullPageLoader from '@shared/components/FullPageLoader';
+import EmptyState from '@shared/components/EmptyState';
+import SubmitButton from '@shared/components/SubmitButton';
 import { orderApi } from '../../api/orderApi';
 import { Order } from '../../types';
 import OrderLineRow from '../../components/orders/OrderLineRow';
@@ -185,19 +188,16 @@ export default function OrderDetailPage(): JSX.Element {
   };
 
   if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <FullPageLoader />;
   }
 
   if (notFound || !order) {
     return (
-      <Box sx={{ p: 3, textAlign: 'center', maxWidth: 500, mx: 'auto', mt: 6 }}>
-        <Typography variant="h6" sx={{ mb: 1 }}>Order not found</Typography>
-        <Button variant="contained" onClick={() => navigate('/account/orders')}>Back to Your Orders</Button>
-      </Box>
+      <EmptyState
+        icon={<ReceiptLongOutlinedIcon sx={{ fontSize: 64, color: 'text.disabled' }} />}
+        title="Order not found"
+        action={{ label: 'Back to Your Orders', onClick: () => navigate('/account/orders') }}
+      />
     );
   }
 
@@ -401,9 +401,12 @@ export default function OrderDetailPage(): JSX.Element {
             </Button>
           )}
           {canPay && (
-            <Button variant="contained" size="large" disabled={paying} onClick={handlePay}>
-              {paying ? <CircularProgress size={24} color="inherit" /> : `Pay Now — ${formatPrice(order.total)}`}
-            </Button>
+            <SubmitButton
+              size="large"
+              saving={paying}
+              onClick={handlePay}
+              label={`Pay Now — ${formatPrice(order.total)}`}
+            />
           )}
         </Stack>
       )}

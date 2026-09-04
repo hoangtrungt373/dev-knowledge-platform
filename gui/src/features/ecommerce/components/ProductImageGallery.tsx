@@ -2,9 +2,6 @@ import { useRef, useState } from 'react';
 import {
   Button,
   CircularProgress,
-  Paper,
-  Stack,
-  Typography,
 } from '@mui/material';
 import UploadIcon from '@mui/icons-material/Upload';
 import { ProductImage } from '../types';
@@ -12,6 +9,7 @@ import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import ImageThumbnailGrid from './ImageThumbnailGrid';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
+import SectionPanel from './common/SectionPanel';
 
 interface Props {
   productId: number;
@@ -89,9 +87,9 @@ export default function ProductImageGallery({ productId, images, onChanged }: Pr
   };
 
   return (
-    <Paper variant="outlined" sx={{ p: 2 }}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
-        <Typography variant="subtitle2" fontWeight={700}>Image Gallery</Typography>
+    <SectionPanel
+      title="Image Gallery"
+      action={(
         <Button
           size="small"
           startIcon={uploading ? <CircularProgress size={14} color="inherit" /> : <UploadIcon />}
@@ -100,14 +98,15 @@ export default function ProductImageGallery({ productId, images, onChanged }: Pr
         >
           Upload Image
         </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          hidden
-          onChange={handleFileSelected}
-        />
-      </Stack>
+      )}
+    >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={handleFileSelected}
+      />
 
       <ImageThumbnailGrid
         items={sorted.map(image => ({
@@ -129,6 +128,6 @@ export default function ProductImageGallery({ productId, images, onChanged }: Pr
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeleteTargetId(null)}
       />
-    </Paper>
+    </SectionPanel>
   );
 }

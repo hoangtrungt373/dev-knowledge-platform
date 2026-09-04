@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
-import { Alert, Box, Button, CircularProgress, Typography } from '@mui/material';
+import { Alert, Box, Button, Typography } from '@mui/material';
+import SubmitButton from '@shared/components/SubmitButton';
 
 interface PaymentElementFormProps {
   /** Called once `stripe.confirmPayment` resolves with no error — the caller should refetch
@@ -70,9 +71,7 @@ export default function PaymentElementForm({
         <Button onClick={secondaryAction.onClick} disabled={submitting || secondaryAction.disabled}>
           {secondaryAction.label}
         </Button>
-        <Button variant="contained" onClick={handleSubmit} disabled={!stripe || submitting}>
-          {submitting ? <CircularProgress size={20} color="inherit" /> : payButtonLabel}
-        </Button>
+        <SubmitButton saving={submitting} onClick={handleSubmit} disabled={!stripe} label={payButtonLabel} />
       </Box>
     </Box>
   );

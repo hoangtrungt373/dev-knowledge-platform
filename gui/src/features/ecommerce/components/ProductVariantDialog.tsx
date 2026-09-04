@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -19,6 +18,7 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { ProductVariantInput } from '../types';
 import { SuggestedAttribute } from '../hooks/useCategoryAttributeSuggestions';
+import SubmitButton from '@shared/components/SubmitButton';
 import type { DisplayVariant } from './ProductVariantEditor';
 
 interface Props {
@@ -245,9 +245,7 @@ export default function ProductVariantDialog({
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={saving}>Cancel</Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={saving}>
-          {saving ? <CircularProgress size={16} color="inherit" /> : (isEdit ? 'Save' : 'Add')}
-        </Button>
+        <SubmitButton saving={saving} onClick={handleSubmit} label={isEdit ? 'Save' : 'Add'} />
       </DialogActions>
     </Dialog>
   );

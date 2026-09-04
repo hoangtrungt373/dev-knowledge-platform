@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   Box,
   Button,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -21,6 +20,7 @@ import { ProductAttribute } from '../types';
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
+import SubmitButton from '@shared/components/SubmitButton';
 
 interface Props {
   open: boolean;
@@ -194,9 +194,7 @@ export default function ProductAttributeFormDialog({ open, attribute, onClose, o
 
       <DialogActions>
         <Button onClick={onClose} disabled={saving}>Cancel</Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={saving}>
-          {saving ? <CircularProgress size={16} color="inherit" /> : (isEdit ? 'Save' : 'Create')}
-        </Button>
+        <SubmitButton saving={saving} onClick={handleSubmit} label={isEdit ? 'Save' : 'Create'} />
       </DialogActions>
     </Dialog>
   );

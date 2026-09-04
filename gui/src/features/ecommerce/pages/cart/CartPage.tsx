@@ -18,6 +18,10 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ShoppingCartOutlinedIcon from '@mui/icons-material/ShoppingCartOutlined';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import FullPageLoader from '@shared/components/FullPageLoader';
+import EmptyState from '@shared/components/EmptyState';
+import SectionPanel from '../../components/common/SectionPanel';
+import WideContentContainer from '../../components/common/WideContentContainer';
 import { useCart } from '../../context/CartContext';
 import { shopApi } from '../../api/shopApi';
 import VariantSelector from '../../components/shop/VariantSelector';
@@ -108,25 +112,19 @@ export default function CartPage(): JSX.Element {
   };
 
   if (loading && !cart) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <FullPageLoader />;
   }
 
   const lines = cart?.lines ?? [];
 
   if (lines.length === 0) {
     return (
-      <Box sx={{ p: 3, textAlign: 'center', maxWidth: 500, mx: 'auto', mt: 6 }}>
-        <ShoppingCartOutlinedIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
-        <Typography variant="h6" sx={{ mb: 1 }}>Your cart is empty</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Browse the shop and add something you like.
-        </Typography>
-        <Button variant="contained" onClick={() => navigate('/shop')}>Go to Shop</Button>
-      </Box>
+      <EmptyState
+        icon={<ShoppingCartOutlinedIcon sx={{ fontSize: 64, color: 'text.disabled' }} />}
+        title="Your cart is empty"
+        description="Browse the shop and add something you like."
+        action={{ label: 'Go to Shop', onClick: () => navigate('/shop') }}
+      />
     );
   }
 
@@ -145,10 +143,10 @@ export default function CartPage(): JSX.Element {
   };
 
   return (
-    <Box sx={{ p: 3, width: '80%', mx: 'auto' }}>
+    <WideContentContainer>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>Your Cart</Typography>
 
-      <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, p: 1, pl:3, mb: 2 }}>
+      <SectionPanel padding={1} sx={{ pl: 3, mb: 2 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Stack direction="row" alignItems="center" spacing={2}>
             <Checkbox
@@ -178,9 +176,9 @@ export default function CartPage(): JSX.Element {
             {bulkDeleting ? 'Deleting…' : `Delete Selected (${selectedVariantIds.size})`}
           </Button>
         </Stack>
-      </Box>
+      </SectionPanel>
 
-      <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, p: 3, mb: 3 }}>
+      <SectionPanel padding={3} sx={{ mb: 3 }}>
         <Stack spacing={1} divider={<Divider />} sx={{ mb: 3 }}>
           {lines.map(line => (
             <CartLineRow
@@ -206,10 +204,10 @@ export default function CartPage(): JSX.Element {
             Subtotal: {formatPrice(cart?.subtotal ?? 0)}
           </Typography>
         </Stack>
-      </Box>
+      </SectionPanel>
 
       <Stack direction="row" justifyContent="flex-end" spacing={2}>
-        <Button onClick={() => navigate('/shop')}>Continue Shopping</Button>
+        <Button variant="outlined" onClick={() => navigate('/shop')}>Continue Shopping</Button>
         <Button
           variant="contained"
           size="large"
@@ -221,7 +219,7 @@ export default function CartPage(): JSX.Element {
             : 'Proceed to Checkout'}
         </Button>
       </Stack>
-    </Box>
+    </WideContentContainer>
   );
 }
 

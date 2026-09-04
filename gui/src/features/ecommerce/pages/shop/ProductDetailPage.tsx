@@ -4,7 +4,6 @@ import {
   Box,
   Breadcrumbs,
   Button,
-  CircularProgress,
   Divider,
   IconButton,
   Link,
@@ -15,7 +14,6 @@ import {
   Typography,
 } from '@mui/material';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ImageNotSupportedIcon from '@mui/icons-material/ImageNotSupported';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
@@ -26,6 +24,10 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import DOMPurify from 'dompurify';
 import { authService } from '@auth/services/authService';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import FullPageLoader from '@shared/components/FullPageLoader';
+import EmptyState from '@shared/components/EmptyState';
+import SectionPanel from '../../components/common/SectionPanel';
+import WideContentContainer from '../../components/common/WideContentContainer';
 import { useCart } from '../../context/CartContext';
 import { Product, ProductCategory, ProductVariant } from '../../types';
 import { shopApi } from '../../api/shopApi';
@@ -97,19 +99,16 @@ export default function ProductDetailPage(): JSX.Element {
   };
 
   if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <FullPageLoader />;
   }
 
   if (notFound || !product) {
     return (
-      <Box sx={{ p: 3, textAlign: 'center' }}>
-        <Typography variant="h6" sx={{ mb: 2 }}>Product not found.</Typography>
-        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/shop')}>Back to Shop</Button>
-      </Box>
+      <EmptyState
+        icon={<ImageNotSupportedIcon sx={{ fontSize: 64, color: 'text.disabled' }} />}
+        title="Product not found"
+        action={{ label: 'Back to Shop', onClick: () => navigate('/shop') }}
+      />
     );
   }
 
@@ -148,7 +147,7 @@ export default function ProductDetailPage(): JSX.Element {
     : product.variants.some(v => v.stockQuantity - v.reservedQuantity > 0);
 
   return (
-    <Box sx={{ p: 3, width: '80%', mx: 'auto' }}>
+    <WideContentContainer>
       <Breadcrumbs separator={<NavigateNextIcon fontSize="small" />} sx={{ mb: 2 }}>
         <Link component={RouterLink} to="/shop" underline="hover" color="inherit">
           Shop
@@ -165,7 +164,7 @@ export default function ProductDetailPage(): JSX.Element {
         <Typography color="text.primary">{product.name}</Typography>
       </Breadcrumbs>
 
-      <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap', bgcolor: 'background.paper', borderRadius: 2, p: 3 }}>
+      <SectionPanel padding={3} sx={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
 
         {/* ── Image gallery ── */}
         <Box sx={{ flex: '1 1 calc(45% - 12.8px)', minWidth: 320 }}>
@@ -362,7 +361,6 @@ export default function ProductDetailPage(): JSX.Element {
                     startIcon={<ShoppingCartIcon />}
                     disabled={!selectedVariant || !inStockDisplay || addingToCart}
                     onClick={handleAddToCart}
-                    sx={{ px: 4, py: 1.25, fontSize: '1rem', fontWeight: 600 }}
                   >
                     {addingToCart ? 'Adding…' : 'Add to Cart'}
                   </Button>
@@ -376,7 +374,6 @@ export default function ProductDetailPage(): JSX.Element {
                         variant="outlined"
                         size="large"
                         disabled
-                        sx={{ px: 4, py: 1.25, fontSize: '1rem', fontWeight: 600 }}
                       >
                         Buy Now
                       </Button>
@@ -388,7 +385,6 @@ export default function ProductDetailPage(): JSX.Element {
                   variant="contained"
                   size="large"
                   onClick={() => navigate('/login')}
-                  sx={{ px: 4, py: 1.25, fontSize: '1rem', fontWeight: 600 }}
                 >
                   Log in to buy
                 </Button>
@@ -396,10 +392,10 @@ export default function ProductDetailPage(): JSX.Element {
             </Stack>
           </Stack>
         </Box>
-      </Box>
+      </SectionPanel>
 
       {sanitizedDescription && (
-        <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, p: 3, mt: 3 }}>
+        <SectionPanel padding={3} sx={{ mt: 3 }}>
           <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, px: 2, py: 1, mb: 6 }}>
             <Typography variant="h6" fontWeight={400}>Product Description</Typography>
           </Box>
@@ -423,8 +419,8 @@ export default function ProductDetailPage(): JSX.Element {
               '& th, & td': { border: '1px solid', borderColor: 'divider', px: 1, py: 0.5 },
             }}
           />
-        </Box>
+        </SectionPanel>
       )}
-    </Box>
+    </WideContentContainer>
   );
 }

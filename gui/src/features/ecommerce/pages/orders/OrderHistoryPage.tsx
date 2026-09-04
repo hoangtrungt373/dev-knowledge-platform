@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Divider,
   Pagination,
   Paper,
@@ -15,6 +14,8 @@ import {
 } from '@mui/material';
 import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import FullPageLoader from '@shared/components/FullPageLoader';
+import EmptyState from '@shared/components/EmptyState';
 import { orderApi } from '../../api/orderApi';
 import { Order } from '../../types';
 import OrderLineRow from '../../components/orders/OrderLineRow';
@@ -52,11 +53,7 @@ export default function OrderHistoryPage(): JSX.Element {
   };
 
   if (loading && orders === null) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <FullPageLoader />;
   }
 
   // Truly no orders at all yet (checked only against the 'all' tab, never a filtered one — a
@@ -64,14 +61,12 @@ export default function OrderHistoryPage(): JSX.Element {
   // below instead, keeping the tabs themselves visible so the shopper can switch back to All).
   if (tabKey === 'all' && orders !== null && orders.length === 0) {
     return (
-      <Box sx={{ p: 3, textAlign: 'center', maxWidth: 500, mx: 'auto', mt: 6 }}>
-        <ReceiptLongOutlinedIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
-        <Typography variant="h6" sx={{ mb: 1 }}>No orders yet</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Once you place an order, you'll see it here.
-        </Typography>
-        <Button variant="contained" onClick={() => navigate('/shop')}>Go to Shop</Button>
-      </Box>
+      <EmptyState
+        icon={<ReceiptLongOutlinedIcon sx={{ fontSize: 64, color: 'text.disabled' }} />}
+        title="No orders yet"
+        description="Once you place an order, you'll see it here."
+        action={{ label: 'Go to Shop', onClick: () => navigate('/shop') }}
+      />
     );
   }
 

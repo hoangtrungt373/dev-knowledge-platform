@@ -1,12 +1,8 @@
 import { ChangeEvent, useRef } from 'react';
-import {
-  Button,
-  Paper,
-  Stack,
-  Typography,
-} from '@mui/material';
+import { Button } from '@mui/material';
 import UploadIcon from '@mui/icons-material/Upload';
 import ImageThumbnailGrid from './ImageThumbnailGrid';
+import SectionPanel from './common/SectionPanel';
 
 /**
  * One not-yet-uploaded image queued on the product create form — `id` is a client-generated
@@ -51,14 +47,15 @@ export default function ProductImageStager({ images, onAdd, onRemove, onReorder 
   };
 
   return (
-    <Paper variant="outlined" sx={{ p: 2 }}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
-        <Typography variant="subtitle2" fontWeight={700}>Image Gallery</Typography>
+    <SectionPanel
+      title="Image Gallery"
+      action={(
         <Button size="small" startIcon={<UploadIcon />} onClick={() => fileInputRef.current?.click()}>
           Add Image
         </Button>
-        <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleFileSelected} />
-      </Stack>
+      )}
+    >
+      <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleFileSelected} />
 
       <ImageThumbnailGrid
         items={images.map((image, index) => ({
@@ -70,6 +67,6 @@ export default function ProductImageStager({ images, onAdd, onRemove, onReorder 
         onRemove={onRemove}
         emptyMessage="No images yet — added here, uploaded once you create the product."
       />
-    </Paper>
+    </SectionPanel>
   );
 }
