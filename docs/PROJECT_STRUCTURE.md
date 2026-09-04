@@ -1710,9 +1710,11 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   ├── PaymentOutcome.java         — SUCCEEDED / DECLINED / PENDING (always carried inside a
 │   │                                    PaymentResult now, not returned bare)
 │   ├── PaymentResult.java          — Phase 2: record(outcome, gatewayReference, failureCategory,
-│   │                                    gatewayFailureMessage) — widens the bare PaymentOutcome
-│   │                                    Epic 3 originally returned with what Payment persistence
-│   │                                    (Phase 3) will need
+│   │                                    gatewayFailureMessage, clientSecret) — widens the bare
+│   │                                    PaymentOutcome Epic 3 originally returned; clientSecret
+│   │                                    (Option A follow-up) carries a fresh PENDING PaymentIntent's
+│   │                                    client secret back to the one HTTP response that needs it,
+│   │                                    never persisted onto Payment
 │   ├── RefundOutcome.java / RefundResult.java — Phase 2: SUCCEEDED/FAILED/PENDING, mirroring
 │   │                                    PaymentOutcome/PaymentResult for the refund vocabulary —
 │   │                                    deliberately not the same enum/record (a refund failure
@@ -1727,14 +1729,25 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                    NoOpPaymentGatewayPort (deleted outright)
 │   ├── StripePaymentGateway.java   — Phase 2: real stripe-java SDK calls against Stripe's
 │   │                                    test-mode API (app.ecommerce.payment.gateway=stripe +
-│   │                                    a real STRIPE_SECRET_KEY); checkStatus has no native
+│   │                                    a real STRIPE_SECRET_KEY). Option A follow-up: charge()
+│   │                                    creates an unconfirmed PaymentIntent (automaticPaymentMethods,
+│   │                                    no confirm/paymentMethod/offSession) and returns its
+│   │                                    client_secret — the shopper's own browser confirms it via
+│   │                                    stripe.confirmPayment (see gui/CLAUDE.md), so no card ever
+│   │                                    reaches this backend; checkStatus has no native
 │   │                                    Stripe endpoint, so it replays the original charge request
 │   │                                    under the same Idempotency-Key header instead — the one
-│   │                                    reason this class depends on PaymentRepository
+│   │                                    reason this class depends on PaymentRepository (this replay
+│   │                                    is also what makes OrderService.initiatePayment safe to
+│   │                                    call again for the same order before the shopper confirms)
 │   └── StripeFailureCategoryMapper.java — Phase 5: the Stripe decline-code -> PaymentFailureCategory
 │       translation, extracted out of StripePaymentGateway (its original Phase 2 home) once
 │       webhook.StripeWebhookService needed the identical mapping for an async decline — one
 │       shared source of truth instead of two copies that could drift apart
+├── api/PaymentConfigApi.java + api/impl/PaymentConfigController.java — Option A follow-up:
+│   GET /api/v1/public/payment-config (permitAll, no business logic) — tells the checkout gui
+│   which gateway is active and, for stripe, its publishable key (never the secret key) to hand
+│   loadStripe(); publishableKey is null whenever gateway is mock
 ├── webhook/                     — Epic 4 Phase 5 (US-4.5): Stripe webhook handling, exposed
 │   │                                directly on this service's own origin (never gateway-routed —
 │   │                                see root CLAUDE.md's Routing section)

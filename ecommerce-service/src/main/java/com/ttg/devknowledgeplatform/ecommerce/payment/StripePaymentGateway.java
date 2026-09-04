@@ -1,10 +1,8 @@
 package com.ttg.devknowledgeplatform.ecommerce.payment;
 
-import com.stripe.exception.CardException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.Refund;
-import com.stripe.model.StripeError;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.PaymentIntentCreateParams;
 import com.stripe.param.RefundCreateParams;
@@ -37,12 +35,24 @@ import java.math.RoundingMode;
  * configured," and either environment might reasonably run with or without real Stripe test
  * credentials on hand.
  *
- * <p><b>No real checkout UI collects a card in this reactor yet</b> — {@link #testPaymentMethodId}
- * (default {@code pm_card_visa}, one of Stripe's own built-in test-mode PaymentMethod ids that
- * always succeeds) stands in for whatever a real Stripe.js/Elements integration would eventually
- * attach. Point it at a different built-in test id (e.g. {@code pm_card_chargeDeclined}) to
- * exercise the decline path against the real API instead of {@link MockPaymentGateway}'s own
- * magic-amount sentinel.
+ * <p><b>Option A (Stripe Elements, client-side confirmation) — {@link #charge} creates an
+ * unconfirmed {@link PaymentIntent} and hands its {@code client_secret} back via
+ * {@link PaymentResult#clientSecret()}; it never confirms the charge itself.</b> The GUI mounts a
+ * {@code PaymentElement} against that secret and calls {@code stripe.confirmPayment} client-side —
+ * the shopper's real card never reaches this backend at all (see root {@code CLAUDE.md}'s Stripe
+ * discussion for why {@code off_session}/a hardcoded test PaymentMethod, this class's own original
+ * shape, isn't a real payment flow: no card was ever collected for it to charge). Once the shopper
+ * confirms, Stripe resolves the {@code PaymentIntent} asynchronously and calls
+ * {@code webhook.StripeWebhookService} — the actual source of truth for
+ * {@code SUCCEEDED}/{@code DECLINED}, not this method's own return value, which is
+ * {@link PaymentOutcome#PENDING} for every fresh, not-yet-confirmed charge (see
+ * {@link #resultFromIntent}). {@link #charge} is safe to call more than once for the same order —
+ * it's always keyed by the same {@code idempotencyKey}, so Stripe's own idempotency-key mechanism
+ * returns the identical cached {@link PaymentIntent} (same id, same client secret) rather than
+ * creating a second one — this is what lets {@code service.impl.OrderServiceImpl#initiatePayment}
+ * be re-entrant while an order sits {@code PAYMENT_PROCESSING} (e.g. the shopper reopens the
+ * payment dialog before completing it), with no new column/state needed to remember the first
+ * attempt's own client secret.
  *
  * <p>Every call builds its own {@link RequestOptions} carrying the secret key, rather than
  * mutating the SDK's global, static {@code Stripe.apiKey} field — keeps this bean free of shared
@@ -51,7 +61,7 @@ import java.math.RoundingMode;
  *
  * <p><b>{@link #checkStatus} has no native Stripe endpoint to call</b> — Stripe exposes no "look up
  * by idempotency key" query. Instead, this method replays the <i>exact same</i> {@link #charge}
- * request (same amount, currency, payment method, confirm flag) under the same
+ * request (same amount and currency) under the same
  * {@code Idempotency-Key} header; Stripe recognizes the identical fingerprint and returns its
  * original cached response rather than performing the operation again — the standard, documented
  * way to achieve an idempotent "what did you decide" query against Stripe's own API. This is why
@@ -73,32 +83,23 @@ public class StripePaymentGateway implements PaymentGatewayPort {
     @Value("${app.ecommerce.payment.stripe.currency:usd}")
     private String currency;
 
-    @Value("${app.ecommerce.payment.stripe.test-payment-method-id:pm_card_visa}")
-    private String testPaymentMethodId;
-
     @Override
     public PaymentResult charge(String idempotencyKey, BigDecimal amount) {
         RequestOptions options = requestOptions(idempotencyKey);
+        // No setConfirm/setPaymentMethod/setOffSession — Option A leaves confirmation to the
+        // shopper's own browser via stripe.confirmPayment against this intent's client_secret (see
+        // class Javadoc). automaticPaymentMethods lets Stripe itself decide which payment methods
+        // (card, wallets, etc.) to surface on the PaymentElement, rather than this backend hardcoding
+        // "card" the way the old off_session flow did.
         PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
                 .setAmount(toSmallestCurrencyUnit(amount))
                 .setCurrency(currency)
-                .setPaymentMethod(testPaymentMethodId)
-                .addPaymentMethodType("card")
-                .setConfirm(true)
-                .setOffSession(true)
+                .setAutomaticPaymentMethods(
+                        PaymentIntentCreateParams.AutomaticPaymentMethods.builder().setEnabled(true).build())
                 .build();
         try {
             PaymentIntent intent = PaymentIntent.create(params, options);
             return resultFromIntent(intent);
-        } catch (CardException e) {
-            // The synchronous-decline path: Stripe rejects the confirm attempt outright and the SDK
-            // surfaces it as a thrown exception rather than a "declined" status on a returned object.
-            StripeError error = e.getStripeError();
-            PaymentIntent errorIntent = error != null ? error.getPaymentIntent() : null;
-            String gatewayReference = errorIntent != null ? errorIntent.getId() : null;
-            log.info("Stripe declined charge idempotencyKey={}: declineCode={} message={}",
-                    idempotencyKey, e.getDeclineCode(), e.getMessage());
-            return PaymentResult.declined(gatewayReference, StripeFailureCategoryMapper.categorize(error), e.getMessage());
         } catch (StripeException e) {
             throw new PaymentGatewayException("Stripe charge failed for idempotencyKey=" + idempotencyKey, e);
         }
@@ -143,11 +144,13 @@ public class StripePaymentGateway implements PaymentGatewayPort {
     private PaymentResult resultFromIntent(PaymentIntent intent) {
         return switch (intent.getStatus()) {
             case "succeeded" -> PaymentResult.succeeded(intent.getId());
-            case "processing", "requires_action", "requires_confirmation", "requires_capture" ->
-                    PaymentResult.pending(intent.getId());
-            // Reached only if Stripe returns a non-throwing "requires_payment_method" status after
-            // confirm — the CardException branch in charge() is the normal decline path; this is a
-            // defensive fallback for the same outcome surfacing without an exception.
+            // "requires_payment_method" is the intent's normal starting status now that charge()
+            // never confirms — it means "created, waiting on the shopper's own browser to confirm
+            // it," not a decline; every other non-terminal status covers a card genuinely mid-flight
+            // (e.g. a 3DS challenge in progress).
+            case "requires_payment_method", "requires_confirmation", "requires_action", "requires_capture",
+                    "processing" -> PaymentResult.pending(intent.getId(), intent.getClientSecret());
+            // "canceled" (or any other terminal-but-not-succeeded status) — a definitive decline.
             default -> PaymentResult.declined(intent.getId(),
                     StripeFailureCategoryMapper.categorize(intent.getLastPaymentError()),
                     intent.getLastPaymentError() != null ? intent.getLastPaymentError().getMessage() : null);

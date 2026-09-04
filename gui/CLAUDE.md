@@ -1747,6 +1747,51 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       `reportWebVitals.ts`/`@chat` errors this file already documents elsewhere) and a successful
       `vite build` — no Docker in this sandbox, so the actual declined-payment/refunded-order
       banners are unverified in a real browser.
+    - **Follow-up: real card collection — Option A (embedded Stripe Elements, client-side
+      confirmation), replacing the backend's own hardcoded-test-PaymentMethod stand-in, per
+      request.** Two new dependencies: `@stripe/stripe-js`/`@stripe/react-stripe-js` (pushed the
+      production bundle from ~672 KB to ~715 KB gzip — Stripe.js's own React bindings, not
+      addressed here the same way TipTap's own bundle-size note wasn't). New
+      `api/paymentConfigApi.ts` — `GET /api/v1/public/payment-config`, public (no auth); returns
+      `{gateway, publishableKey}`, `publishableKey` null whenever `gateway` is `'mock'`. New
+      `components/orders/PaymentDialog.tsx` — a `Dialog` wrapping `@stripe/react-stripe-js`'s
+      `<Elements>`/`<PaymentElement>`, `stripe.confirmPayment({elements, confirmParams:
+      {return_url: window.location.href}, redirect: 'if_required'})` on submit. `redirect:
+      'if_required'` keeps this a single in-app dialog for the common case (no 3-D Secure, or a
+      challenge Stripe.js shows as an inline modal) rather than a full-page redirect — `return_url`
+      is still supplied for the rarer payment method that mandates one regardless. A module-level
+      `stripePromise` cache (keyed by publishable key) means `loadStripe()` is called once per key
+      for the app's lifetime, not once per dialog open — Stripe's own guidance, since it
+      injects/reuses a `<script>` tag.
+      - `types.ts`'s `Order` gained `paymentClientSecret: string | null` — **deliberately present
+        only on `orderApi.pay()`'s own response**, mirroring the backend's own
+        `OrderResponse.paymentClientSecret` (never resolved by a mapper, never persisted — see that
+        DTO's Javadoc): `null` on every other response this type backs, and `null` even from
+        `pay()` once the gateway already resolved the charge synchronously (`MockPaymentGateway`,
+        or an outright-declined Stripe charge).
+      - `OrderDetailPage.tsx`'s `handlePay` branches on it: a truthy `paymentClientSecret` opens
+        `PaymentDialog` instead of immediately toasting a verdict (the order is still
+        `PAYMENT_PROCESSING` at that point — there's nothing to announce yet); a falsy one keeps the
+        exact pre-existing synchronous-verdict toast logic (extracted into a small
+        `notifyPaymentOutcome` helper so both paths share it). `PaymentDialog`'s `onCompleted`
+        (fires once `confirmPayment` resolves with no error — a validation/decline error instead
+        stays inside the dialog as an inline `Alert`, same as any other Stripe Elements checkout)
+        re-fetches the order via `orderApi.getById` and runs that same `notifyPaymentOutcome` — this
+        page never itself learns the definitive `CONFIRMED`/`FAILED` outcome from `confirmPayment`'s
+        own return value, only from whatever the refetch shows, since `webhook.StripeWebhookService`
+        (not this client-side call) is the real source of truth (see root `CLAUDE.md`'s Stripe
+        discussion). A failed refetch is swallowed silently — the confirmation itself already
+        succeeded (the shopper would have seen the inline error otherwise), so a stale status chip
+        until the next reload is the only consequence, not a real error to surface.
+      - **Not built as part of this pass**: a full-page `/orders/:id/payment-return` route for the
+        rarer payment method that does force a full-page redirect despite `redirect: 'if_required'`
+        — `return_url` points back at the current page today, which happens to already be the right
+        order-detail URL, so this works by construction rather than by a dedicated handler; revisit
+        if a payment method that behaves differently is ever actually enabled.
+      - Verified via a clean `tsc --noEmit` (only the same pre-existing `App.test.tsx`/
+        `reportWebVitals.ts`/`@chat` errors this file already documents elsewhere) and a successful
+        `vite build` — no Docker in this sandbox, so the actual card-entry/3DS/decline flow through
+        a real Stripe test account is unverified in a real browser.
     - **`CheckoutPage.tsx`'s successful `confirm` now `navigate`s straight to `/orders/:id`**
       instead of swapping in an inline `OrderConfirmationView` — that component (and the now-dead
       `CheckCircleOutlineIcon` import) was deleted outright. It existed only because no "get order

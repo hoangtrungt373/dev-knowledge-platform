@@ -275,12 +275,32 @@ class OrderServiceImplTest {
             when(paymentGatewayPort.charge("1", new BigDecimal("25.00"))).thenReturn(result);
             when(paymentHandoffService.resolvePayment(1, result)).thenReturn(confirmed);
 
-            Order returned = service.initiatePayment(1, OWNER_UUID);
+            var returned = service.initiatePayment(1, OWNER_UUID);
 
-            assertThat(returned).isSameAs(confirmed);
+            assertThat(returned.order()).isSameAs(confirmed);
+            assertThat(returned.clientSecret()).isNull();
             verify(paymentHandoffService).startPaymentProcessing(1, OWNER_UUID);
             verify(paymentGatewayPort).charge("1", new BigDecimal("25.00"));
             verify(paymentHandoffService).resolvePayment(1, result);
+        }
+
+        @Test
+        void returnsTheClientSecretWhenTheChargeIsStillPendingClientSideConfirmation() {
+            // Option A (Stripe Elements): a fresh PaymentIntent comes back PENDING with a client
+            // secret the gui needs to mount a PaymentElement — this must reach the controller.
+            Order pending = orderOwnedBy(OWNER_UUID);
+            pending.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            pending.setIdempotencyKey("1");
+            pending.setTotal(new BigDecimal("25.00"));
+            PaymentResult result = PaymentResult.pending("pi_1", "pi_1_secret_abc");
+            when(paymentHandoffService.startPaymentProcessing(1, OWNER_UUID)).thenReturn(pending);
+            when(paymentGatewayPort.charge("1", new BigDecimal("25.00"))).thenReturn(result);
+            when(paymentHandoffService.resolvePayment(1, result)).thenReturn(pending);
+
+            var returned = service.initiatePayment(1, OWNER_UUID);
+
+            assertThat(returned.order()).isSameAs(pending);
+            assertThat(returned.clientSecret()).isEqualTo("pi_1_secret_abc");
         }
 
         @Test

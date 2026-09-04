@@ -96,10 +96,11 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public Order initiatePayment(Integer orderId, String callerUuid) {
+    public PaymentInitiationResult initiatePayment(Integer orderId, String callerUuid) {
         Order pending = paymentHandoffService.startPaymentProcessing(orderId, callerUuid);
         PaymentResult result = paymentGatewayPort.charge(pending.getIdempotencyKey(), pending.getTotal());
-        return paymentHandoffService.resolvePayment(orderId, result);
+        Order resolved = paymentHandoffService.resolvePayment(orderId, result);
+        return new PaymentInitiationResult(resolved, result.clientSecret());
     }
 
     private Order findOrder(Integer orderId) {

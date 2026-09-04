@@ -1922,18 +1922,11 @@ structural-only adapter.
     state this reactor's existing `local`/`docker` profiles don't already encode).
   - `payment.StripePaymentGateway` — the real adapter (`app.ecommerce.payment.gateway=stripe` +
     `app.ecommerce.payment.stripe.secret-key`/`STRIPE_SECRET_KEY`, a real test-mode `sk_test_...`
-    key). No real checkout UI collects a card anywhere in this reactor yet, so
-    `app.ecommerce.payment.stripe.test-payment-method-id` (default `pm_card_visa`, one of Stripe's
-    own built-in test-mode PaymentMethod ids) stands in for one — point it at
-    `pm_card_chargeDeclined` to exercise a real-API decline instead of `MockPaymentGateway`'s own
-    sentinel. A synchronous decline during `PaymentIntent` confirm surfaces as a thrown
-    `CardException`, translated via a new `categorize(StripeError)` helper (Stripe's own
-    `decline_code`/`code` → `PaymentFailureCategory`) — this Adapter-level translation is a
-    deliberate consolidation of most of US-4.7's own mapping work into Phase 2, since it's squarely
-    the Adapter's job to translate Stripe's vocabulary into this codebase's; Phase 7 is now mostly
-    just *exposing* the already-populated category over REST, not building the mapping itself. Any
-    other `StripeException` (a genuine API/network error) is rethrown as `PaymentGatewayException`.
-    **`checkStatus` has no native Stripe endpoint to call** — Stripe exposes no "look up by
+    key). **This bullet originally described `charge()` confirming the `PaymentIntent`
+    synchronously against a hardcoded test PaymentMethod id — that shape is gone; see the
+    "Option A" follow-up bullet right below for the real, client-side-confirmation flow that
+    replaced it.** `PaymentGatewayException` is rethrown for any genuine `StripeException`
+    (API/network error). **`checkStatus` has no native Stripe endpoint to call** — Stripe exposes no "look up by
     idempotency key" query, so this method replays the exact same `charge` request under the same
     `Idempotency-Key` header, and Stripe returns its original cached response instead of performing
     the operation again; this is the one concrete reason this class (unlike `MockPaymentGateway`)
@@ -1950,9 +1943,59 @@ structural-only adapter.
     tests total** (up from 293 as of Epic 3's own count elsewhere in this file — treat this figure
     as current), verified via a real `mvn test` run (JDK 21); a targeted
     `mvn -pl ecommerce-service -am compile` also confirmed the new `stripe-java` SDK usage
-    (`PaymentIntent`/`Refund`/`RequestOptions`/`CardException`/`StripeError`) compiles against the
+    (`PaymentIntent`/`Refund`/`RequestOptions`/`StripeError`) compiles against the
     real dependency, catching one real API mismatch along the way (`StripeError.getPaymentIntent()`
     returns a `PaymentIntent` object, not a bare `String` id, contrary to an initial assumption).
+- **Follow-up: `StripePaymentGateway#charge` rebuilt around Option A (Stripe Elements, client-side
+  confirmation), replacing the `off_session`/hardcoded-test-PaymentMethod shape Phase 2 originally
+  shipped, per request — see root `CLAUDE.md`'s own Stripe discussion for why that original shape
+  (`setPaymentMethod(testPaymentMethodId)`/`setConfirm(true)`/`setOffSession(true)`) never
+  resembled a real checkout: no card was ever collected for it to charge, since no `gui` code
+  existed to collect one.** `charge` now builds an **unconfirmed** `PaymentIntent`
+  (`setAutomaticPaymentMethods(enabled=true)`, no `confirm`/`paymentMethod`/`offSession` at all) and
+  returns its `client_secret` via a new `PaymentResult.clientSecret` field — the shopper's own
+  browser confirms it client-side (`stripe.confirmPayment` against a mounted `PaymentElement`, see
+  `gui/CLAUDE.md`'s own note), so the card itself never reaches this backend. `resultFromIntent`'s
+  `switch` now treats `"requires_payment_method"` as `PENDING`, not `DECLINED` — that status is the
+  intent's normal starting point now that `charge` never confirms, not a synchronous-decline
+  signal the way it briefly could be read as before this change (a genuine decline still only ever
+  reaches `PaymentOutcome.DECLINED` via the intent's own terminal `"canceled"`/etc. status, or via
+  the webhook path once the shopper's own confirmation attempt is declined).
+  `app.ecommerce.payment.stripe.test-payment-method-id`/`STRIPE_TEST_PAYMENT_METHOD_ID` were
+  deleted outright (dead config — nothing reads them anymore); a new
+  `app.ecommerce.payment.stripe.publishable-key`/`STRIPE_PUBLISHABLE_KEY` property was added
+  instead, served (never the secret key) by a new, deliberately business-logic-free
+  `PaymentConfigApi`/`PaymentConfigController` (`GET /api/v1/public/payment-config` — this
+  module's `security/SecurityConfig` already `permitAll()`s `/api/v1/public/**`, no new rule
+  needed) returning `{gateway, publishableKey}` — `publishableKey` is `null` whenever `gateway` is
+  `mock`, since there's nothing for `loadStripe()` to initialize against.
+  `gateway`'s own `GatewayRoutesConfig` gained a matching `/api/v1/public/payment-config` route in
+  the same change (see that module's own standing warning about this exact class of gap).
+  **`orderstatus.PaymentHandoffService#startPaymentProcessing` is now deliberately re-entrant**
+  when the order is already `PAYMENT_PROCESSING` — it just hands the same order back rather than
+  re-running the `PENDING`-only registry transition (which would reject) or writing a second
+  `Payment` row: a shopper can call `pay()` again before ever confirming the first `PaymentIntent`
+  (closing the payment dialog, reloading the page), and `charge()`'s own `Idempotency-Key` (still
+  the order id, unchanged from Epic 3) makes a repeat Stripe call return the *same* cached
+  `PaymentIntent` — same id, same client secret — rather than creating a second one, so no new
+  column/persisted state was needed to remember the first attempt's own secret.
+  `OrderService.initiatePayment` return type widened from a bare `Order` to a new nested
+  `OrderService.PaymentInitiationResult(order, clientSecret)` record — `clientSecret` is `null`
+  whenever the gateway already resolved the charge synchronously (every `MockPaymentGateway`
+  verdict, or an outright-declined Stripe charge), and is **never persisted** onto `Payment`
+  (`entity.Payment` gained no new column for it) — `api.impl.OrderController#pay` is the only place
+  that ever reads it, setting it as a new, deliberately non-mapper-resolved
+  `OrderResponse.paymentClientSecret` field (see that DTO's own updated Javadoc for why it's not
+  treated like `paymentStatus`/`paymentFailureCategory`'s live-lookup fields). New
+  `PaymentHandoffServiceTest.isReentrantWhenTheOrderIsAlreadyPaymentProcessing` and two new
+  `OrderServiceImplTest` cases (the `clientSecret` pass-through for both the resolved and the
+  still-pending case) — **319 unit tests total**, verified via a real `mvn test` run (JDK 21).
+  **Not built as part of this change**: no automatic expiry/failure for an order that sits
+  `PAYMENT_PROCESSING` forever because the shopper simply abandoned the payment dialog without
+  ever confirming or declining — `OrderReconciliationJob`'s own "still `PENDING`, check again
+  later" handling of a `requires_payment_method` intent is exactly correct for a shopper who's
+  still filling out the form, but has no distinct signal for "genuinely gave up," so a stuck order
+  in that state is a known, accepted gap, not a bug; revisit with a real timeout if it matters.
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)

@@ -419,6 +419,12 @@ export interface Order {
   /** A short, non-technical, server-owned reason for a DECLINED payment (US-4.7) — never the
    * gateway's own raw error string, which this app never receives at all. */
   paymentFailureMessage: string | null;
+  /** Only ever present on the response to `POST /orders/{id}/pay`, and only when the charge is
+   * still awaiting the shopper's own client-side confirmation (Option A: Stripe Elements) — null
+   * on every other response this type backs (list/get-by-id/cancel), and null even from `pay()`
+   * once the gateway already resolved the charge synchronously (MockPaymentGateway, or an
+   * outright-declined Stripe charge). Never persisted — see backend's OrderResponse Javadoc. */
+  paymentClientSecret: string | null;
   lines: OrderLine[];
   /** Oldest first, per the backend's own @OrderBy("id ASC") — read top-to-bottom as a timeline. */
   statusHistory: OrderStatusHistoryEntry[];
