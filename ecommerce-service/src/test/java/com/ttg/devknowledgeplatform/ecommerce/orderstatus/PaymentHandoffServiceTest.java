@@ -186,20 +186,52 @@ class PaymentHandoffServiceTest {
         }
 
         @Test
-        void pendingLeavesTheOrderAndThePaymentRowUntouchedForTheNextPollAndPublishesNoEvent() {
+        void pendingLeavesTheOrderStatusUntouchedButStillRecordsTheGatewayReferenceAndPublishesNoEvent() {
+            // Regression coverage for a real bug: an earlier revision of applyResultToPayment
+            // skipped the Payment row entirely on PENDING, so Payment.gatewayReference was never
+            // set on Option A's very first (routinely-PENDING) charge() call — breaking both the
+            // Stripe webhook's own correlation lookup and the reconciliation job's checkStatus
+            // retry, which both key off that same column. See PaymentHandoffService.resolvePayment's
+            // own updated Javadoc for the full incident writeup.
             Order order = orderOwnedBy(OWNER_UUID);
             order.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            Payment payment = new Payment();
+            payment.setId(100);
+            payment.setAmount(new BigDecimal("25.00"));
             when(orderRepository.findById(1)).thenReturn(Optional.of(order));
             when(orderRepository.save(order)).thenReturn(order);
+            when(paymentRepository.findByOrderId(1)).thenReturn(Optional.of(payment));
 
             service.resolvePayment(1, PaymentResult.pending("gw-ref-1", "secret_1"));
 
             verify(orderStatusHandlerRegistry, never()).confirmPayment(order);
             verify(orderStatusHandlerRegistry, never()).failPayment(order);
             assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_PROCESSING);
-            verify(paymentRepository, never()).findByOrderId(any());
-            verify(paymentRepository, never()).save(any());
+            assertThat(payment.getGatewayReference()).isEqualTo("gw-ref-1");
+            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
+            verify(paymentRepository).save(payment);
             verify(outboxEventRepository, never()).save(any());
+        }
+
+        @Test
+        void pendingWithNoGatewayReferenceYetLeavesThePaymentRowsExistingReferenceUntouched() {
+            // The reconciliation job's own checkStatus call returns PaymentResult.pending(null,
+            // null) when Payment.gatewayReference is itself still null (nothing to retrieve yet) —
+            // must not overwrite a real reference with null were one already recorded.
+            Order order = orderOwnedBy(OWNER_UUID);
+            order.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            Payment payment = new Payment();
+            payment.setId(100);
+            payment.setAmount(new BigDecimal("25.00"));
+            payment.setGatewayReference("gw-ref-1");
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+            when(orderRepository.save(order)).thenReturn(order);
+            when(paymentRepository.findByOrderId(1)).thenReturn(Optional.of(payment));
+
+            service.resolvePayment(1, PaymentResult.pending(null, null));
+
+            assertThat(payment.getGatewayReference()).isEqualTo("gw-ref-1");
+            verify(paymentRepository).save(payment);
         }
 
         @Test

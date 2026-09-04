@@ -3051,6 +3051,24 @@ entries start fresh below `[Unreleased]`.
     card form is unverified in a real browser. See `ecommerce-service/CLAUDE.md`'s and
     `gui/CLAUDE.md`'s own notes for full detail.
 
+### Fixed
+
+- **`ecommerce-service`: `Payment.gatewayReference` was never persisted for the common case,
+  silently breaking both the Stripe webhook handler and the reconciliation job's own fallback —
+  found via a real `stripe listen` session where a confirmed payment left its order stuck
+  `PAYMENT_PROCESSING` forever.** `orderstatus.PaymentHandoffService.applyResultToPayment` used to
+  skip the `Payment` row entirely whenever the gateway's result was `PENDING` — harmless while
+  `PENDING` was a rare edge case, but Option A's client-side-confirmation rework made a Stripe
+  charge's very first call *routinely* resolve `PENDING` (an unconfirmed `PaymentIntent`), so
+  `gatewayReference` was never recorded at all for a real Stripe charge until it was too late:
+  `webhook.StripeWebhookService`'s own event-to-`Payment` correlation and
+  `StripePaymentGateway#checkStatus`'s reconciliation lookup both key off that same column, and both
+  silently no-op'd (webhook still answered Stripe `200`, masking the failure from the CLI's own
+  output) with nothing to find. Fixed: the `Payment` row is now always loaded and
+  `gatewayReference` persisted whenever present, for every outcome including `PENDING`. 320 unit
+  tests total (up from 319), verified via a real `mvn test` run (JDK 21). See
+  `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full incident writeup.
+
 ## [0.0.2] — 2026-08-11
 
 Retroactive cut of everything that had accumulated under `[Unreleased]` up to this point — the

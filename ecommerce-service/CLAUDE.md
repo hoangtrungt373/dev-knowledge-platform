@@ -1996,6 +1996,43 @@ structural-only adapter.
   later" handling of a `requires_payment_method` intent is exactly correct for a shopper who's
   still filling out the form, but has no distinct signal for "genuinely gave up," so a stuck order
   in that state is a known, accepted gap, not a bug; revisit with a real timeout if it matters.
+  - **Bug fix, found via a real end-to-end `stripe listen` session: `Payment.gatewayReference`
+    was never actually persisted for the common case, breaking both the webhook and the
+    reconciliation fallback.** Symptom: `stripe listen --forward-to localhost:8081/webhooks/stripe`
+    showed `payment_intent.succeeded` delivered and answered with a real `200`, yet the order stayed
+    durably `PAYMENT_PROCESSING` — no exception anywhere, no `400`/`5xx`, correct forwarding target,
+    correct `STRIPE_WEBHOOK_SECRET`. Root cause: `orderstatus.PaymentHandoffService
+    .applyResultToPayment` returned immediately, without ever loading or touching the `Payment` row
+    at all, whenever `result.outcome() == PaymentOutcome.PENDING` — a shortcut that was harmless
+    back when `PENDING` was the rare edge case (a still-confirming synchronous charge), but became
+    fatal once the Option A follow-up above made `StripePaymentGateway#charge`'s very first call
+    *routinely* resolve `PENDING` (an unconfirmed `PaymentIntent`, `"requires_payment_method"`) —
+    meaning `Payment.gatewayReference` was never recorded for the common case at all, only for a
+    later `SUCCEEDED`/`DECLINED` resolution that, for a real Stripe charge, now only ever arrives
+    *via the webhook itself* — a chicken-and-egg gap. Two independent downstream mechanisms depend
+    on that column and were both silently broken by it: `webhook.StripeWebhookService
+    .applyPaymentIntentEvent` correlates an incoming event to a `Payment` row via
+    `PaymentRepository.findByGatewayReference(paymentIntentId)` — with the column always `null`,
+    this always missed, logged a `WARN No Payment row found for Stripe PaymentIntent id=...`, and
+    still recorded the event as processed (still a `200` to Stripe — no signal at all that anything
+    was wrong from the CLI's own output); `StripePaymentGateway#checkStatus` (the reconciliation
+    job's own fallback poll) reads `payment.getGatewayReference()` first and short-circuits to
+    `PaymentResult.pending(null, null)` when it's `null`, so `OrderReconciliationJob` couldn't
+    recover the order either, even given unlimited time. **Fix**: `applyResultToPayment` now always
+    loads the `Payment` row and persists `result.gatewayReference()` onto it whenever one is
+    present, for every outcome including `PENDING` — `resolvePayment`'s own Javadoc and this
+    method's inline comment explain the full reasoning; `PaymentHandoffServiceTest`'s old
+    `pendingLeavesTheOrderAndThePaymentRowUntouched...` test (which had asserted the buggy
+    behavior — `verify(paymentRepository, never()).findByOrderId(any())` — as correct) was rewritten
+    into `pendingLeavesTheOrderStatusUntouchedButStillRecordsTheGatewayReference...` plus a second
+    new case confirming a `PENDING` result carrying no reference (the reconciliation poll's own
+    still-nothing-to-retrieve case) never clobbers an already-recorded one with `null`. 320 unit
+    tests total (up from 319), verified via a real `mvn test` run (JDK 21). **Still not verified
+    against a real end-to-end `stripe listen` session in this sandbox** — the fix follows directly
+    from the code-level root cause traced through the actual observed symptom (200 response, stuck
+    order, matching `WARN` line expected in the app's own log), but re-running the same live Stripe
+    CLI session against the fixed code to confirm the order now reaches `CONFIRMED` is still up to
+    whoever's running the stack.
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)
