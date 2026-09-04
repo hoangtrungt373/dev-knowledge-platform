@@ -28,7 +28,7 @@ import { useDebouncedValue } from '@shared/hooks/useDebouncedValue';
 import ProductTagFormDialog from '../components/ProductTagFormDialog';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
 import AdminListHeader from '../components/AdminListHeader';
-import TableStatusRow from '../components/TableStatusRow';
+import TableStatusRow from '@shared/components/TableStatusRow';
 import { formatDate, PAGE_SIZE_OPTIONS } from '../utils/format';
 
 /** Mirrors @content's TagListPage — minus the Status filter/column, since ProductTag has none

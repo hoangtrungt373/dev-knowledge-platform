@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Box, Button, CircularProgress, Pagination, Stack, Typography } from '@mui/material';
+import { Box, Button, Pagination, Stack } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { friendApi } from '../api/friendApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import SectionStatus from '@shared/components/SectionStatus';
 import { FriendRequest } from '../types';
 import UserRow from './UserRow';
 
@@ -42,16 +43,8 @@ export default function FriendRequestsOutgoing(): JSX.Element {
     }
   };
 
-  if (loading && requests.length === 0) {
-    return <Box sx={{ py: 6, textAlign: 'center' }}><CircularProgress size={28} /></Box>;
-  }
-
   if (requests.length === 0) {
-    return (
-      <Box sx={{ py: 6, textAlign: 'center' }}>
-        <Typography color="text.secondary">No pending sent requests.</Typography>
-      </Box>
-    );
+    return <SectionStatus loading={loading} isEmpty emptyMessage="No pending sent requests." />;
   }
 
   return (

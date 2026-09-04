@@ -29,7 +29,7 @@ import { useDebouncedValue } from '@shared/hooks/useDebouncedValue';
 import ProductAttributeFormDialog from '../components/ProductAttributeFormDialog';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
 import AdminListHeader from '../components/AdminListHeader';
-import TableStatusRow from '../components/TableStatusRow';
+import TableStatusRow from '@shared/components/TableStatusRow';
 import { formatDate, PAGE_SIZE_OPTIONS } from '../utils/format';
 
 /** Mirrors `ProductTagListPage` — the "Option B" global attribute registry's admin CRUD surface,

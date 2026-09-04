@@ -33,7 +33,7 @@ import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import { useDebouncedValue } from '@shared/hooks/useDebouncedValue';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
 import AdminListHeader from '../components/AdminListHeader';
-import TableStatusRow from '../components/TableStatusRow';
+import TableStatusRow from '@shared/components/TableStatusRow';
 import { formatDate, PAGE_SIZE_OPTIONS } from '../utils/format';
 
 export default function ProductListPage(): JSX.Element {

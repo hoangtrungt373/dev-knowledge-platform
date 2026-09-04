@@ -27,7 +27,8 @@ gui/src/
 │                    account-shell/ (AccountLayout — the shopper's own Profile+Addresses sidebar)
 └── shared/        — httpClient, common.types-equivalent (types.ts, incl. PagedResponse), the
                       NotificationContext, storage.ts (STORAGE_KEYS), colors.ts, errorHandler.ts,
-                      useSubmitGuard, ConfirmDialog, FullPageLoader, EmptyState, SubmitButton
+                      useSubmitGuard, ConfirmDialog, FullPageLoader, EmptyState, SubmitButton,
+                      TableStatusRow, SectionStatus, UploadingOverlay
 ```
 
 Each `features/<name>/` folder owns its own `api/`, `types.ts`, `pages/`, `components/`, `hooks/` —
@@ -2777,3 +2778,87 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     additionally carries a `CloseIcon` in its `DialogTitle` for a close affordance that doesn't
     require scrolling back down. **Follow this rule for any new dialog in this feature** — a short
     form gets no ✕, a longer/scrollable one does.
+- **Style-consistency audit extended to the 7 other feature folders** (`ai`, `auth`, `chat`,
+  `content`, `friends`, `messaging`, `tasks`), per request — see `docs/CHANGELOG.md`'s
+  `[Unreleased]` entry for the full per-file detail. Most of these folders had already
+  independently converged on `@ecommerce`'s own now-standardized conventions (h5 page titles,
+  `Paper variant="outlined"`, the short-form-dialog-gets-no-✕ rule, identical dialog/filter-row
+  spacing) — no action needed there. What did get wired in, all direct adoption of
+  `@shared/components/`'s existing `FullPageLoader`/`SubmitButton` (no new components needed for
+  this pass): `content/pages/QuestionAnswerFormPage.tsx` (`FullPageLoader` + `SubmitButton`),
+  `content/components/CategoryFormDialog.tsx`/`TagFormDialog.tsx`,
+  `tasks/components/ProjectFormDialog.tsx` (`SubmitButton`), and `auth/pages/Login.tsx`/`SignUp.tsx`
+  (`SubmitButton` with `size="large"`) /`AdminLogin.tsx` (`SubmitButton`, **plus a genuine fix**:
+  this button was missing `size="large"` despite already using a 24px spinner and `fullWidth`,
+  identical to `Login`/`SignUp`'s own primary-sign-in-CTA role — added while wiring, not preserved
+  as a deliberate difference) /`ProfilePage.tsx`'s "Save" button. **`SubmitButton` gained a new
+  optional `startIcon` prop** for `ProfilePage`'s case (a `SaveIcon` that stays visible next to the
+  spinner while saving — MUI's `startIcon` is a separate slot from `children`, so `label` alone
+  couldn't express this) — pass it whenever a button being migrated onto `SubmitButton` already has
+  its own `startIcon`, don't drop the icon just to fit the component's original shape.
+  Every item originally deferred here (`TableStatusRow` promotion, the `@friends`/`@messaging`
+  loading/empty-state duplication, the hardcoded overlay color, `@ai`'s page-width split, and the
+  `fontWeight` drift below) was resolved in further follow-ups — see those below. Verified via a
+  clean `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the
+  actual visual result is unverified in a real browser.
+  - **Follow-up: `TableStatusRow.tsx` promoted from `@ecommerce/components/` to
+    `gui/src/shared/components/`, and `@content`'s 3 list pages wired onto it, per request.** The
+    component itself didn't change (it was already fully generic — no props added/removed), only
+    its location. `@ecommerce`'s existing 6 importers
+    (`ProductCategoryListPage`/`ProductTagListPage`/`ProductListPage`/`ProductAttributeListPage`/
+    `CouponListPage`/`AdminOrderListPage`) just updated their import path to
+    `@shared/components/TableStatusRow`. `content/pages/CategoryListPage.tsx`/`TagListPage.tsx`/
+    `QuestionAnswerListPage.tsx` each replaced their own hand-rolled loading/empty `<TableRow>` pair
+    (character-for-character identical to what `TableStatusRow` renders) with the shared component,
+    dropping their own now-unused `CircularProgress` import in the process. **Any future admin list
+    table in this app — in any feature — should import `@shared/components/TableStatusRow` rather
+    than hand-roll this pair again**; it's no longer an `@ecommerce`-only convention.
+  - **Follow-up: new `shared/components/SectionStatus.tsx`, the `Box`-based sibling of
+    `TableStatusRow`, per request.** Same contract (`loading`/`isEmpty`/`emptyMessage`, renders
+    `null` when neither), for a plain list/section instead of a `<TableBody>`. Wired into
+    `@friends`'s 5 list components (`UserSearch`/`FriendsList`/`BlockedUsersList`/
+    `FriendRequestsOutgoing`/`FriendRequestsIncoming`, all previously hand-rolling the identical
+    `Box sx={{py:6,textAlign:'center'}}` pair) and `@messaging/components/ConversationList.tsx`
+    (`py:4`/`spinnerSize:24` instead of the majority's `py:6`/`28` — now overridable props with
+    those exact values as defaults, not copy-pasted numbers). **`UserSearch.tsx`/`FriendsList.tsx`
+    needed real care here, not a mechanical find-replace**: both gate their spinner branch on
+    `loading && x.length === 0` (not plain `loading`) specifically so a quiet background refetch
+    with existing items already on screen keeps showing the list instead of flashing back to a
+    spinner — collapsing the outer branch condition naively to `loading || isEmpty` (tried first)
+    would have hidden the list during every such refetch; the fix was reducing it to just
+    `isEmpty`/`visible.length === 0` instead, by the same absorption-law reasoning that makes the
+    other 3 files' two-`if` shape (`if (loading && empty) …; if (empty) …`) already equivalent to a
+    single `if (empty)` gate. If you touch either of these two again, re-derive the truth table
+    before changing the branch condition — don't assume a `SectionStatus`-based rewrite is a safe
+    mechanical swap by default. **`ConversationList.tsx`'s empty message also picked up
+    `SectionStatus`'s own default `Typography` variant (`body1`, i.e. no explicit `variant` set)**,
+    slightly larger than the `variant="body2"` it used before — a deliberate normalization onto
+    what every one of `@friends`'s 5 equivalents already rendered at (none of them ever set a
+    variant), not an oversight. **Any new centered loading/empty state outside a table, anywhere in
+    this app, should use `@shared/components/SectionStatus`.**
+  - **Follow-up: new `shared/components/UploadingOverlay.tsx`, per request.** Fixes the same
+    hardcoded `bgcolor: 'rgba(0,0,0,0.45)'` overlay-tint literal found independently in
+    `@ecommerce/CouponFormDialog.tsx` (a rectangular thumbnail) and this file's own `ProfilePage.tsx`
+    (a circular avatar) — now `bgcolor: (theme) => alpha(theme.palette.common.black, 0.45)`, using
+    MUI's own `alpha()` helper instead of a magic literal. Takes the overlay's content as `children`
+    (a `CircularProgress` for both files' "uploading" state, `ProfilePage`'s own `PhotoCameraIcon`
+    for its separate hover-only "click to change photo" hint), `borderRadius` (`1` default, `'50%'`
+    for `ProfilePage`'s circular avatar), and an optional `revealOnHover` flag (opacity `0`→`1` on
+    hover — only `ProfilePage`'s hover-hint overlay uses this; its "uploading" overlay and
+    `CouponFormDialog`'s overlay both stay always-visible, the prop's default). **Any new dark,
+    centered-content overlay over an image/avatar mid-upload should use `@shared/components/
+    UploadingOverlay`.**
+  - **Follow-up: `@ai/pages/PipelineMetricsPage.tsx`'s `maxWidth: 1000` vs.
+    `@ai/pages/EmbeddingsPage.tsx`'s plain `p:3` (no cap) confirmed as intentional, not a bug — no
+    code change.** These aren't the same page role rendered inconsistently: `EmbeddingsPage` is a
+    table-based admin list (matches the established "admin table page = plain `p:3`, no width cap"
+    convention used everywhere else in this app), while `PipelineMetricsPage` is a KPI-dashboard
+    page (a `Grid` of `KpiCard`s, 3-column at `md`) — a genuinely different page shape, where the
+    width cap keeps the stat cards from stretching sparse and wide on an ultra-wide monitor. Don't
+    "fix" this by forcing one to match the other; a future dashboard-style admin page should follow
+    `PipelineMetricsPage`'s own capped-width precedent, not `EmbeddingsPage`'s table-page one.
+  - **Follow-up: `fontWeight="bold"` (string) normalized to `fontWeight={700}` (number) on
+    `@auth`'s 3 gate-page titles (`Login.tsx`/`SignUp.tsx`/`AdminLogin.tsx`), per request.** Purely
+    cosmetic — both render identically — but now matches the `fontWeight={700}` convention every
+    other page-title `Typography` in this app already uses. This closes out every finding from the
+    7-folder style-consistency audit.

@@ -31,7 +31,7 @@ import CouponFormDialog from '../components/CouponFormDialog';
 import Thumbnail from '../components/Thumbnail';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
 import AdminListHeader from '../components/AdminListHeader';
-import TableStatusRow from '../components/TableStatusRow';
+import TableStatusRow from '@shared/components/TableStatusRow';
 import { formatDate, formatPrice, PAGE_SIZE_OPTIONS } from '../utils/format';
 
 const TARGET_LABELS: Record<CouponTarget, string> = {

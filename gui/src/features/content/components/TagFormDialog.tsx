@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   Button,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -16,6 +15,7 @@ import {
 import { Tag, TagStatus } from '../types';
 import { contentApi } from '../api/contentApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import SubmitButton from '@shared/components/SubmitButton';
 
 interface Props {
   open: boolean;
@@ -108,9 +108,7 @@ export default function TagFormDialog({ open, tag, onClose, onSaved }: Props): J
 
       <DialogActions>
         <Button onClick={onClose} disabled={saving}>Cancel</Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={saving}>
-          {saving ? <CircularProgress size={16} color="inherit" /> : (isEdit ? 'Save' : 'Create')}
-        </Button>
+        <SubmitButton saving={saving} onClick={handleSubmit} label={isEdit ? 'Save' : 'Create'} />
       </DialogActions>
     </Dialog>
   );

@@ -20,6 +20,7 @@ import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import SubmitButton from '@shared/components/SubmitButton';
+import UploadingOverlay from '@shared/components/UploadingOverlay';
 import Thumbnail from './Thumbnail';
 
 interface Props {
@@ -270,15 +271,9 @@ export default function CouponFormDialog({ open, coupon, onClose, onSaved }: Pro
               <Box sx={{ position: 'relative', width: 96, height: 64, flexShrink: 0 }}>
                 <Thumbnail imageUrl={imageUrl || null} alt="Coupon promo" width={96} height={64} fallbackIconSize={22} />
                 {uploadingImage && (
-                  <Box
-                    sx={{
-                      position: 'absolute', inset: 0, borderRadius: 1,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      bgcolor: 'rgba(0,0,0,0.45)',
-                    }}
-                  >
+                  <UploadingOverlay>
                     <CircularProgress size={20} sx={{ color: 'white' }} />
-                  </Box>
+                  </UploadingOverlay>
                 )}
               </Box>
               <Stack spacing={0.5}>

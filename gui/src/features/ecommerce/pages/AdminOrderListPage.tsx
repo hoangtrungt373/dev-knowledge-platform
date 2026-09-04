@@ -27,7 +27,7 @@ import { Order, OrderStatus } from '../types';
 import { ORDER_STATUS_COLORS, ORDER_STATUS_LABELS, formatOrderDate } from '../utils/orderStatus';
 import { formatPrice, PAGE_SIZE_OPTIONS } from '../utils/format';
 import AdminListHeader from '../components/AdminListHeader';
-import TableStatusRow from '../components/TableStatusRow';
+import TableStatusRow from '@shared/components/TableStatusRow';
 
 const ALL_STATUSES: OrderStatus[] = [
   'PENDING', 'PAYMENT_PROCESSING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'FAILED', 'EXPIRED',

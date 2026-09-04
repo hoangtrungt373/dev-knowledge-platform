@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
-import { Box, Button, CircularProgress, Divider, InputAdornment, Link, Stack, TextField, Typography } from '@mui/material';
+import { Box, Divider, InputAdornment, Link, Stack, TextField, Typography } from '@mui/material';
 import EmailIcon from '@mui/icons-material/Email';
 import PersonIcon from '@mui/icons-material/Person';
 import { authService } from '../services/authService';
@@ -8,6 +8,7 @@ import { authApi } from '../api/authApi';
 import { OAuthProvider } from '../types';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
+import SubmitButton from '@shared/components/SubmitButton';
 import { isValidEmail } from '@shared/utils/validation';
 import { useCart } from '@ecommerce/context/CartContext';
 import AuthCard from '../components/AuthCard';
@@ -95,7 +96,7 @@ export default function SignUp(): JSX.Element {
 
   return (
     <AuthCard>
-      <Typography variant="h5" fontWeight="bold" textAlign="center" gutterBottom>
+      <Typography variant="h5" fontWeight={700} textAlign="center" gutterBottom>
         Create Account
       </Typography>
       <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mb: 3 }}>
@@ -161,15 +162,7 @@ export default function SignUp(): JSX.Element {
             helperText={errors.confirmPassword}
           />
 
-          <Button
-            type="submit"
-            variant="contained"
-            size="large"
-            fullWidth
-            disabled={loading}
-          >
-            {loading ? <CircularProgress size={24} color="inherit" /> : 'Create Account'}
-          </Button>
+          <SubmitButton type="submit" size="large" fullWidth saving={loading} label="Create Account" />
         </Stack>
       </Box>
 

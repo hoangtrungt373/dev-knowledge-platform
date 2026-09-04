@@ -24,7 +24,7 @@ import { useNotification } from '@shared/contexts/NotificationContext';
 import { useDebouncedValue } from '@shared/hooks/useDebouncedValue';
 import ProductCategoryFormDialog from '../components/ProductCategoryFormDialog';
 import AdminListHeader from '../components/AdminListHeader';
-import TableStatusRow from '../components/TableStatusRow';
+import TableStatusRow from '@shared/components/TableStatusRow';
 import { formatDate } from '../utils/format';
 
 function buildNameMap(nodes: ProductCategoryTreeNode[]): Record<number, string> {

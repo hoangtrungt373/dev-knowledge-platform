@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, CircularProgress, InputAdornment, Pagination, Stack, TextField, Typography } from '@mui/material';
+import { Box, InputAdornment, Pagination, Stack, TextField } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import { friendApi } from '../api/friendApi';
 import { userApi } from '../api/userApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import SectionStatus from '@shared/components/SectionStatus';
 import { RelationshipStatus, UserSearchResult } from '../types';
 import UserRow from './UserRow';
 import RelationshipActionButton from './RelationshipActionButton';
@@ -82,15 +83,11 @@ export default function UserSearch(): JSX.Element {
       />
 
       {!query.trim() ? (
-        <Box sx={{ py: 6, textAlign: 'center' }}>
-          <Typography color="text.secondary">Search for people to add as friends.</Typography>
-        </Box>
+        <SectionStatus loading={false} isEmpty emptyMessage="Search for people to add as friends." />
       ) : loading && results.length === 0 ? (
-        <Box sx={{ py: 6, textAlign: 'center' }}><CircularProgress size={28} /></Box>
+        <SectionStatus loading isEmpty={false} emptyMessage="" />
       ) : results.length === 0 ? (
-        <Box sx={{ py: 6, textAlign: 'center' }}>
-          <Typography color="text.secondary">No users found for &quot;{query}&quot;.</Typography>
-        </Box>
+        <SectionStatus loading={false} isEmpty emptyMessage={`No users found for "${query}".`} />
       ) : (
         <Stack divider={<Box sx={{ borderBottom: 1, borderColor: 'divider' }} />}>
           {results.map(result => (

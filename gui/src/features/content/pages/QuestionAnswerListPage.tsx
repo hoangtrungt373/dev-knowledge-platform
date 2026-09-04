@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   IconButton,
   InputAdornment,
   MenuItem,
@@ -31,6 +30,7 @@ import { CategoryTreeNode, ContentStatus, Difficulty, QuestionAnswer } from '../
 import { contentApi } from '../api/contentApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
+import TableStatusRow from '@shared/components/TableStatusRow';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
@@ -209,22 +209,17 @@ export default function QuestionAnswerListPage(): JSX.Element {
           </TableHead>
 
           <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
-                  <CircularProgress size={28} />
-                </TableCell>
-              </TableRow>
-            ) : questions.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {search || difficultyFilter || statusFilter
-                      ? 'No questions match your filters.'
-                      : 'No questions yet. Create the first one.'}
-                  </Typography>
-                </TableCell>
-              </TableRow>
+            {loading || questions.length === 0 ? (
+              <TableStatusRow
+                loading={loading}
+                isEmpty={questions.length === 0}
+                emptyMessage={
+                  search || difficultyFilter || statusFilter
+                    ? 'No questions match your filters.'
+                    : 'No questions yet. Create the first one.'
+                }
+                colSpan={7}
+              />
             ) : (
               questions.map(q => (
                 <TableRow key={q.id} hover>

@@ -3149,6 +3149,132 @@ entries start fresh below `[Unreleased]`.
   - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
     sandbox, so the actual visual result is unverified in a real browser.
 
+### Added (cont.)
+
+- **`gui`: style-consistency audit extended to the 7 remaining feature folders** (`ai`, `auth`,
+  `chat`, `content`, `friends`, `messaging`, `tasks`), per request — checking both each folder's
+  own internal consistency and direct adoption of the shared components already built for
+  `@ecommerce` (`FullPageLoader`, `EmptyState`, `SubmitButton`). Good news first: most of these
+  folders had already independently converged on the same conventions `@ecommerce` just
+  standardized on (h5 page titles, `Paper variant="outlined"`, the short-form-dialog-gets-no-✕
+  rule, identical dialog field/filter-row spacing) — nothing to fix there. Concrete findings acted
+  on this pass (all direct wiring of `@shared/components/SubmitButton.tsx`/`FullPageLoader.tsx`,
+  no new components needed):
+  - **`FullPageLoader`** → `content/pages/QuestionAnswerFormPage.tsx` (byte-identical match).
+  - **`SubmitButton`** → `content/components/CategoryFormDialog.tsx`,
+    `content/components/TagFormDialog.tsx`, `content/pages/QuestionAnswerFormPage.tsx`,
+    `tasks/components/ProjectFormDialog.tsx` (all byte-identical to the pattern already extracted
+    from `@ecommerce`'s own CRUD dialogs), plus `auth/pages/Login.tsx`/`SignUp.tsx` (with
+    `size="large"`, spinner size 24 falls out of `SubmitButton`'s own size-driven default
+    automatically) and `auth/pages/ProfilePage.tsx`'s "Save" button.
+  - **`SubmitButton` gained a new optional `startIcon` prop** to support `ProfilePage.tsx`'s "Save"
+    button, which keeps its `SaveIcon` visible next to the spinner while saving (MUI's `startIcon`
+    is a separate slot from `children`, so this couldn't be expressed via `label` alone) — passed
+    straight through to the underlying `Button` unconditionally.
+  - **`auth/pages/AdminLogin.tsx`'s "Sign In with Keycloak" button gained `size="large"`** while
+    being wired onto `SubmitButton` — it already used a 24px spinner and `fullWidth`, identical to
+    `Login`/`SignUp`'s own "primary sign-in CTA" role, but was missing the `size="large"` prop
+    those two have; this was a drift, not a deliberate choice, so it's now fixed as part of the
+    same wiring pass rather than preserved as-is.
+  - **New findings not acted on in this pass** (need a further decision, same as `@ecommerce`'s own
+    deferred items): promoting `@ecommerce`'s `TableStatusRow.tsx` to `gui/src/shared/components/`
+    so `@content`'s 3 list pages (which duplicate its exact loading/empty `TableRow` pattern
+    verbatim) can adopt it; a new shared component for the "centered spinner"/"centered empty
+    message" pair duplicated identically 5× in `@friends` and near-identically in
+    `@messaging/ConversationList.tsx`; the same hardcoded `rgba(0,0,0,0.45)` overlay color now
+    found independently in both `@ecommerce/CouponFormDialog.tsx` and `@auth/ProfilePage.tsx`;
+    `@ai/PipelineMetricsPage.tsx`'s `maxWidth: 1000` vs. `@ai/EmbeddingsPage.tsx`'s plain `p:3` for
+    the same admin-page role; and `fontWeight="bold"` (string) vs. `fontWeight={700}` (number) on
+    `@auth`'s 3 gate-page titles (cosmetic-only, renders identically). See `gui/CLAUDE.md`'s own
+    note for the full per-file detail.
+  - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+    sandbox, so the actual visual result is unverified in a real browser.
+
+### Changed (cont.)
+
+- **`gui`: `TableStatusRow.tsx` promoted from `@ecommerce/components/` to
+  `gui/src/shared/components/`, and `@content`'s 3 list pages wired onto it, per request.** The
+  component itself is unchanged (no prop changes needed — it was already fully generic); only its
+  location and import path moved (`@ecommerce`'s 6 existing importers —
+  `ProductCategoryListPage`/`ProductTagListPage`/`ProductListPage`/`ProductAttributeListPage`/
+  `CouponListPage`/`AdminOrderListPage` — updated from `'../components/TableStatusRow'` to
+  `'@shared/components/TableStatusRow'`). `content/pages/CategoryListPage.tsx`/`TagListPage.tsx`/
+  `QuestionAnswerListPage.tsx` each had their own hand-rolled loading-row/empty-row `<TableRow>`
+  pair — character-for-character identical to what `TableStatusRow` already renders — replaced with
+  the shared component; each dropped its own now-unused `CircularProgress` import as a result.
+  **New code adding an admin list table anywhere in this app should use `@shared/components/
+  TableStatusRow`, not hand-roll this pair again.** Verified via a clean `tsc --noEmit` and a
+  successful `vite build` only — no Docker in this sandbox, so the actual visual result is
+  unverified in a real browser.
+
+### Added (cont.)
+
+- **`gui`: new `shared/components/SectionStatus.tsx`, the `Box`-based sibling of `TableStatusRow`,
+  per request.** Same "centered spinner while loading, centered message while empty, `null`
+  otherwise" contract, for a plain list/section rather than a `<TableBody>` — extracted after the
+  exact `Box sx={{py:6,textAlign:'center'}}` + `CircularProgress`/`Typography` pair turned up
+  identically duplicated across `@friends`'s 5 list components
+  (`UserSearch`/`FriendsList`/`BlockedUsersList`/`FriendRequestsOutgoing`/`FriendRequestsIncoming`)
+  and near-identically in `@messaging/components/ConversationList.tsx` (`py:4`/`spinnerSize:24`
+  instead of the majority's `py:6`/`28`, now expressed as overridable props with those exact
+  defaults rather than copy-pasted values). Each of the 5 `@friends` files dropped its own
+  now-unused `Box`-for-this-purpose/`CircularProgress`/`Typography` imports (`Box` itself is still
+  imported in 4 of the 5 — still used elsewhere for an unrelated divider/layout role).
+  **`UserSearch.tsx`/`FriendsList.tsx` needed care, not a mechanical swap**: both have a
+  `loading && x.length === 0` first-branch condition (so a quiet background refetch with existing
+  items keeps showing the list instead of flashing a spinner) rather than a plain `loading` check —
+  collapsing their outer branch condition down to the same `visible.length === 0`/`x.length === 0`
+  shape the other 3 files' simpler `if (loading && …) … if (x.length === 0) …` pair already reduces
+  to (by absorption: `(loading && empty) || empty` is just `empty`) preserves this exactly; a naive
+  `loading || isEmpty` outer condition (tried first) would have hidden the list during every
+  background refetch, which was caught and fixed before verifying, not shipped and found later.
+  **`ConversationList.tsx`'s empty-message `Typography` picked up `SectionStatus`'s own default
+  (no explicit `variant`, i.e. `body1`)** — it previously set `variant="body2"` explicitly, smaller
+  than every one of `@friends`'s 5 equivalents (which never set a variant, so already rendered at
+  the default), so this is a deliberate additional normalization onto the majority's own size, not
+  an accidental regression. **New code needing a centered loading/empty state outside a table
+  anywhere in this app should use `@shared/components/SectionStatus`.** Verified via a clean
+  `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the actual
+  visual result is unverified in a real browser.
+
+### Added (cont.)
+
+- **`gui`: new `shared/components/UploadingOverlay.tsx`, per request.** Fixes the same hardcoded
+  `bgcolor: 'rgba(0,0,0,0.45)'` overlay-tint literal found independently in
+  `@ecommerce/CouponFormDialog.tsx` (a rectangular coupon-image thumbnail) and
+  `@auth/pages/ProfilePage.tsx` (a circular avatar) — now `bgcolor: (theme) =>
+  alpha(theme.palette.common.black, 0.45)`, theme-driven rather than a magic literal. The new
+  component takes the overlay's content as `children` (a `CircularProgress` for both files'
+  "uploading" state, a `PhotoCameraIcon` for `ProfilePage`'s separate hover-only "click to change
+  photo" hint) plus `borderRadius` (`1` default for a rectangle, `'50%'` for `ProfilePage`'s
+  circular avatar) and an optional `revealOnHover` flag (opacity `0`→`1` on hover, only used by
+  `ProfilePage`'s hover-hint overlay — its "uploading" overlay and `CouponFormDialog`'s own overlay
+  both stay always-visible, `revealOnHover`'s default). **New code needing a dark, centered-content
+  overlay over an image/avatar mid-upload should use `@shared/components/UploadingOverlay`.**
+  Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+  sandbox, so the actual visual result is unverified in a real browser.
+
+### Changed (cont.)
+
+- **`gui`: `@ai/pages/PipelineMetricsPage.tsx`'s `maxWidth: 1000` vs. `@ai/pages/EmbeddingsPage.tsx`'s
+  plain `p:3` (no width cap) confirmed as intentional, not a bug — no code change, per request.**
+  Checked each page's actual content shape before deciding: `EmbeddingsPage` is a table-based admin
+  list, matching the "admin table page = plain `p:3`, no cap" convention used everywhere else in
+  this app; `PipelineMetricsPage` is a KPI-dashboard page (a `Grid` of `KpiCard`s, 3-column at
+  `md`) — a genuinely different page shape, where the width cap keeps its stat cards from
+  stretching sparse and wide on an ultra-wide monitor. Documented in `gui/CLAUDE.md` so this
+  doesn't get "fixed" into false consistency later.
+
+### Changed (cont.)
+
+- **`gui`: `fontWeight="bold"` (string) normalized to `fontWeight={700}` (number) on `@auth`'s 3
+  gate-page titles (`Login.tsx`/`SignUp.tsx`/`AdminLogin.tsx`), per request.** Purely cosmetic —
+  both render identically — but now matches the `fontWeight={700}` convention every other
+  page-title `Typography` in this app already uses. This closes out every finding from the
+  7-folder style-consistency audit (`ai`/`auth`/`chat`/`content`/`friends`/`messaging`/`tasks`).
+  Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+  sandbox, so the actual visual result is unverified in a real browser.
+
 ## [0.0.2] — 2026-08-11
 
 Retroactive cut of everything that had accumulated under `[Unreleased]` up to this point — the

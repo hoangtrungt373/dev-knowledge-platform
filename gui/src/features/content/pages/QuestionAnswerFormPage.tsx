@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Divider,
   FormControl,
   FormControlLabel,
@@ -30,6 +29,8 @@ import {
 } from '../types';
 import { contentApi } from '../api/contentApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import FullPageLoader from '@shared/components/FullPageLoader';
+import SubmitButton from '@shared/components/SubmitButton';
 import MarkdownField from '../components/MarkdownField';
 
 interface FlatOption { id: number; name: string; depth: number; }
@@ -152,11 +153,7 @@ export default function QuestionAnswerFormPage(): JSX.Element {
   };
 
   if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <FullPageLoader />;
   }
 
   return (
@@ -184,11 +181,7 @@ export default function QuestionAnswerFormPage(): JSX.Element {
           >
             Cancel
           </Button>
-          <Button variant="contained" onClick={handleSubmit} disabled={saving}>
-            {saving
-              ? <CircularProgress size={16} color="inherit" />
-              : isEdit ? 'Save' : 'Create'}
-          </Button>
+          <SubmitButton saving={saving} onClick={handleSubmit} label={isEdit ? 'Save' : 'Create'} />
         </Stack>
       </Stack>
 

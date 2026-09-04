@@ -3,7 +3,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   IconButton,
   InputAdornment,
   MenuItem,
@@ -30,6 +29,7 @@ import { contentApi } from '../api/contentApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import TagFormDialog from '../components/TagFormDialog';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
+import TableStatusRow from '@shared/components/TableStatusRow';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
@@ -170,20 +170,13 @@ export default function TagListPage(): JSX.Element {
           </TableHead>
 
           <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
-                  <CircularProgress size={28} />
-                </TableCell>
-              </TableRow>
-            ) : tags.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {search || statusFilter ? 'No tags match your filters.' : 'No tags yet. Create the first one.'}
-                  </Typography>
-                </TableCell>
-              </TableRow>
+            {loading || tags.length === 0 ? (
+              <TableStatusRow
+                loading={loading}
+                isEmpty={tags.length === 0}
+                emptyMessage={search || statusFilter ? 'No tags match your filters.' : 'No tags yet. Create the first one.'}
+                colSpan={5}
+              />
             ) : (
               tags.map(tag => (
                 <TableRow key={tag.id} hover>

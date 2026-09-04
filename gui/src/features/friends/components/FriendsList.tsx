@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, CircularProgress, IconButton, InputAdornment, Pagination, Stack, TextField, Tooltip, Typography } from '@mui/material';
+import { Box, IconButton, InputAdornment, Pagination, Stack, TextField, Tooltip } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import { friendApi } from '../api/friendApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import SectionStatus from '@shared/components/SectionStatus';
 import { FriendSummary } from '../types';
 import UserRow from './UserRow';
 import FriendsMenuButton from './FriendsMenuButton';
@@ -90,14 +91,12 @@ export default function FriendsList(): JSX.Element {
         }}
       />
 
-      {loading && friends.length === 0 ? (
-        <Box sx={{ py: 6, textAlign: 'center' }}><CircularProgress size={28} /></Box>
-      ) : visible.length === 0 ? (
-        <Box sx={{ py: 6, textAlign: 'center' }}>
-          <Typography color="text.secondary">
-            {friends.length === 0 ? "You haven't added any friends yet." : 'No friends match your filter.'}
-          </Typography>
-        </Box>
+      {visible.length === 0 ? (
+        <SectionStatus
+          loading={loading && friends.length === 0}
+          isEmpty={visible.length === 0}
+          emptyMessage={friends.length === 0 ? "You haven't added any friends yet." : 'No friends match your filter.'}
+        />
       ) : (
         <Stack divider={<Box sx={{ borderBottom: 1, borderColor: 'divider' }} />}>
           {visible.map(friend => (

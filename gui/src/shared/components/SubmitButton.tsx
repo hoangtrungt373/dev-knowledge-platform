@@ -12,6 +12,10 @@ interface SubmitButtonProps {
   /** Overrides the size-driven default below — only reach for this if a specific spot genuinely
    * needs a different spinner size, not as a matter of taste. */
   spinnerSize?: number;
+  /** Passed straight through to the underlying `Button`, unconditionally — stays visible even
+   * while `saving` (e.g. a "Save" button that keeps its `SaveIcon` next to the spinner), since
+   * `startIcon` is MUI's own separate slot from `children`. Omit for a button with no icon. */
+  startIcon?: ReactNode;
   sx?: SxProps<Theme>;
 }
 
@@ -30,6 +34,7 @@ export default function SubmitButton({
   fullWidth = false,
   size,
   spinnerSize,
+  startIcon,
   sx,
 }: SubmitButtonProps): JSX.Element {
   const resolvedSpinnerSize = spinnerSize ?? (size === 'large' ? 24 : 16);
@@ -41,6 +46,7 @@ export default function SubmitButton({
       disabled={saving || disabled}
       fullWidth={fullWidth}
       size={size}
+      startIcon={startIcon}
       sx={sx}
     >
       {saving ? <CircularProgress size={resolvedSpinnerSize} color="inherit" /> : label}

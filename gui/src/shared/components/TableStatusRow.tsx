@@ -11,12 +11,13 @@ interface Props {
 
 /**
  * The loading-spinner-row / empty-state-row pair repeated identically (only `emptyMessage`/
- * `colSpan` differing) across every admin list table in this feature
- * (`ProductCategoryListPage`/`ProductTagListPage`/`ProductListPage`/`AdminOrderListPage`).
- * Renders `null` when neither loading nor empty, so a caller's `<TableBody>` reads as
- * `{loading || isEmpty ? <TableStatusRow .../> : items.map(...)}` — same conditional shape every
- * one of those four pages already used, just without re-typing the two `<TableRow>` bodies each
- * time.
+ * `colSpan` differing) across every admin list table that renders one — originally extracted
+ * within `@ecommerce` (`ProductCategoryListPage`/`ProductTagListPage`/`ProductListPage`/
+ * `AdminOrderListPage`/etc.), then promoted here once `@content`'s own list pages
+ * (`CategoryListPage`/`TagListPage`/`QuestionAnswerListPage`) turned out to duplicate the exact
+ * same markup verbatim rather than importing it — see `gui/CLAUDE.md`'s style-audit note. Renders
+ * `null` when neither loading nor empty, so a caller's `<TableBody>` reads as
+ * `{loading || isEmpty ? <TableStatusRow .../> : items.map(...)}`.
  */
 export default function TableStatusRow({ loading, isEmpty, emptyMessage, colSpan }: Props): JSX.Element | null {
   if (loading) {

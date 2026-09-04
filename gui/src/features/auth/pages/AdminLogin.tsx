@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Typography, Button, CircularProgress, Alert } from '@mui/material';
+import { Box, Typography, Alert } from '@mui/material';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { adminAuthService } from '../services/adminAuthService';
 import { authService } from '../services/authService';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import SubmitButton from '@shared/components/SubmitButton';
 import AuthCard from '../components/AuthCard';
 
 export default function AdminLogin(): JSX.Element {
@@ -55,7 +56,7 @@ export default function AdminLogin(): JSX.Element {
         <AdminPanelSettingsIcon sx={{ fontSize: 48, color: 'primary.main' }} />
       </Box>
 
-      <Typography variant="h5" fontWeight="bold" textAlign="center" gutterBottom>
+      <Typography variant="h5" fontWeight={700} textAlign="center" gutterBottom>
         Admin Login
       </Typography>
       <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mb: 3 }}>
@@ -68,14 +69,13 @@ export default function AdminLogin(): JSX.Element {
         </Alert>
       )}
 
-      <Button
-        variant="contained"
+      <SubmitButton
+        size="large"
         fullWidth
-        disabled={redirecting}
+        saving={redirecting}
         onClick={handleSignIn}
-      >
-        {redirecting ? <CircularProgress size={24} color="inherit" /> : 'Sign In with Keycloak'}
-      </Button>
+        label="Sign In with Keycloak"
+      />
     </AuthCard>
   );
 }

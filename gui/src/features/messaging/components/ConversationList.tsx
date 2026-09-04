@@ -1,5 +1,6 @@
-import { Box, CircularProgress, List, ListItemButton, Typography } from '@mui/material';
+import { List, ListItemButton } from '@mui/material';
 import UserRow from '@friends/components/UserRow';
+import SectionStatus from '@shared/components/SectionStatus';
 import { DmThread } from '../types';
 
 interface Props {
@@ -20,21 +21,16 @@ function formatLastMessageAt(iso: string | null): string | undefined {
  * its header without a second fetch. Reuses @friends' UserRow for the row shape.
  */
 export default function ConversationList({ threads, loading, activeThreadId, onSelectThread }: Props): JSX.Element {
-  if (loading && threads.length === 0) {
-    return (
-      <Box sx={{ py: 4, textAlign: 'center' }}>
-        <CircularProgress size={24} />
-      </Box>
-    );
-  }
-
   if (threads.length === 0) {
     return (
-      <Box sx={{ py: 4, px: 2, textAlign: 'center' }}>
-        <Typography variant="body2" color="text.secondary">
-          No conversations yet — start one from a friend's row on the Friends page.
-        </Typography>
-      </Box>
+      <SectionStatus
+        loading={loading}
+        isEmpty
+        emptyMessage="No conversations yet — start one from a friend's row on the Friends page."
+        spinnerSize={24}
+        py={4}
+        sx={{ px: 2 }}
+      />
     );
   }
 

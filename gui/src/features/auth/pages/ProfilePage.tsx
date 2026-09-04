@@ -31,6 +31,8 @@ import { authService } from '../services/authService';
 import { UserProvider } from '../types';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
+import SubmitButton from '@shared/components/SubmitButton';
+import UploadingOverlay from '@shared/components/UploadingOverlay';
 import { useCurrentUserProfile } from '../hooks/useCurrentUserProfile';
 import { useEmailVerificationPolling } from '../hooks/useEmailVerificationPolling';
 
@@ -264,28 +266,13 @@ export default function ProfilePage(): JSX.Element | null {
               </Avatar>
 
               {avatarUploading ? (
-                <Box
-                  sx={{
-                    position: 'absolute', inset: 0, borderRadius: '50%',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    bgcolor: 'rgba(0,0,0,0.45)',
-                  }}
-                >
+                <UploadingOverlay borderRadius="50%">
                   <CircularProgress size={28} sx={{ color: 'white' }} />
-                </Box>
+                </UploadingOverlay>
               ) : (
-                <Box
-                  sx={{
-                    position: 'absolute', inset: 0, borderRadius: '50%',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    bgcolor: 'rgba(0,0,0,0.45)',
-                    opacity: 0,
-                    transition: 'opacity 0.2s',
-                    '&:hover': { opacity: 1 },
-                  }}
-                >
+                <UploadingOverlay borderRadius="50%" revealOnHover>
                   <PhotoCameraIcon sx={{ color: 'white', fontSize: 26 }} />
-                </Box>
+                </UploadingOverlay>
               )}
             </Box>
           </Tooltip>
@@ -318,9 +305,7 @@ export default function ProfilePage(): JSX.Element | null {
             </Button>
           ) : (
             <Stack direction="row" spacing={1}>
-              <Button variant="contained" startIcon={<SaveIcon />} onClick={handleSave} disabled={saving}>
-                {saving ? <CircularProgress size={16} color="inherit" /> : 'Save'}
-              </Button>
+              <SubmitButton saving={saving} onClick={handleSave} startIcon={<SaveIcon />} label="Save" />
               <Button variant="outlined" startIcon={<CancelIcon />} onClick={handleCancel} disabled={saving}>
                 Cancel
               </Button>

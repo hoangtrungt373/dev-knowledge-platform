@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Box,
   Button,
-  CircularProgress,
   IconButton,
   InputAdornment,
   Paper,
@@ -27,6 +26,7 @@ import { contentApi } from '../api/contentApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import CategoryFormDialog from '../components/CategoryFormDialog';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
+import TableStatusRow from '@shared/components/TableStatusRow';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
@@ -164,20 +164,13 @@ export default function CategoryListPage(): JSX.Element {
           </TableHead>
 
           <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
-                  <CircularProgress size={28} />
-                </TableCell>
-              </TableRow>
-            ) : categories.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {search ? 'No categories match your search.' : 'No categories yet. Create the first one.'}
-                  </Typography>
-                </TableCell>
-              </TableRow>
+            {loading || categories.length === 0 ? (
+              <TableStatusRow
+                loading={loading}
+                isEmpty={categories.length === 0}
+                emptyMessage={search ? 'No categories match your search.' : 'No categories yet. Create the first one.'}
+                colSpan={5}
+              />
             ) : (
               categories.map(cat => (
                 <TableRow key={cat.id} hover>
