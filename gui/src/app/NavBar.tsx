@@ -1,4 +1,5 @@
-import { AppBar, Toolbar, Typography, Button, Box, Badge, IconButton, Tooltip } from '@mui/material';
+import { ReactNode } from 'react';
+import { AppBar, Toolbar, Typography, Button, Box, Badge, IconButton, Tooltip, SxProps, Theme } from '@mui/material';
 import PeopleIcon from '@mui/icons-material/People';
 import ChecklistIcon from '@mui/icons-material/Checklist';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
@@ -17,6 +18,35 @@ import { ThemeMode } from './theme';
 interface NavBarProps {
   mode: ThemeMode;
   onToggleMode: () => void;
+}
+
+interface NavButtonProps {
+  active: boolean;
+  startIcon: ReactNode;
+  onClick: () => void;
+  children: ReactNode;
+  sx?: SxProps<Theme>;
+}
+
+/** The 7 nav-bar buttons (Shop + the 6 authenticated-only ones below) all share this exact shape —
+ * `color="inherit" size="small"`, a `startIcon`, and an `action.selected` tint while the current
+ * route matches. Extracted after that markup turned up duplicated 6× with, worse, two different
+ * "is this active" checks (an exact-match `isActive` helper for Friends/Tasks/Cart, `location.
+ * pathname.startsWith(...)` inlined for Account/Chat/Messages) — see gui/CLAUDE.md's style-audit
+ * note. Login/Logout are deliberately NOT migrated onto this — neither has an "active route" concept
+ * to highlight, so forcing them through a component built around that prop would be a poor fit. */
+function NavButton({ active, startIcon, onClick, children, sx }: NavButtonProps): JSX.Element {
+  return (
+    <Button
+      color="inherit"
+      size="small"
+      startIcon={startIcon}
+      onClick={onClick}
+      sx={{ backgroundColor: active ? 'action.selected' : 'transparent', ...sx }}
+    >
+      {children}
+    </Button>
+  );
 }
 
 export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element | null {
@@ -50,7 +80,9 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
     authService.logout();
   };
 
-  const isActive = (path: string): boolean => location.pathname === path;
+  // startsWith, not an exact match — correctly keeps a nav item highlighted for any sub-route
+  // (e.g. Account already relies on this for /account/profile, /account/addresses, etc.).
+  const isActive = (path: string): boolean => location.pathname.startsWith(path);
 
   return (
     <AppBar position="static">
@@ -65,18 +97,14 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
 
         {/* Shop is genuinely public (ecommerce-service's permitAll browse/search/detail) — the
             only nav entry visible regardless of auth state, unlike everything else below. */}
-        <Button
-          color="inherit"
-          size="small"
+        <NavButton
+          active={isActive('/shop')}
           startIcon={<StorefrontIcon fontSize="small" />}
           onClick={() => navigate('/shop')}
-          sx={{
-            mr: 0.5,
-            backgroundColor: location.pathname.startsWith('/shop') ? 'action.selected' : 'transparent',
-          }}
+          sx={{ mr: 0.5 }}
         >
           Shop
-        </Button>
+        </NavButton>
 
         {isAuthed && (
           <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
@@ -85,97 +113,61 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
                 per sub-page. Orders used to have its own dedicated button here before it moved
                 into the Account shell (per request) — removed in that same change, same treatment
                 Addresses itself already had. */}
-            <Button
-              color="inherit"
-              size="small"
+            <NavButton
+              active={isActive('/account')}
               startIcon={<AccountCircleIcon fontSize="small" />}
               onClick={() => navigate('/account/profile')}
-              sx={{
-                backgroundColor: location.pathname.startsWith('/account')
-                  ? 'action.selected'
-                  : 'transparent',
-              }}
             >
               Account
-            </Button>
+            </NavButton>
 
-            <Button
-              color="inherit"
-              size="small"
+            <NavButton
+              active={isActive('/chat')}
               startIcon={<SmartToyOutlinedIcon fontSize="small" />}
               onClick={() => navigate('/chat')}
-              sx={{
-                backgroundColor: location.pathname.startsWith('/chat')
-                  ? 'action.selected'
-                  : 'transparent',
-              }}
             >
               Chat
-            </Button>
+            </NavButton>
 
-            <Button
-              color="inherit"
-              size="small"
+            <NavButton
+              active={isActive('/messages')}
               startIcon={<ChatBubbleOutlineIcon fontSize="small" />}
               onClick={() => navigate('/messages')}
-              sx={{
-                backgroundColor: location.pathname.startsWith('/messages')
-                  ? 'action.selected'
-                  : 'transparent',
-              }}
             >
               Messages
-            </Button>
+            </NavButton>
 
-            <Button
-              color="inherit"
-              size="small"
+            <NavButton
+              active={isActive('/friends')}
               startIcon={
                 <Badge badgeContent={friendRequestCount} color="error" max={9}>
                   <PeopleIcon fontSize="small" />
                 </Badge>
               }
               onClick={() => navigate('/friends')}
-              sx={{
-                backgroundColor: isActive('/friends')
-                  ? 'action.selected'
-                  : 'transparent',
-              }}
             >
               Friends
-            </Button>
+            </NavButton>
 
-            <Button
-              color="inherit"
-              size="small"
+            <NavButton
+              active={isActive('/tasks')}
               startIcon={<ChecklistIcon fontSize="small" />}
               onClick={() => navigate('/tasks')}
-              sx={{
-                backgroundColor: isActive('/tasks')
-                  ? 'action.selected'
-                  : 'transparent',
-              }}
             >
               Tasks
-            </Button>
+            </NavButton>
 
-            <Button
-              color="inherit"
-              size="small"
+            <NavButton
+              active={isActive('/cart')}
               startIcon={
                 <Badge badgeContent={cart?.itemCount ?? 0} color="error" max={9}>
                   <ShoppingCartIcon fontSize="small" />
                 </Badge>
               }
               onClick={() => navigate('/cart')}
-              sx={{
-                backgroundColor: isActive('/cart')
-                  ? 'action.selected'
-                  : 'transparent',
-              }}
             >
               Cart
-            </Button>
+            </NavButton>
 
             <Button color="inherit" size="small" onClick={handleLogout}>
               Logout

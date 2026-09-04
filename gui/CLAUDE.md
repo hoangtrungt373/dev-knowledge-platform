@@ -2862,3 +2862,26 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     cosmetic — both render identically — but now matches the `fontWeight={700}` convention every
     other page-title `Typography` in this app already uses. This closes out every finding from the
     7-folder style-consistency audit.
+- **Style-consistency audit extended to `app/` and `shared/` — the two folders outside the 8
+  feature folders (`ecommerce` + the 7 above) — per request.** Full detail in
+  `docs/CHANGELOG.md`'s `[Unreleased]` entry; the 4 findings, all fixed:
+  - `app/admin-shell/AdminDashboard.tsx`'s feature-card `Paper`s gained `variant="outlined"` — the
+    only `Paper` usage anywhere in this app that omitted it.
+  - `AdminDashboard.tsx`'s `maxWidth: 800` unified to `maxWidth: 1000`, matching
+    `@ai/pages/PipelineMetricsPage.tsx` — both are dashboard-shaped admin pages (feature-card
+    `Stack` vs. KPI-card `Grid`) that had landed on two different arbitrary caps.
+  - **New local `NavButton` helper inside `app/NavBar.tsx`** — the 6 authenticated-only nav
+    buttons (Account/Chat/Messages/Friends/Tasks/Cart) plus the public Shop button (via an `sx`
+    override prop for its one-off `mr: 0.5`) all now go through it, replacing 7× copy-pasted
+    `color="inherit" size="small"` + `startIcon` + `action.selected`-while-active markup.
+    **Login/Logout deliberately were not migrated onto `NavButton`** — neither has an "active
+    route" concept, so they stay plain `Button`s; don't force a future non-route action through
+    this component just for uniformity.
+  - **Real bug fixed in the same pass**: the "is this route active" check had silently forked into
+    two implementations — an exact-match `isActive` helper (Friends/Tasks/Cart) vs. an inlined
+    `location.pathname.startsWith(path)` (Account/Chat/Messages). `NavButton` needed one shared
+    answer, so `isActive` is now `startsWith` everywhere (required for Account's own
+    `/account/profile`, `/account/addresses`, etc. to keep highlighting correctly) — if you add an
+    8th nav button, use `isActive(path)`, don't inline a fresh check.
+  - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+    sandbox, so the actual visual result is unverified in a real browser.

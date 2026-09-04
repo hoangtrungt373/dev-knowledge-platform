@@ -64,7 +64,7 @@ export default function AdminDashboard(): JSX.Element {
   const adminUser = adminAuthService.getAdminUser();
 
   return (
-    <Box sx={{ p: 3, maxWidth: 800 }}>
+    <Box sx={{ p: 3, maxWidth: 1000 }}>
       <Typography variant="h5" fontWeight={700} gutterBottom>
         Overview
       </Typography>
@@ -76,7 +76,7 @@ export default function AdminDashboard(): JSX.Element {
 
       <Stack spacing={1.5}>
         {FEATURE_CARDS.map(card => (
-          <Paper key={card.label} sx={{ p: 2 }}>
+          <Paper key={card.label} variant="outlined" sx={{ p: 2 }}>
             <Stack direction="row" alignItems="center" spacing={1.5}>
               <Box color="primary.main">{card.icon}</Box>
               <Box sx={{ flex: 1 }}>

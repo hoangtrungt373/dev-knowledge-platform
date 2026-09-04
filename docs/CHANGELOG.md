@@ -3275,6 +3275,32 @@ entries start fresh below `[Unreleased]`.
   Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
   sandbox, so the actual visual result is unverified in a real browser.
 
+### Changed (cont.)
+
+- **`gui`: style-consistency audit extended to `app/` and `shared/` (the two folders outside the 8
+  feature folders already covered), per request — 4 findings, all fixed.**
+  - **`app/admin-shell/AdminDashboard.tsx`'s feature-card `Paper`s gained `variant="outlined"`** —
+    the only `Paper` usage in the entire app (across every feature folder plus `app/`/`shared/`)
+    that omitted it.
+  - **`AdminDashboard.tsx`'s `maxWidth: 800` unified to `maxWidth: 1000`, matching
+    `@ai/pages/PipelineMetricsPage.tsx`** — both are dashboard-shaped admin pages (a `Stack` of
+    feature cards vs. a `Grid` of KPI cards) that had landed on two different arbitrary width caps
+    with no shared rationale; 1000 was chosen since `PipelineMetricsPage`'s 3-column KPI grid
+    already uses the extra room.
+  - **`app/NavBar.tsx`'s 6 near-identical authenticated-only nav buttons (Account/Chat/Messages/
+    Friends/Tasks/Cart) extracted into a local `NavButton` helper** (plus the public Shop button,
+    via an added `sx` override prop for its one-off `mr: 0.5`) — `color="inherit" size="small"`, a
+    `startIcon`, and an `action.selected` tint while active, previously copy-pasted 7×.
+  - **Fixed a real (if currently harmless) bug while extracting `NavButton`**: the "is this route
+    active" check was inconsistent — Friends/Tasks/Cart used an exact-match `isActive` helper
+    (`pathname === path`), while Account/Chat/Messages inlined `location.pathname.startsWith(path)`
+    directly. `NavButton` forces one shared answer; `isActive` was redefined to `startsWith` (the
+    already-correct behavior for Account, which needs to stay highlighted across `/account/profile`,
+    `/account/addresses`, etc.) and now backs all 7 buttons. Login/Logout deliberately stayed plain
+    `Button`s, not migrated onto `NavButton` — neither has an "active route" concept to highlight.
+  - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+    sandbox, so the actual visual result is unverified in a real browser.
+
 ## [0.0.2] — 2026-08-11
 
 Retroactive cut of everything that had accumulated under `[Unreleased]` up to this point — the
