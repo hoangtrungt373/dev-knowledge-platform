@@ -122,7 +122,11 @@ function OrderCard({ order, onView }: { order: Order; onView: () => void }): JSX
   // A decline can happen asynchronously (webhook/reconciliation), so this hint has to come from
   // the order's own persisted paymentFailureMessage (US-4.7) — never a one-time toast the shopper
   // may have already missed. Kept to one compact line here; the full Alert lives on the detail page.
-  const showFailureReason = order.status === 'FAILED' && order.paymentFailureMessage;
+  // Deliberately not gated on order.status === 'FAILED' — a retryable decline under Option A leaves
+  // the order at PAYMENT_PROCESSING with the reason still attached to a PENDING payment; gating on
+  // FAILED would hide it for exactly the still-retryable case. See OrderDetailPage.tsx's own
+  // matching note for the full reasoning.
+  const showFailureReason = Boolean(order.paymentFailureMessage);
 
   return (
     <Paper variant="outlined" sx={{ p: 2.5 }}>

@@ -3357,10 +3357,19 @@ entries start fresh below `[Unreleased]`.
   `PaymentOutcome.DECLINED` itself is unchanged and still finalizes to `FAILED` where that's
   actually correct (`MockPaymentGateway`'s one-shot decline, a genuinely `"canceled"` intent found
   by reconciliation). 330 unit tests total (up from 328), verified via a real `mvn test` run
-  (JDK 21). Backend only, per explicit scope decision — `gui`'s own decline banner still gates on
-  `paymentStatus === 'DECLINED'` and won't show anything for this retryable case yet; widening it
-  is a known, deferred follow-up. See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up
-  section for the full incident writeup.
+  (JDK 21). Backend only in this pass — see `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2
+  follow-up section for the full incident writeup, and the entry directly below for the matching
+  `gui` follow-up.
+- **`gui`: the payment-decline banner on `OrderDetailPage.tsx`/`OrderHistoryPage.tsx` widened to
+  also show for a still-retryable decline, per request — the frontend half of the backend fix
+  directly above.** Both banners used to gate on `order.status === 'FAILED'`, which stopped
+  showing anything the moment that backend fix meant most declines leave the order at
+  `PAYMENT_PROCESSING` instead. Fixed by dropping that condition entirely — the banner now shows
+  whenever `order.paymentFailureMessage` is present, since that field's own nullability (cleared
+  the moment a later attempt succeeds) already carries all the information needed. Verified via a
+  clean `tsc --noEmit` and a successful `vite build` — no Docker in this sandbox, so the actual
+  now-visible-while-`PAYMENT_PROCESSING` banner is unverified in a real browser. See
+  `gui/CLAUDE.md`'s own follow-up note for the full detail.
 
 ## [0.0.2] — 2026-08-11
 

@@ -2185,11 +2185,9 @@ structural-only adapter.
     reason; `succeeded` after an earlier `attemptFailed` clears the stale reason);
     `StripeWebhookServiceTest`'s existing decline case updated to assert `PENDING`, not `DECLINED`.
     330 unit tests total (up from 328), verified via a real `mvn test` run (JDK 21). **Backend
-    only, per explicit scope decision** — `gui`'s own decline banner (`OrderDetailPage.tsx`/
-    `OrderHistoryPage.tsx`) still gates on `paymentStatus === 'DECLINED'` and so will no longer show
-    anything for this retryable-decline case (the payment now stays `PENDING` throughout); widening
-    that condition to also show `paymentFailureMessage` whenever present, regardless of
-    `paymentStatus`, is a known, deliberately deferred follow-up, not done here.
+    only in this pass** — see `gui/CLAUDE.md`'s own note for the matching frontend follow-up
+    (`OrderDetailPage.tsx`/`OrderHistoryPage.tsx`'s decline banner widened to not require
+    `order.status === 'FAILED'`, since this fix means a retryable decline no longer reaches it).
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)

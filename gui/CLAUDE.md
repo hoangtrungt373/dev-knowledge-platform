@@ -2885,3 +2885,28 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     8th nav button, use `isActive(path)`, don't inline a fresh check.
   - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
     sandbox, so the actual visual result is unverified in a real browser.
+
+- **Follow-up: `OrderDetailPage.tsx`/`OrderHistoryPage.tsx`'s decline banner widened to also show
+  for a still-retryable decline, per request — the matching GUI half of `ecommerce-service`'s own
+  Epic 4 Phase 2 bug fix (see that module's `CLAUDE.md` for the full backend incident).** Both
+  banners used to gate on `order.status === 'FAILED'` — correct back when *every* decline finalized
+  the order, but the backend fix means a card decline under Option A (Stripe Elements) now usually
+  leaves the order at `PAYMENT_PROCESSING` (the shopper can still retry with a different card
+  against the same `PaymentIntent`), with the reason attached to a still-`PENDING` `Payment` row
+  instead. Gating on `FAILED` would have silently stopped showing the banner for exactly the
+  scenario the shopper most needs it: right after a decline, while they can still fix it on the
+  same page. **Fix, in both files: dropped the `order.status === 'FAILED'` condition entirely — the
+  banner now shows whenever `order.paymentFailureMessage` is present, full stop.** No other
+  condition needed, since that field's own nullability already carries all the necessary
+  information: it's `null` whenever no attempt has ever failed, and the backend fix's own
+  `SUCCEEDED` branch clears it the moment a later attempt actually succeeds — so a since-corrected
+  order stops showing the banner for free, without this component needing to know why.
+  `OrderDetailPage.tsx`'s persistent `Alert severity="error"` and `OrderHistoryPage.tsx`'s compact
+  one-line version (`showFailureReason`) both changed identically. `handlePay`'s own toast logic
+  (fired only from this page's in-page "Pay Now" retry click) was **not** touched — a real Stripe
+  charge's `pay()` call never resolves synchronously to `FAILED` under Option A in the first place
+  (a fresh, unconfirmed `PaymentIntent` always starts `PENDING`), so that branch is really only
+  ever exercised by `MockPaymentGateway`'s own one-shot decline, which is unaffected by this fix.
+  Verified via a clean `tsc --noEmit` (only the same pre-existing errors) and a successful
+  `vite build` — no Docker in this sandbox, so the actual now-visible-while-`PAYMENT_PROCESSING`
+  banner is unverified in a real browser.
