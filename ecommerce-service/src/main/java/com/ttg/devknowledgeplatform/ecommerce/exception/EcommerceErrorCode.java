@@ -93,6 +93,8 @@ public enum EcommerceErrorCode implements ErrorCode {
             HttpStatus.CONFLICT),
     ORDER_NOT_FOUND("ORDER_002", "Order not found: {0}", HttpStatus.NOT_FOUND),
     ORDER_INVALID_STATUS_TRANSITION("ORDER_003", "Cannot {0} an order in status {1}", HttpStatus.CONFLICT),
+    ORDER_RESERVATION_EXPIRED("ORDER_004",
+            "Your reservation for order {0} has expired — please place a new order", HttpStatus.CONFLICT),
 
     // Coupon Errors (COUPON_*) — "ProductDiscount" feature, Phase 1
     COUPON_NOT_FOUND("COUPON_001", "Coupon not found: {0}", HttpStatus.NOT_FOUND),

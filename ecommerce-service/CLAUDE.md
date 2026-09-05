@@ -2589,6 +2589,28 @@ structural-only adapter.
     still-open-intent path returning a fresh client secret, and the already-resolved path
     finalizing instead of replaying). 373 unit tests total (up from 371), verified via a real
     `mvn test` run (JDK 21).
+  - **Follow-up: `initiatePayment` now also tolerates losing a race to a concurrent reservation
+    expiry, the same shape as `cancel`'s own concurrent-resolution tolerance — found while checking
+    whether the `PENDING` case needed the same "Continue Payment" treatment as `PAYMENT_PROCESSING`
+    (it doesn't, for that concern; this is a different, narrower one this check surfaced).** A
+    shopper resuming payment on a still-`PENDING` order (calling `initiatePayment` for the first
+    time on an existing order, just not immediately after checkout) can race
+    `OrderReservationExpiryJob`'s own sweep of that same order right at the edge of the reservation
+    timeout window — whichever commits first wins the order's own `@Version`; the loser previously
+    surfaced either a raw `ObjectOptimisticLockingFailureException` or a generic
+    `ORDER_INVALID_STATUS_TRANSITION` naming an internal method name (`"startPaymentProcessing"`),
+    neither telling the shopper anything actionable. New `EcommerceErrorCode.ORDER_RESERVATION_EXPIRED`
+    (`ORDER_004`, `409 CONFLICT`, "Your reservation for order {0} has expired — please place a new
+    order"). **Fix**: `initiatePayment` now catches both exception shapes, re-fetches the order,
+    and — only when it genuinely reached `EXPIRED` — surfaces this clean code instead; any other
+    rejection still propagates unchanged. Unlike `cancel`'s own recovery, there's no successful
+    outcome to recover into here (a shopper can never pay for a reservation already given back), so
+    this only ever changes *which* exception reaches the caller. New private
+    `doInitiatePayment`/`translateConcurrentExpiry` helpers, mirroring `cancel`'s own
+    `doCancel`/`recoverFromConcurrentCancelResolution` split. 3 new
+    `OrderServiceImplTest.InitiatePayment` cases (both exception shapes converted when genuinely
+    expired, one rethrown unchanged when the order ended up somewhere else). 376 unit tests total
+    (up from 373), verified via a real `mvn test` run (JDK 21).
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)

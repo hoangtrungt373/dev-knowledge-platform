@@ -103,6 +103,21 @@ import java.util.function.Supplier;
  * trustworthy client secret to remount the {@code PaymentElement} against — or, if it turns out to
  * have already resolved, {@link #initiatePayment} correctly finalizes the order via
  * {@link PaymentHandoffService#resolvePayment} instead of showing a stale payment form.
+ *
+ * <p><b>Follow-up: {@link #initiatePayment} now tolerates losing a race to a concurrent
+ * reservation expiry, the same shape as {@link #cancel}'s own concurrent-resolution tolerance
+ * above.</b> A shopper resuming payment on a still-{@code PENDING} order (first time calling
+ * {@link #initiatePayment} for that order, just not immediately after checkout) can race
+ * {@code OrderReservationExpiryJob}'s own sweep of the same order right at the edge of the
+ * reservation timeout — whichever commits first wins the order's own {@code @Version}; the loser
+ * previously surfaced either a raw {@link ObjectOptimisticLockingFailureException} or a generic
+ * {@code ORDER_INVALID_STATUS_TRANSITION} naming an internal method name
+ * ({@code "startPaymentProcessing"}), neither of which tells the shopper anything actionable.
+ * {@link #initiatePayment} now catches both, re-fetches the order, and — only when it genuinely
+ * reached {@code EXPIRED} — surfaces a clean {@link EcommerceErrorCode#ORDER_RESERVATION_EXPIRED}
+ * instead. Unlike {@link #cancel}'s own recovery, there's no successful outcome to recover into
+ * here (a shopper can never pay for a reservation that's already been given back), so this only
+ * ever changes <i>which</i> exception reaches the caller, never converts the race into a success.
  */
 @Service
 @RequiredArgsConstructor
@@ -217,6 +232,17 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public PaymentInitiationResult initiatePayment(Integer orderId, String callerUuid) {
+        try {
+            return doInitiatePayment(orderId, callerUuid);
+        } catch (BusinessException e) {
+            throw translateConcurrentExpiry(
+                    orderId, e, e.getErrorCode() == EcommerceErrorCode.ORDER_INVALID_STATUS_TRANSITION);
+        } catch (ObjectOptimisticLockingFailureException e) {
+            throw translateConcurrentExpiry(orderId, e, true);
+        }
+    }
+
+    private PaymentInitiationResult doInitiatePayment(Integer orderId, String callerUuid) {
         // Read the order's status before startPaymentProcessing's own re-entrant check touches
         // it — this is what tells re-entrant apart from first-time below. A missing/renamed-away
         // order here just falls through to the "first time" branch, which still fails correctly
@@ -230,6 +256,32 @@ public class OrderServiceImpl implements OrderService {
                 : callGatewayOrFail(() -> paymentGatewayPort.charge(pending.getIdempotencyKey(), pending.getTotal()));
         Order resolved = paymentHandoffService.resolvePayment(orderId, result);
         return new PaymentInitiationResult(resolved, result.clientSecret());
+    }
+
+    /**
+     * Called when {@link #doInitiatePayment} threw something that might just mean "this order's
+     * reservation already expired out from under this call" — a genuine, if narrow, race between
+     * this method's own {@code startPaymentProcessing} transition and
+     * {@code OrderReservationExpiryJob}'s own concurrent sweep of the same still-{@code PENDING}
+     * order (only reachable right at the edge of the reservation timeout window). Unlike
+     * {@link #recoverFromConcurrentCancelResolution}, there's no successful outcome to recover
+     * into here — a shopper can never pay for a reservation that's already been given back — so
+     * this only ever decides <i>which</i> exception reaches the caller: a clean
+     * {@link EcommerceErrorCode#ORDER_RESERVATION_EXPIRED} when the order genuinely reached
+     * {@code EXPIRED} in the meantime, or the original {@code cause} unchanged for any other
+     * rejection (a different kind of failure entirely, or a genuinely invalid request).
+     */
+    private RuntimeException translateConcurrentExpiry(Integer orderId, RuntimeException cause, boolean mightBeRace) {
+        if (mightBeRace) {
+            Order current = orderRepository.findById(orderId).orElse(null);
+            if (current != null && current.getStatus() == OrderStatus.EXPIRED) {
+                log.info("initiatePayment(orderId={}) lost a race to a concurrent reservation expiry — "
+                        + "surfacing a clean ORDER_RESERVATION_EXPIRED instead of propagating {}",
+                        orderId, cause.getClass().getSimpleName());
+                return new ApiException(EcommerceErrorCode.ORDER_RESERVATION_EXPIRED, orderId);
+            }
+        }
+        return cause;
     }
 
     private Order findOrder(Integer orderId) {

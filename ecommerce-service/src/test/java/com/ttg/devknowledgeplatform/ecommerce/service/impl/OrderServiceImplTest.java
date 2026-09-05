@@ -526,5 +526,58 @@ class OrderServiceImplTest {
             assertThat(returned.clientSecret()).isNull();
             verify(paymentGatewayPort, never()).charge(any(), any());
         }
+
+        @Test
+        void translatesAConcurrentReservationExpiryIntoACleanErrorAfterAStatusTransitionConflict() {
+            // Bug fix: a shopper resuming payment on a still-PENDING order can race
+            // OrderReservationExpiryJob's own sweep of the same order right at the edge of the
+            // reservation timeout. The loser must not see a raw, internal-method-named
+            // ORDER_INVALID_STATUS_TRANSITION — it should surface a clean, actionable
+            // ORDER_RESERVATION_EXPIRED instead.
+            when(paymentHandoffService.startPaymentProcessing(1, OWNER_UUID))
+                    .thenThrow(new BusinessException(
+                            EcommerceErrorCode.ORDER_INVALID_STATUS_TRANSITION, "startPaymentProcessing", OrderStatus.EXPIRED));
+            Order expired = orderOwnedBy(OWNER_UUID);
+            expired.setStatus(OrderStatus.EXPIRED);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(expired));
+
+            assertThatThrownBy(() -> service.initiatePayment(1, OWNER_UUID))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.ORDER_RESERVATION_EXPIRED);
+            verify(paymentGatewayPort, never()).charge(any(), any());
+            verify(paymentGatewayPort, never()).checkStatus(any());
+        }
+
+        @Test
+        void translatesAnOptimisticLockConflictIntoACleanErrorWhenTheOrderIsAlreadyExpired() {
+            when(paymentHandoffService.startPaymentProcessing(1, OWNER_UUID))
+                    .thenThrow(new ObjectOptimisticLockingFailureException(Order.class, 1));
+            Order expired = orderOwnedBy(OWNER_UUID);
+            expired.setStatus(OrderStatus.EXPIRED);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(expired));
+
+            assertThatThrownBy(() -> service.initiatePayment(1, OWNER_UUID))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.ORDER_RESERVATION_EXPIRED);
+        }
+
+        @Test
+        void rethrowsWhenTheOrderIsNotActuallyExpiredAfterAStatusTransitionConflict() {
+            // Not the tolerated race — a genuinely different rejection must still surface as-is
+            // rather than being silently swallowed or mislabeled as an expiry.
+            when(paymentHandoffService.startPaymentProcessing(1, OWNER_UUID))
+                    .thenThrow(new BusinessException(
+                            EcommerceErrorCode.ORDER_INVALID_STATUS_TRANSITION, "startPaymentProcessing", OrderStatus.SHIPPED));
+            Order stillNotExpired = orderOwnedBy(OWNER_UUID);
+            stillNotExpired.setStatus(OrderStatus.SHIPPED);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(stillNotExpired));
+
+            assertThatThrownBy(() -> service.initiatePayment(1, OWNER_UUID))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.ORDER_INVALID_STATUS_TRANSITION);
+        }
     }
 }

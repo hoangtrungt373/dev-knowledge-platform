@@ -3528,6 +3528,16 @@ entries start fresh below `[Unreleased]`.
   uses), returning a fresh, trustworthy `client_secret` if still genuinely open, or finalizing the
   order via `resolvePayment` if it already resolved. 2 new `OrderServiceImplTest` cases. 373 unit
   tests total (up from 371), verified via a real `mvn test` run (JDK 21).
+- **`ecommerce-service`: `initiatePayment` now also tolerates losing a race to a concurrent
+  reservation expiry, the same shape as `cancel`'s own concurrent-resolution tolerance.** A
+  shopper resuming payment on a still-`PENDING` order can race `OrderReservationExpiryJob`'s own
+  sweep of that same order right at the edge of the reservation timeout — the loser previously
+  surfaced either a raw `ObjectOptimisticLockingFailureException` or a generic
+  `ORDER_INVALID_STATUS_TRANSITION` naming an internal method name. New
+  `EcommerceErrorCode.ORDER_RESERVATION_EXPIRED` (`ORDER_004`, `409`); `initiatePayment` now
+  catches both exception shapes and surfaces this clean code only when the order genuinely reached
+  `EXPIRED`, otherwise rethrows unchanged. 3 new `OrderServiceImplTest` cases. 376 unit tests total
+  (up from 373), verified via a real `mvn test` run (JDK 21).
 
 ## [0.0.2] — 2026-08-11
 
