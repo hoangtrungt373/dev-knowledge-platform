@@ -2725,6 +2725,34 @@ structural-only adapter.
       `ConfirmDialog` — a message plus one follow-up action, per request, for reuse beyond this one
       feature) — see `gui/CLAUDE.md`'s own note for the full detail on all three pages this wired
       into.
+  - **Bug fix, found via a dedicated edge-case review of this feature (not reported by a user):
+    `OrderServiceImpl#reconcilePayment` didn't tolerate losing a race to a concurrent
+    reconciliation — unlike `cancel`/`initiatePayment`, which both already have their own
+    dedicated recovery for exactly this shape.** Traced (not assumed) through the actual
+    concurrency path: `payment.StripePaymentGateway#cancelUnconfirmed` already tolerates a
+    concurrent cancel gracefully at the gateway layer (returns `alreadyResolved` rather than
+    erroring), but that result then flows into `PaymentHandoffService#resolvePayment`, which
+    re-fetches the order and — finding it already finalized by whichever caller won the race —
+    has no registered handler for that (now-terminal) status, throwing
+    `ORDER_INVALID_STATUS_TRANSITION`; the more likely manifestation, timing-wise, is a plain
+    `ObjectOptimisticLockingFailureException` (both racers' own reads typically land before either
+    write, given how much longer a Stripe round trip takes than a local read). This endpoint and
+    `OrderReconciliationJob`'s own scheduled poll watch the *exact same* abandonment deadline, so
+    they — or two browser tabs on the same order both hitting this endpoint — can plausibly race
+    right at that boundary; neither exception shape was previously caught by `callGatewayOrFail`
+    (which only translates `PaymentGatewayException`), so the loser saw a raw, confusing error
+    instead of "your order already resolved, here it is." **Fix**: new
+    `recoverFromConcurrentReconciliation`, mirroring `cancel`'s own
+    `recoverFromConcurrentCancelResolution` — but generalized, since `reconcileNow` (unlike a
+    cancel, which can only ever resolve to `CANCELLED`) can land the order on several different
+    terminal statuses depending on which caller won (`EXPIRED`/`CANCELLED` via the
+    abandonment-cancel path, or `CONFIRMED`/`FAILED` via an ordinary resolved outcome) — so this
+    checks "no longer `PAYMENT_PROCESSING`" rather than one specific target status. 3 new
+    `OrderServiceImplTest.ReconcilePayment` cases (recovering when the order reached `EXPIRED`,
+    recovering when it reached a *different* terminal status via an optimistic-lock conflict —
+    confirming the check isn't hardcoded to one status the way `cancel`'s own is — and rethrowing
+    unchanged when it's still genuinely `PAYMENT_PROCESSING`). **393 unit tests total** (up from
+    390), verified via a real `mvn test` run (JDK 21).
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)

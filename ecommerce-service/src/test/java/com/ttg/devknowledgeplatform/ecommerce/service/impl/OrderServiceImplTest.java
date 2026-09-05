@@ -637,5 +637,55 @@ class OrderServiceImplTest {
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.PAYMENT_GATEWAY_UNAVAILABLE);
         }
+
+        @Test
+        void recoversWhenReconcileNowLosesARaceAndTheOrderAlreadyReachedATerminalStatus() {
+            // Bug fix regression: OrderReconciliationJob's own scheduled poll (or a second browser
+            // tab hitting this same endpoint) finished reconciling this order to EXPIRED a moment
+            // before this call's own reconcileNow ran — that's a race this method should tolerate,
+            // not error on. Unlike Cancel's own equivalent test, the recovered-to status here is
+            // whatever reconcileNow actually landed on, not always the same one target status.
+            Order alreadyExpired = orderOwnedBy(OWNER_UUID);
+            alreadyExpired.setStatus(OrderStatus.EXPIRED);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(alreadyExpired));
+            when(paymentReconciliationService.reconcileNow(1)).thenThrow(
+                    new BusinessException(EcommerceErrorCode.ORDER_INVALID_STATUS_TRANSITION, "failPayment", OrderStatus.EXPIRED));
+
+            Order result = service.reconcilePayment(1, OWNER_UUID);
+
+            assertThat(result).isSameAs(alreadyExpired);
+        }
+
+        @Test
+        void recoversWhenReconcileNowLosesARaceAndTheOrderAlreadyReachedAnyOtherTerminalStatus() {
+            // Confirms the recovery isn't hardcoded to one specific status the way Cancel's own
+            // is (CANCELLED only) — reconcileNow can land the order on CONFIRMED/FAILED just as
+            // easily as EXPIRED/CANCELLED, depending on which racer won.
+            Order alreadyConfirmed = orderOwnedBy(OWNER_UUID);
+            alreadyConfirmed.setStatus(OrderStatus.CONFIRMED);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(alreadyConfirmed));
+            when(paymentReconciliationService.reconcileNow(1)).thenThrow(
+                    new ObjectOptimisticLockingFailureException(Order.class, 1));
+
+            Order result = service.reconcilePayment(1, OWNER_UUID);
+
+            assertThat(result).isSameAs(alreadyConfirmed);
+        }
+
+        @Test
+        void rethrowsWhenTheOrderIsStillPaymentProcessingAfterAStatusTransitionConflict() {
+            // Not the tolerated race — the order never actually moved, so this must still surface
+            // as a real error rather than being silently swallowed.
+            Order stillProcessing = orderOwnedBy(OWNER_UUID);
+            stillProcessing.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(stillProcessing));
+            when(paymentReconciliationService.reconcileNow(1)).thenThrow(
+                    new BusinessException(EcommerceErrorCode.ORDER_INVALID_STATUS_TRANSITION, "failPayment", OrderStatus.PAYMENT_PROCESSING));
+
+            assertThatThrownBy(() -> service.reconcilePayment(1, OWNER_UUID))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.ORDER_INVALID_STATUS_TRANSITION);
+        }
     }
 }

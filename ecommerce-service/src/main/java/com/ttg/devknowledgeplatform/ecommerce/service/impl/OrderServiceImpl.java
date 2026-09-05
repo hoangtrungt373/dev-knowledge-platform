@@ -129,6 +129,27 @@ import java.util.function.Supplier;
  * still surfaces as {@link EcommerceErrorCode#PAYMENT_GATEWAY_UNAVAILABLE} rather than a raw 500 —
  * see that service's own Javadoc for why a gateway failure here must never be treated as
  * "expired"/"cancelled."
+ *
+ * <p><b>Bug fix: {@link #reconcilePayment} now tolerates losing a race to a concurrent
+ * reconciliation, the same shape as {@link #cancel}'s own concurrent-resolution tolerance, but
+ * generalized.</b> This endpoint and {@code OrderReconciliationJob}'s own scheduled poll watch the
+ * exact same abandonment deadline, so they (or two browser tabs on the same order both hitting
+ * this endpoint) can plausibly race right at that boundary. Unlike {@link #cancel} (which can only
+ * ever resolve a race to {@code CANCELLED}), {@code PaymentReconciliationService#reconcileNow} can
+ * land the order on several different terminal statuses depending on which caller won
+ * ({@code EXPIRED}/{@code CANCELLED} via the abandonment-cancel path, or {@code CONFIRMED}/
+ * {@code FAILED} via an ordinary resolved outcome) — so {@link #recoverFromConcurrentReconciliation}
+ * checks "no longer {@code PAYMENT_PROCESSING}" rather than one specific target status. Found by
+ * tracing the actual race through {@code payment.StripePaymentGateway#cancelUnconfirmed} (which
+ * already tolerates a concurrent cancel gracefully at the gateway layer) into
+ * {@code PaymentHandoffService#resolvePayment}, which re-fetches the order and — finding it
+ * already {@code EXPIRED} by the winner — has no registered {@code failPayment} handler for that
+ * status, throwing {@code ORDER_INVALID_STATUS_TRANSITION}; the more likely manifestation, timing-
+ * wise, is a plain {@link ObjectOptimisticLockingFailureException} (both racers' own reads
+ * typically land before either write, given how much longer a Stripe round trip takes than a local
+ * read). Neither was previously caught by {@link #callGatewayOrFail} (which only translates
+ * {@link PaymentGatewayException}), so the loser used to see a raw, confusing error instead of
+ * "your order already resolved, here it is."
  */
 @Service
 @RequiredArgsConstructor
@@ -305,6 +326,41 @@ public class OrderServiceImpl implements OrderService {
         Validator.notFound(
                 orderRepository.findById(orderId).filter(o -> o.getOwnerUuid().equals(callerUuid)),
                 EcommerceErrorCode.ORDER_NOT_FOUND, orderId);
-        return callGatewayOrFail(() -> paymentReconciliationService.reconcileNow(orderId));
+        try {
+            return callGatewayOrFail(() -> paymentReconciliationService.reconcileNow(orderId));
+        } catch (BusinessException e) {
+            return recoverFromConcurrentReconciliation(
+                    orderId, e, e.getErrorCode() == EcommerceErrorCode.ORDER_INVALID_STATUS_TRANSITION);
+        } catch (ObjectOptimisticLockingFailureException e) {
+            return recoverFromConcurrentReconciliation(orderId, e, true);
+        }
+    }
+
+    /**
+     * Called when {@link #reconcilePayment} threw something that might just mean "someone else
+     * (the scheduled {@code OrderReconciliationJob}, or another browser tab hitting this same
+     * endpoint) already finished reconciling this order" — the same race
+     * {@link #recoverFromConcurrentCancelResolution} tolerates for {@link #cancel}, but broader:
+     * unlike a cancel (which can only ever resolve to {@code CANCELLED}),
+     * {@code PaymentReconciliationService#reconcileNow} can land the order on any of several
+     * different terminal statuses depending on which branch won ({@code EXPIRED}/
+     * {@code CANCELLED} via the abandonment-cancel path, or {@code CONFIRMED}/{@code FAILED} via
+     * an ordinary {@code resolvePayment} outcome) — so this checks "no longer
+     * {@code PAYMENT_PROCESSING}" rather than one specific target status. Only actually swallows
+     * the exception when {@code mightBeRace} is true <i>and</i> the order has genuinely moved off
+     * {@code PAYMENT_PROCESSING} in the meantime; any other case rethrows the original exception
+     * unchanged.
+     */
+    private Order recoverFromConcurrentReconciliation(Integer orderId, RuntimeException cause, boolean mightBeRace) {
+        if (mightBeRace) {
+            Order current = orderRepository.findById(orderId).orElse(null);
+            if (current != null && current.getStatus() != OrderStatus.PAYMENT_PROCESSING) {
+                log.info("reconcilePayment(orderId={}) lost a race to a concurrent reconciliation that already "
+                        + "reached {} — treating as success instead of propagating {}",
+                        orderId, current.getStatus(), cause.getClass().getSimpleName());
+                return current;
+            }
+        }
+        throw cause;
     }
 }

@@ -3576,6 +3576,18 @@ entries start fresh below `[Unreleased]`.
   payment phase, `OrderDetailPage`, and `OrderHistoryPage` (per-row). Verified via a real
   `mvn test` run and a clean `tsc --noEmit`/`vite build` — no Docker in this sandbox, so the actual
   live countdown/reconcile/dialog flow is unverified in a real browser.
+- **`ecommerce-service`: bug fix, found via a dedicated edge-case review of the payment-countdown
+  feature above (not user-reported) — `OrderServiceImpl#reconcilePayment` didn't tolerate losing a
+  race to a concurrent reconciliation, unlike `cancel`/`initiatePayment`, which both already have
+  dedicated recovery for exactly this shape.** This endpoint and `OrderReconciliationJob`'s own
+  scheduled poll watch the same abandonment deadline, so they (or two browser tabs on the same
+  order) can plausibly race right at that boundary — the loser previously saw a raw
+  `ORDER_INVALID_STATUS_TRANSITION`/`ObjectOptimisticLockingFailureException` instead of the
+  already-resolved order. New `recoverFromConcurrentReconciliation`, generalized (unlike `cancel`'s
+  own, which only ever resolves to `CANCELLED`) to check "no longer `PAYMENT_PROCESSING`" rather
+  than one specific target status, since `reconcileNow` can land on several different terminal
+  statuses depending on which caller won. 3 new tests. 393 unit tests total (up from 390), verified
+  via a real `mvn test` run (JDK 21).
 
 ## [0.0.2] — 2026-08-11
 
