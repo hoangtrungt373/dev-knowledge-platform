@@ -2910,3 +2910,27 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   Verified via a clean `tsc --noEmit` (only the same pre-existing errors) and a successful
   `vite build` — no Docker in this sandbox, so the actual now-visible-while-`PAYMENT_PROCESSING`
   banner is unverified in a real browser.
+
+- **Follow-up: `OrderDetailPage.tsx` gained a "Continue Payment" button — the GUI half of
+  `ecommerce-service`'s `initiatePayment` re-entrancy/checkStatus fix (see that module's
+  `CLAUDE.md` for the full backend history: the `checkStatus`-vs-`charge()` fix, then the
+  reservation-expiry-race tolerance).** A `PAYMENT_PROCESSING` order (not already cancel-requested)
+  previously had no way to resume payment at all — only `canPay` (`status === 'PENDING'`) rendered
+  the "Pay Now" `SubmitButton`; a shopper who'd closed the payment dialog or reloaded the page
+  mid-checkout was stuck with only a Cancel Order button, even though the backend's `initiatePayment`
+  has fully supported resuming since the earlier `checkStatus` fix. New `canContinuePayment =
+  order.status === 'PAYMENT_PROCESSING' && !order.cancelRequested` (excluded once cancel-requested —
+  offering to keep paying an order about to be cancelled the moment payment resolves would be
+  contradictory; `cancelPending`'s own banner already covers that state) — reuses `handlePay`
+  unchanged (same `orderApi.pay`/`PaymentDialog`/`PaymentElementForm` flow `canPay` already uses),
+  just with a different button label ("Continue Payment" vs. "Pay Now — $X") and no separate code
+  path, since `initiatePayment` is the identical endpoint for both a first attempt and a resume.
+  **`handlePay`'s catch block now also refetches the order** — a rejected `initiatePayment` call can
+  mean the order's own status just changed server-side (e.g. the backend's new
+  `ORDER_RESERVATION_EXPIRED`, from losing a race to `OrderReservationExpiryJob`'s own concurrent
+  sweep), so a bare error toast with no refetch would leave the status chip/action buttons stuck
+  showing a stale order the shopper can't actually act on anymore; the refetch failure itself is
+  swallowed silently, same tolerance `handlePaymentDialogCompleted`'s own refetch already has.
+  Verified via a clean `tsc --noEmit` (only the same pre-existing errors) and a successful
+  `vite build` — no Docker in this sandbox, so the actual Continue Payment click/PaymentDialog
+  resume flow is unverified in a real browser.

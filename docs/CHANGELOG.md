@@ -3516,6 +3516,37 @@ entries start fresh below `[Unreleased]`.
     `EcommerceErrorCode.CHECKOUT_ALREADY_IN_PROGRESS` (`CHECKOUT_004`, `409`).
   - 3 new tests. 371 unit tests total (up from 368), verified via a real `mvn test` run (JDK 21).
   See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full per-fix detail.
+- **`ecommerce-service`: `OrderServiceImpl#initiatePayment`'s own re-entrant call now checks live
+  gateway status instead of replaying `charge()`** — the backend half of a "Continue Payment" GUI
+  feature (not yet built), found while designing it. A shopper reloading the checkout page (or a
+  future "Continue Payment" click) while already `PAYMENT_PROCESSING` used to unconditionally
+  replay `charge()`, but Stripe's own idempotent replay returns the frozen response from the
+  *original* `create()` call, never a live re-fetch — a real bug: a shopper who'd already paid on
+  another tab, or whose intent Stripe had already auto-canceled, would see a stale "still needs
+  payment" snapshot. Now checks the order's own status first: first time still calls `charge()`;
+  re-entrant calls `checkStatus()` instead (the same live retrieve `OrderReconciliationJob` already
+  uses), returning a fresh, trustworthy `client_secret` if still genuinely open, or finalizing the
+  order via `resolvePayment` if it already resolved. 2 new `OrderServiceImplTest` cases. 373 unit
+  tests total (up from 371), verified via a real `mvn test` run (JDK 21).
+- **`ecommerce-service`: `initiatePayment` now also tolerates losing a race to a concurrent
+  reservation expiry, the same shape as `cancel`'s own concurrent-resolution tolerance.** A
+  shopper resuming payment on a still-`PENDING` order can race `OrderReservationExpiryJob`'s own
+  sweep of that same order right at the edge of the reservation timeout — the loser previously
+  surfaced either a raw `ObjectOptimisticLockingFailureException` or a generic
+  `ORDER_INVALID_STATUS_TRANSITION` naming an internal method name. New
+  `EcommerceErrorCode.ORDER_RESERVATION_EXPIRED` (`ORDER_004`, `409`); `initiatePayment` now
+  catches both exception shapes and surfaces this clean code only when the order genuinely reached
+  `EXPIRED`, otherwise rethrows unchanged. 3 new `OrderServiceImplTest` cases. 376 unit tests total
+  (up from 373), verified via a real `mvn test` run (JDK 21).
+- **`gui`: `OrderDetailPage.tsx` gained a "Continue Payment" button — the GUI half of the backend
+  work above.** A `PAYMENT_PROCESSING` order (not already cancel-requested) previously had no way
+  to resume payment at all — only a `PENDING` order showed "Pay Now". New `canContinuePayment`
+  reuses the exact same `handlePay`/`orderApi.pay`/`PaymentDialog` flow "Pay Now" already uses,
+  just with a different label, since the backend's `initiatePayment` is the same endpoint for a
+  first attempt or a resume. `handlePay`'s catch block now also refetches the order, so a rejected
+  call (e.g. the new `ORDER_RESERVATION_EXPIRED`) updates the stale status chip/action buttons
+  instead of leaving them stuck. Verified via a clean `tsc --noEmit` and a successful `vite build`
+  only — no Docker in this sandbox, so the actual click-through is unverified in a real browser.
 
 ## [0.0.2] — 2026-08-11
 

@@ -2563,6 +2563,55 @@ structural-only adapter.
       mock pair (`setIfAbsent` stubbed to succeed by default).
     - 3 new tests total. 371 unit tests total (up from 368), verified via a real `mvn test` run
       (JDK 21).
+  - **Follow-up: `OrderServiceImpl#initiatePayment`'s own re-entrant call now checks live gateway
+    status instead of replaying `charge()`, closing a real latent bug found while designing a
+    "Continue Payment" GUI feature (the GUI half is now built too, see `gui/CLAUDE.md`'s own
+    "Continue Payment" note — this bullet's own history is backend-only, per the original request).**
+    `PaymentHandoffService#startPaymentProcessing`'s own re-entrant branch has always permitted
+    calling `initiatePayment` again on an already-`PAYMENT_PROCESSING` order (the shopper reloads
+    the page, or a future "Continue Payment" action) — but this method used to unconditionally call
+    `charge()` regardless of whether this was a first attempt or a repeat one. Stripe's own
+    idempotent replay of an already-created `PaymentIntent` returns the exact response captured at
+    the *original* `create()` call, never a live re-fetch — the identical reason
+    `StripePaymentGateway#checkStatus` was deliberately built to do a live retrieve instead of
+    replaying `charge()` in the first place (see that method's own Javadoc). This meant a shopper
+    who'd already confirmed payment on another tab, or whose `PaymentIntent` Stripe had already
+    auto-canceled (the confirmation-limit follow-up from a few turns back), could reload the
+    checkout page and see this method hand back a stale, frozen "still needs payment" snapshot
+    instead of the real, current outcome — a real bug, not hypothetical, just never triggered until
+    this design discussion surfaced it. **Fix**: `initiatePayment` now reads the order's own status
+    *before* calling `startPaymentProcessing`, to tell first-time from re-entrant apart: first time
+    still calls `charge()` (a new attempt genuinely needs creating); re-entrant now calls
+    `checkStatus()` instead — the same live-retrieve `OrderReconciliationJob` already relies on,
+    whose own `PENDING` result still carries the real, current `client_secret` straight from Stripe
+    if the intent is genuinely still open (safe to remount a `PaymentElement` against), or correctly
+    finalizes the order via `resolvePayment` if it turns out to have already resolved, instead of
+    showing a stale payment form. 2 new `OrderServiceImplTest.InitiatePayment` cases (the
+    still-open-intent path returning a fresh client secret, and the already-resolved path
+    finalizing instead of replaying). 373 unit tests total (up from 371), verified via a real
+    `mvn test` run (JDK 21).
+  - **Follow-up: `initiatePayment` now also tolerates losing a race to a concurrent reservation
+    expiry, the same shape as `cancel`'s own concurrent-resolution tolerance — found while checking
+    whether the `PENDING` case needed the same "Continue Payment" treatment as `PAYMENT_PROCESSING`
+    (it doesn't, for that concern; this is a different, narrower one this check surfaced).** A
+    shopper resuming payment on a still-`PENDING` order (calling `initiatePayment` for the first
+    time on an existing order, just not immediately after checkout) can race
+    `OrderReservationExpiryJob`'s own sweep of that same order right at the edge of the reservation
+    timeout window — whichever commits first wins the order's own `@Version`; the loser previously
+    surfaced either a raw `ObjectOptimisticLockingFailureException` or a generic
+    `ORDER_INVALID_STATUS_TRANSITION` naming an internal method name (`"startPaymentProcessing"`),
+    neither telling the shopper anything actionable. New `EcommerceErrorCode.ORDER_RESERVATION_EXPIRED`
+    (`ORDER_004`, `409 CONFLICT`, "Your reservation for order {0} has expired — please place a new
+    order"). **Fix**: `initiatePayment` now catches both exception shapes, re-fetches the order,
+    and — only when it genuinely reached `EXPIRED` — surfaces this clean code instead; any other
+    rejection still propagates unchanged. Unlike `cancel`'s own recovery, there's no successful
+    outcome to recover into here (a shopper can never pay for a reservation already given back), so
+    this only ever changes *which* exception reaches the caller. New private
+    `doInitiatePayment`/`translateConcurrentExpiry` helpers, mirroring `cancel`'s own
+    `doCancel`/`recoverFromConcurrentCancelResolution` split. 3 new
+    `OrderServiceImplTest.InitiatePayment` cases (both exception shapes converted when genuinely
+    expired, one rethrown unchanged when the order ended up somewhere else). 376 unit tests total
+    (up from 373), verified via a real `mvn test` run (JDK 21).
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)
