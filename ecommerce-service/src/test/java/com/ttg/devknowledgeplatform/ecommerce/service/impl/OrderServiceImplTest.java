@@ -473,5 +473,58 @@ class OrderServiceImplTest {
                     .isEqualTo(EcommerceErrorCode.PAYMENT_GATEWAY_UNAVAILABLE);
             verify(paymentHandoffService, never()).resolvePayment(any(), any());
         }
+
+        @Test
+        void aReEntrantCallOnAnAlreadyProcessingOrderChecksLiveStatusInsteadOfReplayingCharge() {
+            // Bug fix: the shopper reloading the page (or a "Continue Payment" action) while
+            // already PAYMENT_PROCESSING must not replay charge() — Stripe's own idempotent replay
+            // would return the frozen response from the ORIGINAL create() call, never a live
+            // re-fetch, so it could hand back a stale "still needs payment" snapshot even if the
+            // shopper already paid on another tab in the meantime. checkStatus() does a live
+            // retrieve instead.
+            Order alreadyProcessing = orderOwnedBy(OWNER_UUID);
+            alreadyProcessing.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            alreadyProcessing.setIdempotencyKey("1");
+            when(orderRepository.findById(1)).thenReturn(Optional.of(alreadyProcessing));
+            Order pending = orderOwnedBy(OWNER_UUID);
+            pending.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            pending.setIdempotencyKey("1");
+            pending.setTotal(new BigDecimal("25.00"));
+            when(paymentHandoffService.startPaymentProcessing(1, OWNER_UUID)).thenReturn(pending);
+            PaymentResult stillOpen = PaymentResult.pending("pi_1", "pi_1_secret_abc");
+            when(paymentGatewayPort.checkStatus("1")).thenReturn(stillOpen);
+            when(paymentHandoffService.resolvePayment(1, stillOpen)).thenReturn(pending);
+
+            var returned = service.initiatePayment(1, OWNER_UUID);
+
+            assertThat(returned.clientSecret()).isEqualTo("pi_1_secret_abc");
+            verify(paymentGatewayPort, never()).charge(any(), any());
+            verify(paymentGatewayPort).checkStatus("1");
+            verify(paymentHandoffService).resolvePayment(1, stillOpen);
+        }
+
+        @Test
+        void aReEntrantCallThatDiscoversThePaymentAlreadySucceededFinalizesInsteadOfShowingAStalePaymentForm() {
+            Order alreadyProcessing = orderOwnedBy(OWNER_UUID);
+            alreadyProcessing.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            alreadyProcessing.setIdempotencyKey("1");
+            when(orderRepository.findById(1)).thenReturn(Optional.of(alreadyProcessing));
+            Order pending = orderOwnedBy(OWNER_UUID);
+            pending.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            pending.setIdempotencyKey("1");
+            pending.setTotal(new BigDecimal("25.00"));
+            when(paymentHandoffService.startPaymentProcessing(1, OWNER_UUID)).thenReturn(pending);
+            PaymentResult alreadySucceeded = PaymentResult.succeeded("pi_1");
+            when(paymentGatewayPort.checkStatus("1")).thenReturn(alreadySucceeded);
+            Order confirmed = orderOwnedBy(OWNER_UUID);
+            confirmed.setStatus(OrderStatus.CONFIRMED);
+            when(paymentHandoffService.resolvePayment(1, alreadySucceeded)).thenReturn(confirmed);
+
+            var returned = service.initiatePayment(1, OWNER_UUID);
+
+            assertThat(returned.order()).isSameAs(confirmed);
+            assertThat(returned.clientSecret()).isNull();
+            verify(paymentGatewayPort, never()).charge(any(), any());
+        }
     }
 }

@@ -81,6 +81,28 @@ import java.util.function.Supplier;
  * only the shape of the response the caller receives — it does not touch the existing guarantee
  * that a mid-call crash still leaves the order safely {@code PAYMENT_PROCESSING} for {@code
  * OrderReconciliationJob} to resolve later (see {@link PaymentGatewayException}'s own Javadoc).
+ *
+ * <p><b>Bug fix: {@link #initiatePayment}'s own re-entrant call (the shopper reloads the page, or a
+ * "Continue Payment" action, while already {@code PAYMENT_PROCESSING}) now calls
+ * {@link PaymentGatewayPort#checkStatus} instead of replaying {@link PaymentGatewayPort#charge}
+ * again.</b> {@code PaymentHandoffService#startPaymentProcessing}'s own re-entrant branch has always
+ * permitted calling this method again on an already-{@code PAYMENT_PROCESSING} order — but this
+ * method used to unconditionally call {@code charge()} regardless, and Stripe's own idempotent
+ * replay of an already-created {@code PaymentIntent} returns the exact response captured at the
+ * original {@code create()} call, never a live re-fetch (the identical reason
+ * {@code StripePaymentGateway#checkStatus} was built to do a live retrieve instead of replaying
+ * {@code charge()} in the first place — see that method's own Javadoc). A real, if narrow, bug: a
+ * shopper who'd already confirmed payment on another tab, or whose {@code PaymentIntent} Stripe had
+ * already auto-canceled, would see this method hand back a stale, frozen "still needs payment"
+ * snapshot instead of the real, current outcome. This method now checks the order's own status
+ * before calling {@code startPaymentProcessing} to tell the two cases apart: first time still calls
+ * {@code charge()} (a new attempt genuinely needs creating); re-entrant now calls
+ * {@code checkStatus()} instead — the same live-retrieve {@code OrderReconciliationJob} already
+ * relies on, whose own {@code PENDING} result still carries the real, current {@code client_secret}
+ * straight from Stripe if the intent is genuinely still open, so a "Continue Payment" retry gets a
+ * trustworthy client secret to remount the {@code PaymentElement} against — or, if it turns out to
+ * have already resolved, {@link #initiatePayment} correctly finalizes the order via
+ * {@link PaymentHandoffService#resolvePayment} instead of showing a stale payment form.
  */
 @Service
 @RequiredArgsConstructor
@@ -195,9 +217,17 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public PaymentInitiationResult initiatePayment(Integer orderId, String callerUuid) {
+        // Read the order's status before startPaymentProcessing's own re-entrant check touches
+        // it — this is what tells re-entrant apart from first-time below. A missing/renamed-away
+        // order here just falls through to the "first time" branch, which still fails correctly
+        // (startPaymentProcessing's own Validator.notFound rejects it either way).
+        boolean alreadyProcessing = orderRepository.findById(orderId)
+                .map(order -> order.getStatus() == OrderStatus.PAYMENT_PROCESSING)
+                .orElse(false);
         Order pending = paymentHandoffService.startPaymentProcessing(orderId, callerUuid);
-        PaymentResult result = callGatewayOrFail(
-                () -> paymentGatewayPort.charge(pending.getIdempotencyKey(), pending.getTotal()));
+        PaymentResult result = alreadyProcessing
+                ? callGatewayOrFail(() -> paymentGatewayPort.checkStatus(pending.getIdempotencyKey()))
+                : callGatewayOrFail(() -> paymentGatewayPort.charge(pending.getIdempotencyKey(), pending.getTotal()));
         Order resolved = paymentHandoffService.resolvePayment(orderId, result);
         return new PaymentInitiationResult(resolved, result.clientSecret());
     }

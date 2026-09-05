@@ -3516,6 +3516,18 @@ entries start fresh below `[Unreleased]`.
     `EcommerceErrorCode.CHECKOUT_ALREADY_IN_PROGRESS` (`CHECKOUT_004`, `409`).
   - 3 new tests. 371 unit tests total (up from 368), verified via a real `mvn test` run (JDK 21).
   See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full per-fix detail.
+- **`ecommerce-service`: `OrderServiceImpl#initiatePayment`'s own re-entrant call now checks live
+  gateway status instead of replaying `charge()`** — the backend half of a "Continue Payment" GUI
+  feature (not yet built), found while designing it. A shopper reloading the checkout page (or a
+  future "Continue Payment" click) while already `PAYMENT_PROCESSING` used to unconditionally
+  replay `charge()`, but Stripe's own idempotent replay returns the frozen response from the
+  *original* `create()` call, never a live re-fetch — a real bug: a shopper who'd already paid on
+  another tab, or whose intent Stripe had already auto-canceled, would see a stale "still needs
+  payment" snapshot. Now checks the order's own status first: first time still calls `charge()`;
+  re-entrant calls `checkStatus()` instead (the same live retrieve `OrderReconciliationJob` already
+  uses), returning a fresh, trustworthy `client_secret` if still genuinely open, or finalizing the
+  order via `resolvePayment` if it already resolved. 2 new `OrderServiceImplTest` cases. 373 unit
+  tests total (up from 371), verified via a real `mvn test` run (JDK 21).
 
 ## [0.0.2] — 2026-08-11
 
