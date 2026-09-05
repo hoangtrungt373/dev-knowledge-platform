@@ -2565,7 +2565,8 @@ structural-only adapter.
       (JDK 21).
   - **Follow-up: `OrderServiceImpl#initiatePayment`'s own re-entrant call now checks live gateway
     status instead of replaying `charge()`, closing a real latent bug found while designing a
-    "Continue Payment" GUI feature (not yet built — this is the backend half only, per request).**
+    "Continue Payment" GUI feature (the GUI half is now built too, see `gui/CLAUDE.md`'s own
+    "Continue Payment" note — this bullet's own history is backend-only, per the original request).**
     `PaymentHandoffService#startPaymentProcessing`'s own re-entrant branch has always permitted
     calling `initiatePayment` again on an already-`PAYMENT_PROCESSING` order (the shopper reloads
     the page, or a future "Continue Payment" action) — but this method used to unconditionally call

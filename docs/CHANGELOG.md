@@ -3538,6 +3538,15 @@ entries start fresh below `[Unreleased]`.
   catches both exception shapes and surfaces this clean code only when the order genuinely reached
   `EXPIRED`, otherwise rethrows unchanged. 3 new `OrderServiceImplTest` cases. 376 unit tests total
   (up from 373), verified via a real `mvn test` run (JDK 21).
+- **`gui`: `OrderDetailPage.tsx` gained a "Continue Payment" button — the GUI half of the backend
+  work above.** A `PAYMENT_PROCESSING` order (not already cancel-requested) previously had no way
+  to resume payment at all — only a `PENDING` order showed "Pay Now". New `canContinuePayment`
+  reuses the exact same `handlePay`/`orderApi.pay`/`PaymentDialog` flow "Pay Now" already uses,
+  just with a different label, since the backend's `initiatePayment` is the same endpoint for a
+  first attempt or a resume. `handlePay`'s catch block now also refetches the order, so a rejected
+  call (e.g. the new `ORDER_RESERVATION_EXPIRED`) updates the stale status chip/action buttons
+  instead of leaving them stuck. Verified via a clean `tsc --noEmit` and a successful `vite build`
+  only — no Docker in this sandbox, so the actual click-through is unverified in a real browser.
 
 ## [0.0.2] — 2026-08-11
 

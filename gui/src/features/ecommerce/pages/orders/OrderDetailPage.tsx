@@ -156,6 +156,17 @@ export default function OrderDetailPage(): JSX.Element {
         notifyPaymentOutcome(result);
       } catch (err) {
         showError(err instanceof Error ? err.message : 'Could not process payment. Please try again.');
+        // A rejected initiatePayment call can still mean the order's own status just changed
+        // server-side (e.g. ORDER_RESERVATION_EXPIRED — this call lost a race against
+        // OrderReservationExpiryJob's own concurrent sweep) — refetch so the status chip/action
+        // buttons reflect that instead of staying stuck showing a stale PENDING/PAYMENT_PROCESSING
+        // order the shopper can't actually act on anymore.
+        try {
+          setOrder(await orderApi.getById(orderId));
+        } catch {
+          // Already toasted the real problem above — a failed refetch just leaves a stale chip
+          // until the next reload, same tolerance handlePaymentDialogCompleted's own refetch has.
+        }
       }
     });
   };
@@ -202,6 +213,14 @@ export default function OrderDetailPage(): JSX.Element {
   }
 
   const canPay = order.status === 'PENDING';
+  // "Continue Payment" — a PAYMENT_PROCESSING order (not already cancel-requested) can resume the
+  // exact same handlePay flow canPay uses below, since the backend's initiatePayment now
+  // live-checks the gateway (checkStatus, not a stale charge() replay) instead of trusting its own
+  // frozen first response — see ecommerce-service/CLAUDE.md's Continue Payment/re-entrancy note.
+  // Excluded once cancelRequested — offering to keep paying an order that's about to be cancelled
+  // the moment this payment resolves would be contradictory; cancelPending's own banner covers
+  // that state instead.
+  const canContinuePayment = order.status === 'PAYMENT_PROCESSING' && !order.cancelRequested;
   const canCancel = isCancellable(order.status) && !order.cancelRequested;
   const cancelPending = order.status === 'PAYMENT_PROCESSING' && order.cancelRequested;
 
@@ -400,19 +419,19 @@ export default function OrderDetailPage(): JSX.Element {
         </Stack>
       </Paper>
 
-      {(canPay || canCancel) && (
+      {(canPay || canContinuePayment || canCancel) && (
         <Stack direction="row" justifyContent="flex-end" spacing={2}>
           {canCancel && (
             <Button color="error" onClick={() => setCancelDialogOpen(true)}>
               Cancel Order
             </Button>
           )}
-          {canPay && (
+          {(canPay || canContinuePayment) && (
             <SubmitButton
               size="large"
               saving={paying}
               onClick={handlePay}
-              label={`Pay Now — ${formatPrice(order.total)}`}
+              label={canPay ? `Pay Now — ${formatPrice(order.total)}` : 'Continue Payment'}
             />
           )}
         </Stack>
