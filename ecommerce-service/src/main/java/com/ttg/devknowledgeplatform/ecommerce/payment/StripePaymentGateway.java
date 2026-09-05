@@ -125,6 +125,10 @@ public class StripePaymentGateway implements PaymentGatewayPort {
         if (payment.getGatewayReference() == null) {
             // charge() never even reached Stripe for this attempt (e.g. crashed before the create
             // call returned) — nothing to look up yet; leave it PENDING for the next poll.
+            // orderstatus.OrderReconciliationJob#reconcileOne is what eventually gives up on this
+            // exact case (a PENDING result with a null gatewayReference is uniquely this scenario —
+            // every other still-processing outcome always carries a real one) and finalizes with a
+            // synthetic decline instead of polling forever — see that method's own Javadoc.
             return PaymentResult.pending(null, null);
         }
         try {

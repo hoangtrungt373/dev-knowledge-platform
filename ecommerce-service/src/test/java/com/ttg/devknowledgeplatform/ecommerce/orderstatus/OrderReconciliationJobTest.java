@@ -3,13 +3,16 @@ package com.ttg.devknowledgeplatform.ecommerce.orderstatus;
 import com.ttg.devknowledgeplatform.ecommerce.config.OrderJobProperties;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
+import com.ttg.devknowledgeplatform.ecommerce.enums.PaymentFailureCategory;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
+import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentOutcome;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentResult;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
@@ -18,6 +21,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -125,5 +129,45 @@ class OrderReconciliationJobTest {
 
         verify(paymentHandoffService, never()).resolvePayment(eq(1), any());
         verify(paymentHandoffService).resolvePayment(2, result2);
+    }
+
+    @Test
+    void finalizesAsASyntheticDeclineWhenTheChargeNeverReachedTheGatewayAtAll() {
+        // Regression coverage for a real gap: checkStatus returns PENDING with a null
+        // gatewayReference only when charge() itself never reached Stripe (e.g. crashed before the
+        // create call returned) — nothing to ever retrieve, so this must not poll forever.
+        when(orderRepository.findIdsByStatusAndPaymentProcessingStartedAtBefore(
+                eq(OrderStatus.PAYMENT_PROCESSING), any(), any(Pageable.class)))
+                .thenReturn(List.of(1));
+        Order order = stuckOrder(1);
+        when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+        when(paymentGatewayPort.checkStatus("1")).thenReturn(PaymentResult.pending(null, null));
+
+        job.reconcileStuckPayments();
+
+        ArgumentCaptor<PaymentResult> resultCaptor = ArgumentCaptor.forClass(PaymentResult.class);
+        verify(paymentHandoffService).resolvePayment(eq(1), resultCaptor.capture());
+        PaymentResult result = resultCaptor.getValue();
+        assertThat(result.outcome()).isEqualTo(PaymentOutcome.DECLINED);
+        assertThat(result.gatewayReference()).isNull();
+        assertThat(result.failureCategory()).isEqualTo(PaymentFailureCategory.GATEWAY_ERROR);
+    }
+
+    @Test
+    void leavesAGenuinelyStillProcessingOrderPendingWhenARealGatewayReferenceExists() {
+        // Must not conflate this with the null-gatewayReference case above — a real, still-open
+        // PaymentIntent (Option A's unconfirmed-intent window) always carries a real reference, and
+        // must keep being polled, not finalized.
+        when(orderRepository.findIdsByStatusAndPaymentProcessingStartedAtBefore(
+                eq(OrderStatus.PAYMENT_PROCESSING), any(), any(Pageable.class)))
+                .thenReturn(List.of(1));
+        Order order = stuckOrder(1);
+        when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+        PaymentResult stillPending = PaymentResult.pending("pi_1", "pi_1_secret");
+        when(paymentGatewayPort.checkStatus("1")).thenReturn(stillPending);
+
+        job.reconcileStuckPayments();
+
+        verify(paymentHandoffService).resolvePayment(1, stillPending);
     }
 }

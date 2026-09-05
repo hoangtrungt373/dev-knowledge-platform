@@ -3483,6 +3483,18 @@ entries start fresh below `[Unreleased]`.
   366 unit tests total (up from 364), verified via a real `mvn test` run (JDK 21). See
   `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full detail, including
   the one narrow, accepted race this doesn't fully close.
+- **`ecommerce-service`: `OrderReconciliationJob` closes the one real remaining gap in the Stripe
+  payment flow — a charge attempt that crashes before ever reaching Stripe used to poll forever
+  with no terminal exit.** A `Payment` row with no `gatewayReference` at all (e.g.
+  `PaymentGatewayPort#charge` threw before Stripe ever created a `PaymentIntent`) previously left
+  the order stuck `PAYMENT_PROCESSING` forever — `resolvePayment`'s own `PENDING` branch is always
+  a no-op, and even an explicit shopper cancel couldn't escape it (`PaymentCancellationService
+  #applyCancellation`'s own `gatewayReference != null` guard silently queues the cancel with no
+  effect). A `PENDING` result with a `null` `gatewayReference` is uniquely produced by exactly this
+  case, so `OrderReconciliationJob#reconcileOne` now finalizes it with a synthetic
+  `PaymentResult#declined` (`GATEWAY_ERROR`) once past the grace period, instead of polling
+  forever. 2 new `OrderReconciliationJobTest` cases. 368 unit tests total (up from 366), verified
+  via a real `mvn test` run (JDK 21).
 
 ## [0.0.2] — 2026-08-11
 

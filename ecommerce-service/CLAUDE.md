@@ -2484,6 +2484,29 @@ structural-only adapter.
   - 2 new `StripeWebhookServiceTest` cases (the genuine-final-decline path, and the
     already-resolved-elsewhere no-op guard). 366 unit tests total (up from 364), verified via a real
     `mvn test` run (JDK 21).
+  - **Follow-up: `OrderReconciliationJob` now closes the one real remaining gap in the Stripe
+    payment flow — a charge attempt that crashes before ever reaching Stripe used to poll forever
+    with no terminal exit.** Found during a dedicated "any other gaps left in the Stripe payment
+    flow?" review, not the earlier general code-quality audit. `payment.StripePaymentGateway
+    #checkStatus`'s own Javadoc had already documented the scenario (a `Payment` row with no
+    `gatewayReference` at all, e.g. `payment.PaymentGatewayPort#charge` threw before Stripe ever
+    created a `PaymentIntent`) but nothing ever resolved it: `resolvePayment`'s own `PENDING` branch
+    is always a no-op, and even an explicit shopper cancel couldn't escape it either —
+    `orderstatus.PaymentCancellationService#applyCancellation`'s own `gatewayReference != null`
+    guard means a null one reports `gatewayCancellationNeeded() == false`, so the cancel just
+    queues silently with no visible effect. **Fix**: a `PaymentOutcome#PENDING` result with a
+    `null` `gatewayReference` is uniquely produced by exactly this "never reached the gateway" case
+    — every other still-processing outcome (a real, live `PaymentIntent`) always carries a real
+    one — so `OrderReconciliationJob#reconcileOne` can safely tell them apart. Once this job has
+    already waited a full grace period and still sees no `gatewayReference`, there's nothing left
+    to ever retrieve at Stripe, so it now finalizes with a synthetic `PaymentResult#declined`
+    (`GATEWAY_ERROR` category) instead of polling forever — the shopper can then simply reorder,
+    and if they'd already queued a cancel, `PaymentProcessingOrderStatusHandler#failPayment`'s own
+    `cancelRequested`-wins rule correctly lands the order `CANCELLED` instead of `FAILED`, exactly
+    as they asked. 2 new `OrderReconciliationJobTest` cases (the synthetic-decline finalization,
+    and a regression guard proving a genuinely-still-processing order with a real `gatewayReference`
+    is left untouched, not conflated with this fix). 368 unit tests total (up from 366), verified
+    via a real `mvn test` run (JDK 21).
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)
