@@ -2411,6 +2411,35 @@ structural-only adapter.
       eligibility-dedup changes added no new tests of their own, since they're pure refactors of
       already-covered behavior). 364 unit tests total (up from 344), verified via a real `mvn test`
       run (JDK 21).
+  - **Follow-up: a marker interface plus a GoF Template Method base class for this module's
+    `@Scheduled` reconciliation jobs, per request.** New `orderstatus.ReconciliationJob` — a bare,
+    zero-method marker interface (same "Find Implementations" purpose as `infra`'s own
+    `ApplicationEventHandler`/`Seeder`/`outbox.OutboxEventHandler`), implemented by all three of
+    this module's poller jobs (`OrderReservationExpiryJob`, `OrderReconciliationJob`,
+    `RefundReconciliationJob`). New `orderstatus.AbstractReconciliationJob implements
+    ReconciliationJob` — Template Method (Behavioral): `OrderReconciliationJob` and
+    `RefundReconciliationJob` had grown byte-identical in shape (a private `BATCH_SIZE = 50`
+    constant, a poll-a-batch-of-ids loop, a per-id try/catch logging a warning and moving on) around
+    otherwise-different domain logic; both now extend this base class instead, implementing only
+    `pollBatch(int)` (their own repository query) and `reconcileOne(Integer)` (the actual per-id
+    work, no try/catch of its own anymore — `AbstractReconciliationJob#reconcileBatch` catches and
+    logs generically, `"{ClassName} failed for id={}: {}"`, in one place instead of two slightly
+    differently-worded copies). Each subclass's own `@Scheduled` method is now a one-line call to
+    the inherited `reconcileBatch()` — the annotation itself deliberately stays on the subclass,
+    since each job's poll-interval is a distinct property key Spring's scheduler needs to resolve
+    directly, not something a shared base class could carry. **`OrderReservationExpiryJob`
+    deliberately implements `ReconciliationJob` directly instead of extending
+    `AbstractReconciliationJob`** — its own per-id work must be genuinely `@Transactional` (it
+    directly transitions an `Order`'s own status), so it's delegated to a separate `@Transactional`
+    processor bean (`OrderReservationExpiryProcessor`) rather than an inline try/catch; forcing it
+    through the same template would mean either losing that transactional boundary or duplicating
+    it awkwardly around an abstract method that isn't itself proxied — the two-class split
+    (interface for discoverability, abstract class for the two jobs whose shape genuinely matches)
+    avoids over-abstracting the one job that doesn't fit. Pure refactor, no behavior change and no
+    new tests needed — all three jobs' own constructors/field lists are unchanged, so every existing
+    test (`OrderReconciliationJobTest`, `RefundReconciliationJobTest`,
+    `OrderReservationExpiryProcessorTest`) passes unmodified. 364 unit tests total, unchanged,
+    verified via a real `mvn test` run (JDK 21).
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)

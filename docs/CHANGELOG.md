@@ -3456,6 +3456,17 @@ entries start fresh below `[Unreleased]`.
   - 20 new tests total. 364 unit tests total (up from 344), verified via a real `mvn test` run
     (JDK 21). See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full
     per-change detail.
+- **`ecommerce-service`: a marker interface plus a GoF Template Method base class for the
+  `@Scheduled` reconciliation jobs, per request.** New `orderstatus.ReconciliationJob` (bare marker,
+  same "Find Implementations" purpose as `infra`'s `ApplicationEventHandler`/`Seeder`), implemented
+  by `OrderReservationExpiryJob`/`OrderReconciliationJob`/`RefundReconciliationJob`. New
+  `orderstatus.AbstractReconciliationJob` (Template Method) — `OrderReconciliationJob`/
+  `RefundReconciliationJob` had grown byte-identical in shape (poll a batch of ids, try/catch-and-log
+  per id) around different domain logic; both now extend it, implementing only `pollBatch`/
+  `reconcileOne`. `OrderReservationExpiryJob` implements the marker directly instead — its own
+  per-id work is delegated to a separate `@Transactional` processor bean, which doesn't fit the
+  template. Pure refactor, no behavior change; 364 unit tests total, unchanged, verified via a real
+  `mvn test` run (JDK 21).
 
 ## [0.0.2] — 2026-08-11
 

@@ -16,16 +16,23 @@ import java.util.List;
 
 /**
  * Polls for {@code PENDING} orders whose reservation has outlived
- * {@link #reservationTimeout} and expires each one via {@link OrderReservationExpiryProcessor}
- * (US-3.2) — same poller/single-item-processor split as {@code outbox.OutboxRelay}/
- * {@code OutboxEventProcessor}, for the identical self-invocation-bypasses-{@code @Transactional}
- * reason. {@code @EnableScheduling} already lives on {@code EcommerceServiceApplication} (enabled
- * for {@code OutboxRelay}), so this class doesn't need its own.
+ * {@code orderJobProperties.reservationTimeout()} and expires each one via
+ * {@link OrderReservationExpiryProcessor} (US-3.2) — same poller/single-item-processor split as
+ * {@code outbox.OutboxRelay}/{@code OutboxEventProcessor}, for the identical
+ * self-invocation-bypasses-{@code @Transactional} reason. {@code @EnableScheduling} already lives
+ * on {@code EcommerceServiceApplication} (enabled for {@code OutboxRelay}), so this class doesn't
+ * need its own.
+ *
+ * <p>Implements {@link ReconciliationJob} directly rather than extending
+ * {@link AbstractReconciliationJob} — this job's own per-item work must be genuinely
+ * {@code @Transactional} (it directly transitions an {@code Order}'s own status), which is exactly
+ * why it's delegated to {@link OrderReservationExpiryProcessor} instead of an inline try/catch; see
+ * {@link AbstractReconciliationJob}'s own Javadoc for the full reasoning.
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class OrderReservationExpiryJob {
+public class OrderReservationExpiryJob implements ReconciliationJob {
 
     private static final int BATCH_SIZE = 50;
 
