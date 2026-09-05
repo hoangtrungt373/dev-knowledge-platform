@@ -6,10 +6,10 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.Coupon;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OrderLine;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OrderStatusHistory;
-import com.ttg.devknowledgeplatform.ecommerce.entity.SavedAddress;
 import com.ttg.devknowledgeplatform.ecommerce.enums.CouponTarget;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
+import com.ttg.devknowledgeplatform.ecommerce.mapper.AddressMapper;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductVariantRepository;
 import com.ttg.devknowledgeplatform.ecommerce.service.Cart;
@@ -73,6 +73,7 @@ public class CheckoutServiceImpl implements CheckoutService {
     private final SavedAddressService savedAddressService;
     private final ShippingFeeCalculator shippingFeeCalculator;
     private final CouponRedemptionService couponRedemptionService;
+    private final AddressMapper addressMapper;
 
     @Override
     @Transactional(readOnly = true)
@@ -200,7 +201,7 @@ public class CheckoutServiceImpl implements CheckoutService {
      */
     private Address resolveAddress(String userUuid, CheckoutCommands.AddressSelection selection) {
         if (selection.savedAddressId() != null) {
-            return toAddress(savedAddressService.getOwned(selection.savedAddressId(), userUuid));
+            return addressMapper.toAddress(savedAddressService.getOwned(selection.savedAddressId(), userUuid));
         }
         CheckoutCommands.AddressInput input = selection.adHocAddress();
         boolean complete = input != null
@@ -208,7 +209,7 @@ public class CheckoutServiceImpl implements CheckoutService {
                 && isNotBlank(input.line1()) && isNotBlank(input.city()) && isNotBlank(input.state())
                 && isNotBlank(input.postalCode()) && isNotBlank(input.country());
         Validator.isTrue(complete, EcommerceErrorCode.CHECKOUT_ADDRESS_REQUIRED);
-        return toAddress(input);
+        return addressMapper.toAddress(input);
     }
 
     /**
@@ -309,15 +310,4 @@ public class CheckoutServiceImpl implements CheckoutService {
         return orderLine;
     }
 
-    private static Address toAddress(CheckoutCommands.AddressInput input) {
-        return new Address(
-                input.fullName(), input.phone(), input.email(), input.line1(), input.line2(), input.city(),
-                input.state(), input.postalCode(), input.country());
-    }
-
-    private static Address toAddress(SavedAddress saved) {
-        return new Address(
-                saved.getFullName(), saved.getPhone(), saved.getEmail(), saved.getLine1(), saved.getLine2(),
-                saved.getCity(), saved.getState(), saved.getPostalCode(), saved.getCountry());
-    }
 }

@@ -7,6 +7,7 @@ import com.ttg.devknowledgeplatform.ecommerce.repository.ProductTagAssignmentRep
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductTagRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.spec.ProductTagSpecification;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductTagService;
+import com.ttg.devknowledgeplatform.ecommerce.util.NameNormalizer;
 import com.ttg.devknowledgeplatform.infra.service.SlugService;
 
 import lombok.RequiredArgsConstructor;
@@ -30,7 +31,7 @@ public class ProductTagServiceImpl implements ProductTagService {
 
     @Override
     public ProductTag create(String name) {
-        String normalizedName = normalizeName(name);
+        String normalizedName = NameNormalizer.normalize(name);
         Validator.isFalse(productTagRepository.existsByNameIgnoreCase(normalizedName),
                 EcommerceErrorCode.PRODUCT_TAG_NAME_CONFLICT, normalizedName);
         String slug = slugService.generateUniqueSlug(
@@ -48,7 +49,7 @@ public class ProductTagServiceImpl implements ProductTagService {
     @Override
     public ProductTag update(Integer id, String name) {
         ProductTag tag = findById(id);
-        String normalizedName = normalizeName(name);
+        String normalizedName = NameNormalizer.normalize(name);
 
         if (!tag.getName().equalsIgnoreCase(normalizedName)) {
             Validator.isFalse(productTagRepository.existsByNameIgnoreCaseAndIdNot(normalizedName, id),
@@ -85,9 +86,5 @@ public class ProductTagServiceImpl implements ProductTagService {
 
     private ProductTag findById(Integer id) {
         return Validator.notFound(productTagRepository.findById(id), EcommerceErrorCode.PRODUCT_TAG_NOT_FOUND, id);
-    }
-
-    private static String normalizeName(String name) {
-        return name == null ? "" : name.trim();
     }
 }

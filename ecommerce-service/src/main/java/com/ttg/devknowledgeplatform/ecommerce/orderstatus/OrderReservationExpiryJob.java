@@ -1,17 +1,16 @@
 package com.ttg.devknowledgeplatform.ecommerce.orderstatus;
 
+import com.ttg.devknowledgeplatform.ecommerce.config.OrderJobProperties;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -32,13 +31,11 @@ public class OrderReservationExpiryJob {
 
     private final OrderRepository orderRepository;
     private final OrderReservationExpiryProcessor orderReservationExpiryProcessor;
-
-    @Value("${app.ecommerce.order.reservation-timeout:PT15M}")
-    private Duration reservationTimeout;
+    private final OrderJobProperties orderJobProperties;
 
     @Scheduled(fixedDelayString = "${app.ecommerce.order.expiry-check.poll-interval:PT1M}")
     public void expireAbandonedReservations() {
-        Instant cutoff = Instant.now().minus(reservationTimeout);
+        Instant cutoff = Instant.now().minus(orderJobProperties.reservationTimeout());
         List<Integer> pendingIds = orderRepository.findIdsByStatusAndDteCreationBefore(
                 OrderStatus.PENDING, cutoff, PageRequest.of(0, BATCH_SIZE));
         for (Integer id : pendingIds) {

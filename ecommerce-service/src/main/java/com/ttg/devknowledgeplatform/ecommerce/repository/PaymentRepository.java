@@ -1,9 +1,15 @@
 package com.ttg.devknowledgeplatform.ecommerce.repository;
 
 import com.ttg.devknowledgeplatform.ecommerce.entity.Payment;
+import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
+import com.ttg.devknowledgeplatform.ecommerce.enums.PaymentStatus;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -41,4 +47,20 @@ public interface PaymentRepository extends JpaRepository<Payment, Integer> {
      * response exists), but a webhook always names a real one.
      */
     Optional<Payment> findByGatewayReference(String gatewayReference);
+
+    /**
+     * Ids of every {@code Payment} in {@code status} whose own {@code Order} is in
+     * {@code orderStatus} — the refund-reconciliation job's own poll query (a code-quality-audit
+     * follow-up), for {@code SUCCEEDED}/{@code CANCELLED} specifically: a queued cancel that races a
+     * gateway success (see {@code orderstatus.PaymentHandoffService}'s own Javadoc) can leave a
+     * {@code Payment} row {@code SUCCEEDED} on an order that already reached {@code CANCELLED},
+     * with nothing having refunded it — this is the one and only way that combination can occur
+     * (a normal shopper-initiated cancel-with-refund already turns the {@code Payment} row
+     * {@code REFUNDED} via {@code orderstatus.PaymentCancellationService#applyRefundResult}), so
+     * this query never re-matches a row this job (or a concurrent {@code OrderServiceImpl#cancel}
+     * refund) already resolved.
+     */
+    @Query("SELECT p.id FROM Payment p WHERE p.status = :status AND p.order.status = :orderStatus ORDER BY p.id ASC")
+    List<Integer> findIdsByStatusAndOrderStatus(
+            @Param("status") PaymentStatus status, @Param("orderStatus") OrderStatus orderStatus, Pageable pageable);
 }

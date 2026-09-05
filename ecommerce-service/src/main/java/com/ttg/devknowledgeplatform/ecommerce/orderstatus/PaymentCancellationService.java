@@ -42,15 +42,21 @@ import java.math.BigDecimal;
  * US-4.6's own literal acceptance criterion — a shopper explicitly cancelling an already-
  * {@code CONFIRMED} order — not the rarer race in {@code PaymentProcessingOrderStatusHandler
  * #confirmPayment} (a queued cancel winning over a gateway success that arrives moments later):
- * that path still only restocks, same as before this phase — see that handler's own Javadoc.
- * Unlike {@link PaymentHandoffService#startPaymentProcessing}, no new intermediate status/durable
- * "refund in flight" marker was added: {@code StripePaymentGateway#refund}'s own idempotency key is
- * deterministic (derived from {@code gatewayReference}, not a fresh key per call — see that
- * class's own Javadoc), so retrying the whole operation after a crash can never double-refund at
- * the gateway, unlike a charge attempt retried with a fresh key. If the refund call itself fails,
- * the {@code Payment} row is simply left {@code SUCCEEDED} (the order is already durably
- * {@code CANCELLED} from step one) — a known, undone-money gap this phase doesn't build automatic
- * recovery for, since nothing in US-4.6 asked for one; revisit if that's ever a real problem.
+ * that path still only restocks synchronously, same as before this phase — see that handler's own
+ * Javadoc. Unlike {@link PaymentHandoffService#startPaymentProcessing}, no new intermediate
+ * status/durable "refund in flight" marker was added: {@code StripePaymentGateway#refund}'s own
+ * idempotency key is deterministic (derived from {@code gatewayReference}, not a fresh key per
+ * call — see that class's own Javadoc), so retrying the whole operation after a crash can never
+ * double-refund at the gateway, unlike a charge attempt retried with a fresh key.
+ *
+ * <p><b>Code-quality-audit follow-up: {@link RefundReconciliationJob} closes the money gap left
+ * both by that rarer race and by the refund call itself failing.</b> Either way, the end state is
+ * identical — a {@code Payment} row left {@code SUCCEEDED} on an order that already reached
+ * {@code CANCELLED} — and previously nothing ever automatically refunded it (this phase's own
+ * synchronous path only ever runs once, from {@code OrderServiceImpl#cancel}'s own single call).
+ * {@link RefundReconciliationJob} now polls for exactly that combination and applies the missed
+ * refund asynchronously — not instant, but no longer a permanent, manually-recovered gap. See that
+ * class's own Javadoc for the full detail.
  *
  * <p><b>Option A follow-up: {@link #applyGatewayCancellation} closes the gap where an explicit
  * shopper cancel during an unconfirmed Stripe PaymentIntent left the order stuck {@code

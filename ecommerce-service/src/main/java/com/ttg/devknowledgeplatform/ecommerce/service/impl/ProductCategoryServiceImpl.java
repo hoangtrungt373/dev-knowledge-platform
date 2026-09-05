@@ -11,6 +11,7 @@ import com.ttg.devknowledgeplatform.ecommerce.repository.ProductCategoryReposito
 import com.ttg.devknowledgeplatform.ecommerce.repository.spec.ProductCategorySpecification;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductCategoryService;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductCategoryTreeNode;
+import com.ttg.devknowledgeplatform.ecommerce.util.NameNormalizer;
 import com.ttg.devknowledgeplatform.infra.service.SlugService;
 
 import lombok.RequiredArgsConstructor;
@@ -45,7 +46,7 @@ public class ProductCategoryServiceImpl implements ProductCategoryService {
 
     @Override
     public ProductCategory create(String name, Integer parentId, List<AttributeAssignmentInput> attributes) {
-        String normalizedName = normalizeName(name);
+        String normalizedName = NameNormalizer.normalize(name);
         Validator.isFalse(productCategoryRepository.existsByNameIgnoreCase(normalizedName),
                 EcommerceErrorCode.PRODUCT_CATEGORY_NAME_CONFLICT, normalizedName);
         ProductCategory parent = resolveParent(parentId);
@@ -71,7 +72,7 @@ public class ProductCategoryServiceImpl implements ProductCategoryService {
     @Override
     public ProductCategory update(Integer id, String name, Integer parentId, List<AttributeAssignmentInput> attributes) {
         ProductCategory category = findById(id);
-        String normalizedName = normalizeName(name);
+        String normalizedName = NameNormalizer.normalize(name);
 
         if (!category.getName().equalsIgnoreCase(normalizedName)) {
             Validator.isFalse(productCategoryRepository.existsByNameIgnoreCaseAndIdNot(normalizedName, id),
@@ -218,9 +219,5 @@ public class ProductCategoryServiceImpl implements ProductCategoryService {
                 sortTreeNodes(node.children());
             }
         }
-    }
-
-    private static String normalizeName(String name) {
-        return name == null ? "" : name.trim();
     }
 }

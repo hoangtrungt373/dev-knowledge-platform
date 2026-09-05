@@ -3428,6 +3428,34 @@ entries start fresh below `[Unreleased]`.
   `ALREADY_RESOLVED` delegation. Same 25 test methods as before, just split across two files — 344
   unit tests total, unchanged, verified via a real `mvn test` run (JDK 21). See
   `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full detail.
+- **`ecommerce-service`: the audit's remaining findings fixed next, per request ("go ahead with all
+  of them") — six real changes plus one investigated-and-left-alone.**
+  - Investigated the duplicated `PaymentSucceededOutboxEventHandler.Payload`/
+    `PaymentRefundedOutboxEventHandler.Payload` records and left them alone — a reactor-wide
+    convention (`ProductChangedOutboxEventHandler`'s own Javadoc) deliberately keeps event payloads
+    per-handler to avoid a shared DTO becoming a cross-epic contention point; these two just
+    happen to match today, which isn't a real bug to fix.
+  - New `StripeFailureCategoryMapperTest` (16 cases) — this Stripe decline-code mapping had zero
+    coverage before.
+  - New `util.NameNormalizer` — deduplicates a byte-identical `normalizeName` from
+    `ProductCategoryServiceImpl`/`ProductTagServiceImpl`/`ProductAttributeServiceImpl`.
+  - New `infra.service.seed.CsvReader` — deduplicates a byte-identical `readCsv` from
+    `ProductSeeder`/`ProductCategoryAttributeSeeder` (and now backs `CsvSeeder.seed()` itself too).
+  - New `mapper.AddressMapper` (MapStruct) — replaces two hand-written `toAddress` copies in
+    `CheckoutServiceImpl` with the module's own MapStruct convention.
+  - New `config.PaymentProperties`/`config.OrderJobProperties` — consolidate seven separate
+    `@Value`-injected fields (Stripe config across three classes, two order-job durations) into two
+    constructor-bound `@ConfigurationProperties` records.
+  - `CouponRedemptionServiceImpl.resolve`/`listAvailable`'s duplicated active-window check
+    (`startAt`/`endAt` comparison) now shares private `hasStarted`/`hasNotExpired` helpers.
+  - New `orderstatus.RefundReconciliationJob` closes the "queued cancel loses the race to a gateway
+    success" money gap — polls a new `PaymentRepository#findIdsByStatusAndOrderStatus` query for a
+    `Payment` left `SUCCEEDED` on a `CANCELLED` order and applies the missed refund asynchronously;
+    also incidentally catches a synchronous refund call that itself failed during
+    `OrderServiceImpl#cancel`. 4 new `RefundReconciliationJobTest` cases.
+  - 20 new tests total. 364 unit tests total (up from 344), verified via a real `mvn test` run
+    (JDK 21). See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full
+    per-change detail.
 
 ## [0.0.2] — 2026-08-11
 

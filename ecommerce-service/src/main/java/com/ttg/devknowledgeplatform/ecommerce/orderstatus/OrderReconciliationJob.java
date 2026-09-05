@@ -1,5 +1,6 @@
 package com.ttg.devknowledgeplatform.ecommerce.orderstatus;
 
+import com.ttg.devknowledgeplatform.ecommerce.config.OrderJobProperties;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
@@ -9,12 +10,10 @@ import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -44,13 +43,11 @@ public class OrderReconciliationJob {
     private final OrderRepository orderRepository;
     private final PaymentGatewayPort paymentGatewayPort;
     private final PaymentHandoffService paymentHandoffService;
-
-    @Value("${app.ecommerce.order.reconciliation.grace-period:PT2M}")
-    private Duration gracePeriod;
+    private final OrderJobProperties orderJobProperties;
 
     @Scheduled(fixedDelayString = "${app.ecommerce.order.reconciliation.poll-interval:PT1M}")
     public void reconcileStuckPayments() {
-        Instant cutoff = Instant.now().minus(gracePeriod);
+        Instant cutoff = Instant.now().minus(orderJobProperties.reconciliation().gracePeriod());
         List<Integer> stuckIds = orderRepository.findIdsByStatusAndPaymentProcessingStartedAtBefore(
                 OrderStatus.PAYMENT_PROCESSING, cutoff, PageRequest.of(0, BATCH_SIZE));
         for (Integer id : stuckIds) {

@@ -7,13 +7,13 @@ import com.stripe.net.RequestOptions;
 import com.stripe.param.PaymentIntentCreateParams;
 import com.stripe.param.RefundCreateParams;
 
+import com.ttg.devknowledgeplatform.ecommerce.config.PaymentProperties;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Payment;
 import com.ttg.devknowledgeplatform.ecommerce.repository.PaymentRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -93,12 +93,7 @@ import java.math.RoundingMode;
 public class StripePaymentGateway implements PaymentGatewayPort {
 
     private final PaymentRepository paymentRepository;
-
-    @Value("${app.ecommerce.payment.stripe.secret-key:}")
-    private String secretKey;
-
-    @Value("${app.ecommerce.payment.stripe.currency:usd}")
-    private String currency;
+    private final PaymentProperties paymentProperties;
 
     @Override
     public PaymentResult charge(String idempotencyKey, BigDecimal amount) {
@@ -110,7 +105,7 @@ public class StripePaymentGateway implements PaymentGatewayPort {
         // "card" the way the old off_session flow did.
         PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
                 .setAmount(toSmallestCurrencyUnit(amount))
-                .setCurrency(currency)
+                .setCurrency(paymentProperties.stripe().currency())
                 .setAutomaticPaymentMethods(
                         PaymentIntentCreateParams.AutomaticPaymentMethods.builder().setEnabled(true).build())
                 .build();
@@ -141,7 +136,8 @@ public class StripePaymentGateway implements PaymentGatewayPort {
             // resolved on Stripe's side. Retrieving the intent by id is the only way to see its
             // current, possibly-since-changed status.
             PaymentIntent intent = PaymentIntent.retrieve(
-                    payment.getGatewayReference(), RequestOptions.builder().setApiKey(secretKey).build());
+                    payment.getGatewayReference(),
+                    RequestOptions.builder().setApiKey(paymentProperties.stripe().secretKey()).build());
             return resultFromIntent(intent);
         } catch (StripeException e) {
             throw new PaymentGatewayException(
@@ -170,7 +166,7 @@ public class StripePaymentGateway implements PaymentGatewayPort {
 
     @Override
     public PaymentCancellationResult cancelUnconfirmed(String gatewayReference) {
-        RequestOptions options = RequestOptions.builder().setApiKey(secretKey).build();
+        RequestOptions options = RequestOptions.builder().setApiKey(paymentProperties.stripe().secretKey()).build();
         try {
             PaymentIntent intent = PaymentIntent.retrieve(gatewayReference, options);
             intent.cancel(options);
@@ -201,7 +197,7 @@ public class StripePaymentGateway implements PaymentGatewayPort {
 
     private RequestOptions requestOptions(String idempotencyKey) {
         return RequestOptions.builder()
-                .setApiKey(secretKey)
+                .setApiKey(paymentProperties.stripe().secretKey())
                 .setIdempotencyKey(idempotencyKey)
                 .build();
     }

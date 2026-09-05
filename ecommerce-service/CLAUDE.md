@@ -2314,6 +2314,103 @@ structural-only adapter.
     not re-verified here) — same 25 test methods as before, just split across two files, so the
     reactor-wide count is unchanged at 344, verified via a real `mvn test` run (JDK 21) and a
     targeted `-pl ecommerce-service -am test-compile`.
+  - **Follow-up: the audit's remaining findings were all fixed next, per request ("go ahead with
+    all of them") — six real changes plus one investigated-and-left-alone.**
+    - **Not changed: the duplicated `PaymentSucceededOutboxEventHandler.Payload`/
+      `PaymentRefundedOutboxEventHandler.Payload` records.** Investigated first — both are
+      byte-identical today (`orderId`/`amount`/`gatewayReference`), but
+      `service.impl.ProductChangedOutboxEventHandler`'s own Javadoc documents a deliberate,
+      reactor-wide decision to keep `Payload` per-handler: "a shared payload DTO across every event
+      type would recreate the 'every future epic edits the same file' problem `eventType` already
+      avoids by staying per-handler." Merging these two would go against that already-considered
+      design, for a coincidence (today's two payloads happening to match) rather than a real bug —
+      left as-is.
+    - **`payment.StripeFailureCategoryMapper` gained test coverage** — this Stripe
+      decline-code-→-category mapping (the single source of truth both
+      `StripePaymentGateway#charge` and `webhook.StripeWebhookService` depend on agreeing on) had
+      zero tests before this. New `StripeFailureCategoryMapperTest`: null error, no decline-code/
+      code at all, `insufficient_funds`, every one of the ten known card-declined codes
+      (parameterized), an unrecognized code, falling back to `code` when `decline_code` is absent,
+      and `decline_code` taking priority over `code` when both are present — 16 new tests.
+    - **New `util.NameNormalizer`** — `ProductCategoryServiceImpl`/`ProductTagServiceImpl`/
+      `ProductAttributeServiceImpl` each carried a byte-identical private `normalizeName` (a
+      null-safe `trim()`); all three now call the shared static utility instead.
+    - **New `infra.service.seed.CsvReader`** — `ecommerce-service`'s own `ProductSeeder`/
+      `ProductCategoryAttributeSeeder` each carried a byte-identical private `readCsv` method
+      (identical `CSVFormat`/try-with-resources boilerplate to `infra`'s own `CsvSeeder.seed()`),
+      justified at the time by `CsvSeeder.seed()` being `final` and not fitting either seeder's
+      multi-row-per-unit-of-work shape — that reasoning only ever argued against reusing
+      `seed()` itself, never against sharing the read step underneath it. `CsvSeeder.seed()` itself
+      now calls this same shared method internally too. The "resolve by name or fail loudly"
+      pattern repeated across every seeder's own `orElseThrow` was surveyed and deliberately left
+      alone — each site's `IllegalStateException` message is meaningfully different (which CSV
+      file, which column, which prerequisite seeder), so a shared helper would only save one line
+      while hurting the specific, actionable error messages.
+    - **New `mapper.AddressMapper` (MapStruct)** — `CheckoutServiceImpl` used to hand-copy the same
+      nine address fields via two private static `toAddress` methods (one from
+      `CheckoutCommands.AddressInput`, one from `SavedAddress`), which this module's own convention
+      reserves for MapStruct (see root `CLAUDE.md`'s "DTOs ↔ entities" rule). Both source shapes
+      carry the identical nine fields in the identical order as `Address` itself, so neither mapper
+      method needs a `@Mapping` override. `CheckoutServiceImplTest` gained a mocked
+      `AddressMapper` (two `lenient()` stubs replicating the trivial field-for-field mapping, since
+      Mockito can't run the real MapStruct-generated impl) — all 25 existing tests pass unchanged.
+    - **New `config.PaymentProperties`/`config.OrderJobProperties`** (Java 21 records, constructor-
+      bound `@ConfigurationProperties`, registered via `@EnableConfigurationProperties` on
+      `EcommerceServiceApplication` — this reactor's own established preference over a
+      `@ConfigurationPropertiesScan`, see `infra/CLAUDE.md`'s "post-2026-08-16" note). Five separate
+      `@Value`-injected fields across `StripeWebhookService`/`StripePaymentGateway`/
+      `api.impl.PaymentConfigController` (`gateway`, `stripe.secret-key`, `stripe.currency`,
+      `stripe.publishable-key`, `stripe.webhook-secret`) collapsed into `PaymentProperties`; two
+      more across `OrderReservationExpiryJob`/`OrderReconciliationJob` (`reservation-timeout`,
+      `reconciliation.grace-period`) collapsed into `OrderJobProperties`. Each poller's own
+      `poll-interval` deliberately stays a raw `${...}` placeholder on its own
+      `@Scheduled(fixedDelayString = ...)` annotation — Spring's scheduling infrastructure resolves
+      that directly off the environment at schedule-registration time, not off a bound
+      `@ConfigurationProperties` instance, so moving it would be cosmetic at best. Both records'
+      compact constructors null-coalesce every field to the exact same default its old
+      `@Value(...:default)` placeholder carried, including the nested `Stripe`/`Reconciliation`
+      record itself (Spring Boot's relaxed binding otherwise leaves a nested constructor-bound
+      record entirely `null` when none of its own sub-properties are set — the default `mock`
+      gateway profile sets none of the `stripe.*` ones). `OrderReconciliationJobTest` switched from
+      `ReflectionTestUtils.setField` to constructing a real `OrderJobProperties` (a record is
+      implicitly `final`, so Mockito's mock maker here can't `@Mock` one — and there's no reason to,
+      it's a plain, cheap value object).
+    - **`CouponRedemptionServiceImpl`'s active-window check de-duplicated** — `resolve` and
+      `listAvailable` each independently re-typed the identical `startAt`/`endAt` comparison
+      semantics, with no shared code path to keep them from silently drifting apart. New private
+      static `hasStarted`/`hasNotExpired` helpers, shared by both. The redemption-count checks and
+      `minSubtotal` were deliberately **not** unified the same way: `resolve`'s single-coupon count
+      query and `listAvailable`'s batched grouped-count query are intentionally different (unifying
+      them would undo the N+1 fix above), and `minSubtotal` is a one-sided rule `listAvailable`
+      deliberately skips — there's no shared logic to extract for either. All 35 existing
+      `CouponRedemptionServiceImplTest` cases pass unchanged.
+    - **New `orderstatus.RefundReconciliationJob` closes the "queued cancel loses the race to a
+      gateway success" money gap** — previously documented (`PaymentProcessingOrderStatusHandler`'s
+      own Javadoc) as deliberately unrecovered, since wiring a *synchronous* refund into that path
+      would need `PaymentHandoffService#resolvePayment` to take on the identical
+      "resolve-the-transition/gateway-call-outside-any-transaction/apply-the-result" restructuring
+      `OrderServiceImpl#cancel` already got, which nothing had asked for. This job takes the
+      simpler path instead: same poller shape as `OrderReservationExpiryJob`/
+      `OrderReconciliationJob`, polling a new `PaymentRepository#findIdsByStatusAndOrderStatus`
+      query for the one combination that can only ever mean an unrefunded capture — a `Payment` row
+      `SUCCEEDED` on an order that reached `CANCELLED` (a normal cancel-with-refund already turns
+      that row `REFUNDED` via `PaymentCancellationService#applyRefundResult`) — then calls
+      `payment.PaymentGatewayPort#refund` outside any transaction before applying the result via
+      that same `applyRefundResult`, a *different* bean's own `@Transactional` method. This also
+      incidentally closes a second, related gap the same query happens to catch: if
+      `OrderServiceImpl#cancel`'s own synchronous refund call itself fails (a genuine gateway
+      outage), the `Payment` row was previously just left `SUCCEEDED` forever with no retry — now
+      the next poll picks it up too. Safe to retry indefinitely: `StripePaymentGateway#refund`'s own
+      idempotency key is deterministic (derived from `gatewayReference`), so a retried refund can
+      never double-refund at the gateway, and a resolved row no longer matches the poll query.
+      New `app.ecommerce.order.refund-reconciliation.poll-interval` (default `PT5M`) — deliberately
+      not folded into `OrderJobProperties` above, for the identical "Spring's scheduler needs the
+      raw placeholder" reason its two siblings weren't either. 4 new
+      `RefundReconciliationJobTest` cases (mirroring `OrderReconciliationJobTest`'s own shape).
+    - 20 new tests total across all six changes (16 + 4 — the `AddressMapper`/`OrderJobProperties`/
+      eligibility-dedup changes added no new tests of their own, since they're pure refactors of
+      already-covered behavior). 364 unit tests total (up from 344), verified via a real `mvn test`
+      run (JDK 21).
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)

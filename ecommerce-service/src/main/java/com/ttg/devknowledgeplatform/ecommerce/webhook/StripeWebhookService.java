@@ -6,6 +6,7 @@ import com.stripe.model.PaymentIntent;
 import com.stripe.model.StripeError;
 import com.stripe.net.Webhook;
 
+import com.ttg.devknowledgeplatform.ecommerce.config.PaymentProperties;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Payment;
 import com.ttg.devknowledgeplatform.ecommerce.entity.StripeWebhookEvent;
 import com.ttg.devknowledgeplatform.ecommerce.enums.PaymentFailureCategory;
@@ -18,7 +19,6 @@ import com.ttg.devknowledgeplatform.ecommerce.repository.StripeWebhookEventRepos
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -66,9 +66,7 @@ public class StripeWebhookService {
     private final StripeWebhookEventRepository stripeWebhookEventRepository;
     private final PaymentRepository paymentRepository;
     private final PaymentHandoffService paymentHandoffService;
-
-    @Value("${app.ecommerce.payment.stripe.webhook-secret:}")
-    private String webhookSecret;
+    private final PaymentProperties paymentProperties;
 
     /**
      * Verifies {@code signatureHeader} against {@code rawPayload} (US-4.5's own "verify Stripe's
@@ -82,7 +80,8 @@ public class StripeWebhookService {
      */
     @Transactional(rollbackFor = Throwable.class)
     public void handleWebhook(byte[] rawPayload, String signatureHeader) throws SignatureVerificationException {
-        Event event = Webhook.constructEvent(new String(rawPayload, StandardCharsets.UTF_8), signatureHeader, webhookSecret);
+        Event event = Webhook.constructEvent(
+                new String(rawPayload, StandardCharsets.UTF_8), signatureHeader, paymentProperties.stripe().webhookSecret());
 
         if (!HANDLED_EVENT_TYPES.contains(event.getType())) {
             log.info("Ignoring unhandled Stripe webhook event type={} id={}", event.getType(), event.getId());

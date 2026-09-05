@@ -57,12 +57,8 @@ public class CouponRedemptionServiceImpl implements CouponRedemptionService {
         Validator.isTrue(coupon.getTarget() == target, EcommerceErrorCode.COUPON_TARGET_MISMATCH, normalized, target);
 
         Instant now = Instant.now();
-        if (coupon.getStartAt() != null) {
-            Validator.isTrue(!now.isBefore(coupon.getStartAt()), EcommerceErrorCode.COUPON_NOT_YET_ACTIVE, normalized);
-        }
-        if (coupon.getEndAt() != null) {
-            Validator.isTrue(!now.isAfter(coupon.getEndAt()), EcommerceErrorCode.COUPON_EXPIRED, normalized);
-        }
+        Validator.isTrue(hasStarted(coupon, now), EcommerceErrorCode.COUPON_NOT_YET_ACTIVE, normalized);
+        Validator.isTrue(hasNotExpired(coupon, now), EcommerceErrorCode.COUPON_EXPIRED, normalized);
         if (coupon.getMinSubtotal() != null) {
             Validator.isTrue(subtotal.compareTo(coupon.getMinSubtotal()) >= 0,
                     EcommerceErrorCode.COUPON_MIN_SUBTOTAL_NOT_MET, normalized, coupon.getMinSubtotal());
@@ -117,8 +113,8 @@ public class CouponRedemptionServiceImpl implements CouponRedemptionService {
     public List<Coupon> listAvailable(CouponTarget target, String ownerUuid) {
         Instant now = Instant.now();
         List<Coupon> candidates = couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(target).stream()
-                .filter(c -> c.getStartAt() == null || !now.isBefore(c.getStartAt()))
-                .filter(c -> c.getEndAt() == null || !now.isAfter(c.getEndAt()))
+                .filter(c -> hasStarted(c, now))
+                .filter(c -> hasNotExpired(c, now))
                 .toList();
         if (candidates.isEmpty()) {
             return candidates;
@@ -163,5 +159,28 @@ public class CouponRedemptionServiceImpl implements CouponRedemptionService {
 
     private static String normalizeCode(String code) {
         return code == null ? "" : code.trim().toUpperCase();
+    }
+
+    /**
+     * The active-window half of eligibility, shared by {@link #resolve} (which needs to distinguish
+     * "not yet active" from "expired" for its own distinct error codes) and {@link #listAvailable}
+     * (which only needs a plain keep/discard predicate) — a code-quality-audit finding: before this
+     * extraction, both methods independently re-typed the identical {@code startAt}/{@code endAt}
+     * comparison semantics, with no shared code path to keep them from silently drifting apart if a
+     * future change touched one but not the other. The redemption-count checks
+     * ({@code maxRedemptions}/{@code maxRedemptionsPerUser}) and {@code minSubtotal} are
+     * deliberately <em>not</em> unified this same way: {@link #resolve}'s own single-coupon count
+     * query and {@link #listAvailable}'s batched grouped-count query are intentionally different
+     * queries (unifying them would undo the N+1 fix {@link #listAvailable} already has), and
+     * {@code minSubtotal} is a one-sided rule {@link #listAvailable} deliberately skips (see that
+     * method's own Javadoc) — there is no shared logic to extract for either.
+     */
+    private static boolean hasStarted(Coupon coupon, Instant now) {
+        return coupon.getStartAt() == null || !now.isBefore(coupon.getStartAt());
+    }
+
+    /** See {@link #hasStarted}'s own Javadoc. */
+    private static boolean hasNotExpired(Coupon coupon, Instant now) {
+        return coupon.getEndAt() == null || !now.isAfter(coupon.getEndAt());
     }
 }

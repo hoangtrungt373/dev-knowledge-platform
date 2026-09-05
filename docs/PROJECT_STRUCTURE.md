@@ -242,6 +242,13 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
                                          product.USER was dropped, and identity-service never needed one
                                          (a seeded demo account has no matching Keycloak identity, so
                                          identity.USER only ever fills via real JIT-provisioning).
+        └── CsvReader.java           — code-quality-audit follow-up: the shared classpath-CSV-read
+                                         step underneath CsvSeeder.seed() (now calls this internally
+                                         instead of its own inline try-with-resources), and directly
+                                         usable by any seeder whose per-row shape doesn't fit
+                                         CsvSeeder's template — e.g. ecommerce-service's own
+                                         ProductSeeder/ProductCategoryAttributeSeeder, which each
+                                         used to carry a byte-identical private readCsv method
 ```
 
 ---
@@ -1622,7 +1629,9 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │   for one owner at once even transiently) / PaymentRepository.java (Epic 4 Phase 1:
 │   │   findByOrderId — one payment attempt per order today, not schema-enforced; Phase 2's own
 │   │   findByIdempotencyKey; Phase 5's findByGatewayReference — the webhook's own correlation
-│   │   lookup, backed by a partial unique index) / StripeWebhookEventRepository.java (Epic 4
+│   │   lookup, backed by a partial unique index; a code-quality-audit follow-up's own
+│   │   findIdsByStatusAndOrderStatus — RefundReconciliationJob's poll query, below) /
+│   │   StripeWebhookEventRepository.java (Epic 4
 │   │   Phase 5: existsByStripeEventId, the whole dedup mechanism)
 │   └── spec/
 │       └── ProductCategorySpecification.java / ProductSpecification.java / OrderSpecification.java
@@ -1700,6 +1709,16 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │   calls payment.PaymentGatewayPort.checkStatus for the ground truth (never assumes an
 │   │   outcome), applies it via PaymentHandoffService.resolvePayment; one poison order's
 │   │   exception is caught/logged so it doesn't block the rest of the batch
+│   ├── RefundReconciliationJob.java — code-quality-audit follow-up, same poller shape as its two
+│   │   siblings above: polls a new PaymentRepository.findIdsByStatusAndOrderStatus(SUCCEEDED,
+│   │   CANCELLED, pageable) for the one combination that can only mean an unrefunded capture (a
+│   │   normal cancel-with-refund already turns that row REFUNDED) — closes the "queued cancel
+│   │   loses the race to a gateway success" money gap PaymentProcessingOrderStatusHandler's own
+│   │   Javadoc used to document as deliberately unrecovered, and incidentally also catches
+│   │   OrderServiceImpl#cancel's own synchronous refund call failing. Calls
+│   │   payment.PaymentGatewayPort.refund outside any transaction, then
+│   │   PaymentCancellationService.applyRefundResult; app.ecommerce.order.
+│   │   refund-reconciliation.poll-interval (default PT5M)
 │   ├── PaymentSucceededOutboxEventHandler.java / PaymentFailedOutboxEventHandler.java — Epic 4
 │   │   Phase 4 (US-4.4): the PAYMENT_SUCCEEDED/PAYMENT_FAILED OutboxEventHandlers, published by
 │   │   PaymentHandoffService#resolvePayment in the same transaction as the Payment row's own
@@ -1710,6 +1729,34 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   └── PaymentRefundedOutboxEventHandler.java — Epic 4 Phase 4: the PAYMENT_REFUNDED handler,
 │       built alongside its two siblings for symmetry; Phase 6 (US-4.6) gave it its publisher —
 │       PaymentCancellationService#applyRefundResult, once a refund actually succeeds
+├── config/                      — code-quality-audit follow-up: this module's own
+│   │                                @ConfigurationProperties classes, registered via
+│   │                                @EnableConfigurationProperties on EcommerceServiceApplication
+│   │                                (this reactor's own established preference over a
+│   │                                @ConfigurationPropertiesScan)
+│   ├── PaymentProperties.java      — app.ecommerce.payment.* (gateway, nested Stripe:
+│   │                                    secretKey/publishableKey/currency/webhookSecret) —
+│   │                                    consolidates 5 @Value fields previously scattered across
+│   │                                    StripeWebhookService/StripePaymentGateway/
+│   │                                    api.impl.PaymentConfigController. A Java 21 record; its
+│   │                                    compact constructor (and Stripe's own) null-coalesce every
+│   │                                    field to its old @Value(...:default), including the nested
+│   │                                    Stripe record itself when no app.ecommerce.payment.stripe.*
+│   │                                    property is set at all (Spring Boot's relaxed binding
+│   │                                    otherwise leaves a nested constructor-bound record null)
+│   └── OrderJobProperties.java     — app.ecommerce.order.* (reservationTimeout, nested
+│                                        reconciliation.gracePeriod) — consolidates 2 @Value fields
+│                                        from OrderReservationExpiryJob/OrderReconciliationJob, same
+│                                        shape as PaymentProperties above. Each poller's own
+│                                        poll-interval deliberately stays a raw ${...} placeholder on
+│                                        its own @Scheduled annotation instead — Spring's scheduler
+│                                        reads that directly off the environment, not off a bound
+│                                        properties instance
+├── util/
+│   └── NameNormalizer.java      — code-quality-audit follow-up: null-safe trim(), deduplicating a
+│                                    byte-identical private normalizeName from
+│                                    ProductCategoryServiceImpl/ProductTagServiceImpl/
+│                                    ProductAttributeServiceImpl (service/impl/, below)
 ├── payment/                     — Epic 4's home; seeded in Epic 3 Phase 4 as just the
 │   │                                Adapter interface, now (Phase 1-2) has a real Strategy pair
 │   ├── PaymentGatewayPort.java     — GoF Adapter (Structural): charge(idempotencyKey, amount) /
@@ -1757,7 +1804,9 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 ├── api/PaymentConfigApi.java + api/impl/PaymentConfigController.java — Option A follow-up:
 │   GET /api/v1/public/payment-config (permitAll, no business logic) — tells the checkout gui
 │   which gateway is active and, for stripe, its publishable key (never the secret key) to hand
-│   loadStripe(); publishableKey is null whenever gateway is mock
+│   loadStripe(); publishableKey is null whenever gateway is mock. Reads config.PaymentProperties
+│   (a code-quality-audit follow-up consolidating what used to be two separate @Value fields here,
+│   plus three more across StripePaymentGateway/webhook.StripeWebhookService — see config/, below)
 ├── webhook/                     — Epic 4 Phase 5 (US-4.5): Stripe webhook handling, exposed
 │   │                                directly on this service's own origin (never gateway-routed —
 │   │                                see root CLAUDE.md's Routing section)
@@ -1991,7 +2040,12 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │                                    spring.jpa.open-in-view=true the same way ProductMapper relies
 │                                    on it for Product.variants/images) / ProductTagMapper (plain
 │                                    MapStruct interface, no @AfterMapping needed) / SavedAddressMapper
-│                                    (same shape, AddressBook feature)
+│                                    (same shape, AddressBook feature) / AddressMapper (plain MapStruct
+│                                    interface, code-quality-audit follow-up: toAddress(AddressInput)/
+│                                    toAddress(SavedAddress) both need zero @Mapping overrides, since
+│                                    both source shapes carry the identical nine fields in the
+│                                    identical order as Address itself — replaces two hand-written
+│                                    static toAddress copies CheckoutServiceImpl used to carry)
 ├── api/                         — REST layer
 │   ├── ProductCategoryApi.java / ProductApi.java — admin CRUD (/api/v1/admin/**), incl.
 │   │                                 GET /tree (roots with nested children, sorted by name —

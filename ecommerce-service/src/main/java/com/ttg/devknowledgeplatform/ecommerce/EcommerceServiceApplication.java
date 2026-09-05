@@ -2,10 +2,13 @@ package com.ttg.devknowledgeplatform.ecommerce;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Import;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import com.ttg.devknowledgeplatform.common.exception.GlobalExceptionHandler;
+import com.ttg.devknowledgeplatform.ecommerce.config.OrderJobProperties;
+import com.ttg.devknowledgeplatform.ecommerce.config.PaymentProperties;
 import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
 import com.ttg.devknowledgeplatform.infra.config.storage.StorageConfig;
 import com.ttg.devknowledgeplatform.infra.config.storage.StorageProperties;
@@ -65,12 +68,21 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
  * needs it and, unlike when this module ran inside the monolith (where {@code ai-service}'s
  * {@code AiServiceConfig} already enabled it app-wide), this standalone app doesn't include
  * {@code ai-service} at all.
+ *
+ * <p>{@code @EnableConfigurationProperties({PaymentProperties.class, OrderJobProperties.class})} —
+ * this module's own two {@code @ConfigurationProperties} classes (a code-quality-audit follow-up
+ * consolidating what used to be several separate {@code @Value}-injected fields — see each class's
+ * own Javadoc) — registered the same explicit way every other bean on this class already is,
+ * rather than a {@code @ConfigurationPropertiesScan} (this reactor's own established preference,
+ * see {@code infra/CLAUDE.md}'s "post-2026-08-16" note for the three-round scan-bug history that
+ * preference comes from).
  */
 @SpringBootApplication
 @Import({JacksonConfig.class, TraceContextFilter.class, SlugServiceImpl.class,
         KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
         StorageProperties.class, StorageConfig.class, StorageServiceImpl.class,
         CurrentUserIdArgumentResolver.class, GlobalExceptionHandler.class})
+@EnableConfigurationProperties({PaymentProperties.class, OrderJobProperties.class})
 @EnableScheduling
 public class EcommerceServiceApplication {
 
