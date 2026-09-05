@@ -99,7 +99,11 @@ class StripeWebhookServiceTest {
     }
 
     @Test
-    void failedResolvesTheOrderWithTheDeclineDetailAndRecordsTheEventAsProcessed() {
+    void failedResolvesTheOrderAsStillPendingWithTheDeclineDetailAttachedAndRecordsTheEventAsProcessed() {
+        // Bug fix regression coverage: payment_intent.payment_failed must resolve as PENDING (an
+        // attemptFailed result), never as a bare DECLINED — the PaymentIntent stays open for
+        // another try with a different card under Option A, so this event must not finalize the
+        // order to FAILED. See PaymentResult#attemptFailed's own Javadoc for the incident.
         when(stripeWebhookEventRepository.existsByStripeEventId("evt_2")).thenReturn(false);
         Payment payment = paymentForOrder(43);
         when(paymentRepository.findByGatewayReference("pi_2")).thenReturn(Optional.of(payment));
@@ -110,7 +114,7 @@ class StripeWebhookServiceTest {
         ArgumentCaptor<PaymentResult> resultCaptor = ArgumentCaptor.forClass(PaymentResult.class);
         verify(paymentHandoffService).resolvePayment(eq(43), resultCaptor.capture());
         PaymentResult result = resultCaptor.getValue();
-        assertThat(result.outcome().name()).isEqualTo("DECLINED");
+        assertThat(result.outcome().name()).isEqualTo("PENDING");
         assertThat(result.gatewayReference()).isEqualTo("pi_2");
         assertThat(result.failureCategory()).isEqualTo(PaymentFailureCategory.INSUFFICIENT_FUNDS);
         assertThat(result.gatewayFailureMessage()).isEqualTo("Your card has insufficient funds.");

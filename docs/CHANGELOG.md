@@ -3340,6 +3340,27 @@ entries start fresh below `[Unreleased]`.
   value were updated to assert a well-formed UUID instead; 328 unit tests total, unchanged,
   verified via a real `mvn test` run (JDK 21). See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2
   follow-up section for the full incident writeup.
+- **`ecommerce-service`: a card decline permanently blocked an order from ever succeeding
+  afterward, even via Stripe's own supported retry-with-a-different-card flow on the same
+  `PaymentIntent`.** Declining a test card finalized the order to `FAILED` (a terminal status);
+  switching to a working card on the same `PaymentElement` form then succeeded at Stripe, but the
+  webhook's `payment_intent.succeeded` delivery tried to `confirmPayment` an order already
+  `FAILED` — a status with no registered transition — and got rejected with
+  `ORDER_003: Cannot confirmPayment an order in status FAILED` (`409`, and Stripe kept retrying the
+  same failing delivery). Root cause: `StripeWebhookService` treated every
+  `payment_intent.payment_failed` event as a final decline, but that event actually means the
+  `PaymentIntent` dropped back to `"requires_payment_method"` — still open for another attempt with
+  a different card, exactly what happened here. Fixed by introducing
+  `PaymentResult.attemptFailed` — a `PENDING` result (not `DECLINED`) carrying the decline detail
+  for display without finalizing the order; `PaymentHandoffService.applyResultToPayment`'s
+  `PENDING`/`SUCCEEDED` branches updated to record/clear that detail correctly across retries.
+  `PaymentOutcome.DECLINED` itself is unchanged and still finalizes to `FAILED` where that's
+  actually correct (`MockPaymentGateway`'s one-shot decline, a genuinely `"canceled"` intent found
+  by reconciliation). 330 unit tests total (up from 328), verified via a real `mvn test` run
+  (JDK 21). Backend only, per explicit scope decision — `gui`'s own decline banner still gates on
+  `paymentStatus === 'DECLINED'` and won't show anything for this retryable case yet; widening it
+  is a known, deferred follow-up. See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up
+  section for the full incident writeup.
 
 ## [0.0.2] — 2026-08-11
 
