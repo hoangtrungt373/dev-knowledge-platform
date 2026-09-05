@@ -9,6 +9,7 @@ import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.OrderStatusHandlerRegistry;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentCancellationService;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentHandoffService;
+import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentReconciliationService;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentCancellationResult;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayException;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
@@ -118,6 +119,16 @@ import java.util.function.Supplier;
  * instead. Unlike {@link #cancel}'s own recovery, there's no successful outcome to recover into
  * here (a shopper can never pay for a reservation that's already been given back), so this only
  * ever changes <i>which</i> exception reaches the caller, never converts the race into a success.
+ *
+ * <p><b>Auto-expire follow-up: {@link #reconcilePayment} lets the GUI's own live countdown
+ * (driven by {@code dto.OrderResponse#getPaymentExpiresAt()}) trigger a reconciliation check right
+ * now, instead of waiting for {@code orderstatus.OrderReconciliationJob}'s own next poll tick.</b>
+ * Ownership-checked the same way every other shopper-facing method here is; the actual work is
+ * delegated to {@code orderstatus.PaymentReconciliationService#reconcileNow} (the same method the
+ * scheduled job itself calls), wrapped in {@link #callGatewayOrFail} so a genuine gateway outage
+ * still surfaces as {@link EcommerceErrorCode#PAYMENT_GATEWAY_UNAVAILABLE} rather than a raw 500 —
+ * see that service's own Javadoc for why a gateway failure here must never be treated as
+ * "expired"/"cancelled."
  */
 @Service
 @RequiredArgsConstructor
@@ -128,6 +139,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderStatusHandlerRegistry orderStatusHandlerRegistry;
     private final PaymentHandoffService paymentHandoffService;
     private final PaymentCancellationService paymentCancellationService;
+    private final PaymentReconciliationService paymentReconciliationService;
     private final PaymentGatewayPort paymentGatewayPort;
 
     @Override
@@ -286,5 +298,13 @@ public class OrderServiceImpl implements OrderService {
 
     private Order findOrder(Integer orderId) {
         return Validator.notFound(orderRepository.findById(orderId), EcommerceErrorCode.ORDER_NOT_FOUND, orderId);
+    }
+
+    @Override
+    public Order reconcilePayment(Integer orderId, String callerUuid) {
+        Validator.notFound(
+                orderRepository.findById(orderId).filter(o -> o.getOwnerUuid().equals(callerUuid)),
+                EcommerceErrorCode.ORDER_NOT_FOUND, orderId);
+        return callGatewayOrFail(() -> paymentReconciliationService.reconcileNow(orderId));
     }
 }

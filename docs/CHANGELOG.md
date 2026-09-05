@@ -3561,6 +3561,21 @@ entries start fresh below `[Unreleased]`.
   still lands on the already-existing `CANCELLED` status either way — no new enum value, no
   migration. 9 new tests. 385 unit tests total (up from 376), verified via a real `mvn test` run
   (JDK 21).
+- **`ecommerce-service`/`gui`: a live "time left to pay" countdown, backed by a new on-demand
+  reconcile endpoint that lets the countdown reaching zero trigger the auto-expire logic right now
+  instead of waiting for the scheduled job's next poll tick.** `OrderReconciliationJob.reconcileOne`'s
+  own logic was extracted wholesale into a new `PaymentReconciliationService.reconcileNow`, so the
+  scheduled poll and the new `POST /api/v1/orders/{id}/reconcile` endpoint are provably the same
+  code. `OrderResponse` gained a computed, nullable `paymentExpiresAt` (never the raw
+  `abandonmentTimeout` duration — every client reflects a config change automatically). A gateway
+  failure during the on-demand call never fabricates a local `CANCELLED`/`EXPIRED` outcome — same
+  "never fabricate an outcome the gateway didn't give" rule every other gateway-touching flow in
+  this module already follows. 5 new tests (net); 390 unit tests total (up from 385). GUI: new
+  shared `useCountdown`/`MessageDialog` (both deliberately reusable beyond this feature, per
+  request) plus a `usePaymentCountdown` hook and `PaymentCountdown` chip, wired into `CheckoutPage`'s
+  payment phase, `OrderDetailPage`, and `OrderHistoryPage` (per-row). Verified via a real
+  `mvn test` run and a clean `tsc --noEmit`/`vite build` — no Docker in this sandbox, so the actual
+  live countdown/reconcile/dialog flow is unverified in a real browser.
 
 ## [0.0.2] — 2026-08-11
 

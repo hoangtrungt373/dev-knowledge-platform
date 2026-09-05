@@ -30,4 +30,13 @@ export const orderApi = {
   pay(id: number, showError?: ShowError): Promise<Order> {
     return httpClient.post(`/api/v1/orders/${id}/pay`, undefined, showError);
   },
+
+  /** Auto-expire follow-up: re-checks this order's real gateway status right now, instead of
+   * waiting for the backend's own scheduled reconciliation job — called by
+   * `usePaymentCountdown` the instant its live countdown reaches zero. Deliberately no `showError`
+   * default here — a failure is handled by the caller's own `onError`, not a generic toast (see
+   * that hook's own note on why this call is never retried automatically). */
+  reconcilePayment(id: number): Promise<Order> {
+    return httpClient.post(`/api/v1/orders/${id}/reconcile`, undefined);
+  },
 };

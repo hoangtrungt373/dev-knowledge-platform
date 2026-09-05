@@ -79,4 +79,18 @@ public interface OrderApi {
      */
     @PostMapping("/{id}/pay")
     ResponseEntity<OrderResponse> pay(@CurrentUserId String userUuid, @PathVariable Integer id);
+
+    /**
+     * Auto-expire follow-up: re-checks one of the caller's own orders' real gateway status right
+     * now, instead of waiting for {@code orderstatus.OrderReconciliationJob}'s own next poll tick —
+     * the GUI calls this the instant its own live countdown
+     * ({@code OrderResponse#getPaymentExpiresAt()}) reaches zero (see
+     * {@code OrderService.reconcilePayment}'s own Javadoc for why calling this early is safe).
+     *
+     * @param userUuid the caller's Keycloak UUID
+     * @param id       order primary key
+     * @return {@code 200} with the order after whatever this call did to it
+     */
+    @PostMapping("/{id}/reconcile")
+    ResponseEntity<OrderResponse> reconcile(@CurrentUserId String userUuid, @PathVariable Integer id);
 }

@@ -8,6 +8,7 @@ import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.OrderStatusHandlerRegistry;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentCancellationService;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentHandoffService;
+import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentReconciliationService;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentCancellationResult;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayException;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
@@ -63,6 +64,8 @@ class OrderServiceImplTest {
     private PaymentHandoffService paymentHandoffService;
     @Mock
     private PaymentCancellationService paymentCancellationService;
+    @Mock
+    private PaymentReconciliationService paymentReconciliationService;
     @Mock
     private PaymentGatewayPort paymentGatewayPort;
 
@@ -578,6 +581,61 @@ class OrderServiceImplTest {
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.ORDER_INVALID_STATUS_TRANSITION);
+        }
+    }
+
+    @Nested
+    class ReconcilePayment {
+
+        @Test
+        void delegatesToPaymentReconciliationServiceWhenOwnershipChecksOut() {
+            Order order = orderOwnedBy(OWNER_UUID);
+            order.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+            Order resolved = orderOwnedBy(OWNER_UUID);
+            resolved.setStatus(OrderStatus.CONFIRMED);
+            when(paymentReconciliationService.reconcileNow(1)).thenReturn(resolved);
+
+            Order result = service.reconcilePayment(1, OWNER_UUID);
+
+            assertThat(result).isSameAs(resolved);
+            verify(paymentReconciliationService).reconcileNow(1);
+        }
+
+        @Test
+        void rejectsAsNotFoundWhenTheOrderBelongsToSomeoneElse() {
+            Order order = orderOwnedBy(OWNER_UUID);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.reconcilePayment(1, OTHER_UUID))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.ORDER_NOT_FOUND);
+            verify(paymentReconciliationService, never()).reconcileNow(any());
+        }
+
+        @Test
+        void rejectsAsNotFoundWhenTheOrderDoesNotExist() {
+            when(orderRepository.findById(1)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.reconcilePayment(1, OWNER_UUID))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.ORDER_NOT_FOUND);
+        }
+
+        @Test
+        void translatesAPaymentGatewayExceptionIntoAFriendlyApiException() {
+            Order order = orderOwnedBy(OWNER_UUID);
+            order.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+            when(paymentReconciliationService.reconcileNow(1))
+                    .thenThrow(new PaymentGatewayException("Stripe checkStatus failed"));
+
+            assertThatThrownBy(() -> service.reconcilePayment(1, OWNER_UUID))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PAYMENT_GATEWAY_UNAVAILABLE);
         }
     }
 }

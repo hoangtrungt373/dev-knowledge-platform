@@ -2658,6 +2658,73 @@ structural-only adapter.
     `OrderReconciliationJobTest`: 3 — not-yet-abandoned, actively-cancels-past-the-window, and the
     `ALREADY_RESOLVED` race). **385 unit tests total** (up from 376), verified via a real
     `mvn test` run (JDK 21).
+  - **Follow-up: the GUI gained a live "time left to pay" countdown (`CheckoutPage`'s payment
+    phase, `OrderDetailPage`, `OrderHistoryPage`), backed by a new on-demand endpoint that lets the
+    countdown reaching zero trigger the same auto-expire logic right now instead of waiting for
+    `OrderReconciliationJob`'s own next poll tick.** Discussed and designed with the user before
+    building: rather than standing up a second copy of the reconciliation logic for an on-demand
+    caller, `OrderReconciliationJob.reconcileOne`'s own body — the synthetic-decline/abandonment-
+    cancel/normal-resolve branching — was extracted wholesale into a new
+    `orderstatus.PaymentReconciliationService.reconcileNow(Integer orderId): Order`, so the
+    scheduled poll and the new on-demand endpoint are provably the same code, not two copies that
+    could quietly drift apart. `OrderReconciliationJob` itself is now just the poll-batch query
+    plus a one-line delegation to `reconcileNow` — see that class's own updated Javadoc.
+    - **`dto.OrderResponse` gained `paymentExpiresAt`** (an `Instant`, nullable) — resolved by
+      `mapper.OrderMapper.toResponse` as `Order.getPaymentProcessingStartedAt() +
+      OrderJobProperties.Reconciliation#abandonmentTimeout()`, `null` whenever the order isn't
+      currently `PAYMENT_PROCESSING`. **Deliberately a computed absolute deadline, never the raw
+      `abandonmentTimeout` duration itself** — the GUI never needs to know that config value at
+      all, so if `ORDER_ABANDONMENT_TIMEOUT` is ever changed, every client reflects the new
+      deadline automatically with nothing else to keep in sync. `OrderMapper` gained an
+      `OrderJobProperties` dependency for this; no dedicated `OrderMapperTest` exists to update
+      (this module's existing convention for its hand-written mappers — see that class's own
+      Javadoc).
+    - **New `POST /api/v1/orders/{id}/reconcile`** (`OrderApi`/`OrderController`, shopper-facing,
+      ownership-checked, no `SecurityConfig`/gateway route change needed — `/api/v1/orders/**`
+      already covers it) — `OrderService.reconcilePayment`/`OrderServiceImpl.reconcilePayment`
+      verify ownership, then delegate to `PaymentReconciliationService.reconcileNow`, wrapped in
+      the existing `callGatewayOrFail` so a genuine gateway outage still surfaces as
+      `PAYMENT_GATEWAY_UNAVAILABLE`, never as a raw 500 or (critically) a fabricated local status
+      change — see the design discussion below.
+    - **No separate "is this order actually past the deadline yet" check was added at either call
+      site** — `PaymentReconciliationService.reconcileNow`'s own `isAbandoned` check already
+      handles that internally, regardless of who's calling. If the on-demand endpoint is ever hit
+      early (clock skew, a stray double-click), it just performs a harmless live `checkStatus`
+      refresh and returns the order unchanged; the cancel-and-expire branch only fires once the
+      order genuinely is past the window, exactly as if the scheduled job's own next tick had
+      landed at that instant instead.
+    - **Design discussion, resolved before building: a gateway failure during this on-demand call
+      must never fabricate a `CANCELLED`/`EXPIRED` outcome locally.** Raised and explicitly
+      rejected as an option: if `checkStatus`/`cancelUnconfirmed` throws because of a network blip,
+      that tells us nothing about what the gateway's own PaymentIntent actually is — only that
+      *our* request to ask failed. Forcing a local expiry anyway on that failure risks marking as
+      expired an order whose charge the shopper's own browser had *already* confirmed moments
+      earlier (Stripe's servers already captured it; our own `checkStatus` call to go verify that
+      just happened to time out for an unrelated reason) — a real money-reconciliation bug, not a
+      cosmetic one, and exactly the class of mistake `payment.PaymentGatewayException`'s own
+      Javadoc and every existing gateway-touching flow in this module (`OrderServiceImpl.cancel`/
+      `initiatePayment`'s `callGatewayOrFail`, `AbstractReconciliationJob`'s own generic catch)
+      already agree on avoiding: never fabricate an outcome the gateway didn't actually give: leave
+      the order/payment rows exactly as they were, and let a retry (manual or the next scheduled
+      poll) resolve it once the gateway is reachable again. `PaymentReconciliationService.reconcileNow`
+      follows that same rule with zero extra code — it simply doesn't catch
+      `PaymentGatewayException` itself.
+    - New `PaymentReconciliationServiceTest` (8 tests, the actual per-order logic — moved out of
+      `OrderReconciliationJobTest`, which now only covers the poll-batch/delegation shape it still
+      owns, 2 tests); 4 new `OrderServiceImplTest.ReconcilePayment` cases (ownership, delegation,
+      the gateway-exception translation). **390 unit tests total** (up from 385), verified via a
+      real `mvn test` run (JDK 21).
+    - GUI half: a new shared `@shared/hooks/useCountdown` (a generic, live mm:ss countdown to an
+      ISO instant — reusable beyond this feature), a new `@ecommerce/hooks/usePaymentCountdown`
+      (the actual "call `reconcile` exactly once when it hits zero" logic, no retry loop per
+      request — the scheduled job remains the real safety net regardless of whether this call ever
+      succeeds), a new presentational `@ecommerce/components/orders/PaymentCountdown` chip
+      (escalates `warning`/`error` color near the deadline, mirroring `utils/stock.ts`'s own
+      low-stock threshold convention), and a new, deliberately **shared, not feature-specific**
+      `@shared/components/MessageDialog` (the informational counterpart to the existing
+      `ConfirmDialog` — a message plus one follow-up action, per request, for reuse beyond this one
+      feature) — see `gui/CLAUDE.md`'s own note for the full detail on all three pages this wired
+      into.
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)

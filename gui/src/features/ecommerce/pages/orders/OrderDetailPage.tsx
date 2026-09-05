@@ -24,14 +24,17 @@ import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
+import MessageDialog from '@shared/components/MessageDialog';
 import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import FullPageLoader from '@shared/components/FullPageLoader';
 import EmptyState from '@shared/components/EmptyState';
 import SubmitButton from '@shared/components/SubmitButton';
 import { orderApi } from '../../api/orderApi';
 import { Order } from '../../types';
+import { usePaymentCountdown } from '../../hooks/usePaymentCountdown';
 import OrderLineRow from '../../components/orders/OrderLineRow';
 import PaymentDialog from '../../components/orders/PaymentDialog';
+import PaymentCountdown from '../../components/orders/PaymentCountdown';
 import {
   ORDER_HAPPY_PATH,
   ORDER_HAPPY_PATH_ICONS,
@@ -120,6 +123,9 @@ export default function OrderDetailPage(): JSX.Element {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null);
+  // Auto-expire follow-up: set once usePaymentCountdown's reconcile call confirms the payment
+  // window has genuinely expired — presence alone drives the MessageDialog below.
+  const [expiredOrder, setExpiredOrder] = useState<Order | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -128,6 +134,14 @@ export default function OrderDetailPage(): JSX.Element {
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
   }, [orderId]);
+
+  // Drives this page's own live countdown whenever order.status === 'PAYMENT_PROCESSING'; onError
+  // just toasts — see usePaymentCountdown's own note on why this is never retried automatically.
+  const remainingMs = usePaymentCountdown(order, {
+    onReconciled: setOrder,
+    onResolved: setExpiredOrder,
+    onError: (err) => showError(err instanceof Error ? err.message : 'Could not confirm your payment status.'),
+  });
 
   const notifyPaymentOutcome = (result: Order): void => {
     if (result.status === 'CONFIRMED') {
@@ -249,6 +263,7 @@ export default function OrderDetailPage(): JSX.Element {
         </Tooltip>
         <Typography variant="h5" fontWeight={700}>Order #{order.id}</Typography>
         <Chip label={ORDER_STATUS_LABELS[order.status]} color={ORDER_STATUS_COLORS[order.status]} size="small" />
+        {order.paymentExpiresAt && <PaymentCountdown remainingMs={remainingMs} />}
       </Stack>
 
       <Paper variant="outlined" sx={{ p: { xs: 2.5, sm: 4 }, mb: 3 }}>
@@ -453,6 +468,16 @@ export default function OrderDetailPage(): JSX.Element {
           clientSecret={paymentClientSecret}
           onClose={() => setPaymentClientSecret(null)}
           onCompleted={handlePaymentDialogCompleted}
+        />
+      )}
+
+      {expiredOrder && (
+        <MessageDialog
+          open
+          title="Payment window expired"
+          message="Your time to complete this payment has run out, and the reservation has been released."
+          actionLabel="OK"
+          onAction={() => setExpiredOrder(null)}
         />
       )}
     </Box>

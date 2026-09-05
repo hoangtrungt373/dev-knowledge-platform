@@ -120,4 +120,27 @@ public interface OrderService {
      *         currently {@code PENDING} or {@code PAYMENT_PROCESSING}
      */
     PaymentInitiationResult initiatePayment(Integer orderId, String callerUuid);
+
+    /**
+     * Auto-expire follow-up: re-checks {@code orderId}'s real gateway status right now, on the
+     * caller's behalf, instead of waiting for {@code orderstatus.OrderReconciliationJob}'s own next
+     * poll tick — the GUI calls this the instant its own live countdown
+     * ({@code dto.OrderResponse#getPaymentExpiresAt()}) reaches zero. Delegates to
+     * {@code orderstatus.PaymentReconciliationService#reconcileNow}, the exact same logic the
+     * scheduled job itself runs — see that class's own Javadoc for why no separate "is it actually
+     * abandoned yet" check is needed here: calling this before the real deadline is a safe,
+     * harmless live-status refresh, not a shortcut around the deadline.
+     *
+     * @param orderId    the order to reconcile
+     * @param callerUuid the caller's Keycloak UUID — the order must belong to this caller
+     * @return the order after whatever this call did to it (see
+     *         {@code orderstatus.PaymentReconciliationService#reconcileNow}'s own return contract)
+     * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException if the order
+     *         doesn't exist or doesn't belong to {@code callerUuid}
+     * @throws com.ttg.devknowledgeplatform.common.exception.ApiException with
+     *         {@code EcommerceErrorCode#PAYMENT_GATEWAY_UNAVAILABLE} if the gateway call itself
+     *         failed (network/API error) — never fabricates an outcome the gateway didn't actually
+     *         give
+     */
+    Order reconcilePayment(Integer orderId, String callerUuid);
 }

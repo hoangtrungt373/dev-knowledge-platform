@@ -52,4 +52,9 @@ public class OrderController implements OrderApi {
         response.setPaymentClientSecret(result.clientSecret());
         return ResponseEntity.ok(response);
     }
+
+    @Override
+    public ResponseEntity<OrderResponse> reconcile(String userUuid, Integer id) {
+        return ResponseEntity.ok(orderMapper.toResponse(orderService.reconcilePayment(id, userUuid)));
+    }
 }

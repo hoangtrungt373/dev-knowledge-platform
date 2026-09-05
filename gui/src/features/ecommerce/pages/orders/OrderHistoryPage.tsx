@@ -16,9 +16,12 @@ import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import FullPageLoader from '@shared/components/FullPageLoader';
 import EmptyState from '@shared/components/EmptyState';
+import MessageDialog from '@shared/components/MessageDialog';
 import { orderApi } from '../../api/orderApi';
 import { Order } from '../../types';
+import { usePaymentCountdown } from '../../hooks/usePaymentCountdown';
 import OrderLineRow from '../../components/orders/OrderLineRow';
+import PaymentCountdown from '../../components/orders/PaymentCountdown';
 import { ORDER_STATUS_COLORS, ORDER_STATUS_LABELS, ORDER_TAB_GROUPS, formatOrderDate } from '../../utils/orderStatus';
 import { formatPrice } from '../../utils/format';
 
@@ -34,6 +37,16 @@ export default function OrderHistoryPage(): JSX.Element {
   // Status tabs (post-Epic-3 follow-up) — 'all' sends no status filter at all.
   const [tabKey, setTabKey] = useState<string>('all');
   const activeGroup = ORDER_TAB_GROUPS.find(g => g.key === tabKey) ?? ORDER_TAB_GROUPS[0];
+  // Auto-expire follow-up: set once any row's own usePaymentCountdown confirms a payment window
+  // has genuinely expired — shared across every row rather than one dialog per card, since only
+  // one can meaningfully be shown at a time anyway.
+  const [expiredOrder, setExpiredOrder] = useState<Order | null>(null);
+
+  /** Keeps a single row's order fresh in the list after its own countdown reconciles — passed down
+   * to every OrderCard as its usePaymentCountdown onReconciled callback. */
+  const handleOrderReconciled = (updated: Order): void => {
+    setOrders(prev => prev?.map(o => (o.id === updated.id ? updated : o)) ?? prev);
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -97,7 +110,13 @@ export default function OrderHistoryPage(): JSX.Element {
       ) : (
         <Stack spacing={2} sx={{ mb: 3 }}>
           {orders?.map(order => (
-            <OrderCard key={order.id} order={order} onView={() => navigate(`/account/orders/${order.id}`)} />
+            <OrderCard
+              key={order.id}
+              order={order}
+              onView={() => navigate(`/account/orders/${order.id}`)}
+              onReconciled={handleOrderReconciled}
+              onExpired={setExpiredOrder}
+            />
           ))}
         </Stack>
       )}
@@ -112,11 +131,38 @@ export default function OrderHistoryPage(): JSX.Element {
           />
         </Stack>
       )}
+
+      {expiredOrder && (
+        <MessageDialog
+          open
+          title="Payment window expired"
+          message="The time to complete this payment has run out, and the reservation has been released."
+          actionLabel="View Order"
+          onAction={() => {
+            const orderId = expiredOrder.id;
+            setExpiredOrder(null);
+            navigate(`/account/orders/${orderId}`);
+          }}
+        />
+      )}
     </Box>
   );
 }
 
-function OrderCard({ order, onView }: { order: Order; onView: () => void }): JSX.Element {
+interface OrderCardProps {
+  order: Order;
+  onView: () => void;
+  onReconciled: (order: Order) => void;
+  onExpired: (order: Order) => void;
+}
+
+function OrderCard({ order, onView, onReconciled, onExpired }: OrderCardProps): JSX.Element {
+  const { showError } = useNotification();
+  const remainingMs = usePaymentCountdown(order, {
+    onReconciled,
+    onResolved: onExpired,
+    onError: (err) => showError(err instanceof Error ? err.message : 'Could not confirm this order\'s payment status.'),
+  });
   const placedAt = order.statusHistory[0]?.occurredAt;
 
   // A decline can happen asynchronously (webhook/reconciliation), so this hint has to come from
@@ -142,6 +188,7 @@ function OrderCard({ order, onView }: { order: Order; onView: () => void }): JSX
             color={ORDER_STATUS_COLORS[order.status]}
             size="small"
           />
+          {order.paymentExpiresAt && <PaymentCountdown remainingMs={remainingMs} />}
           <Button size="small" onClick={onView}>View Details</Button>
         </Stack>
       </Stack>

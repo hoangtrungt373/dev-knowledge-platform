@@ -1,5 +1,6 @@
 package com.ttg.devknowledgeplatform.ecommerce.mapper;
 
+import com.ttg.devknowledgeplatform.ecommerce.config.OrderJobProperties;
 import com.ttg.devknowledgeplatform.ecommerce.dto.AddressResponse;
 import com.ttg.devknowledgeplatform.ecommerce.dto.OrderLineResponse;
 import com.ttg.devknowledgeplatform.ecommerce.dto.OrderResponse;
@@ -10,6 +11,7 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.OrderLine;
 import com.ttg.devknowledgeplatform.ecommerce.entity.OrderStatusHistory;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Payment;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductVariant;
+import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.repository.PaymentRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductVariantRepository;
 import com.ttg.devknowledgeplatform.infra.service.StorageService;
@@ -19,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 /**
  * Maps {@link Order} (and its {@link OrderLine}/{@link OrderStatusHistory}/{@link Address}
@@ -43,6 +46,12 @@ import java.math.BigDecimal;
  * row (Epic 4 Phase 7, US-4.7) — {@code null}/{@code null}/{@code null} for all three payment
  * fields until a payment attempt has actually started, same "resolve nullable, doesn't always
  * exist" shape {@link #toOrderLineResponse}'s own variant lookup already uses.
+ *
+ * <p><b>Auto-expire follow-up: {@link #toResponse} also resolves {@code paymentExpiresAt}</b> — a
+ * live-computed deadline ({@code Order.getPaymentProcessingStartedAt() + orderJobProperties
+ * .reconciliation().abandonmentTimeout()}), {@code null} whenever the order isn't currently
+ * {@code PAYMENT_PROCESSING}. See {@code OrderResponse#getPaymentExpiresAt()}'s own Javadoc for why
+ * this is a computed instant rather than exposing the raw duration to the GUI.
  */
 @Component
 @RequiredArgsConstructor
@@ -51,6 +60,7 @@ public class OrderMapper {
     private final ProductVariantRepository productVariantRepository;
     private final PaymentRepository paymentRepository;
     private final StorageService storageService;
+    private final OrderJobProperties orderJobProperties;
 
     public OrderResponse toResponse(Order order) {
         Payment payment = paymentRepository.findByOrderId(order.getId()).orElse(null);
@@ -70,9 +80,17 @@ public class OrderMapper {
                 .paymentFailureCategory(payment == null ? null : payment.getFailureCategory())
                 .paymentFailureMessage(payment == null || payment.getFailureCategory() == null
                         ? null : payment.getFailureCategory().getShopperMessage())
+                .paymentExpiresAt(resolvePaymentExpiresAt(order))
                 .lines(order.getLines().stream().map(this::toOrderLineResponse).toList())
                 .statusHistory(order.getStatusHistory().stream().map(OrderMapper::toHistoryResponse).toList())
                 .build();
+    }
+
+    private Instant resolvePaymentExpiresAt(Order order) {
+        if (order.getStatus() != OrderStatus.PAYMENT_PROCESSING || order.getPaymentProcessingStartedAt() == null) {
+            return null;
+        }
+        return order.getPaymentProcessingStartedAt().plus(orderJobProperties.reconciliation().abandonmentTimeout());
     }
 
     /**
