@@ -35,14 +35,18 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
@@ -78,6 +82,10 @@ class CheckoutServiceImplTest {
     private CouponRedemptionService couponRedemptionService;
     @Mock
     private AddressMapper addressMapper;
+    @Mock
+    private StringRedisTemplate redisTemplate;
+    @Mock
+    private ValueOperations<String, String> valueOperations;
 
     @InjectMocks
     private CheckoutServiceImpl service;
@@ -92,6 +100,10 @@ class CheckoutServiceImplTest {
         // for those specific tests otherwise.
         lenient().when(shippingFeeCalculator.calculate(any(), any()))
                 .thenReturn(new ShippingFeeQuote(FLAT_SHIPPING_FEE, FLAT_SHIPPING_FEE));
+        // The checkout lock (edge-case fix) — confirm() only ever calls setIfAbsent, never any
+        // other ValueOperations method, and preview() doesn't touch Redis at all.
+        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        lenient().when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true);
         // AddressMapper is mocked (Mockito can't run the real MapStruct-generated impl here) — these
         // two stubs replicate its trivial field-for-field mapping so existing assertions on the
         // order's own shippingAddress fields still hold.
@@ -275,6 +287,22 @@ class CheckoutServiceImplTest {
 
     @Nested
     class Confirm {
+
+        @Test
+        void rejectsAConcurrentSecondCallForTheSameUserWithoutTouchingTheCartOrStock() {
+            // Edge-case fix: a double-click/network-retry/back-button resubmit must not be able to
+            // create two Orders from the same cart — this must reject before the cart is even read.
+            when(valueOperations.setIfAbsent(eq("checkout-lock:" + USER_UUID), anyString(), any(Duration.class)))
+                    .thenReturn(false);
+
+            assertThatThrownBy(() -> service.confirm(USER_UUID, address, null, null, null))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.CHECKOUT_ALREADY_IN_PROGRESS);
+
+            verify(cartService, never()).getCart(any());
+            verify(orderRepository, never()).save(any());
+        }
 
         @Test
         void createsOrderFromAvailableLinesAndRemovesOnlyOrderedLinesOnlyAfterSaving() {

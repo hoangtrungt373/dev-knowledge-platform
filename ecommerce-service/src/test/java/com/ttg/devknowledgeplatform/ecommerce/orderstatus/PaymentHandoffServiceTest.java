@@ -287,6 +287,31 @@ class PaymentHandoffServiceTest {
         }
 
         @Test
+        void anAttemptFailedThatArrivesAfterTheOrderAlreadySucceededDoesNotReintroduceAStaleDeclineReason() {
+            // Edge-case fix: Stripe explicitly does not guarantee webhook delivery order — the
+            // payment_intent.payment_failed event for an EARLIER attempt (this attemptFailed
+            // result) can be delivered after payment_intent.succeeded for a LATER attempt against
+            // the same PaymentIntent already resolved this row SUCCEEDED. Must not let the stale,
+            // out-of-order event reintroduce a "your card was declined" reason onto a paid order.
+            Order order = orderOwnedBy(OWNER_UUID);
+            order.setStatus(OrderStatus.CONFIRMED);
+            Payment payment = new Payment();
+            payment.setId(100);
+            payment.setStatus(PaymentStatus.SUCCEEDED);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+            when(orderRepository.save(order)).thenReturn(order);
+            when(paymentRepository.findByOrderId(1)).thenReturn(Optional.of(payment));
+
+            service.resolvePayment(1, PaymentResult.attemptFailed(
+                    "gw-ref-1", PaymentFailureCategory.CARD_DECLINED, "Your card was declined."));
+
+            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+            assertThat(payment.getFailureCategory()).isNull();
+            assertThat(payment.getGatewayFailureMessage()).isNull();
+            verify(paymentRepository).save(payment);
+        }
+
+        @Test
         void rejectsAsNotFoundWhenTheOrderNoLongerExists() {
             when(orderRepository.findById(1)).thenReturn(Optional.empty());
 

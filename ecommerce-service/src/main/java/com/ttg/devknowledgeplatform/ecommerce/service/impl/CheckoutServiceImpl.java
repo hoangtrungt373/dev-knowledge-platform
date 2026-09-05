@@ -28,10 +28,12 @@ import com.ttg.devknowledgeplatform.ecommerce.shipping.ShippingFeeQuote;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -60,12 +62,31 @@ import java.util.Set;
  * atomically" true: a single local ACID transaction, not a saga (see
  * {@code docs/user-stories/03-order-lifecycle-inventory.md}'s locked decisions — the saga only
  * starts at Epic 4's payment-gateway call).
+ *
+ * <p><b>Edge-case fix: {@link #confirm} now claims a short-lived per-user Redis lock before doing
+ * anything else</b>, rejecting a concurrent second call for the same {@code userUuid} instead of
+ * letting it run — US-3.1's own stock reservation only protects against two <i>different</i>
+ * shoppers racing the same stock; it does nothing for the <i>same</i> shopper submitting the same
+ * checkout twice at once (a double-click, a client-side network retry, a back-button resubmit).
+ * Without this, two concurrent {@link #confirm} calls for the same cart could both legitimately
+ * pass every check (stock allowing) and create two separate {@link Order}s — a real double-charge
+ * once each independently reaches Epic 4's payment step. The lock is deliberately never released
+ * explicitly (no {@code finally} block) — it's{@code @Transactional}, so an explicit release inside
+ * this method's own body would run <i>before</i> the surrounding transaction actually commits
+ * (Spring's transactional advice wraps the whole method), reopening a narrow version of the exact
+ * race this lock exists to close. Letting it expire on its own TTL instead guarantees the lock
+ * outlives this method's own (normally sub-second) transaction with margin to spare, at the cost of
+ * a short enforced gap before the same shopper can check out again — an acceptable trade-off for a
+ * user action that isn't naturally high-frequency.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 @Transactional(rollbackFor = Throwable.class)
 public class CheckoutServiceImpl implements CheckoutService {
+
+    private static final String CHECKOUT_LOCK_KEY_PREFIX = "checkout-lock:";
+    private static final Duration CHECKOUT_LOCK_TTL = Duration.ofSeconds(15);
 
     private final CartService cartService;
     private final OrderRepository orderRepository;
@@ -74,6 +95,7 @@ public class CheckoutServiceImpl implements CheckoutService {
     private final ShippingFeeCalculator shippingFeeCalculator;
     private final CouponRedemptionService couponRedemptionService;
     private final AddressMapper addressMapper;
+    private final StringRedisTemplate redisTemplate;
 
     @Override
     @Transactional(readOnly = true)
@@ -95,6 +117,10 @@ public class CheckoutServiceImpl implements CheckoutService {
     public CheckoutResult confirm(
             String userUuid, CheckoutCommands.AddressSelection addressSelection, List<Integer> selectedVariantIds,
             String subtotalCouponCode, String shippingCouponCode) {
+        Boolean acquired = redisTemplate.opsForValue()
+                .setIfAbsent(CHECKOUT_LOCK_KEY_PREFIX + userUuid, "1", CHECKOUT_LOCK_TTL);
+        Validator.isTrue(Boolean.TRUE.equals(acquired), EcommerceErrorCode.CHECKOUT_ALREADY_IN_PROGRESS);
+
         Cart cart = cartService.getCart(userUuid);
         List<CartLine> candidateLines = filterBySelection(cart.lines(), selectedVariantIds);
         List<CartLine> availableLines = requireCheckoutableCart(candidateLines);

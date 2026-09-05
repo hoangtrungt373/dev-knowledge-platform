@@ -3467,6 +3467,55 @@ entries start fresh below `[Unreleased]`.
   per-id work is delegated to a separate `@Transactional` processor bean, which doesn't fit the
   template. Pure refactor, no behavior change; 364 unit tests total, unchanged, verified via a real
   `mvn test` run (JDK 21).
+- **`ecommerce-service`: `webhook.StripeWebhookService` now handles `payment_intent.canceled`,
+  reusing Stripe's own confirmation-limit retry cap instead of building a custom decline counter.**
+  Confirming a PaymentIntent has "a variable upper limit on how many times a PaymentIntent can be
+  confirmed. After this limit is reached, any further calls... transition the PaymentIntent to the
+  `canceled` state" (Stripe's own docs) — Stripe's own anti-card-testing posture, already enforced
+  server-side, with no fixed number to duplicate. `applyPaymentIntentEvent`'s dispatch gained a
+  genuine third branch: `canceled` → `PaymentResult.declined(...)` (the exhausted PaymentIntent is
+  over), distinct from `payment_failed`'s own `attemptFailed(...)` (still retryable). Guards against
+  a real collision: `OrderServiceImpl#cancel`'s own explicit `cancelUnconfirmed` call also fires
+  this identical event as a side effect of its own synchronous cancel (already resolved via
+  `PaymentCancellationService#applyGatewayCancellation`, marking the row `CANCELLED` not
+  `DECLINED`) — `applyPaymentIntentEvent` only treats `canceled` as a final decline when the
+  `Payment` row is still `PENDING`, a safe no-op otherwise. 2 new `StripeWebhookServiceTest` cases.
+  366 unit tests total (up from 364), verified via a real `mvn test` run (JDK 21). See
+  `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full detail, including
+  the one narrow, accepted race this doesn't fully close.
+- **`ecommerce-service`: `OrderReconciliationJob` closes the one real remaining gap in the Stripe
+  payment flow — a charge attempt that crashes before ever reaching Stripe used to poll forever
+  with no terminal exit.** A `Payment` row with no `gatewayReference` at all (e.g.
+  `PaymentGatewayPort#charge` threw before Stripe ever created a `PaymentIntent`) previously left
+  the order stuck `PAYMENT_PROCESSING` forever — `resolvePayment`'s own `PENDING` branch is always
+  a no-op, and even an explicit shopper cancel couldn't escape it (`PaymentCancellationService
+  #applyCancellation`'s own `gatewayReference != null` guard silently queues the cancel with no
+  effect). A `PENDING` result with a `null` `gatewayReference` is uniquely produced by exactly this
+  case, so `OrderReconciliationJob#reconcileOne` now finalizes it with a synthetic
+  `PaymentResult#declined` (`GATEWAY_ERROR`) once past the grace period, instead of polling
+  forever. 2 new `OrderReconciliationJobTest` cases. 368 unit tests total (up from 366), verified
+  via a real `mvn test` run (JDK 21).
+- **`ecommerce-service`: three more sanity-checked edge cases fixed, per request, found during a
+  dedicated review of the Stripe payment flow's remaining risk surface.** A fourth candidate
+  (`toSmallestCurrencyUnit`'s rounding) turned out to be a non-issue on closer inspection — no
+  change made there.
+  - `PaymentHandoffService#applyResultToPayment`'s `PENDING` branch now only applies failure detail
+    while the `Payment` row is still genuinely `PENDING` — guards against Stripe's own
+    out-of-order webhook delivery reintroducing a stale decline reason onto an already-`SUCCEEDED`
+    payment (the order itself was never at risk; this was cosmetic but user-visible).
+  - `PaymentCancellationService#applyRefundResult`'s `SUCCEEDED` branch is now idempotent against a
+    row that's already `REFUNDED` — closes the common case of `RefundReconciliationJob`'s own poll
+    racing `OrderServiceImpl#cancel`'s synchronous refund for the same payment (both gateway calls
+    were already money-safe via Stripe's own idempotency key; this stops the duplicate
+    `PAYMENT_REFUNDED` outbox event).
+  - `CheckoutServiceImpl#confirm` now claims a short-lived per-user Redis lock
+    (`checkout-lock:{userUuid}`, 15s TTL, never explicitly released) before doing anything else,
+    rejecting a concurrent second call for the same caller — closes a real double-charge risk from
+    a double-click/network-retry/back-button resubmit, which US-3.1's own atomic stock reservation
+    never protected against (that only guards two *different* shoppers racing the same stock). New
+    `EcommerceErrorCode.CHECKOUT_ALREADY_IN_PROGRESS` (`CHECKOUT_004`, `409`).
+  - 3 new tests. 371 unit tests total (up from 368), verified via a real `mvn test` run (JDK 21).
+  See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full per-fix detail.
 
 ## [0.0.2] — 2026-08-11
 

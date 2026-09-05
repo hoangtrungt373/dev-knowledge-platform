@@ -80,6 +80,9 @@ public enum EcommerceErrorCode implements ErrorCode {
     CHECKOUT_ADDRESS_REQUIRED("CHECKOUT_003",
             "A shipping address is required — provide a saved address id or the full address details",
             HttpStatus.BAD_REQUEST),
+    CHECKOUT_ALREADY_IN_PROGRESS("CHECKOUT_004",
+            "Your previous order request is still being processed — please wait a moment before trying again",
+            HttpStatus.CONFLICT),
 
     // Saved Address Errors (SAVED_ADDRESS_*) — AddressBook
     SAVED_ADDRESS_NOT_FOUND("SAVED_ADDRESS_001", "Address not found: {0}", HttpStatus.NOT_FOUND),

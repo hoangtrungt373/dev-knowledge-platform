@@ -197,6 +197,20 @@ public class PaymentCancellationService {
      * {@code payment.PaymentGatewayPort#refund} has already happened. Mirrors
      * {@link PaymentHandoffService#resolvePayment}'s own shape for the refund vocabulary.
      *
+     * <p><b>Edge-case fix: the {@code SUCCEEDED} branch is now idempotent against a row that's
+     * already {@code REFUNDED}.</b> {@code RefundReconciliationJob}'s own poll can race
+     * {@code service.impl.OrderServiceImpl#cancel}'s synchronous refund call for the exact same
+     * payment (a shopper cancels right as the job also picks the same row up) — both gateway calls
+     * are already safe (Stripe's own idempotency key for {@code refund} is deterministic, so
+     * neither can double-refund the money), but without this guard, both callers would each mark
+     * the row {@code REFUNDED} and each publish their own {@code PAYMENT_REFUNDED} outbox event —
+     * a real, if harmless-to-money, duplicate. This doesn't fully close the race (two reads that
+     * both land before either write still slip through — closing that fully would need pessimistic
+     * locking, not attempted here since a duplicate event is exactly the kind of low-stakes,
+     * already-tolerated "at-least-once" characteristic this reactor's outbox mechanism accepts
+     * elsewhere), but it closes the overwhelmingly common case where one caller's own transaction
+     * has already committed by the time the other's runs.
+     *
      * @throws IllegalStateException if no {@code Payment} row exists for {@code paymentId} — a
      *         genuine invariant violation, since {@link #applyCancellation} only ever reports
      *         {@code refundNeeded() == true} alongside a real {@code paymentId}
@@ -207,6 +221,11 @@ public class PaymentCancellationService {
                 .orElseThrow(() -> new IllegalStateException("No Payment row found for id=" + paymentId));
         switch (result.outcome()) {
             case SUCCEEDED -> {
+                if (payment.getStatus() == PaymentStatus.REFUNDED) {
+                    log.info("Ignoring refund result for paymentId={} — already REFUNDED (a concurrent caller "
+                            + "already resolved it)", paymentId);
+                    return;
+                }
                 payment.setStatus(PaymentStatus.REFUNDED);
                 paymentRepository.save(payment);
                 publishPaymentRefunded(payment);
