@@ -3495,6 +3495,27 @@ entries start fresh below `[Unreleased]`.
   `PaymentResult#declined` (`GATEWAY_ERROR`) once past the grace period, instead of polling
   forever. 2 new `OrderReconciliationJobTest` cases. 368 unit tests total (up from 366), verified
   via a real `mvn test` run (JDK 21).
+- **`ecommerce-service`: three more sanity-checked edge cases fixed, per request, found during a
+  dedicated review of the Stripe payment flow's remaining risk surface.** A fourth candidate
+  (`toSmallestCurrencyUnit`'s rounding) turned out to be a non-issue on closer inspection — no
+  change made there.
+  - `PaymentHandoffService#applyResultToPayment`'s `PENDING` branch now only applies failure detail
+    while the `Payment` row is still genuinely `PENDING` — guards against Stripe's own
+    out-of-order webhook delivery reintroducing a stale decline reason onto an already-`SUCCEEDED`
+    payment (the order itself was never at risk; this was cosmetic but user-visible).
+  - `PaymentCancellationService#applyRefundResult`'s `SUCCEEDED` branch is now idempotent against a
+    row that's already `REFUNDED` — closes the common case of `RefundReconciliationJob`'s own poll
+    racing `OrderServiceImpl#cancel`'s synchronous refund for the same payment (both gateway calls
+    were already money-safe via Stripe's own idempotency key; this stops the duplicate
+    `PAYMENT_REFUNDED` outbox event).
+  - `CheckoutServiceImpl#confirm` now claims a short-lived per-user Redis lock
+    (`checkout-lock:{userUuid}`, 15s TTL, never explicitly released) before doing anything else,
+    rejecting a concurrent second call for the same caller — closes a real double-charge risk from
+    a double-click/network-retry/back-button resubmit, which US-3.1's own atomic stock reservation
+    never protected against (that only guards two *different* shoppers racing the same stock). New
+    `EcommerceErrorCode.CHECKOUT_ALREADY_IN_PROGRESS` (`CHECKOUT_004`, `409`).
+  - 3 new tests. 371 unit tests total (up from 368), verified via a real `mvn test` run (JDK 21).
+  See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full per-fix detail.
 
 ## [0.0.2] — 2026-08-11
 

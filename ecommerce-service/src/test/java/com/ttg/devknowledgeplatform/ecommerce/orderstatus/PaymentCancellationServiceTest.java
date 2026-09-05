@@ -306,6 +306,25 @@ class PaymentCancellationServiceTest {
         }
 
         @Test
+        void succeededIsASafeNoOpWhenTheRowIsAlreadyRefunded() {
+            // Edge-case fix: RefundReconciliationJob's own poll can race
+            // OrderServiceImpl#cancel's synchronous refund call for the same payment — both
+            // gateway calls are already safe (Stripe's own refund idempotency key), but without
+            // this guard, both callers would each re-publish PAYMENT_REFUNDED for a row a
+            // concurrent caller already resolved.
+            Payment payment = new Payment();
+            payment.setId(100);
+            payment.setStatus(PaymentStatus.REFUNDED);
+            when(paymentRepository.findById(100)).thenReturn(Optional.of(payment));
+
+            service.applyRefundResult(100, RefundResult.succeeded("gw-refund-1"));
+
+            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.REFUNDED);
+            verify(paymentRepository, never()).save(any());
+            verify(outboxEventRepository, never()).save(any());
+        }
+
+        @Test
         void failedLeavesThePaymentRowSucceededAndPublishesNoEvent() {
             Payment payment = new Payment();
             payment.setId(100);

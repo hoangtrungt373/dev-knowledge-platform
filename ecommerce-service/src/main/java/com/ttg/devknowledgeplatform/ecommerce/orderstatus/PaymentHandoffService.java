@@ -213,7 +213,17 @@ public class PaymentHandoffService {
                 // recent decline reason (from PaymentResult#attemptFailed, a retryable decline
                 // under Option A — see that factory's own Javadoc) with null. Only ever overwrite
                 // when this particular result actually carries new information.
-                if (result.failureCategory() != null) {
+                //
+                // Edge-case fix: also only ever apply that detail while this row is still
+                // genuinely PENDING. Stripe explicitly does not guarantee webhook delivery order —
+                // payment_intent.payment_failed for an EARLIER attempt (this method's own PENDING
+                // outcome) can be delivered AFTER payment_intent.succeeded for a LATER attempt
+                // against the same still-open PaymentIntent already resolved this row SUCCEEDED.
+                // Without this guard, that stale, out-of-order event would reintroduce the old
+                // decline reason onto an already-paid order — cosmetic (this branch never touches
+                // the order's own status), but a real, user-visible "your card was declined" banner
+                // reappearing on a successfully-paid order.
+                if (payment.getStatus() == PaymentStatus.PENDING && result.failureCategory() != null) {
                     payment.setFailureCategory(result.failureCategory());
                     payment.setGatewayFailureMessage(result.gatewayFailureMessage());
                 }

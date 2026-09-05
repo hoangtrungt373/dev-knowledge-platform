@@ -2507,6 +2507,62 @@ structural-only adapter.
     and a regression guard proving a genuinely-still-processing order with a real `gatewayReference`
     is left untouched, not conflated with this fix). 368 unit tests total (up from 366), verified
     via a real `mvn test` run (JDK 21).
+  - **Follow-up: three more sanity-checked edge cases fixed, per request ("apply fix for all of
+    them"), found during a dedicated review of the Stripe payment flow's remaining risk surface.**
+    A fourth candidate (`StripePaymentGateway#toSmallestCurrencyUnit`'s `longValueExact()` throwing
+    on excess decimal precision) turned out to be a non-issue on closer inspection — the preceding
+    `setScale(0, RoundingMode.HALF_UP)` call already safely rounds away any excess precision before
+    the exact-value conversion, so `longValueExact()` can only ever fail on an amount too large to
+    fit a `long`, not on decimal precision — no change made there.
+    - **`orderstatus.PaymentHandoffService#applyResultToPayment`'s `PENDING` branch now only
+      applies failure detail while the `Payment` row is still genuinely `PENDING`.** Stripe
+      explicitly does not guarantee webhook delivery order: `payment_intent.payment_failed` for an
+      *earlier* attempt (this method's own `PENDING` outcome) can be delivered *after*
+      `payment_intent.succeeded` for a *later* attempt against the same still-open `PaymentIntent`
+      already resolved this row `SUCCEEDED`. Without a guard, that stale, out-of-order event would
+      reintroduce the old decline reason onto an already-paid order — cosmetic (this branch never
+      touches the order's own status, so the order itself stays correctly `CONFIRMED`), but a real,
+      user-visible "your card was declined" banner reappearing on a successfully-paid order. New
+      `PaymentHandoffServiceTest.anAttemptFailedThatArrivesAfterTheOrderAlreadySucceededDoesNotReintroduceAStaleDeclineReason`.
+    - **`orderstatus.PaymentCancellationService#applyRefundResult`'s `SUCCEEDED` branch is now
+      idempotent against a row that's already `REFUNDED`.** `RefundReconciliationJob`'s own poll
+      can race `service.impl.OrderServiceImpl#cancel`'s synchronous refund call for the exact same
+      payment (a shopper cancels right as the job also picks the same row up) — both gateway calls
+      were already safe (Stripe's own `refund` idempotency key is deterministic, so neither call
+      can double-refund the money), but without this guard, both callers would each mark the row
+      `REFUNDED` and each publish their own `PAYMENT_REFUNDED` outbox event — a real, if
+      harmless-to-money, duplicate. Doesn't fully close the race (two reads that both land before
+      either write still slip through — closing that fully would need pessimistic locking, not
+      attempted here since a duplicate event is exactly the kind of low-stakes, already-tolerated
+      "at-least-once" characteristic this reactor's outbox mechanism accepts elsewhere, same
+      risk-tolerance precedent as `CouponRedemptionServiceImpl`'s own documented "plain re-check,
+      not an atomic claim" choice), but closes the overwhelmingly common case where one caller's
+      own transaction has already committed by the time the other's runs. New
+      `PaymentCancellationServiceTest.succeededIsASafeNoOpWhenTheRowIsAlreadyRefunded`.
+    - **`service.impl.CheckoutServiceImpl#confirm` now claims a short-lived per-user Redis lock
+      before doing anything else, rejecting a concurrent second call for the same caller instead of
+      letting it run.** US-3.1's own atomic stock reservation only protects against two *different*
+      shoppers racing the same stock; it does nothing for the *same* shopper submitting the same
+      checkout twice at once (a double-click, a client-side network retry, a back-button
+      resubmit) — nothing previously stopped two concurrent `confirm()` calls for the same cart
+      from both passing every check (stock allowing) and creating two separate `Order`s, each
+      independently reaching Epic 4's payment step — a real double-charge for what the shopper
+      experienced as one submission. New `EcommerceErrorCode.CHECKOUT_ALREADY_IN_PROGRESS`
+      (`CHECKOUT_004`, `409 CONFLICT`); a new `StringRedisTemplate`-backed lock keyed
+      `checkout-lock:{userUuid}`, claimed via `setIfAbsent` (the same Redis infrastructure
+      `CartServiceImpl` already uses). **Deliberately never released explicitly (no `finally`
+      block)** — `confirm()` is itself `@Transactional`, so an explicit release inside the method
+      body would run *before* the surrounding transaction actually commits (Spring's transactional
+      advice wraps the whole method invocation), reopening a narrow version of the exact race this
+      lock exists to close; letting it expire on its own 15-second TTL instead guarantees the lock
+      outlives the method's own (normally sub-second) transaction with margin to spare, at the cost
+      of a short enforced gap before the same shopper can check out again — an acceptable
+      trade-off for an action that isn't naturally high-frequency. New
+      `CheckoutServiceImplTest.rejectsAConcurrentSecondCallForTheSameUserWithoutTouchingTheCartOrStock`;
+      all 25 existing `Confirm`/`Preview` tests updated with a new `redisTemplate`/`valueOperations`
+      mock pair (`setIfAbsent` stubbed to succeed by default).
+    - 3 new tests total. 371 unit tests total (up from 368), verified via a real `mvn test` run
+      (JDK 21).
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)
