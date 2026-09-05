@@ -3370,6 +3370,92 @@ entries start fresh below `[Unreleased]`.
   clean `tsc --noEmit` and a successful `vite build` — no Docker in this sandbox, so the actual
   now-visible-while-`PAYMENT_PROCESSING` banner is unverified in a real browser. See
   `gui/CLAUDE.md`'s own follow-up note for the full detail.
+- **`ecommerce-service`: a full module-wide code-quality audit was requested (duplication, God
+  classes, N+1 queries, missing abstractions, test-coverage gaps) — two of the audit's high-priority
+  findings were fixed immediately; the rest are documented in `ecommerce-service/CLAUDE.md` for a
+  later pass.**
+  - **Fix #1: `OrderServiceImpl#cancel` could surface a raw error for a Cancel Order click that had
+    already succeeded, if it lost a race to a concurrent resolution of the same order** (a
+    double-click, or the Stripe webhook/`OrderReconciliationJob` resolving the order at nearly the
+    same moment) — `cancel()`'s own follow-up steps deliberately run outside any single transaction,
+    so two resolutions of the same order could be mid-flight at once; whichever committed last hit
+    `ORDER_INVALID_STATUS_TRANSITION` or an optimistic-lock conflict and propagated it as a real
+    error, even though the order had already reached exactly the outcome the shopper asked for.
+    Fixed by catching both, re-fetching the order, and returning it as a normal success whenever it
+    genuinely reached `CANCELLED` — any other rejection (a genuinely invalid request) still
+    propagates unchanged.
+  - **Fix #2: a genuine Stripe gateway/network outage during `charge`/`refund`/`cancelUnconfirmed`
+    propagated as a raw, unmapped `500`** — `EcommerceErrorCode` had zero `PAYMENT_*` codes despite
+    Epic 4 being fully built. Fixed with a new `PAYMENT_GATEWAY_UNAVAILABLE` code (`503`, mirroring
+    `CommonErrorCode.SERVER_EXTERNAL_SERVICE_ERROR`'s own shape) and a shared
+    `OrderServiceImpl#callGatewayOrFail` helper translating the exception at every direct gateway
+    call site, without touching the existing crash-safety guarantee (the order is already durably
+    `PAYMENT_PROCESSING` by the time this translation runs).
+  - 6 new `OrderServiceImplTest` cases. 336 unit tests total (up from 330), verified via a real
+    `mvn test` run (JDK 21). See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section
+    for the full incident writeup and the audit's remaining, not-yet-actioned findings.
+- **`ecommerce-service`: the audit's three N+1 query findings fixed next, per request.**
+  - `CartServiceImpl.getCart` (the app's single hottest read path) used to cost up to `2N` queries
+    for an `N`-line cart — one `findById` per line plus a lazy `product` load per line. New
+    `ProductVariantRepository#findAllByIdWithProduct` (one `JOIN FETCH` query, any cart size) fixes
+    it; 5 new `CartServiceImplTest.GetCart` cases (this method had zero coverage before).
+  - `entity.Product`'s `variants`/`images`/`productTagAssignments` were mapped unconditionally on
+    every row of the paginated admin product list, up to 60 extra lazy-load queries for a 20-row
+    page. Fixed with `@BatchSize(size = 20)` on all three collections — Hibernate now batches every
+    pending same-type collection into one `IN (...)` query instead of one per product.
+  - `CouponRedemptionServiceImpl.listAvailable` (called on every coupon-picker open) used to query
+    a redemption count once per candidate coupon. New grouped
+    `countGroupedByCouponId`/`countGroupedByCouponIdForOwner` queries fix it, while preserving the
+    original "zero limits configured → zero count queries" short-circuit exactly; 3 new test cases.
+  - 8 new tests total. 344 unit tests total (up from 336), verified via a real `mvn test` run
+    (JDK 21). See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full
+    detail.
+- **`ecommerce-service`: the audit's `PaymentHandoffService` God-class finding fixed next, per
+  request — split into `orderstatus.PaymentHandoffService` (charge lifecycle:
+  `startPaymentProcessing`/`resolvePayment`) and new `orderstatus.PaymentCancellationService`
+  (cancellation/refund lifecycle: `applyCancellation`/`applyGatewayCancellation`/
+  `applyRefundResult`, plus its own `CancellationResult` record).** The ~430-line original spanned
+  three lifecycles that only share one seam — `applyGatewayCancellation`'s `ALREADY_RESOLVED`
+  branch delegates straight into `resolvePayment`'s own `cancelRequested`-aware handling —
+  so `PaymentCancellationService` takes a one-directional dependency on `PaymentHandoffService` for
+  that one call only; no dependency runs the other way. Each of the three `OutboxEvent`-publish
+  helper methods the original class held turned out to be used by exactly one of the two
+  post-split lifecycles, so no shared "outbox publisher" component was needed — each just moved
+  with its own call site. `OrderServiceImpl` now injects both services; `StripeWebhookService`/
+  `OrderReconciliationJob` are untouched (both only ever called `resolvePayment`, which stayed put).
+  `PaymentHandoffServiceTest` now covers only the charge lifecycle; new
+  `PaymentCancellationServiceTest` covers the rest, mocking `PaymentHandoffService` for the
+  `ALREADY_RESOLVED` delegation. Same 25 test methods as before, just split across two files — 344
+  unit tests total, unchanged, verified via a real `mvn test` run (JDK 21). See
+  `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full detail.
+- **`ecommerce-service`: the audit's remaining findings fixed next, per request ("go ahead with all
+  of them") — six real changes plus one investigated-and-left-alone.**
+  - Investigated the duplicated `PaymentSucceededOutboxEventHandler.Payload`/
+    `PaymentRefundedOutboxEventHandler.Payload` records and left them alone — a reactor-wide
+    convention (`ProductChangedOutboxEventHandler`'s own Javadoc) deliberately keeps event payloads
+    per-handler to avoid a shared DTO becoming a cross-epic contention point; these two just
+    happen to match today, which isn't a real bug to fix.
+  - New `StripeFailureCategoryMapperTest` (16 cases) — this Stripe decline-code mapping had zero
+    coverage before.
+  - New `util.NameNormalizer` — deduplicates a byte-identical `normalizeName` from
+    `ProductCategoryServiceImpl`/`ProductTagServiceImpl`/`ProductAttributeServiceImpl`.
+  - New `infra.service.seed.CsvReader` — deduplicates a byte-identical `readCsv` from
+    `ProductSeeder`/`ProductCategoryAttributeSeeder` (and now backs `CsvSeeder.seed()` itself too).
+  - New `mapper.AddressMapper` (MapStruct) — replaces two hand-written `toAddress` copies in
+    `CheckoutServiceImpl` with the module's own MapStruct convention.
+  - New `config.PaymentProperties`/`config.OrderJobProperties` — consolidate seven separate
+    `@Value`-injected fields (Stripe config across three classes, two order-job durations) into two
+    constructor-bound `@ConfigurationProperties` records.
+  - `CouponRedemptionServiceImpl.resolve`/`listAvailable`'s duplicated active-window check
+    (`startAt`/`endAt` comparison) now shares private `hasStarted`/`hasNotExpired` helpers.
+  - New `orderstatus.RefundReconciliationJob` closes the "queued cancel loses the race to a gateway
+    success" money gap — polls a new `PaymentRepository#findIdsByStatusAndOrderStatus` query for a
+    `Payment` left `SUCCEEDED` on a `CANCELLED` order and applies the missed refund asynchronously;
+    also incidentally catches a synchronous refund call that itself failed during
+    `OrderServiceImpl#cancel`. 4 new `RefundReconciliationJobTest` cases.
+  - 20 new tests total. 364 unit tests total (up from 344), verified via a real `mvn test` run
+    (JDK 21). See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full
+    per-change detail.
 
 ## [0.0.2] — 2026-08-11
 

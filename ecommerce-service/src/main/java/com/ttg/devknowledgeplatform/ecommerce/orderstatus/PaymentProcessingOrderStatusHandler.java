@@ -20,18 +20,21 @@ import org.springframework.stereotype.Component;
  * cancellation is what actually takes effect, not that it gets silently dropped just because the
  * gateway happened to answer first. A queued cancel that resolves through {@link #confirmPayment}
  * still restocks (the sale did happen, if only for a moment, and money was actually captured).
- * <b>Refunding this particular race is deliberately still not wired up</b>, even after Epic 4
- * Phase 6 (US-4.6) gave {@code ConfirmedOrderStatusHandler#cancel}'s own, far more common path a
- * real refund: US-4.6's own acceptance criterion is a shopper cancelling an already-
- * {@code CONFIRMED} order, not this narrower race (a cancel queued while payment is still
- * processing, that then loses the race to a gateway success moments later) — revisit if this gap
- * ever turns out to matter in practice, since {@code orderstatus.PaymentHandoffService
- * #resolvePayment} (this path's own caller) would need the identical "resolve the transition,
- * refund outside any transaction, apply the result" restructuring
- * {@code service.impl.OrderServiceImpl#cancel} already got. One that resolves through
- * {@link #failPayment} needed the exact same {@code release}
- * regardless, so a queued cancel there only changes the final status label from {@code FAILED} to
- * {@code CANCELLED}.
+ * <b>Refunding this particular race synchronously is still not wired up</b> — Epic 4 Phase 6
+ * (US-4.6) gave {@code ConfirmedOrderStatusHandler#cancel}'s own, far more common path a real
+ * <i>synchronous</i> refund, but US-4.6's own acceptance criterion is a shopper cancelling an
+ * already-{@code CONFIRMED} order, not this narrower race (a cancel queued while payment is still
+ * processing, that then loses the race to a gateway success moments later); wiring a synchronous
+ * refund into this path would need {@code orderstatus.PaymentHandoffService#resolvePayment} (this
+ * path's own caller) to take on the identical "resolve the transition, refund outside any
+ * transaction, apply the result" restructuring {@code service.impl.OrderServiceImpl#cancel}
+ * already got, which nothing has asked for. A code-quality-audit follow-up closed the actual money
+ * gap a different way instead, without that restructuring: {@link RefundReconciliationJob} polls
+ * for exactly this end state (a {@code Payment} row {@code SUCCEEDED} on an order that reached
+ * {@code CANCELLED}) and applies the missed refund asynchronously — not instant, but the money no
+ * longer sits unrefunded forever. One that resolves through {@link #failPayment} needed the exact
+ * same {@code release} regardless, so a queued cancel there only changes the final status label
+ * from {@code FAILED} to {@code CANCELLED}.
  */
 @Component
 @RequiredArgsConstructor

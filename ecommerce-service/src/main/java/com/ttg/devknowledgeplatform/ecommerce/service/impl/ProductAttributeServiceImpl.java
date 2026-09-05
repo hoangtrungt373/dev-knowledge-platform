@@ -8,6 +8,7 @@ import com.ttg.devknowledgeplatform.ecommerce.repository.ProductAttributeReposit
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductCategoryAttributeRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.spec.ProductAttributeSpecification;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductAttributeService;
+import com.ttg.devknowledgeplatform.ecommerce.util.NameNormalizer;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,7 +35,7 @@ public class ProductAttributeServiceImpl implements ProductAttributeService {
 
     @Override
     public ProductAttribute create(String name, List<String> values) {
-        String normalizedName = normalizeName(name);
+        String normalizedName = NameNormalizer.normalize(name);
         Validator.isFalse(productAttributeRepository.existsByNameIgnoreCase(normalizedName),
                 EcommerceErrorCode.PRODUCT_ATTRIBUTE_NAME_CONFLICT, normalizedName);
 
@@ -50,7 +51,7 @@ public class ProductAttributeServiceImpl implements ProductAttributeService {
     @Override
     public ProductAttribute update(Integer id, String name, List<String> values) {
         ProductAttribute attribute = findById(id);
-        String normalizedName = normalizeName(name);
+        String normalizedName = NameNormalizer.normalize(name);
 
         if (!attribute.getName().equalsIgnoreCase(normalizedName)) {
             Validator.isFalse(productAttributeRepository.existsByNameIgnoreCaseAndIdNot(normalizedName, id),
@@ -113,9 +114,5 @@ public class ProductAttributeServiceImpl implements ProductAttributeService {
             attributeValue.setDisplayOrder(i);
             attribute.getValues().add(attributeValue);
         }
-    }
-
-    private static String normalizeName(String name) {
-        return name == null ? "" : name.trim();
     }
 }

@@ -5,22 +5,16 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategory;
 import com.ttg.devknowledgeplatform.ecommerce.entity.ProductCategoryAttribute;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductAttributeRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductCategoryRepository;
+import com.ttg.devknowledgeplatform.infra.service.seed.CsvReader;
 import com.ttg.devknowledgeplatform.infra.service.seed.Seeder;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -128,30 +122,9 @@ public class ProductCategoryAttributeSeeder implements Seeder {
 
     private Map<String, List<CSVRecord>> groupByCategoryName() {
         Map<String, List<CSVRecord>> byCategory = new LinkedHashMap<>();
-        for (CSVRecord record : readCsv(CSV_LOCATION)) {
+        for (CSVRecord record : CsvReader.readAll(CSV_LOCATION)) {
             byCategory.computeIfAbsent(record.get("categoryName"), k -> new ArrayList<>()).add(record);
         }
         return byCategory;
-    }
-
-    /** Same read shape as {@code infra}'s {@code CsvSeeder} (and {@code ProductSeeder}'s own
-     * identical duplicate of it), duplicated here rather than reused — that class's {@code seed()}
-     * is {@code final} and owns the whole read-and-persist loop, which doesn't fit a seeder that
-     * must gather every row for one category before persisting anything. */
-    private static Iterable<CSVRecord> readCsv(String classpathLocation) {
-        ClassPathResource resource = new ClassPathResource(classpathLocation);
-        CSVFormat format = CSVFormat.DEFAULT.builder()
-                .setHeader()
-                .setSkipHeaderRecord(true)
-                .setIgnoreSurroundingSpaces(true)
-                .setTrim(true)
-                .build();
-        try (InputStream in = resource.getInputStream();
-             InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8);
-             CSVParser parser = format.parse(reader)) {
-            return parser.getRecords();
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to read seed CSV: " + classpathLocation, e);
-        }
     }
 }

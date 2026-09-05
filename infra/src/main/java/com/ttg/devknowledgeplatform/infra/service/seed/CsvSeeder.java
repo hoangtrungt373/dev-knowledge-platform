@@ -1,15 +1,7 @@
 package com.ttg.devknowledgeplatform.infra.service.seed;
 
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
-import org.springframework.core.io.ClassPathResource;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 
 /**
  * Template Method skeleton for idempotent startup data seeding from a classpath CSV file.
@@ -56,29 +48,14 @@ public abstract class CsvSeeder<T> implements Seeder {
     public final int seed() {
         int inserted = 0;
         int skipped = 0;
-        ClassPathResource resource = new ClassPathResource(csvClasspathLocation());
-        CSVFormat format = CSVFormat.DEFAULT.builder()
-                .setHeader()
-                .setSkipHeaderRecord(true)
-                .setIgnoreSurroundingSpaces(true)
-                .setTrim(true)
-                .build();
-
-        try (InputStream in = resource.getInputStream();
-             InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8);
-             CSVParser parser = format.parse(reader)) {
-
-            for (CSVRecord record : parser) {
-                if (alreadyExists(record)) {
-                    skipped++;
-                    log.debug("{}: skipping existing row '{}'", getClass().getSimpleName(), naturalKey(record));
-                    continue;
-                }
-                persist(buildEntity(record));
-                inserted++;
+        for (CSVRecord record : CsvReader.readAll(csvClasspathLocation())) {
+            if (alreadyExists(record)) {
+                skipped++;
+                log.debug("{}: skipping existing row '{}'", getClass().getSimpleName(), naturalKey(record));
+                continue;
             }
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to read seed CSV: " + csvClasspathLocation(), e);
+            persist(buildEntity(record));
+            inserted++;
         }
 
         log.info("{}: inserted {} row(s), skipped {} already-present row(s)",

@@ -20,7 +20,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Implementation of {@link CartService} — Redis is the primary store here (not a cache), per
@@ -78,11 +79,26 @@ public class CartServiceImpl implements CartService {
     @Override
     public Cart getCart(String userUuid) {
         Map<Object, Object> raw = redisTemplate.opsForHash().entries(cartKey(userUuid));
+        if (raw.isEmpty()) {
+            return new Cart(List.of());
+        }
+        // Bug fix: this used to call productVariantRepository.findById(variantId) once per line
+        // (plus a second, lazy-loaded query the instant anything read variant.getProduct()) — an
+        // N+1 query pattern on the app's single hottest read path (every cart view *and* every
+        // checkout preview/confirm call). One batch, fetch-joined query resolves every line's
+        // variant+product in a single round trip regardless of cart size — see
+        // ProductVariantRepository#findAllByIdWithProduct's own Javadoc.
+        List<Integer> variantIds = raw.keySet().stream()
+                .map(rawVariantId -> Integer.valueOf((String) rawVariantId))
+                .toList();
+        Map<Integer, ProductVariant> variantsById = productVariantRepository.findAllByIdWithProduct(variantIds).stream()
+                .collect(Collectors.toMap(ProductVariant::getId, Function.identity()));
+
         List<CartLine> lines = new ArrayList<>();
         raw.forEach((rawVariantId, rawQuantity) -> {
             Integer variantId = Integer.valueOf((String) rawVariantId);
             int quantity = Integer.parseInt((String) rawQuantity);
-            lines.add(resolveLine(variantId, quantity));
+            lines.add(resolveLine(variantsById.get(variantId), variantId, quantity));
         });
         return new Cart(lines);
     }
@@ -98,12 +114,11 @@ public class CartServiceImpl implements CartService {
         log.info("Removed variantIds={} from cart for userUuid={}", variantIds, userUuid);
     }
 
-    private CartLine resolveLine(Integer variantId, int quantity) {
-        Optional<ProductVariant> variant = productVariantRepository.findById(variantId);
-        if (variant.isEmpty() || !variant.get().getProduct().isActive()) {
+    private CartLine resolveLine(ProductVariant variant, Integer variantId, int quantity) {
+        if (variant == null || !variant.getProduct().isActive()) {
             return CartLine.unavailable(variantId, quantity);
         }
-        return CartLine.available(variantId, quantity, variant.get());
+        return CartLine.available(variantId, quantity, variant);
     }
 
     /** Soft existence/active check only (US-2.1) — no stock reservation at add-to-cart time; that's Epic 3's concern. */

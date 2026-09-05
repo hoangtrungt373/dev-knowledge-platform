@@ -7,6 +7,7 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.enums.CouponTarget;
 import com.ttg.devknowledgeplatform.ecommerce.enums.CouponType;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
+import com.ttg.devknowledgeplatform.ecommerce.repository.CouponRedemptionCount;
 import com.ttg.devknowledgeplatform.ecommerce.repository.CouponRedemptionRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.CouponRepository;
 import com.ttg.devknowledgeplatform.ecommerce.service.CouponRedemptionService;
@@ -22,6 +23,8 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Implementation of {@link CouponRedemptionService}.
@@ -54,12 +57,8 @@ public class CouponRedemptionServiceImpl implements CouponRedemptionService {
         Validator.isTrue(coupon.getTarget() == target, EcommerceErrorCode.COUPON_TARGET_MISMATCH, normalized, target);
 
         Instant now = Instant.now();
-        if (coupon.getStartAt() != null) {
-            Validator.isTrue(!now.isBefore(coupon.getStartAt()), EcommerceErrorCode.COUPON_NOT_YET_ACTIVE, normalized);
-        }
-        if (coupon.getEndAt() != null) {
-            Validator.isTrue(!now.isAfter(coupon.getEndAt()), EcommerceErrorCode.COUPON_EXPIRED, normalized);
-        }
+        Validator.isTrue(hasStarted(coupon, now), EcommerceErrorCode.COUPON_NOT_YET_ACTIVE, normalized);
+        Validator.isTrue(hasNotExpired(coupon, now), EcommerceErrorCode.COUPON_EXPIRED, normalized);
         if (coupon.getMinSubtotal() != null) {
             Validator.isTrue(subtotal.compareTo(coupon.getMinSubtotal()) >= 0,
                     EcommerceErrorCode.COUPON_MIN_SUBTOTAL_NOT_MET, normalized, coupon.getMinSubtotal());
@@ -101,18 +100,48 @@ public class CouponRedemptionServiceImpl implements CouponRedemptionService {
                 coupon.getId(), coupon.getCode(), order.getId(), discountAmount);
     }
 
+    /**
+     * Bug fix: this used to call {@code couponRedemptionRepository.countByCouponId}/
+     * {@code countByCouponIdAndOwnerUuid} once per candidate coupon inside the filter chain — an
+     * N+1 query pattern hit every time a shopper opens the coupon-picker dialog. Both counts are
+     * now resolved in at most one grouped query each (never more, regardless of how many candidate
+     * coupons there are), and only when at least one candidate actually has that kind of limit set
+     * at all — a coupon list with no redemption limits configured still costs zero count queries,
+     * exactly as before this fix.
+     */
     @Override
     public List<Coupon> listAvailable(CouponTarget target, String ownerUuid) {
         Instant now = Instant.now();
-        return couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(target).stream()
-                .filter(c -> c.getStartAt() == null || !now.isBefore(c.getStartAt()))
-                .filter(c -> c.getEndAt() == null || !now.isAfter(c.getEndAt()))
-                .filter(c -> c.getMaxRedemptions() == null
-                        || couponRedemptionRepository.countByCouponId(c.getId()) < c.getMaxRedemptions())
-                .filter(c -> c.getMaxRedemptionsPerUser() == null
-                        || couponRedemptionRepository.countByCouponIdAndOwnerUuid(c.getId(), ownerUuid)
-                        < c.getMaxRedemptionsPerUser())
+        List<Coupon> candidates = couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(target).stream()
+                .filter(c -> hasStarted(c, now))
+                .filter(c -> hasNotExpired(c, now))
                 .toList();
+        if (candidates.isEmpty()) {
+            return candidates;
+        }
+
+        List<Integer> globalLimitedIds = candidates.stream()
+                .filter(c -> c.getMaxRedemptions() != null).map(Coupon::getId).toList();
+        Map<Integer, Long> globalCounts = globalLimitedIds.isEmpty()
+                ? Map.of()
+                : toCountMap(couponRedemptionRepository.countGroupedByCouponId(globalLimitedIds));
+
+        List<Integer> perUserLimitedIds = candidates.stream()
+                .filter(c -> c.getMaxRedemptionsPerUser() != null).map(Coupon::getId).toList();
+        Map<Integer, Long> perUserCounts = perUserLimitedIds.isEmpty()
+                ? Map.of()
+                : toCountMap(couponRedemptionRepository.countGroupedByCouponIdForOwner(perUserLimitedIds, ownerUuid));
+
+        return candidates.stream()
+                .filter(c -> c.getMaxRedemptions() == null
+                        || globalCounts.getOrDefault(c.getId(), 0L) < c.getMaxRedemptions())
+                .filter(c -> c.getMaxRedemptionsPerUser() == null
+                        || perUserCounts.getOrDefault(c.getId(), 0L) < c.getMaxRedemptionsPerUser())
+                .toList();
+    }
+
+    private static Map<Integer, Long> toCountMap(List<CouponRedemptionCount> counts) {
+        return counts.stream().collect(Collectors.toMap(CouponRedemptionCount::getCouponId, CouponRedemptionCount::getTotal));
     }
 
     @Override
@@ -130,5 +159,28 @@ public class CouponRedemptionServiceImpl implements CouponRedemptionService {
 
     private static String normalizeCode(String code) {
         return code == null ? "" : code.trim().toUpperCase();
+    }
+
+    /**
+     * The active-window half of eligibility, shared by {@link #resolve} (which needs to distinguish
+     * "not yet active" from "expired" for its own distinct error codes) and {@link #listAvailable}
+     * (which only needs a plain keep/discard predicate) — a code-quality-audit finding: before this
+     * extraction, both methods independently re-typed the identical {@code startAt}/{@code endAt}
+     * comparison semantics, with no shared code path to keep them from silently drifting apart if a
+     * future change touched one but not the other. The redemption-count checks
+     * ({@code maxRedemptions}/{@code maxRedemptionsPerUser}) and {@code minSubtotal} are
+     * deliberately <em>not</em> unified this same way: {@link #resolve}'s own single-coupon count
+     * query and {@link #listAvailable}'s batched grouped-count query are intentionally different
+     * queries (unifying them would undo the N+1 fix {@link #listAvailable} already has), and
+     * {@code minSubtotal} is a one-sided rule {@link #listAvailable} deliberately skips (see that
+     * method's own Javadoc) — there is no shared logic to extract for either.
+     */
+    private static boolean hasStarted(Coupon coupon, Instant now) {
+        return coupon.getStartAt() == null || !now.isBefore(coupon.getStartAt());
+    }
+
+    /** See {@link #hasStarted}'s own Javadoc. */
+    private static boolean hasNotExpired(Coupon coupon, Instant now) {
+        return coupon.getEndAt() == null || !now.isAfter(coupon.getEndAt());
     }
 }

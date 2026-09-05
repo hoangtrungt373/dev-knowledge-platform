@@ -127,6 +127,15 @@ Module-local guidance for `infra`. Read alongside the root `CLAUDE.md`.
   (e.g. `content-service`'s `QuestionAnswerSeeder`, `social-service`'s `FriendGraphSeeder`/
   `DmThreadSeeder`, which each persist more than one entity per unit of work) implements its own
   `seed()` instead of extending this.
+- `service/seed/CsvReader` — a code-quality-audit finding: `ecommerce-service`'s own `ProductSeeder`
+  (joins two CSV files before persisting anything) and `ProductCategoryAttributeSeeder` (must
+  gather every row for one category before persisting) both correctly implement `Seeder` directly
+  rather than extending `CsvSeeder<T>` above, since neither's shape fits `CsvSeeder.seed()`'s
+  one-row-at-a-time template — but that had left each of them carrying its own byte-identical
+  private `readCsv` method (the same `CSVFormat`/try-with-resources boilerplate `CsvSeeder.seed()`
+  itself needs). Extracted here as a small, directly-callable utility both those seeders now use;
+  `CsvSeeder.seed()` itself was refactored to call it internally too, so there's exactly one copy of
+  this boilerplate in the whole reactor instead of three.
 - `service/seed/Seeder` — documentation-only marker interface (`int seed()`) every seeder in the
   reactor implements, `CsvSeeder<T>` included — same "Find Implementations" purpose as this
   module's own `ApplicationEventHandler` marker for event handlers. **Not** used for polymorphic

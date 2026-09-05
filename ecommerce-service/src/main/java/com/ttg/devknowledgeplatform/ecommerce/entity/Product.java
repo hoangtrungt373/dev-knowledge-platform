@@ -16,6 +16,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
+import org.hibernate.annotations.BatchSize;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,6 +39,20 @@ import java.util.List;
  * <p>{@link #productTagAssignments}, by contrast, *is* cascade-owned here (see the field's own
  * Javadoc) — mirrors {@code content-service}'s {@code ContentItem.contentItemTags} ownership of
  * its own many-to-many join rows.
+ *
+ * <p><b>Bug fix: all three collections gained {@code @BatchSize(size = 20)}.</b> {@code
+ * mapper.ProductMapper#toResponse} maps all three unconditionally — including on the paginated
+ * admin list ({@code service.impl.ProductServiceImpl#list}), where a 20-row page used to trigger
+ * up to 60 extra lazy-load {@code SELECT}s (one per collection per row), silently — {@code
+ * spring.jpa.open-in-view} means nothing ever errors, it just gets slower as the catalog grows.
+ * {@code @BatchSize} doesn't change *what* gets fetched (still lazy, still one query per distinct
+ * collection the first time something in the page actually reads it) — it changes *how many rows
+ * that query covers*: Hibernate batches every not-yet-initialized collection of the same type
+ * still pending in the current persistence context into one {@code WHERE product_id IN (...)}
+ * query instead of one query per product. A 20-row page now costs at most 3 extra queries total
+ * (one per collection type) instead of up to 60, regardless of how many rows are on the page — and
+ * every other lazy-load site for these same collections benefits identically, not just this one
+ * list endpoint, since the annotation lives on the mapping itself rather than one query hint.
  */
 @Entity
 @Table(name = "PRODUCT", schema = "ecommerce")
@@ -66,9 +81,11 @@ public class Product extends AbstractEntity {
     private ProductCategory productCategory;
 
     @OneToMany(mappedBy = "product", fetch = FetchType.LAZY)
+    @BatchSize(size = 20)
     private List<ProductVariant> variants = new ArrayList<>();
 
     @OneToMany(mappedBy = "product", fetch = FetchType.LAZY)
+    @BatchSize(size = 20)
     private List<ProductImage> images = new ArrayList<>();
 
     /**
@@ -78,5 +95,6 @@ public class Product extends AbstractEntity {
      * {@code content-service}'s {@code ContentItem.contentItemTags} is managed.
      */
     @OneToMany(mappedBy = "product", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 20)
     private List<ProductTagAssignment> productTagAssignments = new ArrayList<>();
 }

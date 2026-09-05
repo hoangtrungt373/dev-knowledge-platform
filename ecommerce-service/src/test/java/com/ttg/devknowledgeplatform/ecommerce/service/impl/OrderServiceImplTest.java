@@ -6,8 +6,10 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.OrderStatusHandlerRegistry;
+import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentCancellationService;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentHandoffService;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentCancellationResult;
+import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayException;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentResult;
 import com.ttg.devknowledgeplatform.ecommerce.payment.RefundResult;
@@ -24,6 +26,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -41,9 +44,10 @@ import static org.mockito.Mockito.when;
  * Unit tests for {@link OrderServiceImpl} — US-3.5's ownership-checked get/list, US-3.7/3.8's
  * admin ship/deliver (thin wrappers around a mocked {@link OrderStatusHandlerRegistry}), and
  * US-3.3's {@link OrderServiceImpl#initiatePayment}/US-4.6's {@link OrderServiceImpl#cancel}
- * orchestration (mocked {@link PaymentHandoffService}/{@link PaymentGatewayPort} — the durable
- * steps and the gateway calls themselves are each covered by their own dedicated test class, not
- * re-verified here; this class only pins down the calling order/conditional-refund wiring).
+ * orchestration (mocked {@link PaymentHandoffService}/{@link PaymentCancellationService}/
+ * {@link PaymentGatewayPort} — the durable steps and the gateway calls themselves are each covered
+ * by their own dedicated test class, not re-verified here; this class only pins down the calling
+ * order/conditional-refund wiring).
  */
 @ExtendWith(MockitoExtension.class)
 class OrderServiceImplTest {
@@ -57,6 +61,8 @@ class OrderServiceImplTest {
     private OrderStatusHandlerRegistry orderStatusHandlerRegistry;
     @Mock
     private PaymentHandoffService paymentHandoffService;
+    @Mock
+    private PaymentCancellationService paymentCancellationService;
     @Mock
     private PaymentGatewayPort paymentGatewayPort;
 
@@ -162,26 +168,26 @@ class OrderServiceImplTest {
         void returnsTheCancelledOrderAndNeverTouchesTheGatewayWhenNoRefundOrGatewayCancelIsOwed() {
             Order cancelled = orderOwnedBy(OWNER_UUID);
             cancelled.setStatus(OrderStatus.CANCELLED);
-            PaymentHandoffService.CancellationResult cancellation =
-                    new PaymentHandoffService.CancellationResult(cancelled, false, false, null, null, null);
-            when(paymentHandoffService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
+            PaymentCancellationService.CancellationResult cancellation =
+                    new PaymentCancellationService.CancellationResult(cancelled, false, false, null, null, null);
+            when(paymentCancellationService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
 
             Order result = service.cancel(1, OWNER_UUID);
 
             assertThat(result).isSameAs(cancelled);
             verify(paymentGatewayPort, never()).refund(any(), any());
-            verify(paymentHandoffService, never()).applyRefundResult(any(), any());
+            verify(paymentCancellationService, never()).applyRefundResult(any(), any());
             verify(paymentGatewayPort, never()).cancelUnconfirmed(any());
-            verify(paymentHandoffService, never()).applyGatewayCancellation(any(), any());
+            verify(paymentCancellationService, never()).applyGatewayCancellation(any(), any());
         }
 
         @Test
         void issuesARefundAndAppliesTheResultWhenOneIsOwed() {
             Order cancelled = orderOwnedBy(OWNER_UUID);
             cancelled.setStatus(OrderStatus.CANCELLED);
-            PaymentHandoffService.CancellationResult cancellation = new PaymentHandoffService.CancellationResult(
+            PaymentCancellationService.CancellationResult cancellation = new PaymentCancellationService.CancellationResult(
                     cancelled, true, false, 100, "gw-ref-1", new BigDecimal("25.00"));
-            when(paymentHandoffService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
+            when(paymentCancellationService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
             RefundResult refundResult = RefundResult.succeeded("gw-refund-1");
             when(paymentGatewayPort.refund("gw-ref-1", new BigDecimal("25.00"))).thenReturn(refundResult);
 
@@ -189,7 +195,7 @@ class OrderServiceImplTest {
 
             assertThat(result).isSameAs(cancelled);
             verify(paymentGatewayPort).refund("gw-ref-1", new BigDecimal("25.00"));
-            verify(paymentHandoffService).applyRefundResult(100, refundResult);
+            verify(paymentCancellationService).applyRefundResult(100, refundResult);
             verify(paymentGatewayPort, never()).cancelUnconfirmed(any());
         }
 
@@ -200,27 +206,27 @@ class OrderServiceImplTest {
             // resolve the order otherwise (see PaymentHandoffService's own Javadoc for the incident).
             Order stillProcessing = orderOwnedBy(OWNER_UUID);
             stillProcessing.setStatus(OrderStatus.PAYMENT_PROCESSING);
-            PaymentHandoffService.CancellationResult cancellation = new PaymentHandoffService.CancellationResult(
+            PaymentCancellationService.CancellationResult cancellation = new PaymentCancellationService.CancellationResult(
                     stillProcessing, false, true, 100, "gw-ref-1", null);
-            when(paymentHandoffService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
+            when(paymentCancellationService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
             PaymentCancellationResult gatewayResult = PaymentCancellationResult.cancelled();
             when(paymentGatewayPort.cancelUnconfirmed("gw-ref-1")).thenReturn(gatewayResult);
             Order finallyCancelled = orderOwnedBy(OWNER_UUID);
             finallyCancelled.setStatus(OrderStatus.CANCELLED);
-            when(paymentHandoffService.applyGatewayCancellation(1, gatewayResult)).thenReturn(finallyCancelled);
+            when(paymentCancellationService.applyGatewayCancellation(1, gatewayResult)).thenReturn(finallyCancelled);
 
             Order result = service.cancel(1, OWNER_UUID);
 
             assertThat(result).isSameAs(finallyCancelled);
             verify(paymentGatewayPort).cancelUnconfirmed("gw-ref-1");
-            verify(paymentHandoffService).applyGatewayCancellation(1, gatewayResult);
+            verify(paymentCancellationService).applyGatewayCancellation(1, gatewayResult);
             verify(paymentGatewayPort, never()).refund(any(), any());
-            verify(paymentHandoffService, never()).applyRefundResult(any(), any());
+            verify(paymentCancellationService, never()).applyRefundResult(any(), any());
         }
 
         @Test
         void propagatesAnyExceptionFromApplyCancellationWithoutTouchingTheGateway() {
-            when(paymentHandoffService.applyCancellation(1, OTHER_UUID))
+            when(paymentCancellationService.applyCancellation(1, OTHER_UUID))
                     .thenThrow(new BusinessException(EcommerceErrorCode.ORDER_NOT_FOUND, 1));
 
             assertThatThrownBy(() -> service.cancel(1, OTHER_UUID))
@@ -228,9 +234,110 @@ class OrderServiceImplTest {
                     .extracting(e -> ((ApiException) e).getErrorCode())
                     .isEqualTo(EcommerceErrorCode.ORDER_NOT_FOUND);
             verify(paymentGatewayPort, never()).refund(any(), any());
-            verify(paymentHandoffService, never()).applyRefundResult(any(), any());
+            verify(paymentCancellationService, never()).applyRefundResult(any(), any());
             verify(paymentGatewayPort, never()).cancelUnconfirmed(any());
-            verify(paymentHandoffService, never()).applyGatewayCancellation(any(), any());
+            verify(paymentCancellationService, never()).applyGatewayCancellation(any(), any());
+        }
+
+        @Test
+        void recoversWhenApplyGatewayCancellationLosesARaceAndTheOrderIsAlreadyCancelled() {
+            // Bug fix regression: the webhook/reconciliation (or a second concurrent click)
+            // finished resolving this same order to CANCELLED a moment before this call's own
+            // applyGatewayCancellation ran — that's a race this method should tolerate, not error on.
+            Order stillProcessing = orderOwnedBy(OWNER_UUID);
+            stillProcessing.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            PaymentCancellationService.CancellationResult cancellation = new PaymentCancellationService.CancellationResult(
+                    stillProcessing, false, true, 100, "gw-ref-1", null);
+            when(paymentCancellationService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
+            PaymentCancellationResult gatewayResult = PaymentCancellationResult.cancelled();
+            when(paymentGatewayPort.cancelUnconfirmed("gw-ref-1")).thenReturn(gatewayResult);
+            when(paymentCancellationService.applyGatewayCancellation(1, gatewayResult))
+                    .thenThrow(new BusinessException(EcommerceErrorCode.ORDER_INVALID_STATUS_TRANSITION, "failPayment", OrderStatus.CANCELLED));
+            Order alreadyCancelled = orderOwnedBy(OWNER_UUID);
+            alreadyCancelled.setStatus(OrderStatus.CANCELLED);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(alreadyCancelled));
+
+            Order result = service.cancel(1, OWNER_UUID);
+
+            assertThat(result).isSameAs(alreadyCancelled);
+        }
+
+        @Test
+        void rethrowsWhenTheOrderIsNotActuallyCancelledAfterAStatusTransitionConflict() {
+            // The order ended up somewhere other than CANCELLED (e.g. still PAYMENT_PROCESSING, or
+            // a genuinely different rejection) — this is not the tolerated race, so it must still
+            // surface as a real error rather than being silently swallowed.
+            Order stillProcessing = orderOwnedBy(OWNER_UUID);
+            stillProcessing.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            PaymentCancellationService.CancellationResult cancellation = new PaymentCancellationService.CancellationResult(
+                    stillProcessing, false, true, 100, "gw-ref-1", null);
+            when(paymentCancellationService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
+            PaymentCancellationResult gatewayResult = PaymentCancellationResult.cancelled();
+            when(paymentGatewayPort.cancelUnconfirmed("gw-ref-1")).thenReturn(gatewayResult);
+            when(paymentCancellationService.applyGatewayCancellation(1, gatewayResult))
+                    .thenThrow(new BusinessException(EcommerceErrorCode.ORDER_INVALID_STATUS_TRANSITION, "failPayment", OrderStatus.SHIPPED));
+            Order stillNotCancelled = orderOwnedBy(OWNER_UUID);
+            stillNotCancelled.setStatus(OrderStatus.SHIPPED);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(stillNotCancelled));
+
+            assertThatThrownBy(() -> service.cancel(1, OWNER_UUID))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.ORDER_INVALID_STATUS_TRANSITION);
+        }
+
+        @Test
+        void recoversFromAnOptimisticLockConflictWhenTheOrderIsAlreadyCancelled() {
+            Order stillProcessing = orderOwnedBy(OWNER_UUID);
+            stillProcessing.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            PaymentCancellationService.CancellationResult cancellation = new PaymentCancellationService.CancellationResult(
+                    stillProcessing, false, true, 100, "gw-ref-1", null);
+            when(paymentCancellationService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
+            PaymentCancellationResult gatewayResult = PaymentCancellationResult.cancelled();
+            when(paymentGatewayPort.cancelUnconfirmed("gw-ref-1")).thenReturn(gatewayResult);
+            when(paymentCancellationService.applyGatewayCancellation(1, gatewayResult))
+                    .thenThrow(new ObjectOptimisticLockingFailureException(Order.class, 1));
+            Order alreadyCancelled = orderOwnedBy(OWNER_UUID);
+            alreadyCancelled.setStatus(OrderStatus.CANCELLED);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(alreadyCancelled));
+
+            Order result = service.cancel(1, OWNER_UUID);
+
+            assertThat(result).isSameAs(alreadyCancelled);
+        }
+
+        @Test
+        void translatesAPaymentGatewayExceptionFromRefundIntoAFriendlyApiException() {
+            Order cancelled = orderOwnedBy(OWNER_UUID);
+            cancelled.setStatus(OrderStatus.CANCELLED);
+            PaymentCancellationService.CancellationResult cancellation = new PaymentCancellationService.CancellationResult(
+                    cancelled, true, false, 100, "gw-ref-1", new BigDecimal("25.00"));
+            when(paymentCancellationService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
+            when(paymentGatewayPort.refund("gw-ref-1", new BigDecimal("25.00")))
+                    .thenThrow(new PaymentGatewayException("Stripe refund failed"));
+
+            assertThatThrownBy(() -> service.cancel(1, OWNER_UUID))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PAYMENT_GATEWAY_UNAVAILABLE);
+            verify(paymentCancellationService, never()).applyRefundResult(any(), any());
+        }
+
+        @Test
+        void translatesAPaymentGatewayExceptionFromCancelUnconfirmedIntoAFriendlyApiException() {
+            Order stillProcessing = orderOwnedBy(OWNER_UUID);
+            stillProcessing.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            PaymentCancellationService.CancellationResult cancellation = new PaymentCancellationService.CancellationResult(
+                    stillProcessing, false, true, 100, "gw-ref-1", null);
+            when(paymentCancellationService.applyCancellation(1, OWNER_UUID)).thenReturn(cancellation);
+            when(paymentGatewayPort.cancelUnconfirmed("gw-ref-1"))
+                    .thenThrow(new PaymentGatewayException("Stripe cancel failed"));
+
+            assertThatThrownBy(() -> service.cancel(1, OWNER_UUID))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PAYMENT_GATEWAY_UNAVAILABLE);
+            verify(paymentCancellationService, never()).applyGatewayCancellation(any(), any());
         }
     }
 
@@ -343,6 +450,27 @@ class OrderServiceImplTest {
             assertThatThrownBy(() -> service.initiatePayment(1, OWNER_UUID)).isInstanceOf(ApiException.class);
 
             verify(paymentGatewayPort, never()).charge(any(), any());
+            verify(paymentHandoffService, never()).resolvePayment(any(), any());
+        }
+
+        @Test
+        void translatesAPaymentGatewayExceptionFromChargeIntoAFriendlyApiException() {
+            // Bug fix: a genuine gateway outage during charge() must not leak as a raw, unmapped
+            // 500 — the PAYMENT_PROCESSING transition above has already committed durably by this
+            // point regardless (OrderReconciliationJob will still resolve it later), so translating
+            // this into a friendly error only changes what the caller sees, not that guarantee.
+            Order pending = orderOwnedBy(OWNER_UUID);
+            pending.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            pending.setIdempotencyKey("1");
+            pending.setTotal(new BigDecimal("25.00"));
+            when(paymentHandoffService.startPaymentProcessing(1, OWNER_UUID)).thenReturn(pending);
+            when(paymentGatewayPort.charge("1", new BigDecimal("25.00")))
+                    .thenThrow(new PaymentGatewayException("Stripe charge failed"));
+
+            assertThatThrownBy(() -> service.initiatePayment(1, OWNER_UUID))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.PAYMENT_GATEWAY_UNAVAILABLE);
             verify(paymentHandoffService, never()).resolvePayment(any(), any());
         }
     }

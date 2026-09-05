@@ -8,22 +8,16 @@ import com.ttg.devknowledgeplatform.ecommerce.repository.ProductRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductTagRepository;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductCommands;
 import com.ttg.devknowledgeplatform.ecommerce.service.ProductService;
+import com.ttg.devknowledgeplatform.infra.service.seed.CsvReader;
 import com.ttg.devknowledgeplatform.infra.service.seed.Seeder;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -80,7 +74,7 @@ public class ProductSeeder implements Seeder {
 
         int inserted = 0;
         int skipped = 0;
-        for (CSVRecord record : readCsv(PRODUCTS_CSV)) {
+        for (CSVRecord record : CsvReader.readAll(PRODUCTS_CSV)) {
             String name = record.get("name");
             if (productRepository.findByNameIgnoreCase(name).isPresent()) {
                 skipped++;
@@ -186,29 +180,9 @@ public class ProductSeeder implements Seeder {
 
     private Map<String, List<CSVRecord>> readVariantsGroupedByProductName() {
         Map<String, List<CSVRecord>> byProduct = new LinkedHashMap<>();
-        for (CSVRecord record : readCsv(VARIANTS_CSV)) {
+        for (CSVRecord record : CsvReader.readAll(VARIANTS_CSV)) {
             byProduct.computeIfAbsent(record.get("productName"), k -> new ArrayList<>()).add(record);
         }
         return byProduct;
-    }
-
-    /** Same read shape as {@code infra}'s {@code CsvSeeder}, duplicated here rather than reused —
-     * that class's {@code seed()} is {@code final} and owns the whole read-and-persist loop, which
-     * doesn't fit a seeder that needs to read two files before persisting anything. */
-    private static Iterable<CSVRecord> readCsv(String classpathLocation) {
-        ClassPathResource resource = new ClassPathResource(classpathLocation);
-        CSVFormat format = CSVFormat.DEFAULT.builder()
-                .setHeader()
-                .setSkipHeaderRecord(true)
-                .setIgnoreSurroundingSpaces(true)
-                .setTrim(true)
-                .build();
-        try (InputStream in = resource.getInputStream();
-             InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8);
-             CSVParser parser = format.parse(reader)) {
-            return parser.getRecords();
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to read seed CSV: " + classpathLocation, e);
-        }
     }
 }

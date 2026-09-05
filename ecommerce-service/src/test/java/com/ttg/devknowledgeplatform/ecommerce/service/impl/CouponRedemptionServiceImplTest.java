@@ -8,6 +8,7 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.enums.CouponTarget;
 import com.ttg.devknowledgeplatform.ecommerce.enums.CouponType;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
+import com.ttg.devknowledgeplatform.ecommerce.repository.CouponRedemptionCount;
 import com.ttg.devknowledgeplatform.ecommerce.repository.CouponRedemptionRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.CouponRepository;
 import com.ttg.devknowledgeplatform.ecommerce.service.CouponRedemptionService;
@@ -31,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -313,6 +315,21 @@ class CouponRedemptionServiceImplTest {
             return c;
         }
 
+        /** A minimal {@link CouponRedemptionCount} row — the grouped batch query's own return shape. */
+        private CouponRedemptionCount count(Integer couponId, long total) {
+            return new CouponRedemptionCount() {
+                @Override
+                public Integer getCouponId() {
+                    return couponId;
+                }
+
+                @Override
+                public Long getTotal() {
+                    return total;
+                }
+            };
+        }
+
         @Test
         void includesACurrentlyActiveCouponWithNoConditions() {
             Coupon c = candidate("SPRING15");
@@ -360,7 +377,7 @@ class CouponRedemptionServiceImplTest {
             c.setMaxRedemptions(3);
             when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SUBTOTAL))
                     .thenReturn(List.of(c));
-            when(couponRedemptionRepository.countByCouponId(2)).thenReturn(3L);
+            when(couponRedemptionRepository.countGroupedByCouponId(List.of(2))).thenReturn(List.of(count(2, 3L)));
 
             assertThat(service.listAvailable(CouponTarget.SUBTOTAL, OWNER_UUID)).isEmpty();
         }
@@ -371,7 +388,20 @@ class CouponRedemptionServiceImplTest {
             c.setMaxRedemptions(3);
             when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SUBTOTAL))
                     .thenReturn(List.of(c));
-            when(couponRedemptionRepository.countByCouponId(2)).thenReturn(2L);
+            when(couponRedemptionRepository.countGroupedByCouponId(List.of(2))).thenReturn(List.of(count(2, 2L)));
+
+            assertThat(service.listAvailable(CouponTarget.SUBTOTAL, OWNER_UUID)).containsExactly(c);
+        }
+
+        @Test
+        void treatsACouponMissingFromTheGroupedCountResultAsZeroRedemptions() {
+            // A coupon with no redemptions at all has no GROUP BY row — must not be misread as "at
+            // its limit" (or throw) just because the grouped query has nothing to say about it.
+            Coupon c = candidate("NEVERREDEEMED");
+            c.setMaxRedemptions(3);
+            when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SUBTOTAL))
+                    .thenReturn(List.of(c));
+            when(couponRedemptionRepository.countGroupedByCouponId(List.of(2))).thenReturn(List.of());
 
             assertThat(service.listAvailable(CouponTarget.SUBTOTAL, OWNER_UUID)).containsExactly(c);
         }
@@ -382,9 +412,46 @@ class CouponRedemptionServiceImplTest {
             c.setMaxRedemptionsPerUser(1);
             when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SUBTOTAL))
                     .thenReturn(List.of(c));
-            when(couponRedemptionRepository.countByCouponIdAndOwnerUuid(2, OWNER_UUID)).thenReturn(1L);
+            when(couponRedemptionRepository.countGroupedByCouponIdForOwner(List.of(2), OWNER_UUID))
+                    .thenReturn(List.of(count(2, 1L)));
 
             assertThat(service.listAvailable(CouponTarget.SUBTOTAL, OWNER_UUID)).isEmpty();
+        }
+
+        @Test
+        void neverCallsEitherGroupedCountQueryWhenNoCandidateHasAnyRedemptionLimit() {
+            // Regression coverage for the fix's own "zero limits configured -> zero count queries"
+            // guarantee — preserves the original short-circuit behavior, not just the N+1 fix.
+            when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SUBTOTAL))
+                    .thenReturn(List.of(candidate("PLAIN1"), candidate("PLAIN2")));
+
+            assertThat(service.listAvailable(CouponTarget.SUBTOTAL, OWNER_UUID)).hasSize(2);
+            verify(couponRedemptionRepository, never()).countGroupedByCouponId(any());
+            verify(couponRedemptionRepository, never()).countGroupedByCouponIdForOwner(any(), any());
+        }
+
+        @Test
+        void batchesBothRedemptionCountLookupsIntoExactlyOneCallEachRegardlessOfCandidateCount() {
+            // The actual N+1 fix: N candidate coupons, each with both limits set, must still cost
+            // exactly one countGroupedByCouponId call and one countGroupedByCouponIdForOwner call.
+            Coupon first = candidate("FIRST");
+            first.setId(10);
+            first.setMaxRedemptions(5);
+            first.setMaxRedemptionsPerUser(1);
+            Coupon second = candidate("SECOND");
+            second.setId(11);
+            second.setMaxRedemptions(5);
+            second.setMaxRedemptionsPerUser(1);
+            when(couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(CouponTarget.SUBTOTAL))
+                    .thenReturn(List.of(first, second));
+            when(couponRedemptionRepository.countGroupedByCouponId(List.of(10, 11)))
+                    .thenReturn(List.of(count(10, 1L), count(11, 1L)));
+            when(couponRedemptionRepository.countGroupedByCouponIdForOwner(List.of(10, 11), OWNER_UUID))
+                    .thenReturn(List.of());
+
+            assertThat(service.listAvailable(CouponTarget.SUBTOTAL, OWNER_UUID)).containsExactly(first, second);
+            verify(couponRedemptionRepository).countGroupedByCouponId(List.of(10, 11));
+            verify(couponRedemptionRepository).countGroupedByCouponIdForOwner(List.of(10, 11), OWNER_UUID);
         }
 
         @Test

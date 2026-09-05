@@ -2,6 +2,7 @@ package com.ttg.devknowledgeplatform.ecommerce.service.impl;
 
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
+import com.ttg.devknowledgeplatform.ecommerce.entity.Address;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Coupon;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Product;
@@ -11,6 +12,7 @@ import com.ttg.devknowledgeplatform.ecommerce.enums.CouponTarget;
 import com.ttg.devknowledgeplatform.ecommerce.enums.CouponType;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
+import com.ttg.devknowledgeplatform.ecommerce.mapper.AddressMapper;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.ProductVariantRepository;
 import com.ttg.devknowledgeplatform.ecommerce.service.Cart;
@@ -74,6 +76,8 @@ class CheckoutServiceImplTest {
     private ShippingFeeCalculator shippingFeeCalculator;
     @Mock
     private CouponRedemptionService couponRedemptionService;
+    @Mock
+    private AddressMapper addressMapper;
 
     @InjectMocks
     private CheckoutServiceImpl service;
@@ -88,6 +92,19 @@ class CheckoutServiceImplTest {
         // for those specific tests otherwise.
         lenient().when(shippingFeeCalculator.calculate(any(), any()))
                 .thenReturn(new ShippingFeeQuote(FLAT_SHIPPING_FEE, FLAT_SHIPPING_FEE));
+        // AddressMapper is mocked (Mockito can't run the real MapStruct-generated impl here) — these
+        // two stubs replicate its trivial field-for-field mapping so existing assertions on the
+        // order's own shippingAddress fields still hold.
+        lenient().when(addressMapper.toAddress(any(CheckoutCommands.AddressInput.class))).thenAnswer(invocation -> {
+            CheckoutCommands.AddressInput input = invocation.getArgument(0);
+            return new Address(input.fullName(), input.phone(), input.email(), input.line1(), input.line2(),
+                    input.city(), input.state(), input.postalCode(), input.country());
+        });
+        lenient().when(addressMapper.toAddress(any(SavedAddress.class))).thenAnswer(invocation -> {
+            SavedAddress saved = invocation.getArgument(0);
+            return new Address(saved.getFullName(), saved.getPhone(), saved.getEmail(), saved.getLine1(),
+                    saved.getLine2(), saved.getCity(), saved.getState(), saved.getPostalCode(), saved.getCountry());
+        });
         addressInput = new CheckoutCommands.AddressInput(
                 "Ada Lovelace", "+44 20 7946 0958", "ada@example.com", "1 Analytical Engine Way", null, "London",
                 "England", "SW1A 1AA", "UK");
