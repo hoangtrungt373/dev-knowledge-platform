@@ -1,13 +1,7 @@
 package com.ttg.devknowledgeplatform.ecommerce.orderstatus;
 
 import com.ttg.devknowledgeplatform.ecommerce.config.OrderJobProperties;
-import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
-import com.ttg.devknowledgeplatform.ecommerce.enums.PaymentFailureCategory;
-import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentCancellationResult;
-import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
-import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentOutcome;
-import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentResult;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -21,61 +15,34 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * US-3.4: re-checks the actual gateway outcome for any order stuck in {@code PAYMENT_PROCESSING}
- * beyond {@code orderJobProperties.reconciliation().gracePeriod()} — recovers a crash between
- * "payment succeeded" and "order confirmed" by asking {@link PaymentGatewayPort#checkStatus} for
- * the ground truth, rather than assuming failure (which could abandon a sale the gateway actually
- * completed) or assuming success (which could confirm a sale that never happened).
+ * US-3.4: polls for any order stuck in {@code PAYMENT_PROCESSING} beyond
+ * {@code orderJobProperties.reconciliation().gracePeriod()} and reconciles each one via
+ * {@link PaymentReconciliationService#reconcileNow} — recovers a crash between "payment succeeded"
+ * and "order confirmed" by asking the gateway for the ground truth, rather than assuming failure
+ * (which could abandon a sale the gateway actually completed) or assuming success (which could
+ * confirm a sale that never happened). Also, once an order has sat that long with a genuinely
+ * still-open PaymentIntent, actively cancels it as abandoned (see
+ * {@link PaymentReconciliationService}'s own Javadoc for the full "auto-expire" mechanism — that
+ * class now owns all of the actual per-order logic; this class only owns the poll-batch query and
+ * the scheduled trigger).
  *
  * <p>No separate {@code @Transactional} processor bean is needed here the way
  * {@code outbox.OutboxEventProcessor}/{@code OrderReservationExpiryProcessor} split from their own
- * pollers: this job's own per-order work
- * ({@link PaymentGatewayPort#checkStatus} then {@link PaymentHandoffService#resolvePayment}) never
- * calls a {@code @Transactional} method on <i>this</i> bean — {@link PaymentHandoffService} is a
- * different bean, so calling it already goes through Spring's proxy correctly. A self-invocation
- * split would only be needed if this class itself had a {@code @Transactional} method being called
- * from another method on the same instance. That's exactly the shape {@link AbstractReconciliationJob}
- * (a code-quality-audit follow-up) now generalizes — see that class's own Javadoc for why
- * {@link RefundReconciliationJob} shares it too, and why {@code OrderReservationExpiryJob} doesn't.
+ * pollers: this job's own per-order work ({@link PaymentReconciliationService#reconcileNow}) never
+ * calls a {@code @Transactional} method on <i>this</i> bean — {@link PaymentReconciliationService}
+ * is a different bean, so calling it already goes through Spring's proxy correctly. That's exactly
+ * the shape {@link AbstractReconciliationJob} (a code-quality-audit follow-up) generalizes — see
+ * that class's own Javadoc for why {@link RefundReconciliationJob} shares it too, and why
+ * {@code OrderReservationExpiryJob} doesn't.
  *
- * <p><b>Follow-up: {@link #reconcileOne} now also closes the one real gap in this whole
- * reconciliation story — a charge attempt that crashes before ever reaching Stripe.</b>
- * {@code payment.StripePaymentGateway#checkStatus}'s own Javadoc documents that a {@code Payment}
- * row with no {@code gatewayReference} at all (e.g. {@code payment.PaymentGatewayPort#charge}
- * threw before Stripe ever created a {@code PaymentIntent}) always reports back
- * {@link PaymentOutcome#PENDING} with a {@code null} {@code gatewayReference} — and, before this
- * fix, that meant this job polled it forever with no terminal exit: {@code resolvePayment}'s own
- * {@code PENDING} branch is always a no-op, and even an explicit shopper cancel couldn't escape it
- * either (see {@code orderstatus.PaymentCancellationService#applyCancellation}'s own
- * {@code gatewayReference != null} guard — a null one reports {@code gatewayCancellationNeeded()
- * == false}, so the cancel just queues silently with no visible effect). A
- * {@link PaymentOutcome#PENDING} result with a {@code null} {@code gatewayReference} is uniquely
- * produced by exactly this "never reached the gateway" case — every other still-processing
- * outcome (a real, live {@code PaymentIntent} Stripe is still working through) always carries a
- * real, non-{@code null} {@code gatewayReference} — so {@link #reconcileOne} can safely tell the
- * two apart. Once this job has already waited a full grace period and still sees no
- * {@code gatewayReference}, there is nothing left to ever retrieve at Stripe (the attempt never
- * got that far), so it finalizes with a synthetic {@link PaymentResult#declined} instead of
- * polling forever — the shopper can then simply reorder, and if they'd already queued a cancel,
- * {@code PaymentProcessingOrderStatusHandler#failPayment}'s own {@code cancelRequested}-wins rule
- * correctly lands the order {@code CANCELLED} instead of {@code FAILED}, exactly as they asked.
- *
- * <p><b>Auto-expire follow-up: {@link #reconcileOne} also closes the "shopper simply abandoned
- * the payment dialog" gap — folded into this same method rather than a new poller/job.</b> This
- * method already runs {@link PaymentGatewayPort#checkStatus} on every tick for any order stuck
- * this long, so the live ground-truth check it needs was already here; the only new piece is a
- * second, much longer threshold ({@code orderJobProperties.reconciliation().abandonmentTimeout()}
- * — deliberately far past {@code gracePeriod}, which is about "did Stripe resolve this yet," not
- * "give up") checked only when {@code checkStatus} still genuinely reports
- * {@link PaymentOutcome#PENDING} with a real (non-{@code null}) {@code gatewayReference} — a
- * still-open PaymentIntent, not the separate "never reached the gateway at all" case just above.
- * Once an order has sat that long with no resolution and no explicit cancel, this method actively
- * cancels the intent ({@link PaymentGatewayPort#cancelUnconfirmed}) and finalizes via
- * {@link PaymentCancellationService#applyAbandonmentExpiry} — the identical durable-step shape
- * {@code service.impl.OrderServiceImpl#cancel} already uses for an explicit click, just triggered
- * by a timeout instead of a shopper action. Same live-check-first safety property as everything
- * else in this class: it never blindly cancels something that just succeeded — see
- * {@link PaymentCancellationService#applyAbandonmentExpiry}'s own {@code ALREADY_RESOLVED} handling.
+ * <p><b>Follow-up: {@link #reconcileOne}'s own logic — the synthetic-decline/abandonment-cancel/
+ * normal-resolve branching, and every incident that shaped it — moved to
+ * {@link PaymentReconciliationService}</b> once {@code service.impl.OrderServiceImpl
+ * #reconcilePayment} (the GUI's on-demand "don't make the shopper wait for the next poll tick"
+ * endpoint, driven by its own live countdown) needed the identical logic. See that class's own
+ * Javadoc for the full detail — this class is now just the poll-batch query plus the scheduled
+ * trigger, with `AbstractReconciliationJob`'s own shared per-id try/catch tolerating a failure on
+ * one order without blocking the rest of the batch.
  */
 @Component
 @RequiredArgsConstructor
@@ -83,9 +50,7 @@ import java.util.List;
 public class OrderReconciliationJob extends AbstractReconciliationJob {
 
     private final OrderRepository orderRepository;
-    private final PaymentGatewayPort paymentGatewayPort;
-    private final PaymentHandoffService paymentHandoffService;
-    private final PaymentCancellationService paymentCancellationService;
+    private final PaymentReconciliationService paymentReconciliationService;
     private final OrderJobProperties orderJobProperties;
 
     @Scheduled(fixedDelayString = "${app.ecommerce.order.reconciliation.poll-interval:PT1M}")
@@ -102,56 +67,6 @@ public class OrderReconciliationJob extends AbstractReconciliationJob {
 
     @Override
     protected void reconcileOne(Integer orderId) {
-        Order order = orderRepository.findById(orderId).orElse(null);
-        // A defensive guard against a stale poll-batch id (e.g. it already resolved via the
-        // synchronous initiatePayment flow moments ago) — same reasoning as
-        // OrderReservationExpiryProcessor's own re-check, not a distributed-concurrency
-        // mechanism (this reactor runs one instance per service today).
-        if (order == null || order.getStatus() != OrderStatus.PAYMENT_PROCESSING) {
-            return;
-        }
-        PaymentResult result = paymentGatewayPort.checkStatus(order.getIdempotencyKey());
-        if (result.outcome() == PaymentOutcome.PENDING && result.gatewayReference() == null) {
-            // The charge attempt never reached the gateway at all (see this class's own Javadoc
-            // for the full incident) — there's nothing left to ever retrieve, so leaving this
-            // PENDING would poll forever with no terminal exit. Past the grace period already
-            // (this method only runs for orders stuck that long), give up and finalize instead.
-            log.warn("Order id={} idempotencyKey={} stuck PAYMENT_PROCESSING past the grace period with no "
-                    + "gatewayReference ever recorded — finalizing as a synthetic decline",
-                    orderId, order.getIdempotencyKey());
-            result = PaymentResult.declined(null, PaymentFailureCategory.GATEWAY_ERROR,
-                    "Payment attempt never reached the payment gateway");
-        } else if (result.outcome() == PaymentOutcome.PENDING && isAbandoned(order)) {
-            // A real, still-open PaymentIntent, but the order has now sat PAYMENT_PROCESSING past
-            // the much longer abandonment window with no resolution and no explicit cancel — the
-            // shopper appears to have simply walked away from the payment form. Nothing else will
-            // ever pick this up on its own (no webhook fires for an intent nobody confirmed), so
-            // actively void it at the gateway instead of polling forever.
-            log.warn("Order id={} idempotencyKey={} stuck PAYMENT_PROCESSING past the abandonment window "
-                    + "({}) with a still-open PaymentIntent gatewayReference={} — actively cancelling it as "
-                    + "abandoned", orderId, order.getIdempotencyKey(),
-                    orderJobProperties.reconciliation().abandonmentTimeout(), result.gatewayReference());
-            PaymentCancellationResult cancellation = paymentGatewayPort.cancelUnconfirmed(result.gatewayReference());
-            paymentCancellationService.applyAbandonmentExpiry(orderId, cancellation);
-            return;
-        }
-        paymentHandoffService.resolvePayment(orderId, result);
-        log.info("Reconciled order id={} idempotencyKey={} outcome={}",
-                orderId, order.getIdempotencyKey(), result.outcome());
-    }
-
-    /**
-     * Whether {@code order} has sat {@code PAYMENT_PROCESSING} past
-     * {@code orderJobProperties.reconciliation().abandonmentTimeout()} — {@code false} whenever an
-     * order somehow reaches this method without ever having gone through
-     * {@code PendingOrderStatusHandler#startPaymentProcessing} (which always stamps this field),
-     * treated as "not abandoned" rather than a null-pointer/false-positive risk.
-     */
-    private boolean isAbandoned(Order order) {
-        if (order.getPaymentProcessingStartedAt() == null) {
-            return false;
-        }
-        Instant abandonmentCutoff = Instant.now().minus(orderJobProperties.reconciliation().abandonmentTimeout());
-        return order.getPaymentProcessingStartedAt().isBefore(abandonmentCutoff);
+        paymentReconciliationService.reconcileNow(orderId);
     }
 }

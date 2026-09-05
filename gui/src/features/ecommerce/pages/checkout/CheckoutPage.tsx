@@ -25,18 +25,21 @@ import { isValidEmail } from '@shared/utils/validation';
 import FullPageLoader from '@shared/components/FullPageLoader';
 import EmptyState from '@shared/components/EmptyState';
 import SubmitButton from '@shared/components/SubmitButton';
+import MessageDialog from '@shared/components/MessageDialog';
 import WideContentContainer from '../../components/common/WideContentContainer';
 import { useCart } from '../../context/CartContext';
 import { checkoutApi } from '../../api/checkoutApi';
 import { addressApi } from '../../api/addressApi';
 import { orderApi } from '../../api/orderApi';
 import { paymentConfigApi } from '../../api/paymentConfigApi';
-import { Address, CartLine, CheckoutPreview, CouponTarget, OrderLine, SavedAddress } from '../../types';
+import { Address, CartLine, CheckoutPreview, CouponTarget, Order, OrderLine, SavedAddress } from '../../types';
 import { formatPrice } from '../../utils/format';
 import { getStripePromise } from '../../utils/stripe';
+import { usePaymentCountdown } from '../../hooks/usePaymentCountdown';
 import OrderLineRow from '../../components/orders/OrderLineRow';
 import CouponPickerDialog from '../../components/CouponPickerDialog';
 import PaymentElementForm from '../../components/orders/PaymentElementForm';
+import PaymentCountdown from '../../components/orders/PaymentCountdown';
 
 /** An available CartLine has every one of these fields populated (see CartLine's own doc comment
  * — they're only optional to model an unavailable line, which is filtered out before this runs) —
@@ -103,6 +106,13 @@ export default function CheckoutPage(): JSX.Element {
   const [phase, setPhase] = useState<'review' | 'payment'>('review');
   const [createdOrderId, setCreatedOrderId] = useState<number | null>(null);
   const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null);
+  // Auto-expire follow-up: the full order backing the payment phase's own live countdown — set
+  // once, right alongside paymentClientSecret, and kept fresh by usePaymentCountdown's own
+  // onReconciled callback below.
+  const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
+  // Set once usePaymentCountdown's reconcile call confirms the payment window has genuinely
+  // expired — presence alone drives the MessageDialog below.
+  const [expiredOrder, setExpiredOrder] = useState<Order | null>(null);
   // Fetched synchronously in handleSubmit before phase ever flips to 'payment' — unlike
   // PaymentDialog.tsx (which fetches it after opening, so it needs its own loading/error states),
   // this is always non-null by the time the payment Paper below renders at all.
@@ -154,6 +164,14 @@ export default function CheckoutPage(): JSX.Element {
    * already resolve to exactly these two optional codes) and reused by `handleRemoveCoupon` below
    * for a single-slot clear, so there's exactly one code path that ever calls `loadPreview` with
    * coupon codes attached. */
+  // Auto-expire follow-up: drives the payment phase's own live countdown; onError just toasts —
+  // see usePaymentCountdown's own note on why this is never retried automatically.
+  const remainingMs = usePaymentCountdown(paymentOrder, {
+    onReconciled: setPaymentOrder,
+    onResolved: setExpiredOrder,
+    onError: (err) => showError(err instanceof Error ? err.message : 'Could not confirm your payment status.'),
+  });
+
   const applyCoupons = (subtotalCode?: string, shippingCode?: string): Promise<void> =>
     loadPreview(subtotalCode, shippingCode).then(result => {
       setPreview(result);
@@ -250,6 +268,7 @@ export default function CheckoutPage(): JSX.Element {
           }
           setCreatedOrderId(orderId);
           setPaymentClientSecret(paid.paymentClientSecret);
+          setPaymentOrder(paid);
           setPublishableKey(config.publishableKey);
           setPhase('payment');
           return;
@@ -554,7 +573,10 @@ export default function CheckoutPage(): JSX.Element {
               </Paper>
 
               <Paper variant="outlined" sx={{ p: 2.5 }}>
-                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>Payment</Typography>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
+                  <Typography variant="subtitle1" fontWeight={600}>Payment</Typography>
+                  {paymentOrder?.paymentExpiresAt && <PaymentCountdown remainingMs={remainingMs} />}
+                </Stack>
                 {publishableKey && paymentClientSecret && (
                   <Elements stripe={getStripePromise(publishableKey)} options={{ clientSecret: paymentClientSecret }}>
                     <PaymentElementForm
@@ -668,6 +690,19 @@ export default function CheckoutPage(): JSX.Element {
           appliedShippingCode={appliedShippingCoupon}
           onClose={() => setCouponPickerOpen(false)}
           onApply={applyCoupons}
+        />
+      )}
+
+      {expiredOrder && (
+        <MessageDialog
+          open
+          title="Payment window expired"
+          message="Your time to complete this payment has run out, and the reservation has been released. Check your order's final status below."
+          actionLabel="View Order"
+          onAction={() => {
+            setExpiredOrder(null);
+            navigate(`/account/orders/${expiredOrder.id}`);
+          }}
         />
       )}
     </WideContentContainer>

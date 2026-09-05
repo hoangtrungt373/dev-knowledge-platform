@@ -8,6 +8,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -31,6 +32,16 @@ import java.util.List;
  * the one HTTP response that triggered the charge attempt. {@code null} on every other response
  * this DTO backs (list/get-by-id/cancel) and whenever the gateway already resolved the charge
  * synchronously (e.g. {@code MockPaymentGateway}, or a Stripe charge that came back declined).
+ *
+ * <p>{@link #paymentExpiresAt} (auto-expire follow-up) is a live-computed deadline — resolved by
+ * {@code mapper.OrderMapper} as {@code Order.getPaymentProcessingStartedAt() +
+ * config.OrderJobProperties.Reconciliation#abandonmentTimeout()} — never persisted, and
+ * {@code null} whenever the order isn't currently {@code PAYMENT_PROCESSING} (nothing to count
+ * down to). Deliberately a ready-to-use absolute instant rather than exposing the raw
+ * {@code abandonmentTimeout} duration to the GUI at all: if that config value ever changes, every
+ * client reflects the new deadline automatically, with nothing else to keep in sync. Drives the
+ * GUI's own live countdown on {@code CheckoutPage}'s payment phase and
+ * {@code OrderDetailPage}/{@code OrderHistoryPage} — see {@code gui/CLAUDE.md}'s own note.
  */
 @Data
 @Builder
@@ -59,6 +70,7 @@ public class OrderResponse {
     private PaymentFailureCategory paymentFailureCategory;
     private String paymentFailureMessage;
     private String paymentClientSecret;
+    private Instant paymentExpiresAt;
     private List<OrderLineResponse> lines;
     private List<OrderStatusHistoryResponse> statusHistory;
 }

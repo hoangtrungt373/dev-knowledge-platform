@@ -425,6 +425,12 @@ export interface Order {
    * once the gateway already resolved the charge synchronously (MockPaymentGateway, or an
    * outright-declined Stripe charge). Never persisted — see backend's OrderResponse Javadoc. */
   paymentClientSecret: string | null;
+  /** Auto-expire follow-up: a live-computed deadline — `null` unless `status === 'PAYMENT_PROCESSING'`
+   * (nothing to count down to otherwise). Drives the GUI's own live countdown on `CheckoutPage`'s
+   * payment phase and `OrderDetailPage`/`OrderHistoryPage`; never persisted server-side (see the
+   * backend's own `OrderResponse` Javadoc — resolved fresh from `paymentProcessingStartedAt` plus
+   * the current `abandonmentTimeout` config on every response). */
+  paymentExpiresAt: string | null;
   lines: OrderLine[];
   /** Oldest first, per the backend's own @OrderBy("id ASC") — read top-to-bottom as a timeline. */
   statusHistory: OrderStatusHistoryEntry[];

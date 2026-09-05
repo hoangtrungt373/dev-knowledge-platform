@@ -2934,3 +2934,75 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   Verified via a clean `tsc --noEmit` (only the same pre-existing errors) and a successful
   `vite build` — no Docker in this sandbox, so the actual Continue Payment click/PaymentDialog
   resume flow is unverified in a real browser.
+
+- **Follow-up: a live "time left to pay" countdown, backed by `ecommerce-service`'s new
+  auto-expire feature (see that module's `CLAUDE.md` for the full backend design/history) — built
+  on `CheckoutPage`'s payment phase, `OrderDetailPage`, and `OrderHistoryPage`.** Designed with the
+  user across a few rounds before building: live mm:ss ticking (not coarser minute-granularity),
+  and — deliberately, per request — no aggressive client-side retry loop when the on-demand
+  `reconcile` call itself fails; the backend's own scheduled job remains the real safety net
+  either way.
+  - **New `@shared/hooks/useCountdown.ts`** — a generic, reusable live countdown to an ISO instant
+    (ticks every second while a target is set; `null` target means "nothing to count down to," not
+    "already expired"). Not ecommerce-specific — any future feature needing a live countdown
+    should reuse this rather than a second copy.
+  - **New `@ecommerce/hooks/usePaymentCountdown.ts`** — the actual "call
+    `orderApi.reconcilePayment` exactly once the instant the countdown hits zero" logic, built on
+    top of `useCountdown`. A `firedForOrderId` ref (keyed by order id, not a plain boolean) is what
+    makes this "exactly once per order": switching to watch a *different* order naturally re-arms
+    it, while a still-`PAYMENT_PROCESSING` result for the *same* order (a rare clock-skew case
+    where the deadline hasn't genuinely passed server-side yet) does not trigger a second call.
+    Takes `onReconciled` (fires with the fresh order on every successful call, even a still-
+    processing one — so local state always reflects the latest known truth) and `onResolved`
+    (fires only once the order has genuinely left `PAYMENT_PROCESSING` — the caller's cue to show
+    the expiry dialog) as separate callbacks, plus `onError` (a genuine failure — see the design
+    discussion below) — deliberately **not** a single "done" callback, since a caller must be able
+    to tell "the order changed" from "the order is now definitively resolved" apart (showing the
+    expiry dialog for the former case would be actively wrong).
+  - **New `@shared/components/MessageDialog.tsx`** — a generic "here's what happened, here's the
+    one thing to do next" dialog, per explicit request that it be reusable elsewhere, not built as
+    a one-off for this feature. The informational counterpart to the existing `ConfirmDialog`
+    (which is for a yes/no decision, not a plain notice) — same `open`/`title`/`message` shape,
+    one `actionLabel`/`onAction` instead of confirm/cancel, and an optional `onClose` (omitted at
+    every call site this feature uses, so the dialog is dismissable only via its own action button
+    — there's genuinely nothing else to do once a payment window has expired).
+  - **New `@ecommerce/components/orders/PaymentCountdown.tsx`** — a purely presentational mm:ss
+    chip (all the ticking/side-effect logic lives in `usePaymentCountdown` above); escalates to
+    `warning` under 10 minutes remaining, `error` under 5 — mirroring `utils/stock.ts`'s own
+    `isLowStock` threshold-escalation convention for stock levels, applied to a countdown instead.
+  - **`CheckoutPage.tsx`**: a new `paymentOrder` state (the full `Order` returned by
+    `orderApi.pay`, set alongside the existing `paymentClientSecret`) feeds `usePaymentCountdown`;
+    the chip renders next to the "Payment" section header. On resolution, a `MessageDialog`
+    ("Payment window expired") with a "View Order" button navigates to
+    `/account/orders/{id}` — this *is* the answer to "should this page auto-navigate on expiry":
+    the dialog's own button is the navigation trigger, not an automatic redirect, per the accepted
+    design.
+  - **`OrderDetailPage.tsx`**: the countdown chip sits right next to the existing status `Chip` in
+    the header row; `usePaymentCountdown`'s `onReconciled` feeds the page's own existing `order`
+    state directly (no separate tracking needed — the same `setOrder` `handlePay`/
+    `handlePaymentDialogCompleted` already use). The expiry dialog's action is just "OK" (dismiss)
+    here, not "View Order" — unlike `CheckoutPage`, this page *is* the order's own detail view
+    already, so there's nowhere else to navigate to; the page's own status chip/timeline already
+    reflect the resolved state by the time the dialog would show, since `onReconciled` updated it
+    first.
+  - **`OrderHistoryPage.tsx`**: each `OrderCard` row calls its own `usePaymentCountdown` (multiple
+    independent per-row timers, one per `PAYMENT_PROCESSING` order in the current page), with
+    `onReconciled` updating that one row in the parent's `orders` array
+    (`setOrders(prev => prev?.map(...))`) and `onResolved` feeding one **shared** dialog state
+    owned by the parent page — only one dialog can meaningfully show at a time regardless of how
+    many rows might expire near-simultaneously, so there's no per-row dialog instance. `OrderCard`
+    gained its own `useNotification()` call (for its own `onError` toast) rather than threading a
+    fifth prop down from the parent, since it's a plain sibling component in the same file.
+  - **Design discussion, resolved before building — no separate "is this order actually past the
+    deadline yet" gate needed anywhere on the GUI side either.** `usePaymentCountdown` only ever
+    fires its one `reconcilePayment` call once `useCountdown`'s own `expired` flag is `true`
+    (i.e., the client's own clock already agrees the deadline, computed server-side, has passed) —
+    the backend's own `PaymentReconciliationService.reconcileNow` independently re-derives
+    "abandoned" from the real `paymentProcessingStartedAt` regardless of what the client believes,
+    so there's no scenario where the GUI's own timing could trick the backend into expiring
+    something early; see `ecommerce-service/CLAUDE.md`'s own note on why a failed reconcile call
+    must never be treated as a fabricated local expiry either.
+  - Verified via a clean `tsc --noEmit` (only the same pre-existing errors) and a successful
+    `vite build` only — no Docker in this sandbox, so the actual live countdown ticking, the
+    on-demand reconcile call, and the expiry dialog's appearance on all three pages are unverified
+    in a real browser.
