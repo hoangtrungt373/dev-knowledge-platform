@@ -3340,6 +3340,36 @@ entries start fresh below `[Unreleased]`.
   value were updated to assert a well-formed UUID instead; 328 unit tests total, unchanged,
   verified via a real `mvn test` run (JDK 21). See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2
   follow-up section for the full incident writeup.
+- **`ecommerce-service`: a card decline permanently blocked an order from ever succeeding
+  afterward, even via Stripe's own supported retry-with-a-different-card flow on the same
+  `PaymentIntent`.** Declining a test card finalized the order to `FAILED` (a terminal status);
+  switching to a working card on the same `PaymentElement` form then succeeded at Stripe, but the
+  webhook's `payment_intent.succeeded` delivery tried to `confirmPayment` an order already
+  `FAILED` — a status with no registered transition — and got rejected with
+  `ORDER_003: Cannot confirmPayment an order in status FAILED` (`409`, and Stripe kept retrying the
+  same failing delivery). Root cause: `StripeWebhookService` treated every
+  `payment_intent.payment_failed` event as a final decline, but that event actually means the
+  `PaymentIntent` dropped back to `"requires_payment_method"` — still open for another attempt with
+  a different card, exactly what happened here. Fixed by introducing
+  `PaymentResult.attemptFailed` — a `PENDING` result (not `DECLINED`) carrying the decline detail
+  for display without finalizing the order; `PaymentHandoffService.applyResultToPayment`'s
+  `PENDING`/`SUCCEEDED` branches updated to record/clear that detail correctly across retries.
+  `PaymentOutcome.DECLINED` itself is unchanged and still finalizes to `FAILED` where that's
+  actually correct (`MockPaymentGateway`'s one-shot decline, a genuinely `"canceled"` intent found
+  by reconciliation). 330 unit tests total (up from 328), verified via a real `mvn test` run
+  (JDK 21). Backend only in this pass — see `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2
+  follow-up section for the full incident writeup, and the entry directly below for the matching
+  `gui` follow-up.
+- **`gui`: the payment-decline banner on `OrderDetailPage.tsx`/`OrderHistoryPage.tsx` widened to
+  also show for a still-retryable decline, per request — the frontend half of the backend fix
+  directly above.** Both banners used to gate on `order.status === 'FAILED'`, which stopped
+  showing anything the moment that backend fix meant most declines leave the order at
+  `PAYMENT_PROCESSING` instead. Fixed by dropping that condition entirely — the banner now shows
+  whenever `order.paymentFailureMessage` is present, since that field's own nullability (cleared
+  the moment a later attempt succeeds) already carries all the information needed. Verified via a
+  clean `tsc --noEmit` and a successful `vite build` — no Docker in this sandbox, so the actual
+  now-visible-while-`PAYMENT_PROCESSING` banner is unverified in a real browser. See
+  `gui/CLAUDE.md`'s own follow-up note for the full detail.
 
 ## [0.0.2] — 2026-08-11
 

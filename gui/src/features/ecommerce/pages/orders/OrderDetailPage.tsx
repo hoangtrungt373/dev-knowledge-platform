@@ -271,8 +271,15 @@ export default function OrderDetailPage(): JSX.Element {
       {/* A payment can decline asynchronously (webhook/reconciliation, Epic 4 Phase 5), not just
           from this page's own Pay Now click — so the reason has to be shown persistently here too,
           not only as the one-time toast handlePay fires. paymentFailureMessage is always the
-          server-owned, non-technical category message (US-4.7), never the gateway's raw string. */}
-      {order.status === 'FAILED' && order.paymentFailureMessage && (
+          server-owned, non-technical category message (US-4.7), never the gateway's raw string.
+          Deliberately not gated on order.status === 'FAILED' — a retryable decline under Option A
+          (Stripe Elements) leaves the order at PAYMENT_PROCESSING with the reason attached to a
+          still-PENDING payment, so gating on FAILED would silently hide it for exactly the case
+          the shopper most needs to see it (a card was just declined and they can still retry with
+          another one on this same page). paymentFailureMessage's own presence already carries all
+          the necessary information — it's null once a later attempt succeeds (cleared server-side)
+          or once the order was never charged at all. */}
+      {order.paymentFailureMessage && (
         <Alert severity="error" sx={{ mb: 3 }}>{order.paymentFailureMessage}</Alert>
       )}
 

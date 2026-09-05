@@ -2139,6 +2139,55 @@ structural-only adapter.
     tests total, unchanged, verified via a real `mvn test` run (JDK 21). Fixes only *future*
     collisions — a key already burned at Stripe from before this fix stays unusable for its own
     24-hour window regardless.
+  - **Bug fix, reported directly after testing a declined-then-successful-retry flow: a card
+    decline permanently blocked the order from ever succeeding afterward, even on the exact same
+    still-open `PaymentIntent`.** Symptom: decline a test card → `charge.failed` →
+    `payment_intent.payment_failed` → `Payment` marked `DECLINED`, `Order` finalized to `FAILED`.
+    Switch to a working card on the *same* `PaymentElement` form (Stripe's own supported retry
+    flow — no new `PaymentIntent`, same `gatewayReference`) → `payment_intent.succeeded` arrives
+    for that same intent → `StripeWebhookService` correlates it to the same, already-`FAILED`
+    order → `resolvePayment` dispatches `confirmPayment` → `OrderStatusHandlerRegistry` has no
+    handler registered for the terminal `FAILED` status, so it falls back to the default
+    reject-everything handler → `EcommerceErrorCode.ORDER_INVALID_STATUS_TRANSITION`
+    (`ORDER_003: Cannot confirmPayment an order in status FAILED`), returned to Stripe as a `409`
+    (and the whole `@Transactional` webhook handler rolls back, so Stripe just keeps retrying the
+    same failing delivery). Root cause: `StripeWebhookService.applyPaymentIntentEvent` built a bare
+    `PaymentResult.declined(...)` for *every* `payment_intent.payment_failed` event, which
+    `PaymentHandoffService.resolvePayment`'s `DECLINED` branch finalizes via
+    `orderStatusHandlerRegistry.failPayment` — correct for a genuinely final decline, but
+    `payment_intent.payment_failed` under Option A's `PaymentElement` almost never means that: it
+    fires when the `PaymentIntent` drops back to `"requires_payment_method"`, the *exact same*
+    status a brand-new, never-attempted intent starts in — the shopper can retry with a different
+    card against that same intent, exactly as they did here. **Fix**: new
+    `PaymentResult.attemptFailed(gatewayReference, failureCategory, gatewayFailureMessage)` — a
+    `PaymentOutcome.PENDING` result (not `DECLINED`), carrying the failure detail for display but
+    leaving the order untouched; `StripeWebhookService` now builds this instead of `declined(...)`
+    for `payment_intent.payment_failed`. `PaymentHandoffService.applyResultToPayment`'s `PENDING`
+    branch now persists `failureCategory`/`gatewayFailureMessage` onto the `Payment` row when
+    present (defensively — an ordinary "still waiting, no new info" poll carries neither, and must
+    not clobber a real decline reason already recorded with `null`), and its `SUCCEEDED` branch now
+    clears both, so a since-corrected order doesn't keep showing a stale "your card was declined"
+    reason. **`PaymentOutcome.DECLINED` itself is completely unchanged and still finalizes to
+    `FAILED`** — that's still correct for `MockPaymentGateway`'s synchronous one-shot decline (no
+    retry concept exists in its own model at all) and for `StripePaymentGateway.checkStatus`'s own
+    terminal-status branch (in practice, an intent Stripe itself reports `"canceled"`); only the
+    webhook's own classification of this one specific event was wrong. Three other options were
+    considered and rejected before this one: capping retries at a fixed attempt count (duplicates
+    Stripe's own configurable retry limits, still doesn't solve the underlying misclassification);
+    registering a real `FAILED`→`CONFIRMED` transition handler instead of changing when `FAILED` is
+    reached at all (rejected as actively dangerous — `failPayment` already *releases* the stock
+    reservation the moment an order hits `FAILED`, so a later success would need to *re-reserve*
+    stock that could have sold out to someone else in the meantime, trading a clear bug for a much
+    worse, silent one); and disabling `PaymentElement`'s inline retry entirely, forcing a whole new
+    order per declined attempt (the biggest shopper-facing UX regression of the three, even though
+    smallest on the backend). `PaymentHandoffServiceTest.ResolvePayment` gained two new cases
+    (`attemptFailed` leaves the order at `PAYMENT_PROCESSING` while still recording the decline
+    reason; `succeeded` after an earlier `attemptFailed` clears the stale reason);
+    `StripeWebhookServiceTest`'s existing decline case updated to assert `PENDING`, not `DECLINED`.
+    330 unit tests total (up from 328), verified via a real `mvn test` run (JDK 21). **Backend
+    only in this pass** — see `gui/CLAUDE.md`'s own note for the matching frontend follow-up
+    (`OrderDetailPage.tsx`/`OrderHistoryPage.tsx`'s decline banner widened to not require
+    `order.status === 'FAILED'`, since this fix means a retryable decline no longer reaches it).
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)

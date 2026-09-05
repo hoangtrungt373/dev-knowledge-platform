@@ -174,6 +174,25 @@ public class PaymentHandoffService {
      * stuck {@code PAYMENT_PROCESSING} despite Stripe's own event log showing
      * {@code payment_intent.succeeded} having fired and been delivered with a {@code 200}.
      *
+     * <p><b>Bug fix: {@link PaymentOutcome#PENDING} can now also carry a decline reason, via
+     * {@link PaymentResult#attemptFailed} — one retryable attempt failing is not the same thing as
+     * the charge being over.</b> {@code webhook.StripeWebhookService} used to build a bare
+     * {@link PaymentResult#declined} for every {@code payment_intent.payment_failed} event, which
+     * this method's {@code DECLINED} branch (below) finalizes to {@code FAILED} — permanently
+     * blocking a shopper from ever completing the order after their very first mistyped card,
+     * since Option A's {@code PaymentElement} actually keeps the same {@code PaymentIntent} open
+     * for another attempt with a different card (Stripe reports it back at
+     * {@code "requires_payment_method"}, the exact same status a fresh, never-attempted intent
+     * starts in). The webhook now reports that event as {@code PENDING} instead, carrying the
+     * failure detail for display; this branch's own empty {@code PENDING} arm is what makes that
+     * safe — the order genuinely stays put, exactly as it should, while
+     * {@link #applyResultToPayment} still records the reason onto the {@code Payment} row (and
+     * clears it again once a later attempt actually succeeds). {@link PaymentOutcome#DECLINED}
+     * itself is unchanged and still finalizes to {@code FAILED} here — that's still correct for
+     * {@code MockPaymentGateway}'s synchronous one-shot decline and for a reconciliation poll that
+     * finds the intent genuinely {@code "canceled"} at Stripe; only the webhook's own
+     * classification of a retryable decline was wrong.
+     *
      * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException if the order
      *         no longer exists
      * @throws IllegalStateException if no {@code Payment} row exists for this order — a genuine
@@ -357,9 +376,25 @@ public class PaymentHandoffService {
             payment.setGatewayReference(result.gatewayReference());
         }
         switch (result.outcome()) {
-            case PENDING -> paymentRepository.save(payment);
+            case PENDING -> {
+                // A plain "still waiting" poll (e.g. reconciliation re-checking an untouched
+                // intent) carries no failure detail at all — don't let it clobber a real, more
+                // recent decline reason (from PaymentResult#attemptFailed, a retryable decline
+                // under Option A — see that factory's own Javadoc) with null. Only ever overwrite
+                // when this particular result actually carries new information.
+                if (result.failureCategory() != null) {
+                    payment.setFailureCategory(result.failureCategory());
+                    payment.setGatewayFailureMessage(result.gatewayFailureMessage());
+                }
+                paymentRepository.save(payment);
+            }
             case SUCCEEDED -> {
                 payment.setStatus(PaymentStatus.SUCCEEDED);
+                // Clear any decline reason left over from an earlier failed attempt against this
+                // same still-open PaymentIntent (Option A's retry flow) — otherwise a now-paid
+                // order would keep showing a stale "your card was declined" reason.
+                payment.setFailureCategory(null);
+                payment.setGatewayFailureMessage(null);
                 paymentRepository.save(payment);
                 publishPaymentSucceeded(order, payment);
             }

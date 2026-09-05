@@ -100,6 +100,14 @@ public class StripeWebhookService {
      * The actual dedup/correlate/resolve logic (US-4.5), independent of any Stripe SDK type — see
      * the class Javadoc for why this split exists. Package-private so a test in this same package
      * can call it directly.
+     *
+     * <p><b>{@code payment_intent.payment_failed} resolves as {@link PaymentResult#attemptFailed},
+     * not {@link PaymentResult#declined}</b> — a bug fix (see that factory's own Javadoc for the
+     * full incident): this event means the shopper's own attempt just failed, not that the charge
+     * is over. The {@code PaymentIntent} itself drops back to {@code "requires_payment_method"} —
+     * still open for another try with a different card — so treating it as a final decline used to
+     * finalize the order to {@code FAILED} on the shopper's very first mistyped card, permanently
+     * blocking them from ever completing it with a working one afterward.
      */
     void applyPaymentIntentEvent(String stripeEventId, String eventType, String paymentIntentId,
             PaymentFailureCategory failureCategory, String gatewayFailureMessage) {
@@ -121,7 +129,7 @@ public class StripeWebhookService {
 
         PaymentResult result = PAYMENT_INTENT_SUCCEEDED.equals(eventType)
                 ? PaymentResult.succeeded(paymentIntentId)
-                : PaymentResult.declined(paymentIntentId, failureCategory, gatewayFailureMessage);
+                : PaymentResult.attemptFailed(paymentIntentId, failureCategory, gatewayFailureMessage);
         paymentHandoffService.resolvePayment(payment.getOrder().getId(), result);
         recordProcessed(stripeEventId, eventType);
     }

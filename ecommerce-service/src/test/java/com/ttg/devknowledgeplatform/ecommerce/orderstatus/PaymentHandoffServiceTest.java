@@ -236,6 +236,58 @@ class PaymentHandoffServiceTest {
         }
 
         @Test
+        void attemptFailedLeavesTheOrderAtPaymentProcessingButRecordsTheDeclineReasonAndPublishesNoEvent() {
+            // Bug fix regression coverage: payment_intent.payment_failed (StripeWebhookService's
+            // own attemptFailed result) must not finalize the order the way a bare DECLINED does —
+            // the shopper can still retry with a different card against the same still-open
+            // PaymentIntent. See PaymentResult#attemptFailed's own Javadoc for the full incident.
+            Order order = orderOwnedBy(OWNER_UUID);
+            order.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            Payment payment = new Payment();
+            payment.setId(100);
+            payment.setStatus(PaymentStatus.PENDING);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+            when(orderRepository.save(order)).thenReturn(order);
+            when(paymentRepository.findByOrderId(1)).thenReturn(Optional.of(payment));
+
+            service.resolvePayment(1, PaymentResult.attemptFailed(
+                    "gw-ref-1", PaymentFailureCategory.CARD_DECLINED, "Your card was declined."));
+
+            verify(orderStatusHandlerRegistry, never()).confirmPayment(order);
+            verify(orderStatusHandlerRegistry, never()).failPayment(order);
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_PROCESSING);
+            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
+            assertThat(payment.getFailureCategory()).isEqualTo(PaymentFailureCategory.CARD_DECLINED);
+            assertThat(payment.getGatewayFailureMessage()).isEqualTo("Your card was declined.");
+            verify(paymentRepository).save(payment);
+            verify(outboxEventRepository, never()).save(any());
+        }
+
+        @Test
+        void succeededAfterAnEarlierAttemptFailedClearsTheStaleDeclineReason() {
+            // A shopper who mistyped a card, saw the failure, then retried with a working one on
+            // the same PaymentIntent must not still see a stale "card declined" reason once the
+            // order actually succeeds.
+            Order order = orderOwnedBy(OWNER_UUID);
+            order.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            Payment payment = new Payment();
+            payment.setId(100);
+            payment.setAmount(new BigDecimal("25.00"));
+            payment.setStatus(PaymentStatus.PENDING);
+            payment.setFailureCategory(PaymentFailureCategory.CARD_DECLINED);
+            payment.setGatewayFailureMessage("Your card was declined.");
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+            when(orderRepository.save(order)).thenReturn(order);
+            when(paymentRepository.findByOrderId(1)).thenReturn(Optional.of(payment));
+
+            service.resolvePayment(1, PaymentResult.succeeded("gw-ref-1"));
+
+            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+            assertThat(payment.getFailureCategory()).isNull();
+            assertThat(payment.getGatewayFailureMessage()).isNull();
+        }
+
+        @Test
         void rejectsAsNotFoundWhenTheOrderNoLongerExists() {
             when(orderRepository.findById(1)).thenReturn(Optional.empty());
 
