@@ -2440,6 +2440,50 @@ structural-only adapter.
     test (`OrderReconciliationJobTest`, `RefundReconciliationJobTest`,
     `OrderReservationExpiryProcessorTest`) passes unmodified. 364 unit tests total, unchanged,
     verified via a real `mvn test` run (JDK 21).
+  - **Follow-up: `webhook.StripeWebhookService` now handles `payment_intent.canceled` too, reusing
+    Stripe's own confirmation-limit retry cap instead of building a custom decline counter (a
+    discussion prompted by "Option B: cap retries at N attempts, then finalize as FAILED" from the
+    original decline-handling design).** Verified against Stripe's own docs before building
+    anything: confirming a PaymentIntent has "a variable upper limit on how many times a
+    PaymentIntent can be confirmed. After this limit is reached, any further calls... transition
+    the PaymentIntent to the `canceled` state" — Stripe's own anti-card-testing posture, already
+    enforced server-side, with no fixed/published number to duplicate or disagree with. This
+    reactor was already halfway there without knowing it: `payment.StripePaymentGateway
+    #resultFromIntent`'s own `checkStatus` poll already classified a `"canceled"` intent as a
+    decline (its `default` switch arm), so `OrderReconciliationJob` would eventually catch this on
+    its next poll tick regardless — the only real gap was the webhook not reacting to it
+    immediately. **Fix**: `payment_intent.canceled` added to `HANDLED_EVENT_TYPES`;
+    `applyPaymentIntentEvent`'s dispatch became a `switch` with a genuine third branch —
+    `PaymentResult.declined(...)` for `canceled` (the exhausted PaymentIntent is over, not
+    retryable), distinct from `payment_failed`'s own `attemptFailed(...)` (still retryable) — and
+    `handleWebhook` now extracts `last_payment_error` for `canceled` too, so the final decline still
+    carries a real, shopper-facing reason (whatever the last individual attempt's own decline was)
+    instead of a generic message.
+  - **Bug avoided before it shipped: this same webhook event also fires for our own explicit
+    cancel.** `service.impl.OrderServiceImpl#cancel`'s own `payment.PaymentGatewayPort
+    #cancelUnconfirmed` call (a shopper explicitly cancelling while a PaymentIntent is still
+    unconfirmed) *also* transitions the intent to `canceled` and fires this identical webhook event
+    — but that flow already resolves the `Payment` row itself, correctly, via
+    `orderstatus.PaymentCancellationService#applyGatewayCancellation` (marking it `CANCELLED`, not
+    `DECLINED`), synchronously within the same request. Naively finalizing every
+    `payment_intent.canceled` event as a decline would have let this webhook silently flip an
+    already-`CANCELLED` row back to `DECLINED` moments later. Stripe's own `cancellation_reason`
+    field (`automatic` for Stripe-internal auto-cancels vs. a user-provided reason for an explicit
+    API cancel) could in principle distinguish the two triggers, but this fix doesn't lean on that
+    — unverified for this exact case, and a second, indirect signal to trust when a direct one is
+    available. **Fix**: `applyPaymentIntentEvent` only treats `payment_intent.canceled` as a final
+    decline when the `Payment` row is still `PENDING` — already-`CANCELLED` (or any other non-
+    `PENDING` status) is a safe, logged no-op instead. This fully closes the common case; a narrow
+    race remains if this webhook is delivered and processed in the brief window before
+    `applyGatewayCancellation`'s own transaction commits — the order still correctly ends
+    `CANCELLED` either way (`PaymentProcessingOrderStatusHandler#failPayment`'s own
+    `cancelRequested`-wins rule takes over regardless of which path gets there first, since the
+    shopper's own cancel request is what's driving this), but the `Payment` row could read
+    `DECLINED` instead of `CANCELLED` in that one rare window — a known, accepted imprecision in the
+    audit trail, not a functional bug; revisit only if that ever proves to matter in practice.
+  - 2 new `StripeWebhookServiceTest` cases (the genuine-final-decline path, and the
+    already-resolved-elsewhere no-op guard). 366 unit tests total (up from 364), verified via a real
+    `mvn test` run (JDK 21).
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)

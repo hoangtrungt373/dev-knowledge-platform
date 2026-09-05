@@ -3467,6 +3467,22 @@ entries start fresh below `[Unreleased]`.
   per-id work is delegated to a separate `@Transactional` processor bean, which doesn't fit the
   template. Pure refactor, no behavior change; 364 unit tests total, unchanged, verified via a real
   `mvn test` run (JDK 21).
+- **`ecommerce-service`: `webhook.StripeWebhookService` now handles `payment_intent.canceled`,
+  reusing Stripe's own confirmation-limit retry cap instead of building a custom decline counter.**
+  Confirming a PaymentIntent has "a variable upper limit on how many times a PaymentIntent can be
+  confirmed. After this limit is reached, any further calls... transition the PaymentIntent to the
+  `canceled` state" (Stripe's own docs) — Stripe's own anti-card-testing posture, already enforced
+  server-side, with no fixed number to duplicate. `applyPaymentIntentEvent`'s dispatch gained a
+  genuine third branch: `canceled` → `PaymentResult.declined(...)` (the exhausted PaymentIntent is
+  over), distinct from `payment_failed`'s own `attemptFailed(...)` (still retryable). Guards against
+  a real collision: `OrderServiceImpl#cancel`'s own explicit `cancelUnconfirmed` call also fires
+  this identical event as a side effect of its own synchronous cancel (already resolved via
+  `PaymentCancellationService#applyGatewayCancellation`, marking the row `CANCELLED` not
+  `DECLINED`) — `applyPaymentIntentEvent` only treats `canceled` as a final decline when the
+  `Payment` row is still `PENDING`, a safe no-op otherwise. 2 new `StripeWebhookServiceTest` cases.
+  366 unit tests total (up from 364), verified via a real `mvn test` run (JDK 21). See
+  `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full detail, including
+  the one narrow, accepted race this doesn't fully close.
 
 ## [0.0.2] — 2026-08-11
 

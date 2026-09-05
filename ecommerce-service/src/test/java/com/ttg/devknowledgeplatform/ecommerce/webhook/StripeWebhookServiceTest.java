@@ -4,6 +4,7 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Payment;
 import com.ttg.devknowledgeplatform.ecommerce.entity.StripeWebhookEvent;
 import com.ttg.devknowledgeplatform.ecommerce.enums.PaymentFailureCategory;
+import com.ttg.devknowledgeplatform.ecommerce.enums.PaymentStatus;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentHandoffService;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentResult;
 import com.ttg.devknowledgeplatform.ecommerce.repository.PaymentRepository;
@@ -122,5 +123,50 @@ class StripeWebhookServiceTest {
         ArgumentCaptor<StripeWebhookEvent> eventCaptor = ArgumentCaptor.forClass(StripeWebhookEvent.class);
         verify(stripeWebhookEventRepository).save(eventCaptor.capture());
         assertThat(eventCaptor.getValue().getEventType()).isEqualTo("payment_intent.payment_failed");
+    }
+
+    @Test
+    void canceledResolvesTheOrderAsFinallyDeclinedWhenThePaymentRowIsStillPending() {
+        // Reuses Stripe's own confirmation-limit auto-cancel (see the class Javadoc) — this is the
+        // "ran out of retries, genuinely over" case, unlike payment_intent.payment_failed above.
+        when(stripeWebhookEventRepository.existsByStripeEventId("evt_3")).thenReturn(false);
+        Payment payment = paymentForOrder(44);
+        payment.setStatus(PaymentStatus.PENDING);
+        when(paymentRepository.findByGatewayReference("pi_3")).thenReturn(Optional.of(payment));
+
+        service.applyPaymentIntentEvent("evt_3", "payment_intent.canceled", "pi_3",
+                PaymentFailureCategory.CARD_DECLINED, "Your card was declined.");
+
+        ArgumentCaptor<PaymentResult> resultCaptor = ArgumentCaptor.forClass(PaymentResult.class);
+        verify(paymentHandoffService).resolvePayment(eq(44), resultCaptor.capture());
+        PaymentResult result = resultCaptor.getValue();
+        assertThat(result.outcome().name()).isEqualTo("DECLINED");
+        assertThat(result.gatewayReference()).isEqualTo("pi_3");
+        assertThat(result.failureCategory()).isEqualTo(PaymentFailureCategory.CARD_DECLINED);
+        assertThat(result.gatewayFailureMessage()).isEqualTo("Your card was declined.");
+
+        ArgumentCaptor<StripeWebhookEvent> eventCaptor = ArgumentCaptor.forClass(StripeWebhookEvent.class);
+        verify(stripeWebhookEventRepository).save(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getEventType()).isEqualTo("payment_intent.canceled");
+    }
+
+    @Test
+    void canceledIsASafeNoOpWhenTheOrderCancelFlowAlreadyResolvedTheRow() {
+        // The race this guard exists for: service.impl.OrderServiceImpl#cancel's own
+        // cancelUnconfirmed call fires this identical event as a side effect of its own explicit
+        // cancel, which already marked this row CANCELLED synchronously — must not let this event
+        // overwrite it with DECLINED.
+        when(stripeWebhookEventRepository.existsByStripeEventId("evt_4")).thenReturn(false);
+        Payment payment = paymentForOrder(45);
+        payment.setStatus(PaymentStatus.CANCELLED);
+        when(paymentRepository.findByGatewayReference("pi_4")).thenReturn(Optional.of(payment));
+
+        service.applyPaymentIntentEvent("evt_4", "payment_intent.canceled", "pi_4", null, null);
+
+        verify(paymentHandoffService, never()).resolvePayment(any(), any());
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CANCELLED);
+        ArgumentCaptor<StripeWebhookEvent> eventCaptor = ArgumentCaptor.forClass(StripeWebhookEvent.class);
+        verify(stripeWebhookEventRepository).save(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getEventType()).isEqualTo("payment_intent.canceled");
     }
 }
