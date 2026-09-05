@@ -35,6 +35,24 @@ import org.springframework.stereotype.Component;
  * longer sits unrefunded forever. One that resolves through {@link #failPayment} needed the exact
  * same {@code release} regardless, so a queued cancel there only changes the final status label
  * from {@code FAILED} to {@code CANCELLED}.
+ *
+ * <p><b>Follow-up: {@link #expire} closes the "shopper simply abandoned the payment dialog"
+ * gap</b> {@link #cancel}'s own Javadoc used to flag as accepted/unrecovered — no card decline, no
+ * webhook, no explicit cancel click, just a still-open Stripe PaymentIntent nobody ever finishes.
+ * {@code OrderReconciliationJob} now actively cancels that intent at the gateway once an order has
+ * sat past a much longer "abandonment" window (folded into that same job rather than a new
+ * poller — see its own Javadoc), and dispatches here. Mirrors {@link #failPayment}'s own
+ * release-and-respect-{@code cancelRequested} shape (nothing was ever sold at this stage — only
+ * {@link #confirmPayment} calls {@code confirmSale} — so releasing the reservation, not
+ * restocking, is the correct compensating action either way), but lands on {@code EXPIRED} for the
+ * ordinary case, not {@code FAILED}: {@code EXPIRED} already means "the system gave up because
+ * nobody finished in time" ({@link PendingOrderStatusHandler#expire}'s own pre-payment
+ * counterpart), while {@code FAILED} specifically means the gateway declined a charge — nothing
+ * was ever declined here, the shopper simply walked away. Still checks {@code cancelRequested}
+ * first, for the rare case where an explicit cancel was already queued but its own
+ * {@code gatewayCancellationNeeded} follow-up hadn't run yet (e.g. a transient gateway outage) by
+ * the time this job's own, much longer window elapsed — that's still "the shopper asked," so it
+ * still lands on {@code CANCELLED}, same as {@link #failPayment}'s own equivalent branch.
  */
 @Component
 @RequiredArgsConstructor
@@ -50,6 +68,18 @@ public class PaymentProcessingOrderStatusHandler implements OrderStatusHandler {
     @Override
     public void cancel(Order order) {
         order.setCancelRequested(true);
+    }
+
+    @Override
+    public void expire(Order order) {
+        OrderStatusTransitions.releaseReservations(order, productVariantRepository);
+        if (Boolean.TRUE.equals(order.getCancelRequested())) {
+            OrderStatusTransitions.transitionTo(order, OrderStatus.CANCELLED,
+                    "Cancelled while payment was processing — the shopper never completed the payment attempt");
+        } else {
+            OrderStatusTransitions.transitionTo(order, OrderStatus.EXPIRED,
+                    "Payment was never completed — the checkout appears to have been abandoned");
+        }
     }
 
     @Override

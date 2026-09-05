@@ -4,6 +4,7 @@ import com.ttg.devknowledgeplatform.ecommerce.config.OrderJobProperties;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.enums.PaymentFailureCategory;
+import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentCancellationResult;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentOutcome;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentResult;
@@ -18,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -43,6 +45,8 @@ class OrderReconciliationJobTest {
     private PaymentGatewayPort paymentGatewayPort;
     @Mock
     private PaymentHandoffService paymentHandoffService;
+    @Mock
+    private PaymentCancellationService paymentCancellationService;
 
     private OrderReconciliationJob job;
 
@@ -50,10 +54,12 @@ class OrderReconciliationJobTest {
     void setUp() {
         // OrderJobProperties is a record (implicitly final) — Mockito's mock maker here can't
         // mock/spy a final class, and there's no real reason to: it's a plain, cheap value object,
-        // so a real instance (not a mock) is simplest.
-        OrderJobProperties orderJobProperties =
-                new OrderJobProperties(null, new OrderJobProperties.Reconciliation(Duration.ofMinutes(2)));
-        job = new OrderReconciliationJob(orderRepository, paymentGatewayPort, paymentHandoffService, orderJobProperties);
+        // so a real instance (not a mock) is simplest. A short 30-minute abandonmentTimeout keeps
+        // the abandonment tests below readable without needing hour-scale Instants.
+        OrderJobProperties orderJobProperties = new OrderJobProperties(null,
+                new OrderJobProperties.Reconciliation(Duration.ofMinutes(2), Duration.ofMinutes(30)));
+        job = new OrderReconciliationJob(orderRepository, paymentGatewayPort, paymentHandoffService,
+                paymentCancellationService, orderJobProperties);
     }
 
     private static Order stuckOrder(Integer id) {
@@ -169,5 +175,71 @@ class OrderReconciliationJobTest {
         job.reconcileStuckPayments();
 
         verify(paymentHandoffService).resolvePayment(1, stillPending);
+    }
+
+    @Test
+    void leavesAStillProcessingOrderPendingWhenItHasNotYetCrossedTheAbandonmentWindow() {
+        // Same real-gatewayReference shape as above, but explicit about the boundary this time:
+        // stuck for 10 minutes (past the 2-minute grace period this job already polls on) but well
+        // short of the 30-minute abandonmentTimeout this test's own setUp configures — must still
+        // just keep polling, not cancel anything at the gateway.
+        when(orderRepository.findIdsByStatusAndPaymentProcessingStartedAtBefore(
+                eq(OrderStatus.PAYMENT_PROCESSING), any(), any(Pageable.class)))
+                .thenReturn(List.of(1));
+        Order order = stuckOrder(1);
+        order.setPaymentProcessingStartedAt(Instant.now().minus(Duration.ofMinutes(10)));
+        when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+        PaymentResult stillPending = PaymentResult.pending("pi_1", "pi_1_secret");
+        when(paymentGatewayPort.checkStatus("1")).thenReturn(stillPending);
+
+        job.reconcileStuckPayments();
+
+        verify(paymentHandoffService).resolvePayment(1, stillPending);
+        verify(paymentGatewayPort, never()).cancelUnconfirmed(anyString());
+        verify(paymentCancellationService, never()).applyAbandonmentExpiry(any(), any());
+    }
+
+    @Test
+    void activelyCancelsAndExpiresAStillOpenPaymentIntentPastTheAbandonmentWindow() {
+        when(orderRepository.findIdsByStatusAndPaymentProcessingStartedAtBefore(
+                eq(OrderStatus.PAYMENT_PROCESSING), any(), any(Pageable.class)))
+                .thenReturn(List.of(1));
+        Order order = stuckOrder(1);
+        order.setPaymentProcessingStartedAt(Instant.now().minus(Duration.ofMinutes(45)));
+        when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+        PaymentResult stillPending = PaymentResult.pending("pi_1", "pi_1_secret");
+        when(paymentGatewayPort.checkStatus("1")).thenReturn(stillPending);
+        PaymentCancellationResult cancellation = PaymentCancellationResult.cancelled();
+        when(paymentGatewayPort.cancelUnconfirmed("pi_1")).thenReturn(cancellation);
+
+        job.reconcileStuckPayments();
+
+        verify(paymentGatewayPort).cancelUnconfirmed("pi_1");
+        verify(paymentCancellationService).applyAbandonmentExpiry(1, cancellation);
+        verify(paymentHandoffService, never()).resolvePayment(any(), any());
+    }
+
+    @Test
+    void aPaymentIntentThatResolvedAtTheGatewayJustBeforeTheAbandonmentCancelStillReconcilesCorrectly() {
+        // The job's own live-check-first safety property: it delegates the ALREADY_RESOLVED race
+        // entirely to PaymentCancellationService#applyAbandonmentExpiry (see that class's own
+        // test suite for the actual resolvePayment-delegation assertion) — this test only confirms
+        // the job calls that method rather than trying to resolve the race itself.
+        when(orderRepository.findIdsByStatusAndPaymentProcessingStartedAtBefore(
+                eq(OrderStatus.PAYMENT_PROCESSING), any(), any(Pageable.class)))
+                .thenReturn(List.of(1));
+        Order order = stuckOrder(1);
+        order.setPaymentProcessingStartedAt(Instant.now().minus(Duration.ofMinutes(45)));
+        when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+        PaymentResult stillPending = PaymentResult.pending("pi_1", "pi_1_secret");
+        when(paymentGatewayPort.checkStatus("1")).thenReturn(stillPending);
+        PaymentCancellationResult alreadyResolved =
+                PaymentCancellationResult.alreadyResolved(PaymentResult.succeeded("pi_1"));
+        when(paymentGatewayPort.cancelUnconfirmed("pi_1")).thenReturn(alreadyResolved);
+
+        job.reconcileStuckPayments();
+
+        verify(paymentCancellationService).applyAbandonmentExpiry(1, alreadyResolved);
+        verify(paymentHandoffService, never()).resolvePayment(any(), any());
     }
 }

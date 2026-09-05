@@ -57,6 +57,33 @@ class PaymentProcessingOrderStatusHandlerTest {
     }
 
     @Nested
+    class Expire {
+
+        @Test
+        void withNoQueuedCancelReleasesAndTransitionsToExpired() {
+            Order order = paymentProcessingOrderWithLine();
+
+            handler.expire(order);
+
+            verify(productVariantRepository).release(1, 2);
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.EXPIRED);
+            assertThat(order.getStatusHistory()).hasSize(1);
+            assertThat(order.getStatusHistory().get(0).getReason()).contains("abandoned");
+        }
+
+        @Test
+        void withAQueuedCancelStillReleasesButTransitionsToCancelledInstead() {
+            Order order = paymentProcessingOrderWithLine();
+            order.setCancelRequested(true);
+
+            handler.expire(order);
+
+            verify(productVariantRepository).release(1, 2);
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
+        }
+    }
+
+    @Nested
     class ConfirmPayment {
 
         @Test

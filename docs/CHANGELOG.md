@@ -3547,6 +3547,20 @@ entries start fresh below `[Unreleased]`.
   call (e.g. the new `ORDER_RESERVATION_EXPIRED`) updates the stale status chip/action buttons
   instead of leaving them stuck. Verified via a clean `tsc --noEmit` and a successful `vite build`
   only — no Docker in this sandbox, so the actual click-through is unverified in a real browser.
+- **`ecommerce-service`: an order abandoned mid-payment (never confirmed, declined, or explicitly
+  cancelled) now auto-expires, folded into `OrderReconciliationJob` rather than a new poller.** A
+  second, much longer threshold (`reconciliation.abandonmentTimeout`, default `PT45M` —
+  `ORDER_ABANDONMENT_TIMEOUT`) is checked only when `checkStatus` still reports a genuinely
+  still-open PaymentIntent (`PENDING` with a real `gatewayReference`); once stuck that long, the
+  job actively cancels it at the gateway and finalizes via a new
+  `PaymentCancellationService#applyAbandonmentExpiry` — the same durable-step shape
+  `OrderServiceImpl#cancel` already uses for an explicit click. Lands the order on `EXPIRED` (new
+  `PaymentProcessingOrderStatusHandler#expire`), not `CANCELLED`/`FAILED` — `CANCELLED` means "the
+  shopper asked," `FAILED` means "the gateway declined," neither of which is true here; `EXPIRED`
+  already means "the system gave up because nobody finished in time." The `Payment` row itself
+  still lands on the already-existing `CANCELLED` status either way — no new enum value, no
+  migration. 9 new tests. 385 unit tests total (up from 376), verified via a real `mvn test` run
+  (JDK 21).
 
 ## [0.0.2] — 2026-08-11
 

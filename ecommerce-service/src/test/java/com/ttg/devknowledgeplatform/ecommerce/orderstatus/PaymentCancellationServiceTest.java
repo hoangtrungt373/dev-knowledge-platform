@@ -275,6 +275,75 @@ class PaymentCancellationServiceTest {
     }
 
     @Nested
+    class ApplyAbandonmentExpiry {
+
+        @Test
+        void cancelledDispatchesToExpireAndMarksThePaymentRowCancelledWithNoOutboxEvent() {
+            Order order = orderOwnedBy(OWNER_UUID);
+            order.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            doAnswer(invocation -> {
+                order.setStatus(OrderStatus.EXPIRED);
+                return null;
+            }).when(orderStatusHandlerRegistry).expire(order);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+            when(orderRepository.save(order)).thenReturn(order);
+            Payment payment = new Payment();
+            payment.setId(100);
+            payment.setStatus(PaymentStatus.PENDING);
+            payment.setGatewayReference("gw-ref-1");
+            when(paymentRepository.findByOrderId(1)).thenReturn(Optional.of(payment));
+
+            Order result = service.applyAbandonmentExpiry(1, PaymentCancellationResult.cancelled());
+
+            assertThat(result.getStatus()).isEqualTo(OrderStatus.EXPIRED);
+            verify(orderStatusHandlerRegistry).expire(order);
+            verify(orderStatusHandlerRegistry, never()).failPayment(any());
+            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CANCELLED);
+            verify(paymentRepository).save(payment);
+            verify(outboxEventRepository, never()).save(any());
+            verify(paymentHandoffService, never()).resolvePayment(any(), any());
+        }
+
+        @Test
+        void alreadyResolvedDelegatesStraightToPaymentHandoffServiceWithTheGatewaysRealResult() {
+            // Mirrors ApplyGatewayCancellation's own equivalent case — the shopper confirmed on
+            // another tab a moment before the abandonment cancel call reached the gateway.
+            PaymentResult succeeded = PaymentResult.succeeded("gw-ref-1");
+            Order order = orderOwnedBy(OWNER_UUID);
+            when(paymentHandoffService.resolvePayment(1, succeeded)).thenReturn(order);
+
+            Order result = service.applyAbandonmentExpiry(1, PaymentCancellationResult.alreadyResolved(succeeded));
+
+            verify(paymentHandoffService).resolvePayment(1, succeeded);
+            assertThat(result).isSameAs(order);
+            verify(orderRepository, never()).findById(any());
+            verify(orderStatusHandlerRegistry, never()).expire(any());
+        }
+
+        @Test
+        void throwsIllegalStateWhenNoPaymentRowExistsForTheCancelledOutcome() {
+            Order order = orderOwnedBy(OWNER_UUID);
+            order.setStatus(OrderStatus.PAYMENT_PROCESSING);
+            when(orderRepository.findById(1)).thenReturn(Optional.of(order));
+            when(orderRepository.save(order)).thenReturn(order);
+            when(paymentRepository.findByOrderId(1)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.applyAbandonmentExpiry(1, PaymentCancellationResult.cancelled()))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        void rejectsAsNotFoundWhenTheOrderDoesNotExist() {
+            when(orderRepository.findById(1)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.applyAbandonmentExpiry(1, PaymentCancellationResult.cancelled()))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getErrorCode())
+                    .isEqualTo(EcommerceErrorCode.ORDER_NOT_FOUND);
+        }
+    }
+
+    @Nested
     class ApplyRefundResult {
 
         @Test

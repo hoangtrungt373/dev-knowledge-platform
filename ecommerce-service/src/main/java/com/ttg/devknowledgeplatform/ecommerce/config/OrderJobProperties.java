@@ -25,16 +25,26 @@ public record OrderJobProperties(Duration reservationTimeout, Reconciliation rec
             reservationTimeout = Duration.ofMinutes(15);
         }
         if (reconciliation == null) {
-            reconciliation = new Reconciliation(null);
+            reconciliation = new Reconciliation(null, null);
         }
     }
 
-    /** {@code app.ecommerce.order.reconciliation.*}. */
-    public record Reconciliation(Duration gracePeriod) {
+    /**
+     * {@code app.ecommerce.order.reconciliation.*}. {@code abandonmentTimeout} is a follow-up,
+     * deliberately much longer than {@code gracePeriod} — that one is about "did the gateway
+     * resolve this yet" (checked on every poll tick once past it), this one is about "has the
+     * shopper genuinely given up" ({@code OrderReconciliationJob} only actively cancels a
+     * still-open PaymentIntent once an order has sat stuck past this second, longer threshold —
+     * see that job's own Javadoc).
+     */
+    public record Reconciliation(Duration gracePeriod, Duration abandonmentTimeout) {
 
         public Reconciliation {
             if (gracePeriod == null) {
                 gracePeriod = Duration.ofMinutes(2);
+            }
+            if (abandonmentTimeout == null) {
+                abandonmentTimeout = Duration.ofMinutes(45);
             }
         }
     }

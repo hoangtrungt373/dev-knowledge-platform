@@ -4,6 +4,7 @@ import com.ttg.devknowledgeplatform.ecommerce.config.OrderJobProperties;
 import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.enums.PaymentFailureCategory;
+import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentCancellationResult;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayPort;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentOutcome;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentResult;
@@ -58,6 +59,23 @@ import java.util.List;
  * polling forever — the shopper can then simply reorder, and if they'd already queued a cancel,
  * {@code PaymentProcessingOrderStatusHandler#failPayment}'s own {@code cancelRequested}-wins rule
  * correctly lands the order {@code CANCELLED} instead of {@code FAILED}, exactly as they asked.
+ *
+ * <p><b>Auto-expire follow-up: {@link #reconcileOne} also closes the "shopper simply abandoned
+ * the payment dialog" gap — folded into this same method rather than a new poller/job.</b> This
+ * method already runs {@link PaymentGatewayPort#checkStatus} on every tick for any order stuck
+ * this long, so the live ground-truth check it needs was already here; the only new piece is a
+ * second, much longer threshold ({@code orderJobProperties.reconciliation().abandonmentTimeout()}
+ * — deliberately far past {@code gracePeriod}, which is about "did Stripe resolve this yet," not
+ * "give up") checked only when {@code checkStatus} still genuinely reports
+ * {@link PaymentOutcome#PENDING} with a real (non-{@code null}) {@code gatewayReference} — a
+ * still-open PaymentIntent, not the separate "never reached the gateway at all" case just above.
+ * Once an order has sat that long with no resolution and no explicit cancel, this method actively
+ * cancels the intent ({@link PaymentGatewayPort#cancelUnconfirmed}) and finalizes via
+ * {@link PaymentCancellationService#applyAbandonmentExpiry} — the identical durable-step shape
+ * {@code service.impl.OrderServiceImpl#cancel} already uses for an explicit click, just triggered
+ * by a timeout instead of a shopper action. Same live-check-first safety property as everything
+ * else in this class: it never blindly cancels something that just succeeded — see
+ * {@link PaymentCancellationService#applyAbandonmentExpiry}'s own {@code ALREADY_RESOLVED} handling.
  */
 @Component
 @RequiredArgsConstructor
@@ -67,6 +85,7 @@ public class OrderReconciliationJob extends AbstractReconciliationJob {
     private final OrderRepository orderRepository;
     private final PaymentGatewayPort paymentGatewayPort;
     private final PaymentHandoffService paymentHandoffService;
+    private final PaymentCancellationService paymentCancellationService;
     private final OrderJobProperties orderJobProperties;
 
     @Scheduled(fixedDelayString = "${app.ecommerce.order.reconciliation.poll-interval:PT1M}")
@@ -102,9 +121,37 @@ public class OrderReconciliationJob extends AbstractReconciliationJob {
                     orderId, order.getIdempotencyKey());
             result = PaymentResult.declined(null, PaymentFailureCategory.GATEWAY_ERROR,
                     "Payment attempt never reached the payment gateway");
+        } else if (result.outcome() == PaymentOutcome.PENDING && isAbandoned(order)) {
+            // A real, still-open PaymentIntent, but the order has now sat PAYMENT_PROCESSING past
+            // the much longer abandonment window with no resolution and no explicit cancel — the
+            // shopper appears to have simply walked away from the payment form. Nothing else will
+            // ever pick this up on its own (no webhook fires for an intent nobody confirmed), so
+            // actively void it at the gateway instead of polling forever.
+            log.warn("Order id={} idempotencyKey={} stuck PAYMENT_PROCESSING past the abandonment window "
+                    + "({}) with a still-open PaymentIntent gatewayReference={} — actively cancelling it as "
+                    + "abandoned", orderId, order.getIdempotencyKey(),
+                    orderJobProperties.reconciliation().abandonmentTimeout(), result.gatewayReference());
+            PaymentCancellationResult cancellation = paymentGatewayPort.cancelUnconfirmed(result.gatewayReference());
+            paymentCancellationService.applyAbandonmentExpiry(orderId, cancellation);
+            return;
         }
         paymentHandoffService.resolvePayment(orderId, result);
         log.info("Reconciled order id={} idempotencyKey={} outcome={}",
                 orderId, order.getIdempotencyKey(), result.outcome());
+    }
+
+    /**
+     * Whether {@code order} has sat {@code PAYMENT_PROCESSING} past
+     * {@code orderJobProperties.reconciliation().abandonmentTimeout()} — {@code false} whenever an
+     * order somehow reaches this method without ever having gone through
+     * {@code PendingOrderStatusHandler#startPaymentProcessing} (which always stamps this field),
+     * treated as "not abandoned" rather than a null-pointer/false-positive risk.
+     */
+    private boolean isAbandoned(Order order) {
+        if (order.getPaymentProcessingStartedAt() == null) {
+            return false;
+        }
+        Instant abandonmentCutoff = Instant.now().minus(orderJobProperties.reconciliation().abandonmentTimeout());
+        return order.getPaymentProcessingStartedAt().isBefore(abandonmentCutoff);
     }
 }
