@@ -2612,6 +2612,52 @@ structural-only adapter.
     `OrderServiceImplTest.InitiatePayment` cases (both exception shapes converted when genuinely
     expired, one rethrown unchanged when the order ended up somewhere else). 376 unit tests total
     (up from 373), verified via a real `mvn test` run (JDK 21).
+  - **Follow-up: an order abandoned mid-payment — the shopper never confirms, declines, or clicks
+    Cancel Order, just leaves a still-open Stripe PaymentIntent forever — now auto-expires,
+    closing the one remaining gap `PaymentProcessingOrderStatusHandler#cancel`'s own Javadoc used
+    to flag as an accepted, unrecovered limitation.** Folded into `OrderReconciliationJob` rather
+    than a new poller/job, per request — that job already runs `PaymentGatewayPort#checkStatus`
+    live on every tick for any order stuck past its (short) `gracePeriod`, so the ground-truth
+    check this needed was already there; the only new piece is a second, much longer threshold
+    (`orderJobProperties.reconciliation().abandonmentTimeout()`, default `PT45M` —
+    `ORDER_ABANDONMENT_TIMEOUT`) checked only when `checkStatus` still genuinely reports `PENDING`
+    with a real (non-`null`) `gatewayReference` — a still-open intent, distinct from this same
+    method's existing "never reached the gateway at all" branch just above it. Once an order has
+    sat that long with no resolution, `reconcileOne` actively cancels the intent
+    (`PaymentGatewayPort#cancelUnconfirmed`) and finalizes via a new
+    `PaymentCancellationService#applyAbandonmentExpiry` — the identical durable-step shape
+    `OrderServiceImpl#cancel` already uses for an explicit click, just triggered by a timeout
+    instead of a shopper action, with the same live-check-first safety property (an
+    `ALREADY_RESOLVED` gateway verdict still delegates straight to `PaymentHandoffService
+    #resolvePayment`, never forcing a cancellation that never really happened).
+    **Lands the order on `EXPIRED`, not `CANCELLED` or `FAILED`** — a naming/status decision made
+    explicitly rather than reusing either existing terminal status: `CANCELLED` in this codebase
+    specifically means "the shopper asked for this" (`cancelRequested`-driven), and `FAILED`
+    specifically means the gateway declined a charge, neither of which is true here; `EXPIRED`
+    already exists for exactly "the system gave up because nobody finished in time"
+    (`PendingOrderStatusHandler#expire`'s own pre-payment counterpart), so this reuses that same
+    meaning for the mid-payment timeout instead of inventing a third status or overloading
+    `CANCELLED` with a new automatic trigger it doesn't otherwise carry. New
+    `PaymentProcessingOrderStatusHandler#expire` (parallel to its existing `#cancel`) — releases
+    the reservation (nothing was sold yet at this stage, only `confirmSale`d) and transitions to
+    `EXPIRED`, except when `cancelRequested` was already queued (e.g. a transient gateway outage
+    left an explicit cancel's own `gatewayCancellationNeeded` follow-up unresolved), in which case
+    it still lands on `CANCELLED` instead — mirroring `#failPayment`'s own `cancelRequested`-wins
+    check. **The `Payment` row itself lands on the already-existing `CANCELLED` status either
+    way** (no new `PaymentStatus`/`OrderStatus` enum value, no migration needed — both statuses
+    already existed from the explicit-cancel/Epic-3 work) — nothing was actually declined by the
+    gateway in either case, matching `applyGatewayCancellation`'s own established split between
+    "what happened to the money" (`Payment.status`) and "why the order ended" (`Order.status`).
+    `PaymentCancellationService#applyGatewayCancellation`/`#applyAbandonmentExpiry` now share a
+    private `finalizeAsGatewayCancelled` helper (a `Consumer<Order>` dispatch parameter — `::
+    failPayment` vs. `::expire`) rather than duplicating the fetch/dispatch/mark-`Payment`-
+    `CANCELLED` shape twice. New `OrderJobProperties.Reconciliation.abandonmentTimeout` (same
+    record, alongside the existing `gracePeriod`). 9 new tests
+    (`PaymentProcessingOrderStatusHandlerTest.Expire`: 2; `PaymentCancellationServiceTest
+    .ApplyAbandonmentExpiry`: 4, mirroring `ApplyGatewayCancellation`'s own shape;
+    `OrderReconciliationJobTest`: 3 — not-yet-abandoned, actively-cancels-past-the-window, and the
+    `ALREADY_RESOLVED` race). **385 unit tests total** (up from 376), verified via a real
+    `mvn test` run (JDK 21).
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)

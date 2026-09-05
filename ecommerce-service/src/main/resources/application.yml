@@ -47,6 +47,12 @@ app:
         # re-queries the gateway for it, and how often that job polls.
         grace-period: ${ORDER_RECONCILIATION_GRACE_PERIOD:PT2M}
         poll-interval: ${ORDER_RECONCILIATION_POLL_INTERVAL:PT1M}
+        # Auto-expire follow-up: how long a still-open (unconfirmed) PaymentIntent may sit
+        # PAYMENT_PROCESSING before OrderReconciliationJob gives up waiting and actively cancels it
+        # as abandoned (the shopper never confirmed, declined, or explicitly clicked Cancel Order)
+        # — deliberately much longer than grace-period above, which is about "did the gateway
+        # resolve this yet," not "give up."
+        abandonment-timeout: ${ORDER_ABANDONMENT_TIMEOUT:PT45M}
 
     payment:
       # Epic 4 Phase 2: which PaymentGatewayPort strategy is the active bean — "mock"

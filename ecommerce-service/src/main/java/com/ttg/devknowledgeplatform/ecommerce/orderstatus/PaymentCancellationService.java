@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.function.Consumer;
 
 /**
  * The cancellation- and refund-side counterpart to {@link PaymentHandoffService} — split out of
@@ -77,6 +78,21 @@ import java.math.BigDecimal;
  * {@link #applyGatewayCancellation} — the same durable-step/gateway-call/durable-step shape this
  * class already uses everywhere else. Found via a real end-to-end `stripe listen` session where an
  * order stayed durably {@code PAYMENT_PROCESSING} even after Cancel Order was clicked.
+ *
+ * <p><b>Auto-expire follow-up: {@link #applyAbandonmentExpiry} closes the sibling gap this
+ * class's own {@link #applyGatewayCancellation} left open — a shopper who never clicks Cancel
+ * Order at all, just abandons the payment dialog with a still-open Stripe PaymentIntent
+ * indefinitely.</b> {@code OrderReconciliationJob} (folded in there rather than a new poller — see
+ * that job's own Javadoc) actively cancels that intent once an order has sat stuck past a much
+ * longer "abandonment" window, then calls this method — the identical durable-step shape
+ * {@link #applyGatewayCancellation} already uses, differing only in which
+ * {@code OrderStatusHandlerRegistry} transition the {@code CANCELLED} branch dispatches to
+ * ({@link OrderStatusHandlerRegistry#expire} instead of {@link OrderStatusHandlerRegistry#failPayment}
+ * — see {@code PaymentProcessingOrderStatusHandler#expire}'s own Javadoc for why the two land on
+ * different order statuses, {@code EXPIRED} vs. a {@code cancelRequested}-gated {@code CANCELLED}/
+ * {@code FAILED}, despite marking the {@code Payment} row {@code CANCELLED} identically either
+ * way — nothing was actually declined by the gateway in either case). That shared shape is
+ * factored into a private {@link #finalizeAsGatewayCancelled} rather than duplicated.
  */
 @Component
 @RequiredArgsConstructor
@@ -180,8 +196,41 @@ public class PaymentCancellationService {
         if (result.outcome() == CancellationOutcome.ALREADY_RESOLVED) {
             return paymentHandoffService.resolvePayment(orderId, result.resolvedResult());
         }
+        return finalizeAsGatewayCancelled(orderId, orderStatusHandlerRegistry::failPayment);
+    }
+
+    /**
+     * The auto-expire follow-up's own counterpart to {@link #applyGatewayCancellation} — same
+     * signature/shape, called instead whenever {@code OrderReconciliationJob} is the one actively
+     * cancelling a still-open PaymentIntent (an abandoned checkout, not an explicit shopper
+     * click). Differs only in dispatching the {@code CANCELLED} branch to
+     * {@link OrderStatusHandlerRegistry#expire} rather than {@link OrderStatusHandlerRegistry#failPayment}
+     * — see this class's own Javadoc and {@code PaymentProcessingOrderStatusHandler#expire}'s own
+     * for why that lands the order on {@code EXPIRED} instead of {@code FAILED}/{@code CANCELLED}.
+     *
+     * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException if the order
+     *         no longer exists
+     * @throws IllegalStateException if no {@code Payment} row exists for this order — a genuine
+     *         invariant violation, same as {@link #applyGatewayCancellation}'s own
+     */
+    @Transactional(rollbackFor = Throwable.class)
+    public Order applyAbandonmentExpiry(Integer orderId, PaymentCancellationResult result) {
+        if (result.outcome() == CancellationOutcome.ALREADY_RESOLVED) {
+            return paymentHandoffService.resolvePayment(orderId, result.resolvedResult());
+        }
+        return finalizeAsGatewayCancelled(orderId, orderStatusHandlerRegistry::expire);
+    }
+
+    /**
+     * The shared "gateway genuinely voided the charge attempt" finalization — dispatches
+     * {@code orderId}'s order through whichever registry transition the caller supplies (never
+     * {@code ALREADY_RESOLVED}, which both callers already handle before reaching here) and marks
+     * the {@code Payment} row {@code CANCELLED} regardless of which transition ran, since nothing
+     * was actually declined by the gateway either way.
+     */
+    private Order finalizeAsGatewayCancelled(Integer orderId, Consumer<Order> dispatch) {
         Order order = Validator.notFound(orderRepository.findById(orderId), EcommerceErrorCode.ORDER_NOT_FOUND, orderId);
-        orderStatusHandlerRegistry.failPayment(order);
+        dispatch.accept(order);
         Order saved = orderRepository.save(order);
         Payment payment = paymentRepository.findByOrderId(orderId)
                 .orElseThrow(() -> new IllegalStateException(
