@@ -14,8 +14,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -65,7 +67,9 @@ class OrderLifecycleIntegrationTest {
 
         registry.startPaymentProcessing(order);
         assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_PROCESSING);
-        assertThat(order.getIdempotencyKey()).isEqualTo("1");
+        // A random UUID, not the order's own id — see PendingOrderStatusHandler's own Javadoc.
+        assertThat(order.getIdempotencyKey()).isNotBlank();
+        assertThatCode(() -> UUID.fromString(order.getIdempotencyKey())).doesNotThrowAnyException();
 
         registry.confirmPayment(order);
         assertThat(order.getStatus()).isEqualTo(OrderStatus.CONFIRMED);

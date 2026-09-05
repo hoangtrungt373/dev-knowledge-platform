@@ -3321,6 +3321,25 @@ entries start fresh below `[Unreleased]`.
   against an order this reactor had already marked `CANCELLED`. 328 unit tests total (up from 320),
   verified via a real `mvn test` run (JDK 21). See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2
   follow-up section for the full incident writeup.
+- **`ecommerce-service`: Stripe `IdempotencyException` after a local dev database purge — the
+  idempotency key was the order's own recyclable primary key, found immediately after the fix
+  above by actually running `stripe listen` against a freshly-purged database.**
+  `PendingOrderStatusHandler.startPaymentProcessing` stamped `String.valueOf(order.getId())` as the
+  Stripe idempotency key; `scripts/purge-seed-data.sql`'s `TRUNCATE ... RESTART IDENTITY` resets
+  `CUSTOMER_ORDER_SEQ` back to 1, so a new order can land on an id a *different*, earlier order (a
+  different total) already used as its own key. Stripe's own idempotency cache lives server-side
+  for 24 hours regardless of what happens in this app's own database, so it still remembered the
+  old key/amount pair and correctly refused the new, differently-priced request:
+  `IdempotencyException: Keys for idempotent requests can only be used with the same parameters
+  they were first used with`. Fixed by generating a random `UUID` instead — confirmed via a
+  full-module grep that nothing anywhere parses this column back into a number, and that both
+  `Order.idempotencyKey`/`Payment.idempotencyKey` (`VARCHAR(64)`) fit a 36-character UUID with no
+  migration needed. Does not change the actual double-charge protection (which lives entirely in
+  `PaymentHandoffService.startPaymentProcessing`'s own re-entrancy check, unaffected by this) — only
+  *cross-order* key collisions after a database reset. Two tests asserting the old numeric-derived
+  value were updated to assert a well-formed UUID instead; 328 unit tests total, unchanged,
+  verified via a real `mvn test` run (JDK 21). See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2
+  follow-up section for the full incident writeup.
 
 ## [0.0.2] — 2026-08-11
 
