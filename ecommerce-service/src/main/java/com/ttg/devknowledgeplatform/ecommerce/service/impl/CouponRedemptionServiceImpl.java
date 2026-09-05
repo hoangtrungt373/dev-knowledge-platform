@@ -7,6 +7,7 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.enums.CouponTarget;
 import com.ttg.devknowledgeplatform.ecommerce.enums.CouponType;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
+import com.ttg.devknowledgeplatform.ecommerce.repository.CouponRedemptionCount;
 import com.ttg.devknowledgeplatform.ecommerce.repository.CouponRedemptionRepository;
 import com.ttg.devknowledgeplatform.ecommerce.repository.CouponRepository;
 import com.ttg.devknowledgeplatform.ecommerce.service.CouponRedemptionService;
@@ -22,6 +23,8 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Implementation of {@link CouponRedemptionService}.
@@ -101,18 +104,48 @@ public class CouponRedemptionServiceImpl implements CouponRedemptionService {
                 coupon.getId(), coupon.getCode(), order.getId(), discountAmount);
     }
 
+    /**
+     * Bug fix: this used to call {@code couponRedemptionRepository.countByCouponId}/
+     * {@code countByCouponIdAndOwnerUuid} once per candidate coupon inside the filter chain — an
+     * N+1 query pattern hit every time a shopper opens the coupon-picker dialog. Both counts are
+     * now resolved in at most one grouped query each (never more, regardless of how many candidate
+     * coupons there are), and only when at least one candidate actually has that kind of limit set
+     * at all — a coupon list with no redemption limits configured still costs zero count queries,
+     * exactly as before this fix.
+     */
     @Override
     public List<Coupon> listAvailable(CouponTarget target, String ownerUuid) {
         Instant now = Instant.now();
-        return couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(target).stream()
+        List<Coupon> candidates = couponRepository.findAllByTargetAndActiveTrueOrderByValueDesc(target).stream()
                 .filter(c -> c.getStartAt() == null || !now.isBefore(c.getStartAt()))
                 .filter(c -> c.getEndAt() == null || !now.isAfter(c.getEndAt()))
-                .filter(c -> c.getMaxRedemptions() == null
-                        || couponRedemptionRepository.countByCouponId(c.getId()) < c.getMaxRedemptions())
-                .filter(c -> c.getMaxRedemptionsPerUser() == null
-                        || couponRedemptionRepository.countByCouponIdAndOwnerUuid(c.getId(), ownerUuid)
-                        < c.getMaxRedemptionsPerUser())
                 .toList();
+        if (candidates.isEmpty()) {
+            return candidates;
+        }
+
+        List<Integer> globalLimitedIds = candidates.stream()
+                .filter(c -> c.getMaxRedemptions() != null).map(Coupon::getId).toList();
+        Map<Integer, Long> globalCounts = globalLimitedIds.isEmpty()
+                ? Map.of()
+                : toCountMap(couponRedemptionRepository.countGroupedByCouponId(globalLimitedIds));
+
+        List<Integer> perUserLimitedIds = candidates.stream()
+                .filter(c -> c.getMaxRedemptionsPerUser() != null).map(Coupon::getId).toList();
+        Map<Integer, Long> perUserCounts = perUserLimitedIds.isEmpty()
+                ? Map.of()
+                : toCountMap(couponRedemptionRepository.countGroupedByCouponIdForOwner(perUserLimitedIds, ownerUuid));
+
+        return candidates.stream()
+                .filter(c -> c.getMaxRedemptions() == null
+                        || globalCounts.getOrDefault(c.getId(), 0L) < c.getMaxRedemptions())
+                .filter(c -> c.getMaxRedemptionsPerUser() == null
+                        || perUserCounts.getOrDefault(c.getId(), 0L) < c.getMaxRedemptionsPerUser())
+                .toList();
+    }
+
+    private static Map<Integer, Long> toCountMap(List<CouponRedemptionCount> counts) {
+        return counts.stream().collect(Collectors.toMap(CouponRedemptionCount::getCouponId, CouponRedemptionCount::getTotal));
     }
 
     @Override

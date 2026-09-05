@@ -3394,6 +3394,22 @@ entries start fresh below `[Unreleased]`.
   - 6 new `OrderServiceImplTest` cases. 336 unit tests total (up from 330), verified via a real
     `mvn test` run (JDK 21). See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section
     for the full incident writeup and the audit's remaining, not-yet-actioned findings.
+- **`ecommerce-service`: the audit's three N+1 query findings fixed next, per request.**
+  - `CartServiceImpl.getCart` (the app's single hottest read path) used to cost up to `2N` queries
+    for an `N`-line cart — one `findById` per line plus a lazy `product` load per line. New
+    `ProductVariantRepository#findAllByIdWithProduct` (one `JOIN FETCH` query, any cart size) fixes
+    it; 5 new `CartServiceImplTest.GetCart` cases (this method had zero coverage before).
+  - `entity.Product`'s `variants`/`images`/`productTagAssignments` were mapped unconditionally on
+    every row of the paginated admin product list, up to 60 extra lazy-load queries for a 20-row
+    page. Fixed with `@BatchSize(size = 20)` on all three collections — Hibernate now batches every
+    pending same-type collection into one `IN (...)` query instead of one per product.
+  - `CouponRedemptionServiceImpl.listAvailable` (called on every coupon-picker open) used to query
+    a redemption count once per candidate coupon. New grouped
+    `countGroupedByCouponId`/`countGroupedByCouponIdForOwner` queries fix it, while preserving the
+    original "zero limits configured → zero count queries" short-circuit exactly; 3 new test cases.
+  - 8 new tests total. 344 unit tests total (up from 336), verified via a real `mvn test` run
+    (JDK 21). See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full
+    detail.
 
 ## [0.0.2] — 2026-08-11
 

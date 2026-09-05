@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -20,6 +21,19 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     boolean existsBySkuAndIdNot(String sku, Integer id);
 
     List<ProductVariant> findByProductId(Integer productId);
+
+    /**
+     * Batch-resolves every variant in {@code ids} in one round trip, eagerly fetching each one's
+     * own (otherwise {@code LAZY}) {@code product} association in the same query — a plain
+     * {@code findAllById} would still trigger one extra lazy-load query per variant the instant
+     * something reads {@code variant.getProduct()}. Written specifically for
+     * {@code service.impl.CartServiceImpl#getCart}, which used to call plain {@code findById} once
+     * per cart line (an N+1 query pattern on the app's hottest read path — every cart view *and*
+     * every checkout {@code preview}/{@code confirm} call); this turns an N-line cart into exactly
+     * one query regardless of line count.
+     */
+    @Query("SELECT v FROM ProductVariant v JOIN FETCH v.product WHERE v.id IN :ids")
+    List<ProductVariant> findAllByIdWithProduct(@Param("ids") Collection<Integer> ids);
 
     /**
      * Atomically reserves {@code quantity} units of a variant for an order (US-3.1) — the same

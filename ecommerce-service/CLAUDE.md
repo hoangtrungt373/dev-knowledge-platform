@@ -2240,6 +2240,51 @@ structural-only adapter.
     from 330), verified via a real `mvn test` run (JDK 21) and a targeted
     `-pl ecommerce-service,gateway -am compile` (no `gateway`-side change needed — this is a pure
     behavior fix inside an already-routed endpoint).
+  - **Follow-up: the audit's three N+1 query findings were fixed next, per request.**
+    - **`CartServiceImpl.getCart` — the app's single hottest read path (every cart view *and* every
+      checkout `preview`/`confirm` call) — used to call `productVariantRepository.findById(variantId)`
+      once per cart line, plus a second, lazily-loaded query the instant anything read
+      `variant.getProduct()` (`ProductVariant.product` is `FetchType.LAZY`) — up to `2N` queries for
+      an `N`-line cart. New `ProductVariantRepository#findAllByIdWithProduct` (a single `JOIN FETCH`
+      query resolving every line's variant *and* its product in one round trip, regardless of cart
+      size) replaces the per-line lookup; `resolveLine` now takes the already-resolved
+      `ProductVariant` (or `null`, when the id is simply absent from the batch result — a hard-deleted
+      variant, same "line stays visible as unavailable" contract as before) instead of looking it up
+      itself. 5 new `CartServiceImplTest.GetCart` cases (this method had *zero* test coverage before
+      this fix, despite being the hottest path in the app) — including one asserting the batch query
+      runs exactly once for a 3-line cart, and one asserting the empty-cart fast path never queries
+      the repository at all.
+    - **`entity.Product`'s `variants`/`images`/`productTagAssignments` — all `FetchType.LAZY`, all
+      mapped unconditionally by `mapper.ProductMapper#toResponse` on every row, including the
+      paginated admin product list — used to trigger up to 60 extra lazy-load `SELECT`s for a 20-row
+      page (one per collection per row), invisibly (`spring.jpa.open-in-view` means nothing ever
+      errors, it just gets slower as the catalog grows).** Fixed with `@BatchSize(size = 20)` on all
+      three collections — Hibernate now batches every not-yet-initialized collection of the same type
+      still pending in the current persistence context into one `WHERE product_id IN (...)` query
+      instead of one query per product, capping a 20-row page at 3 extra queries total (one per
+      collection type) regardless of row count. Deliberately the annotation-on-the-mapping fix, not a
+      new list-only DTO/`@EntityGraph` — the least invasive option that also benefits every other
+      lazy-load site for these same collections, not just this one endpoint (see the entity's own
+      updated Javadoc). No test added — this is a pure Hibernate batch-fetching hint with no new
+      branching logic to unit-test; would need an actual Hibernate session (an integration test) to
+      verify the query count directly, which this module doesn't have infrastructure for outside the
+      one existing Testcontainers `ProductSearchViewRepositoryIT`.
+    - **`CouponRedemptionServiceImpl.listAvailable` — called every time a shopper opens the coupon-
+      picker dialog — used to call `countByCouponId`/`countByCouponIdAndOwnerUuid` once per candidate
+      coupon inside its own filter chain.** New `CouponRedemptionRepository#countGroupedByCouponId`/
+      `#countGroupedByCouponIdForOwner` (each a single `GROUP BY` query returning a
+      `List<CouponRedemptionCount>` — a new small interface projection) replace the per-coupon calls;
+      `listAvailable` now collects each grouped result into a `Map<Integer, Long>` and looks counts up
+      from there. **Preserves the original short-circuit exactly**: if no candidate coupon has
+      `maxRedemptions`/`maxRedemptionsPerUser` set at all, the corresponding grouped query is never
+      called — a coupon list with no redemption limits configured still costs zero count queries, the
+      same as before this fix; only when at least one candidate needs a count does it cost exactly one
+      query, covering every candidate that needs it, not one query per candidate. 3 new test cases
+      (a coupon absent from the grouped result — no redemptions yet — correctly reads as zero, not an
+      error; the zero-count-queries-when-nothing-is-limited case; and the actual N+1 assertion — two
+      candidates, both limits set, exactly one call to each grouped method).
+    - 8 new tests total across the three fixes. 344 unit tests total (up from 336), verified via a
+      real `mvn test` run (JDK 21) and a targeted `-pl ecommerce-service,gateway -am compile`.
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)
