@@ -2188,6 +2188,58 @@ structural-only adapter.
     only in this pass** — see `gui/CLAUDE.md`'s own note for the matching frontend follow-up
     (`OrderDetailPage.tsx`/`OrderHistoryPage.tsx`'s decline banner widened to not require
     `order.status === 'FAILED'`, since this fix means a retryable decline no longer reaches it).
+  - **Follow-up: a full module-wide code-quality audit was requested and run** (four parallel
+    reviews covering catalog/attributes, cart/checkout/coupons, order-lifecycle/payments, and
+    cross-cutting hygiene — outbox, seeders, config, error codes, migrations, test coverage). Two
+    findings were prioritized and fixed immediately below; the remaining findings (N+1 query risks
+    in `CartServiceImpl.getCart`/`CouponRedemptionServiceImpl.listAvailable`/`ProductMapper`'s
+    admin-list mapping, `PaymentHandoffService`'s God-class size, several small duplication
+    candidates in seeders/mappers/address-handling, a still-accepted "queued cancel loses the race
+    to a gateway success" money gap) are documented but not yet acted on — see the audit's own
+    findings if picking any of these up later; they weren't re-transcribed here to avoid this file
+    drifting out of sync with whichever ones eventually get fixed.
+  - **Bug fix #1: `OrderServiceImpl#cancel`'s two gateway-follow-up branches (refund, gateway-
+    cancellation) had no protection against losing a race to a concurrent resolution of the same
+    order — a shopper could get a raw error response for a Cancel Order click that had, in truth,
+    already succeeded.** Because `cancel()` deliberately runs its follow-up steps outside any single
+    transaction (see this class's own long-standing Javadoc on why), a double-click, or the Stripe
+    webhook/`OrderReconciliationJob` resolving the same order at nearly the same moment, could both
+    be mid-flight on one order at once. Whichever commits last previously hit either
+    `EcommerceErrorCode.ORDER_INVALID_STATUS_TRANSITION` (the order is already `CANCELLED` — a
+    terminal status with no registered handler — by the time the loser tries to apply its own
+    result) or `org.springframework.orm.ObjectOptimisticLockingFailureException` (`Order`'s own
+    `@Version` was already bumped by the winner), and either propagated straight to the caller as a
+    real error. **Fix**: `cancel()` now catches both, re-fetches the order, and — only when it
+    genuinely reached `CANCELLED` (the sole outcome a queued cancel can ever resolve to, per
+    `PaymentProcessingOrderStatusHandler`'s own `cancelRequested`-wins rule — never `CONFIRMED`) —
+    returns it as a normal success instead of rethrowing. Any other rejection (e.g. a stale page
+    trying to cancel an order an admin already shipped) still propagates unchanged; this only
+    swallows the one specific "someone else already finished the thing I was trying to do" race,
+    never a genuinely invalid request. New private `doCancel`/`recoverFromConcurrentCancelResolution`
+    helpers.
+  - **Bug fix #2: a genuine Stripe gateway/network outage during `charge`/`refund`/
+    `cancelUnconfirmed` propagated as a raw, unmapped `RuntimeException`** — falling through to
+    `GlobalExceptionHandler`'s generic `Exception` handler as an unhelpful `500` with no error code,
+    violating this reactor's own "services never leak an unmapped exception to a caller" rule (and
+    the fact that `EcommerceErrorCode` had zero `PAYMENT_*` codes at all despite Epic 4 being fully
+    built). **Fix**: new `EcommerceErrorCode.PAYMENT_GATEWAY_UNAVAILABLE` (`PAYMENT_001`,
+    `503 SERVICE_UNAVAILABLE` — mirrors `common.CommonErrorCode.SERVER_EXTERNAL_SERVICE_ERROR`'s own
+    "translate an external-service outage into a `503`" shape exactly) and a new private
+    `OrderServiceImpl#callGatewayOrFail(Supplier<T>)` helper wrapping every direct
+    `payment.PaymentGatewayPort` call in `initiatePayment`/`cancel`, translating a caught
+    `payment.PaymentGatewayException` into `new ApiException(PAYMENT_GATEWAY_UNAVAILABLE, e)`. This
+    translation happens strictly after whatever durable step already committed (e.g.
+    `PaymentHandoffService#startPaymentProcessing` for `initiatePayment`), so it changes only the
+    shape of the response the caller receives — it does not touch the existing guarantee that a
+    mid-call crash still leaves the order safely `PAYMENT_PROCESSING` for `OrderReconciliationJob`
+    to resolve later (see `PaymentGatewayException`'s own Javadoc).
+  - 6 new `OrderServiceImplTest` cases (2 concurrent-cancel-recovery cases — one recovering when the
+    order reached `CANCELLED`, one rethrowing when it didn't — plus an optimistic-lock-conflict
+    recovery case, and 3 gateway-exception-translation cases across `cancel`'s refund/
+    gateway-cancellation branches and `initiatePayment`'s charge call). 336 unit tests total (up
+    from 330), verified via a real `mvn test` run (JDK 21) and a targeted
+    `-pl ecommerce-service,gateway -am compile` (no `gateway`-side change needed — this is a pure
+    behavior fix inside an already-routed endpoint).
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)

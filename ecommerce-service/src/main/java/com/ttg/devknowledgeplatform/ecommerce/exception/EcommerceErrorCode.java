@@ -7,9 +7,9 @@ import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
 /**
- * Error codes owned by {@code ecommerce-service} — product categories/products/variants (Epic 1)
- * and cart/checkout (Epic 2) today; payments/reviews codes will be added here as later epics are
- * built.
+ * Error codes owned by {@code ecommerce-service} — product categories/products/variants (Epic 1),
+ * cart/checkout (Epic 2), order lifecycle (Epic 3), and payments (Epic 4, {@code PAYMENT_*})
+ * today; reviews codes will be added here once Epic 5 is built.
  *
  * <p>Format: MODULE_ACTION_ERROR, mirroring {@code content-service}'s {@code ContentErrorCode}.
  */
@@ -110,7 +110,15 @@ public enum EcommerceErrorCode implements ErrorCode {
     COUPON_REDEMPTION_LIMIT_REACHED("COUPON_011",
             "Coupon ''{0}'' has reached its redemption limit", HttpStatus.CONFLICT),
     COUPON_ALREADY_REDEEMED_BY_USER("COUPON_012",
-            "You have already redeemed coupon ''{0}'' the maximum number of times", HttpStatus.CONFLICT);
+            "You have already redeemed coupon ''{0}'' the maximum number of times", HttpStatus.CONFLICT),
+
+    // Payment Gateway Errors (PAYMENT_*) — Epic 4. Thrown when payment.PaymentGatewayException
+    // reaches the API boundary (a genuine gateway/network outage, not a card decline — a decline
+    // is never an exception, see that class's own Javadoc); mirrors common.CommonErrorCode
+    // .SERVER_EXTERNAL_SERVICE_ERROR's own "translate an external-service outage into a 503, don't
+    // let it leak as a raw 500" shape.
+    PAYMENT_GATEWAY_UNAVAILABLE("PAYMENT_001",
+            "The payment service is temporarily unavailable — please try again in a moment", HttpStatus.SERVICE_UNAVAILABLE);
 
     private final String code;
     private final String message;

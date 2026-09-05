@@ -3370,6 +3370,30 @@ entries start fresh below `[Unreleased]`.
   clean `tsc --noEmit` and a successful `vite build` — no Docker in this sandbox, so the actual
   now-visible-while-`PAYMENT_PROCESSING` banner is unverified in a real browser. See
   `gui/CLAUDE.md`'s own follow-up note for the full detail.
+- **`ecommerce-service`: a full module-wide code-quality audit was requested (duplication, God
+  classes, N+1 queries, missing abstractions, test-coverage gaps) — two of the audit's high-priority
+  findings were fixed immediately; the rest are documented in `ecommerce-service/CLAUDE.md` for a
+  later pass.**
+  - **Fix #1: `OrderServiceImpl#cancel` could surface a raw error for a Cancel Order click that had
+    already succeeded, if it lost a race to a concurrent resolution of the same order** (a
+    double-click, or the Stripe webhook/`OrderReconciliationJob` resolving the order at nearly the
+    same moment) — `cancel()`'s own follow-up steps deliberately run outside any single transaction,
+    so two resolutions of the same order could be mid-flight at once; whichever committed last hit
+    `ORDER_INVALID_STATUS_TRANSITION` or an optimistic-lock conflict and propagated it as a real
+    error, even though the order had already reached exactly the outcome the shopper asked for.
+    Fixed by catching both, re-fetching the order, and returning it as a normal success whenever it
+    genuinely reached `CANCELLED` — any other rejection (a genuinely invalid request) still
+    propagates unchanged.
+  - **Fix #2: a genuine Stripe gateway/network outage during `charge`/`refund`/`cancelUnconfirmed`
+    propagated as a raw, unmapped `500`** — `EcommerceErrorCode` had zero `PAYMENT_*` codes despite
+    Epic 4 being fully built. Fixed with a new `PAYMENT_GATEWAY_UNAVAILABLE` code (`503`, mirroring
+    `CommonErrorCode.SERVER_EXTERNAL_SERVICE_ERROR`'s own shape) and a shared
+    `OrderServiceImpl#callGatewayOrFail` helper translating the exception at every direct gateway
+    call site, without touching the existing crash-safety guarantee (the order is already durably
+    `PAYMENT_PROCESSING` by the time this translation runs).
+  - 6 new `OrderServiceImplTest` cases. 336 unit tests total (up from 330), verified via a real
+    `mvn test` run (JDK 21). See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section
+    for the full incident writeup and the audit's remaining, not-yet-actioned findings.
 
 ## [0.0.2] — 2026-08-11
 
