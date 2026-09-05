@@ -1658,9 +1658,11 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │   poller/single-item-processor split (same shape as OutboxRelay/OutboxEventProcessor);
 │   │   app.ecommerce.order.reservation-timeout (default PT15M) / .expiry-check.poll-interval
 │   │   (default PT1M)
-│   ├── PaymentHandoffService.java — US-3.3's two independent @Transactional steps:
-│   │   startPaymentProcessing(orderId, callerUuid) commits PENDING -> PAYMENT_PROCESSING before
-│   │   any gateway call; resolvePayment(orderId, result) applies the verdict afterward in a
+│   ├── PaymentHandoffService.java — US-3.3's two independent @Transactional steps for the
+│   │   charge lifecycle only (the cancellation/refund lifecycle split out to
+│   │   PaymentCancellationService.java below, per a code-quality-audit God-class fix — see that
+│   │   entry): startPaymentProcessing(orderId, callerUuid) commits PENDING -> PAYMENT_PROCESSING
+│   │   before any gateway call; resolvePayment(orderId, result) applies the verdict afterward in a
 │   │   second transaction — a crash between the two must leave the order durably
 │   │   PAYMENT_PROCESSING, not silently roll back and risk a double charge on retry. Epic 4
 │   │   Phase 3 (US-4.2/4.3): startPaymentProcessing also writes the entity.Payment row (PENDING)
@@ -1671,19 +1673,27 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │   the gateway actually decided, independent of the order's own final status (a queued cancel
 │   │   racing a gateway success still records SUCCEEDED, since the money really was captured).
 │   │   Epic 4 Phase 4 (US-4.4): resolvePayment also publishes a PAYMENT_SUCCEEDED/PAYMENT_FAILED
-│   │   OutboxEvent in that same transaction, right alongside the Payment row update. Epic 4 Phase
+│   │   OutboxEvent in that same transaction, right alongside the Payment row update
+│   ├── PaymentCancellationService.java — split out of PaymentHandoffService (see above) once that
+│   │   class had grown into a God class spanning three unrelated payment lifecycles. Epic 4 Phase
 │   │   6 (US-4.6): applyCancellation(orderId, callerUuid)/applyRefundResult(paymentId, result) —
-│   │   the identical durable-step/gateway-call/durable-step shape applied to refunds;
-│   │   service.impl.OrderServiceImpl#cancel calls applyCancellation (transitions to CANCELLED,
-│   │   reports whether a refund is owed via a new nested CancellationResult record), then, only if
-│   │   one is, calls payment.PaymentGatewayPort#refund outside any transaction, then
-│   │   applyRefundResult (Payment -> REFUNDED + PAYMENT_REFUNDED outbox publish). No new
-│   │   intermediate status/durable "refund in flight" marker was added — StripePaymentGateway's
-│   │   own refund idempotency key is deterministic, so retrying the whole operation after a crash
-│   │   can't double-refund, unlike a charge retried with a fresh key. Scoped to US-4.6's own
-│   │   literal case (cancelling an already-CONFIRMED order) — the rarer race in
-│   │   PaymentProcessingOrderStatusHandler#confirmPayment (a queued cancel beating a gateway
-│   │   success) still isn't wired to a refund
+│   │   the identical durable-step/gateway-call/durable-step shape PaymentHandoffService already
+│   │   established, applied to refunds; service.impl.OrderServiceImpl#cancel calls
+│   │   applyCancellation (transitions to CANCELLED, reports whether a refund is owed via a nested
+│   │   CancellationResult record), then, only if one is, calls payment.PaymentGatewayPort#refund
+│   │   outside any transaction, then applyRefundResult (Payment -> REFUNDED + PAYMENT_REFUNDED
+│   │   outbox publish). No new intermediate status/durable "refund in flight" marker was added —
+│   │   StripePaymentGateway's own refund idempotency key is deterministic, so retrying the whole
+│   │   operation after a crash can't double-refund, unlike a charge retried with a fresh key.
+│   │   Scoped to US-4.6's own literal case (cancelling an already-CONFIRMED order) — the rarer
+│   │   race in PaymentProcessingOrderStatusHandler#confirmPayment (a queued cancel beating a
+│   │   gateway success) still isn't wired to a refund. The Option A follow-up's
+│   │   applyGatewayCancellation(orderId, result) — voiding a still-unconfirmed Stripe
+│   │   PaymentIntent at the gateway — takes a one-directional dependency on
+│   │   PaymentHandoffService for its ALREADY_RESOLVED branch only (delegates straight to
+│   │   PaymentHandoffService#resolvePayment, a different bean, so it still goes through Spring's
+│   │   proxy correctly and joins the caller's already-open transaction); PaymentHandoffService has
+│   │   no dependency back the other way
 │   ├── OrderReconciliationJob.java — US-3.4, @Scheduled: polls
 │   │   OrderRepository.findIdsByStatusAndPaymentProcessingStartedAtBefore for orders stuck in
 │   │   PAYMENT_PROCESSING past app.ecommerce.order.reconciliation.grace-period (default PT2M),
@@ -1699,7 +1709,7 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │   ORDER_CREATED, since US-4.4/US-4.6 name these events as real acceptance criteria
 │   └── PaymentRefundedOutboxEventHandler.java — Epic 4 Phase 4: the PAYMENT_REFUNDED handler,
 │       built alongside its two siblings for symmetry; Phase 6 (US-4.6) gave it its publisher —
-│       PaymentHandoffService#applyRefundResult, once a refund actually succeeds
+│       PaymentCancellationService#applyRefundResult, once a refund actually succeeds
 ├── payment/                     — Epic 4's home; seeded in Epic 3 Phase 4 as just the
 │   │                                Adapter interface, now (Phase 1-2) has a real Strategy pair
 │   ├── PaymentGatewayPort.java     — GoF Adapter (Structural): charge(idempotencyKey, amount) /

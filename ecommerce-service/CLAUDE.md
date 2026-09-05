@@ -2285,6 +2285,35 @@ structural-only adapter.
       candidates, both limits set, exactly one call to each grouped method).
     - 8 new tests total across the three fixes. 344 unit tests total (up from 336), verified via a
       real `mvn test` run (JDK 21) and a targeted `-pl ecommerce-service,gateway -am compile`.
+  - **Follow-up: the audit's `PaymentHandoffService` God-class finding was fixed next, per request —
+    split into `orderstatus.PaymentHandoffService` (the charge lifecycle:
+    `startPaymentProcessing`/`resolvePayment`/private `applyResultToPayment`) and a new
+    `orderstatus.PaymentCancellationService` (the cancellation/refund lifecycle:
+    `applyCancellation`/`applyGatewayCancellation`/`applyRefundResult`, plus its own
+    `CancellationResult` record, moved with them).** `PaymentHandoffService` had grown to ~430 lines
+    spanning three lifecycles that only ever interact at one seam: `applyGatewayCancellation`'s
+    `ALREADY_RESOLVED` branch (the gateway reports the charge actually reached a real terminal state
+    moments before a cancellation could apply) needs to delegate straight into `resolvePayment`'s own
+    `cancelRequested`-aware handling rather than reimplement it. **Fix**: `PaymentCancellationService`
+    takes a one-directional dependency on `PaymentHandoffService` for exactly that one call
+    (`paymentHandoffService.resolvePayment(...)` — a different bean, so it still goes through
+    Spring's proxy correctly and joins the caller's already-open transaction, same reasoning
+    `OrderReconciliationJob`'s own cross-bean call already relies on); `PaymentHandoffService` has no
+    dependency back the other way, so there's no circular bean wiring. Each of the three
+    `OutboxEvent`-publish helper methods the original class held (`publishPaymentSucceeded`/
+    `publishPaymentFailed`/`publishPaymentRefunded`) turned out to be used by exactly one of the two
+    post-split lifecycles apiece — no actual duplication existed once split, so each simply moved
+    with its own call site; no shared "outbox publisher" component was needed. `OrderServiceImpl` now
+    injects both services (`paymentHandoffService` for `initiatePayment`'s two durable steps,
+    `paymentCancellationService` for `cancel`'s three call sites); `webhook.StripeWebhookService` and
+    `OrderReconciliationJob` are untouched — both only ever called `resolvePayment`, which stayed on
+    `PaymentHandoffService`. `PaymentHandoffServiceTest` now covers only `StartPaymentProcessing`/
+    `ResolvePayment`; a new `PaymentCancellationServiceTest` covers `ApplyCancellation`/
+    `ApplyGatewayCancellation`/`ApplyRefundResult`, mocking `PaymentHandoffService` for the
+    `ALREADY_RESOLVED` delegation (that logic's own correctness is `PaymentHandoffServiceTest`'s job,
+    not re-verified here) — same 25 test methods as before, just split across two files, so the
+    reactor-wide count is unchanged at 344, verified via a real `mvn test` run (JDK 21) and a
+    targeted `-pl ecommerce-service -am test-compile`.
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)

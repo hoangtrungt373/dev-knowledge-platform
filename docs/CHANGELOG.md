@@ -3410,6 +3410,24 @@ entries start fresh below `[Unreleased]`.
   - 8 new tests total. 344 unit tests total (up from 336), verified via a real `mvn test` run
     (JDK 21). See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full
     detail.
+- **`ecommerce-service`: the audit's `PaymentHandoffService` God-class finding fixed next, per
+  request — split into `orderstatus.PaymentHandoffService` (charge lifecycle:
+  `startPaymentProcessing`/`resolvePayment`) and new `orderstatus.PaymentCancellationService`
+  (cancellation/refund lifecycle: `applyCancellation`/`applyGatewayCancellation`/
+  `applyRefundResult`, plus its own `CancellationResult` record).** The ~430-line original spanned
+  three lifecycles that only share one seam — `applyGatewayCancellation`'s `ALREADY_RESOLVED`
+  branch delegates straight into `resolvePayment`'s own `cancelRequested`-aware handling —
+  so `PaymentCancellationService` takes a one-directional dependency on `PaymentHandoffService` for
+  that one call only; no dependency runs the other way. Each of the three `OutboxEvent`-publish
+  helper methods the original class held turned out to be used by exactly one of the two
+  post-split lifecycles, so no shared "outbox publisher" component was needed — each just moved
+  with its own call site. `OrderServiceImpl` now injects both services; `StripeWebhookService`/
+  `OrderReconciliationJob` are untouched (both only ever called `resolvePayment`, which stayed put).
+  `PaymentHandoffServiceTest` now covers only the charge lifecycle; new
+  `PaymentCancellationServiceTest` covers the rest, mocking `PaymentHandoffService` for the
+  `ALREADY_RESOLVED` delegation. Same 25 test methods as before, just split across two files — 344
+  unit tests total, unchanged, verified via a real `mvn test` run (JDK 21). See
+  `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2 follow-up section for the full detail.
 
 ## [0.0.2] — 2026-08-11
 

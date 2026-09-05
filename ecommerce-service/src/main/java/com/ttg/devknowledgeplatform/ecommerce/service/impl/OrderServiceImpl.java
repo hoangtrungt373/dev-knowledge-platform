@@ -7,6 +7,7 @@ import com.ttg.devknowledgeplatform.ecommerce.entity.Order;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.exception.EcommerceErrorCode;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.OrderStatusHandlerRegistry;
+import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentCancellationService;
 import com.ttg.devknowledgeplatform.ecommerce.orderstatus.PaymentHandoffService;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentCancellationResult;
 import com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayException;
@@ -43,12 +44,12 @@ import java.util.function.Supplier;
  * method (which would let a crash mid-gateway-call silently roll back the very
  * {@code PAYMENT_PROCESSING} marker US-3.4's reconciliation job depends on existing).
  * {@link #cancel} (Epic 4 Phase 6, US-4.6) is the same shape for the opposite direction: it's not
- * {@code @Transactional} either, since a refund is owed only when {@link PaymentHandoffService
+ * {@code @Transactional} either, since a refund is owed only when {@link PaymentCancellationService
  * #applyCancellation} reports one, and that refund gateway call must happen outside any local
  * transaction for the identical reason. An Option A follow-up added a third branch alongside
  * refund: when {@code applyCancellation} instead reports {@code gatewayCancellationNeeded()} (the
  * cancel only queued because payment is still an unconfirmed Stripe PaymentIntent — see {@link
- * PaymentHandoffService}'s own Javadoc), this method actively voids that charge attempt at the
+ * PaymentCancellationService}'s own Javadoc), this method actively voids that charge attempt at the
  * gateway, again outside any transaction, before applying the result.
  *
  * <p><b>Bug fix: {@link #cancel} now tolerates losing a race to a concurrent resolution of the
@@ -89,6 +90,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final OrderStatusHandlerRegistry orderStatusHandlerRegistry;
     private final PaymentHandoffService paymentHandoffService;
+    private final PaymentCancellationService paymentCancellationService;
     private final PaymentGatewayPort paymentGatewayPort;
 
     @Override
@@ -124,17 +126,18 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private Order doCancel(Integer orderId, String callerUuid) {
-        PaymentHandoffService.CancellationResult cancellation = paymentHandoffService.applyCancellation(orderId, callerUuid);
+        PaymentCancellationService.CancellationResult cancellation =
+                paymentCancellationService.applyCancellation(orderId, callerUuid);
         if (cancellation.refundNeeded()) {
             RefundResult result = callGatewayOrFail(
                     () -> paymentGatewayPort.refund(cancellation.gatewayReference(), cancellation.amount()));
-            paymentHandoffService.applyRefundResult(cancellation.paymentId(), result);
+            paymentCancellationService.applyRefundResult(cancellation.paymentId(), result);
             return cancellation.order();
         }
         if (cancellation.gatewayCancellationNeeded()) {
             PaymentCancellationResult result = callGatewayOrFail(
                     () -> paymentGatewayPort.cancelUnconfirmed(cancellation.gatewayReference()));
-            return paymentHandoffService.applyGatewayCancellation(orderId, result);
+            return paymentCancellationService.applyGatewayCancellation(orderId, result);
         }
         return cancellation.order();
     }
