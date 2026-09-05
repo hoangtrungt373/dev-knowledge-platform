@@ -2105,6 +2105,40 @@ structural-only adapter.
       `MockPaymentGatewayTest` gained one case. **328 unit tests total** (up from 320), verified via
       a real `mvn test` run (JDK 21). Not verified against a real `stripe listen` session in this
       sandbox, same standing caveat as the bug fix directly above.
+  - **Bug fix, found immediately after the fix above by actually running a real `stripe listen`
+    session against a freshly-purged database: `PendingOrderStatusHandler.startPaymentProcessing`'s
+    idempotency key was the order's own recyclable primary key, which collided with an unrelated
+    earlier charge attempt after a local dev reset.** Symptom:
+    `com.stripe.exception.IdempotencyException: Keys for idempotent requests can only be used with
+    the same parameters they were first used with` thrown from `StripePaymentGateway.charge` →
+    `PaymentIntent.create`, immediately after running `scripts/purge-seed-data.sql` and placing a
+    new order. Root cause: the key was stamped as `String.valueOf(order.getId())` — a "reasonable
+    default" when this was first built, but `purge-seed-data.sql`'s `TRUNCATE ... RESTART IDENTITY`
+    resets `CUSTOMER_ORDER_SEQ` back to 1, so the very next order can land on an id a *previous*,
+    unrelated order (with a *different* total) already used as its Stripe idempotency key. Stripe's
+    own idempotency cache lives server-side for 24 hours, entirely independent of anything in this
+    app's own database, so it still remembered the old key/amount pairing and correctly refused to
+    treat the new, differently-priced order as a safe retry of it. **Fix**: the key is now a random
+    `UUID` (`UUID.randomUUID().toString()`), never derived from the order's own id — confirmed via a
+    full-module grep that nothing anywhere parses this column back into a number or compares it to
+    `order.getId()` (every consumer — `StripePaymentGateway`, `PaymentRepository
+    .findByIdempotencyKey`, `PaymentHandoffService` — already treated it as an opaque string), and
+    that both `Order.idempotencyKey`/`Payment.idempotencyKey` (`VARCHAR(64)`) comfortably fit a
+    36-character UUID with no migration needed. **This does not touch the actual double-charge
+    protection at all** — that guarantee lives entirely in `orderstatus.PaymentHandoffService
+    .startPaymentProcessing`'s own status check (`if (order.getStatus() == PAYMENT_PROCESSING)
+    return order;`), which is the sole call site for the handler method that stamps this key; a key
+    is stamped exactly once per order's whole payment lifetime regardless of whether its value is a
+    recyclable integer or a UUID — only *cross-order* collisions after a database reset are what
+    changed. Two tests asserted the old numeric-derived value against the real handler
+    (`PendingOrderStatusHandlerTest.startPaymentProcessingStampsIdempotencyKeyAndClockAndTransitions`,
+    `OrderLifecycleIntegrationTest.happyPathReachesDeliveredWithOneConfirmSaleAndAFullHistoryTrail`)
+    and were updated to assert a well-formed UUID instead of a literal id; every other test that
+    stubs `idempotencyKey` to a plain string (`"1"`, etc.) does so on a manually-built `Order`
+    fixture that never goes through the real handler, so none of those needed any change. 328 unit
+    tests total, unchanged, verified via a real `mvn test` run (JDK 21). Fixes only *future*
+    collisions — a key already burned at Stripe from before this fix stays unusable for its own
+    24-hour window regardless.
 - **Phase 3 (US-4.2/4.3) — `Payment` persistence actually wired into the synchronous confirm/fail
   flow.** `orderstatus.PaymentHandoffService.startPaymentProcessing` now writes the `PENDING`
   `Payment` row (order, amount snapshotted from `Order.getTotal()`, denormalized idempotency key)

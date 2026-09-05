@@ -13,7 +13,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -97,7 +100,11 @@ class PendingOrderStatusHandlerTest {
 
         handler.startPaymentProcessing(order);
 
-        assertThat(order.getIdempotencyKey()).isEqualTo("42");
+        // A random UUID, deliberately not derived from the order's own id (a recycled primary key
+        // after a local dev database reset could otherwise collide with an unrelated earlier
+        // charge attempt at Stripe — see this method's own updated Javadoc for the incident).
+        assertThat(order.getIdempotencyKey()).isNotBlank();
+        assertThatCode(() -> UUID.fromString(order.getIdempotencyKey())).doesNotThrowAnyException();
         assertThat(order.getPaymentProcessingStartedAt()).isNotNull();
         assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_PROCESSING);
         assertThat(order.getStatusHistory()).hasSize(1);
