@@ -3301,6 +3301,27 @@ entries start fresh below `[Unreleased]`.
   - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
     sandbox, so the actual visual result is unverified in a real browser.
 
+### Fixed (cont.)
+
+- **`ecommerce-service`: an explicit "Cancel Order" click during the Stripe Elements payment phase
+  left the order stuck `PAYMENT_PROCESSING` forever, same root cause as the webhook-correlation fix
+  above but a distinct symptom — reported directly after that fix.** `PaymentProcessingOrderStatusHandler
+  .cancel` only ever queues `Order.cancelRequested` for a `PAYMENT_PROCESSING` order, on the
+  (once-correct) assumption a gateway call was already in flight and would resolve momentarily —
+  no longer true once client-side confirmation (Option A) can leave a charge unconfirmed
+  indefinitely while the shopper just looks at the card form, and nothing ever consulted the queued
+  flag for a `PENDING` outcome anyway. Fixed by actively cancelling the still-unconfirmed Stripe
+  PaymentIntent at the gateway: new `payment.PaymentGatewayPort#cancelUnconfirmed`, a new
+  `enums.PaymentStatus.CANCELLED` (migration `DKP-0051`, deliberately distinct from `DECLINED` so
+  the GUI never shows a misleading "payment declined" reason on a shopper-initiated cancel), and a
+  new `orderstatus.PaymentHandoffService#applyGatewayCancellation` durable step wired into
+  `service.impl.OrderServiceImpl#cancel`. A cheaper, purely-local alternative (just check
+  `cancelRequested` on the next `PENDING` poll, no gateway call) was considered and rejected — it
+  would leave Stripe still willing to honor the PaymentIntent, risking a real charge captured
+  against an order this reactor had already marked `CANCELLED`. 328 unit tests total (up from 320),
+  verified via a real `mvn test` run (JDK 21). See `ecommerce-service/CLAUDE.md`'s Epic 4 Phase 2
+  follow-up section for the full incident writeup.
+
 ## [0.0.2] — 2026-08-11
 
 Retroactive cut of everything that had accumulated under `[Unreleased]` up to this point — the

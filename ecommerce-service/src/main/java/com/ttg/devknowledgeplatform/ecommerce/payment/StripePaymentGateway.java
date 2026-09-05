@@ -75,6 +75,16 @@ import java.math.RoundingMode;
  * {@link PaymentRepository}: {@code checkStatus} only receives an {@code idempotencyKey}, so it
  * looks the original charge's {@code gatewayReference} (the PaymentIntent id) up from the
  * {@code Payment} row Epic 4 Phase 1 guarantees was written before the original charge.
+ *
+ * <p><b>{@link #cancelUnconfirmed} closes the gap Option A opened for an explicit shopper cancel.</b>
+ * Before this method existed, cancelling an order while its PaymentIntent still awaited the
+ * shopper's own {@code stripe.confirmPayment()} call only ever queued {@code Order.cancelRequested}
+ * — nothing would resolve it afterward, since no webhook is coming (the shopper never confirmed)
+ * and every reconciliation poll just kept re-reporting {@link PaymentOutcome#PENDING} forever. This
+ * method retrieves the intent and calls its own {@code cancel}, voiding it at Stripe outright; if
+ * Stripe rejects the cancel because the intent already reached a real terminal state (the shopper
+ * confirmed on another tab a moment earlier), a second retrieve reports that real outcome instead of
+ * masking it as a cancellation that never actually happened.
  */
 @Component
 @ConditionalOnProperty(prefix = "app.ecommerce.payment", name = "gateway", havingValue = "stripe")
@@ -155,6 +165,37 @@ public class StripePaymentGateway implements PaymentGatewayPort {
             };
         } catch (StripeException e) {
             throw new PaymentGatewayException("Stripe refund failed for gatewayReference=" + gatewayReference, e);
+        }
+    }
+
+    @Override
+    public PaymentCancellationResult cancelUnconfirmed(String gatewayReference) {
+        RequestOptions options = RequestOptions.builder().setApiKey(secretKey).build();
+        try {
+            PaymentIntent intent = PaymentIntent.retrieve(gatewayReference, options);
+            intent.cancel(options);
+            return PaymentCancellationResult.cancelled();
+        } catch (StripeException e) {
+            // Stripe rejects cancelling an intent that's already reached a real terminal state —
+            // most plausibly the shopper confirmed on another tab a moment before this call
+            // arrived. Re-check the intent's actual current status instead of assuming a genuine
+            // gateway failure, so a real success/decline that just beat this cancel to the punch
+            // isn't discarded.
+            PaymentIntent current;
+            try {
+                current = PaymentIntent.retrieve(gatewayReference, options);
+            } catch (StripeException retrieveFailure) {
+                throw new PaymentGatewayException(
+                        "Stripe cancel failed for gatewayReference=" + gatewayReference, e);
+            }
+            PaymentResult result = resultFromIntent(current);
+            if (result.outcome() == PaymentOutcome.PENDING) {
+                // Still genuinely unresolved and still not cancelable either — not the benign race
+                // above, so surface it as a real failure rather than silently pretending success.
+                throw new PaymentGatewayException(
+                        "Stripe cancel failed for gatewayReference=" + gatewayReference, e);
+            }
+            return PaymentCancellationResult.alreadyResolved(result);
         }
     }
 
