@@ -1663,6 +1663,16 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │                                       handler bean (same shape as OutboxEventDispatcher);
 │   │                                       a status with no registered handler falls back to one
 │   │                                       with no overrides, rejecting every action identically
+│   ├── ReconciliationJob.java — code-quality-audit follow-up: bare, zero-method marker interface
+│   │   for this module's three @Scheduled poller jobs (same "Find Implementations" purpose as
+│   │   infra's ApplicationEventHandler/Seeder), implemented by all three below
+│   ├── AbstractReconciliationJob.java — GoF Template Method (Behavioral): the poll-a-batch/
+│   │   process-each-one-tolerating-failure shape OrderReconciliationJob/RefundReconciliationJob
+│   │   share (a BATCH_SIZE=50 constant, a per-id try/catch logging a warning and moving on);
+│   │   subclasses implement only pollBatch(int)/reconcileOne(Integer). OrderReservationExpiryJob
+│   │   deliberately implements ReconciliationJob directly instead of extending this — its own
+│   │   per-id work must be genuinely @Transactional, which is exactly why it's delegated to a
+│   │   separate processor bean rather than an inline try/catch (see below)
 │   ├── OrderReservationExpiryJob.java / OrderReservationExpiryProcessor.java — US-3.2's
 │   │   poller/single-item-processor split (same shape as OutboxRelay/OutboxEventProcessor);
 │   │   app.ecommerce.order.reservation-timeout (default PT15M) / .expiry-check.poll-interval
@@ -1703,14 +1713,17 @@ ecommerce-service/src/main/java/com/ttg/devknowledgeplatform/ecommerce/
 │   │   PaymentHandoffService#resolvePayment, a different bean, so it still goes through Spring's
 │   │   proxy correctly and joins the caller's already-open transaction); PaymentHandoffService has
 │   │   no dependency back the other way
-│   ├── OrderReconciliationJob.java — US-3.4, @Scheduled: polls
-│   │   OrderRepository.findIdsByStatusAndPaymentProcessingStartedAtBefore for orders stuck in
-│   │   PAYMENT_PROCESSING past app.ecommerce.order.reconciliation.grace-period (default PT2M),
-│   │   calls payment.PaymentGatewayPort.checkStatus for the ground truth (never assumes an
-│   │   outcome), applies it via PaymentHandoffService.resolvePayment; one poison order's
-│   │   exception is caught/logged so it doesn't block the rest of the batch
-│   ├── RefundReconciliationJob.java — code-quality-audit follow-up, same poller shape as its two
-│   │   siblings above: polls a new PaymentRepository.findIdsByStatusAndOrderStatus(SUCCEEDED,
+│   ├── OrderReconciliationJob.java — US-3.4, extends AbstractReconciliationJob (above), @Scheduled:
+│   │   pollBatch() queries OrderRepository.findIdsByStatusAndPaymentProcessingStartedAtBefore for
+│   │   orders stuck in PAYMENT_PROCESSING past app.ecommerce.order.reconciliation.grace-period
+│   │   (default PT2M); reconcileOne() calls payment.PaymentGatewayPort.checkStatus for the ground
+│   │   truth (never assumes an outcome), applies it via PaymentHandoffService.resolvePayment — a
+│   │   poison order's exception is now caught/logged by the shared base class, not this class's own
+│   │   try/catch
+│   ├── RefundReconciliationJob.java — code-quality-audit follow-up, extends
+│   │   AbstractReconciliationJob (above, once this class made it the second byte-identical
+│   │   instance of that shape): pollBatch() queries a new
+│   │   PaymentRepository.findIdsByStatusAndOrderStatus(SUCCEEDED,
 │   │   CANCELLED, pageable) for the one combination that can only mean an unrefunded capture (a
 │   │   normal cancel-with-refund already turns that row REFUNDED) — closes the "queued cancel
 │   │   loses the race to a gateway success" money gap PaymentProcessingOrderStatusHandler's own
