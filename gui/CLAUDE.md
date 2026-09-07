@@ -2628,6 +2628,135 @@ slice" benefit without that cost — revisit only if a genuine second deployable
         which child was hit). Verified via a clean `tsc --noEmit` and a successful `vite build`
         only — no Docker in this sandbox, so the actual cross-fade is unverified in a real browser,
         on this page or any of `SubmitButton`'s other consumers.
+      - **Fourth follow-up bug fix, same complaint reported again ("the blink is still there, it
+        happens when i click the SubmitButton") — root cause finally outside the label/spinner slot
+        the first three fixes all focused on.** `disabled={saving || disabled}` makes `Button`
+        apply MUI's own `.Mui-disabled` styling — a genuinely different color scheme
+        (`action.disabled` text over `action.disabledBackground`) from this button's normal
+        contained-primary look — the instant `saving` flips true; for a fast request, the *whole
+        button* was flashing to muted grey and back, independent of (and more visually prominent
+        than) the label/spinner cross-fade, which none of the first three fixes could have touched
+        since they never looked past that one slot. `disabled` still has to stay wired to `saving`
+        (a real click-block is still needed, and unrelated to how it looks) — fixed instead by
+        conditionally overriding `&.Mui-disabled`'s own `backgroundColor`/`color` back to
+        `primary.main`/`primary.contrastText` via `sx`, **but only while `saving`** — a genuinely
+        `disabled`-for-other-reasons button (e.g. invalid input) still gets MUI's normal muted
+        look; only the saving-induced flash is suppressed. Verified via a clean `tsc --noEmit` and
+        a successful `vite build` only — no Docker in this sandbox, so the actual fix is unverified
+        in a real browser, on this page or any of `SubmitButton`'s other consumers.
+      - **Follow-up, per request: an invalid-input error now renders inline in the Output panel
+        instead of a header notification, and with a friendlier message than the backend's own raw
+        exception text.** Two parts:
+        1. **No more header toast for a submit failure.** Every one of `DevUtilsPage.tsx`'s
+           `onSubmit` closures (`devUtilsApi.formatJson`/`yamlToJson`/`jsonToYaml`/`beautifyHtml`)
+           dropped its trailing `showError` argument — `httpClient`'s own `showNotification` call
+           is conditional on that argument being present, so omitting it entirely suppresses the
+           toast for these four operations without touching `httpClient.ts` itself; the thrown
+           `Error` is still caught and processed, just locally now. `DevUtilsPage.tsx` no longer
+           calls `useNotification()` at all as a result (nothing else on that page used it).
+        2. **New `error: DevUtilError | null` state**, lifted to `DevUtilsPage.tsx` the same way
+           `output` already is (mutually exclusive with it — a submit always clears one before
+           setting the other), passed down to `DevUtilToolPanel.tsx` as `error`/`onErrorChange`.
+           The Output panel now branches three ways instead of two: an `error` renders a red-
+           outlined box (`border`/`ErrorOutlineIcon` in `error.main`/`error.light`, background
+           `alpha(theme.palette.error.main, 0.12)`) sitting on the same `OUTPUT_BG_COLOR` (`#1e1e1e`)
+           panel background the syntax highlighter and empty placeholder already use — two lines,
+           a bold headline (`"Cannot be processed"`) and a monospace (`component="pre"`,
+           `whiteSpace: 'pre-wrap'`) detail line; falls through to the existing
+           output-or-placeholder branches when `error` is `null`. The Clear button's own `disabled`
+           condition widened to `!input && !output && !error`, and both the tab-switch reset
+           `useEffect` and `handleClearInput` now reset `error` alongside `input`/`output`.
+        - **New `gui/src/features/dev-utils/utils/errorFormatting.ts`
+          (`buildDevUtilError`/`DevUtilError`)** does the actual message translation, per the
+          request's own example ("Cannot be processed" headline, then a message shaped like
+          `JSON.parse`'s own native error text). For a JSON-input operation (`json-format`/
+          `json-to-yaml` — new `OperationConfig.inputFormat: 'json' | 'yaml' | 'html'` field feeds
+          this), the browser's own `JSON.parse(input)` is re-run purely to harvest its message —
+          V8's own JSON syntax errors are already exactly the requested shape (confirmed via a
+          real Node sanity check, not assumed: `JSON.parse('{"foo": "bar" "baz": 1}')` throws
+          `"Expected ',' or '}' after property value in JSON at position 14 (line 1 column 15)"`)
+          — so nothing needs re-deriving by hand for that case. For `yaml-to-json`/`html-beautify`
+          (no client-side parser available for either), a `simplifyBackendMessage` fallback strips
+          the backend's own parser-internals noise down to one readable line plus a plain
+          "(line N, column M)" suffix.
+        - **This needed real backend research first, not a guess** — a background agent read
+          `dev-utils-service`'s actual 3 JSON/YAML operations and confirmed two things the fallback
+          had to handle correctly: (a) the client-facing `errorMessage` is
+          `JsonProcessingException.getMessage()` reused **verbatim** — `DevUtilsErrorCode`'s own
+          `INVALID_JSON`/`INVALID_YAML` `"Invalid {0}"`-style templates are defined but never
+          actually applied, a real backend bug (`new BusinessException(errorCode, e.getMessage())`
+          resolves to the plain-message constructor overload, not the varargs template one) now
+          documented in `dev-utils-service/CLAUDE.md` itself rather than fixed, since fixing it was
+          out of this task's scope; (b) `YamlToJsonOperation`'s `yamlMapper` is a Jackson
+          `YAMLMapper`, so a *structural* YAML error still comes back Jackson-shaped
+          (`"... (start marker at [Source: ...]) at [Source: ...]"`), but a lower-level YAML
+          *syntax* error can instead come back SnakeYAML-scanner-shaped
+          (`"while parsing a flow node\nexpected ..., but found ','\n in 'reader', line 2, column
+          3:\n    ...\n     ^\n"`) — two genuinely different raw shapes, both handled by one
+          tolerant regex pass (`line:?\s*(\d+),\s*column:?\s*(\d+)` — the colon is optional
+          specifically because Jackson writes `"line: N"` and SnakeYAML writes `"line N"`) rather
+          than two separate branches. `HtmlBeautifyOperation` has no failure path at all (jsoup's
+          parser is lenient, never throws) — confirmed by the same research, not assumed — so
+          `html-beautify` only ever reaches the fallback for a genuine network/technical error,
+          never an "invalid input" one.
+        - Verified via a clean `tsc --noEmit`, a successful `vite build`, and a real Node sanity
+          check of `simplifyBackendMessage` against both raw-message shapes above (both produced
+          the expected one-line `"<sentence> (line N, column M)"` output) plus 3 native
+          `JSON.parse` calls confirming the exact requested error format — no Docker in this
+          sandbox, so the actual on-screen error box (and the header toast's actual absence) are
+          unverified in a real browser.
+      - **Follow-up, per direct request ("fix the backend too") — the `dev-utils-service` bug this
+        feature had been working around client-side is now actually fixed, not just documented.**
+        See `dev-utils-service/CLAUDE.md`'s own updated note for the full backend fix (new
+        `exception/ParsingExceptionMessages`, structured off `JsonProcessingException`'s
+        `getOriginalMessage()`/`getLocation()` rather than string-parsing `getMessage()`, plus the
+        `(Object)`-cast fix that finally makes `BusinessException`'s varargs template overload
+        apply) — verified end-to-end there via a real standalone Java harness (compiled and run
+        against the actual resolved Jackson 2.19.2 jars and this reactor's own compiled classes,
+        not just read and trusted), not just reasoned about. `errorFormatting.ts`'s own doc
+        comments were rewritten to describe the fix rather than the bug, and
+        `simplifyBackendMessage` gained an idempotency guard (a new `LOCATION_SUFFIX` check) so it
+        no longer re-appends its own `"(line N, column M)"` suffix on top of a message the backend
+        now already ends with one — verified it stays a no-op against an already-clean message via
+        a Node check, alongside its existing legacy-noisy-message and no-location-at-all cases (all
+        three still produce the right output). **The client-side `JSON.parse` path for
+        `json-format`/`json-to-yaml` is unaffected by this fix and stays as-is** — it was never
+        purely a workaround for the backend bug, it's genuinely a better message (native V8
+        phrasing) than Jackson's own could ever produce for those two operations, so the backend
+        fix mainly benefits `yaml-to-json` (the one operation whose backend message the GUI still
+        shows through `simplifyBackendMessage`) plus any other API caller of this service. Verified
+        via a clean `tsc --noEmit` and a successful `vite build` on the GUI side — no Docker in
+        this sandbox, so the actual on-screen result (a real invalid YAML input, end to end through
+        a running backend) is unverified in a real browser.
+      - **Follow-up, per request: the Output panel's own background is now state-driven — white by
+        default (no result yet, or a failed submit) and by an error, switching to black only once a
+        real result is showing — plus a decorative download icon above the empty placeholder's
+        text.** `DevUtilToolPanel.tsx` gained `OUTPUT_BG_LIGHT` (`'#ffffff'`) alongside the existing
+        dark background (renamed `OUTPUT_BG_COLOR` → `OUTPUT_BG_DARK` for clarity now that there
+        are two), plus `OUTPUT_ERROR_COLOR` (`'#cf222e'`, the *light* theme's own error red, used as
+        a fixed literal rather than the `error.main` theme token — that token swaps to a brighter
+        red tuned for a dark surface once the app itself is in dark mode, which would look wrong
+        against this panel's now-always-white error background). All three of this panel's own
+        colors are deliberately fixed literals, not theme tokens, matching the pre-existing
+        `OUTPUT_BG_DARK`'s own precedent — this box's color scheme is independent of the app's
+        light/dark toggle, the same way a code editor's own theme doesn't follow its host app's
+        chrome. The empty-placeholder `Box` became a `Stack` (`alignItems="center"`,
+        `spacing={1.5}`) so a large `DownloadIcon` (`fontSize: 40`, `grey.400`) can sit above the
+        existing "Output will appear here." text (recolored `grey.600` for legibility on white,
+        was `grey.500` tuned for the old dark background) — purely decorative, no `onClick`, same
+        as any other empty-state icon in this app. The error box's border/icon/headline color
+        switched from the `error.main`/`error.light` theme tokens to the new fixed
+        `OUTPUT_ERROR_COLOR`, and its detail text from `grey.300` (light-on-dark) to `grey.800`
+        (dark-on-white) — both for the same "this box doesn't follow app theme" reasoning. **This
+        deliberately reintroduces the white → black transition on a successful submit that an
+        earlier fix (see this section's own "The Output panel's empty-state placeholder now
+        carries the same dark background..." bullet above) had specifically removed** — that
+        earlier fix solved a different problem (a jarring flash for the empty→populated case) that
+        no longer applies now that the empty state itself is intentionally the *other* color from
+        the populated state; this is the explicit design now, not a regression of that old fix.
+        Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+        sandbox, so the actual on-screen appearance (the download icon, and the white/black/white
+        transitions across all three states) is unverified in a real browser.
 
       (2) A search `TextField` (`SearchIcon` leading
       adornment) sits above the sidebar `List`, filtering by label/category/description — purely

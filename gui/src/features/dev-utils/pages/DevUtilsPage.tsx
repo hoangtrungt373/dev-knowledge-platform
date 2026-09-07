@@ -22,9 +22,9 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import ClearIcon from '@mui/icons-material/Clear';
-import { useNotification } from '@shared/contexts/NotificationContext';
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse } from '../types';
+import { DevUtilError } from '../utils/errorFormatting';
 import DevUtilToolPanel from '../components/DevUtilToolPanel';
 
 type TabKey = 'json-format' | 'yaml-to-json' | 'json-to-yaml' | 'html-beautify';
@@ -55,6 +55,11 @@ interface OperationConfig {
    * history). A realistic, mixed-type example, not a minimal one, since it now has to do both
    * jobs at once. */
   inputPlaceholder: string;
+  /** What format the *input* box holds — 'json' for json-format/json-to-yaml, 'yaml' for
+   * yaml-to-json, 'html' for html-beautify. Drives `errorFormatting.ts#buildDevUtilError`'s choice
+   * between a client-side `JSON.parse` re-derivation (for 'json') and a best-effort cleanup of the
+   * backend's own message (everything else, no equivalent client-side parser available). */
+  inputFormat: 'json' | 'yaml' | 'html';
   /** Prism language for the output syntax highlighter: 'json' | 'yaml' | 'markup' (HTML). */
   outputLanguage: string;
   supportsMinify: boolean;
@@ -89,7 +94,6 @@ interface OperationConfig {
  * "lift state up" fix for two components that both need the same piece of state.
  */
 export default function DevUtilsPage(): JSX.Element {
-  const { showError } = useNotification();
   const location = useLocation();
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>(() => tabFromHash(location.hash));
@@ -98,6 +102,10 @@ export default function DevUtilsPage(): JSX.Element {
   // directly — see DevUtilToolPanel.tsx's own updated Javadoc for the full reasoning.
   const [input, setInput] = useState('');
   const [output, setOutput] = useState<string | null>(null);
+  // A submit failure, rendered inline in the Output panel instead of a header notification — see
+  // errorFormatting.ts and DevUtilToolPanel.tsx's own updated Javadoc. Mutually exclusive with
+  // `output` (a submit always clears one before setting the other).
+  const [error, setError] = useState<DevUtilError | null>(null);
 
   // Syncs local state with the hash for the two cases that don't go through selectTab below: a
   // direct deep link (/dev-utils#yaml-to-json) and the browser's own back/forward navigation.
@@ -105,12 +113,13 @@ export default function DevUtilsPage(): JSX.Element {
     setTab(tabFromHash(location.hash));
   }, [location.hash]);
 
-  // Switching tools starts with a blank input/output — same reset DevUtilToolPanel's own remount
-  // (below) already gives every other piece of its state (minify/saving/copied), just done
-  // explicitly here since `input`/`output` no longer live inside that remounted component.
+  // Switching tools starts with a blank input/output/error — same reset DevUtilToolPanel's own
+  // remount (below) already gives every other piece of its state (minify/saving/copied), just done
+  // explicitly here since these three no longer live inside that remounted component.
   useEffect(() => {
     setInput('');
     setOutput(null);
+    setError(null);
   }, [tab]);
 
   const selectTab = useCallback(
@@ -131,10 +140,11 @@ export default function DevUtilsPage(): JSX.Element {
       icon: <DataObjectIcon fontSize="small" />,
       actionLabel: 'Format',
       inputPlaceholder: '{"project":"Vui Coding","online":true,"tools":["JSON","Base64","JWT"],"stars":128}',
+      inputFormat: 'json',
       outputLanguage: 'json',
       supportsMinify: true,
       downloadFileName: 'formatted.json',
-      onSubmit: (input, minify) => devUtilsApi.formatJson(input, minify, showError),
+      onSubmit: (input, minify) => devUtilsApi.formatJson(input, minify),
     },
     {
       key: 'html-beautify',
@@ -145,10 +155,11 @@ export default function DevUtilsPage(): JSX.Element {
       actionLabel: 'Beautify',
       inputPlaceholder:
         '<div class="card"><h2>Vui Coding</h2><p>Online: <strong>true</strong></p><ul><li>JSON</li><li>Base64</li><li>JWT</li></ul></div>',
+      inputFormat: 'html',
       outputLanguage: 'markup',
       supportsMinify: true,
       downloadFileName: 'beautified.html',
-      onSubmit: (input, minify) => devUtilsApi.beautifyHtml(input, minify, showError),
+      onSubmit: (input, minify) => devUtilsApi.beautifyHtml(input, minify),
     },
     {
       key: 'yaml-to-json',
@@ -158,10 +169,11 @@ export default function DevUtilsPage(): JSX.Element {
       icon: <SyncAltIcon fontSize="small" />,
       actionLabel: 'Convert',
       inputPlaceholder: 'project: Vui Coding\nonline: true\ntools:\n  - JSON\n  - Base64\n  - JWT\nstars: 128\n',
+      inputFormat: 'yaml',
       outputLanguage: 'json',
       supportsMinify: true,
       downloadFileName: 'converted.json',
-      onSubmit: (input, minify) => devUtilsApi.yamlToJson(input, minify, showError),
+      onSubmit: (input, minify) => devUtilsApi.yamlToJson(input, minify),
     },
     {
       key: 'json-to-yaml',
@@ -171,12 +183,13 @@ export default function DevUtilsPage(): JSX.Element {
       icon: <SwapHorizIcon fontSize="small" />,
       actionLabel: 'Convert',
       inputPlaceholder: '{"project":"Vui Coding","online":true,"tools":["JSON","Base64","JWT"],"stars":128}',
+      inputFormat: 'json',
       outputLanguage: 'yaml',
       // No minify option here — jackson-dataformat-yaml has no single-line/flow-style toggle, so
       // devUtilsApi.jsonToYaml doesn't even accept the parameter (see its own comment).
       supportsMinify: false,
       downloadFileName: 'converted.yaml',
-      onSubmit: input => devUtilsApi.jsonToYaml(input, showError),
+      onSubmit: input => devUtilsApi.jsonToYaml(input),
     },
   ];
 
@@ -189,15 +202,15 @@ export default function DevUtilsPage(): JSX.Element {
   const handleClearInput = useCallback(() => {
     setInput('');
     setOutput(null);
+    setError(null);
   }, []);
 
   // Client-side only — the full operation list is always already in hand, no need for a backend
   // round trip to filter 4 (or even a few dozen, if this grows) known items. Only filters what the
   // sidebar shows; it never changes which tool's panel is currently displayed. Plain recomputation
-  // each render, not useMemo — the list is tiny (4 items) and rebuilt every render regardless
-  // (each operation's onSubmit closes over showError), so memoizing on `search` alone would either
-  // need `operations` in the dep array (defeating the memoization, since that array is a fresh
-  // reference every render anyway) or silently ignore it.
+  // each render, not useMemo — the list is tiny (4 items) and rebuilt every render regardless, so
+  // memoizing on `search` alone would either need `operations` in the dep array (defeating the
+  // memoization, since that array is a fresh reference every render anyway) or silently ignore it.
   const query = search.trim().toLowerCase();
   const filteredOperations = query
     ? operations.filter(
@@ -315,7 +328,7 @@ export default function DevUtilsPage(): JSX.Element {
                   variant="outlined"
                   startIcon={<ClearIcon fontSize="small" />}
                   onClick={handleClearInput}
-                  disabled={!input && !output}
+                  disabled={!input && !output && !error}
                 >
                   Clear
                 </Button>
@@ -333,8 +346,11 @@ export default function DevUtilsPage(): JSX.Element {
             onInputChange={setInput}
             output={output}
             onOutputChange={setOutput}
+            error={error}
+            onErrorChange={setError}
             actionLabel={activeOperation.actionLabel}
             inputPlaceholder={activeOperation.inputPlaceholder}
+            inputFormat={activeOperation.inputFormat}
             outputLanguage={activeOperation.outputLanguage}
             supportsMinify={activeOperation.supportsMinify}
             downloadFileName={activeOperation.downloadFileName}

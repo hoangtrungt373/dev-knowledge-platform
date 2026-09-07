@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.devutils.exception.DevUtilsErrorCode;
+import com.ttg.devknowledgeplatform.devutils.exception.ParsingExceptionMessages;
 import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
 
 import lombok.RequiredArgsConstructor;
@@ -32,7 +33,11 @@ public class YamlToJsonOperation implements DevUtilOperation {
                     ? objectMapper.writeValueAsString(node)
                     : objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(node);
         } catch (JsonProcessingException e) {
-            throw new BusinessException(DevUtilsErrorCode.INVALID_YAML, e.getMessage());
+            // (Object) cast forces the varargs BusinessException(ErrorCode, Object... templateArgs)
+            // overload instead of BusinessException(ErrorCode, String message) — see
+            // JsonFormatOperation's identical catch block for the full overload-resolution
+            // reasoning, and ParsingExceptionMessages for why the message is cleaned up first.
+            throw new BusinessException(DevUtilsErrorCode.INVALID_YAML, (Object) ParsingExceptionMessages.friendlyMessage(e));
         }
     }
 }

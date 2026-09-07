@@ -2293,9 +2293,18 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │                                     No oauth2-resource-server/oauth2-client dependency at all —
 │                                     nothing here ever verifies a JWT.
 ├── exception/
-│   └── DevUtilsErrorCode.java     — INVALID_JSON/INVALID_YAML only. No INVALID_HTML — jsoup's
-│                                     parser is deliberately lenient and never throws on malformed
-│                                     markup.
+│   ├── DevUtilsErrorCode.java     — INVALID_JSON/INVALID_YAML only. No INVALID_HTML — jsoup's
+│   │                                 parser is deliberately lenient and never throws on malformed
+│   │                                 markup.
+│   └── ParsingExceptionMessages.java — friendlyMessage(JsonProcessingException): builds a clean,
+│                                     noise-free message (getOriginalMessage() + the structured
+│                                     getLocation(), never string-parsed off getMessage()) for the
+│                                     3 JSON/YAML operations' catch blocks below to hand to
+│                                     BusinessException — fixes a real bug where the raw Jackson
+│                                     exception text (parser-internals diagnostics included) used
+│                                     to leak straight to API callers; see dev-utils-service/
+│                                     CLAUDE.md's own note for the full fix and gui/CLAUDE.md's
+│                                     dev-utils section for the client-side story this started from.
 ├── config/
 │   └── YamlMapperConfig.java      — a YAMLMapper @Bean, the YAML-side counterpart to infra's
 │                                     shared ObjectMapper (JacksonConfig). Lives here, not infra —

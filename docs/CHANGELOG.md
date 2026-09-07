@@ -325,6 +325,71 @@ section again. Full unabridged entry-by-entry history for all three lives in
     so it doesn't sit on top of the label while faded out. Verified via a clean `tsc --noEmit` and
     a successful `vite build` only — no Docker in this sandbox, so the actual cross-fade is
     unverified in a real browser, here or on any of this component's other consumers.
+  - **Fourth follow-up bug fix: the actual root cause, outside the label/spinner slot entirely —
+    `disabled={saving || disabled}` made `Button` apply MUI's own `.Mui-disabled` styling (a
+    genuinely different color scheme from the button's normal contained-primary look) the instant
+    `saving` flipped true, so for a fast request the whole button flashed to muted grey and back,
+    independent of the label/spinner cross-fade the first three fixes focused on.** Fixed by
+    conditionally overriding `&.Mui-disabled`'s own `backgroundColor`/`color` back to
+    `primary.main`/`primary.contrastText` via `sx`, but only while `saving` — a real
+    `disabled`-for-other-reasons button still gets MUI's normal muted look. Verified via a clean
+    `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the actual
+    fix is unverified in a real browser, here or on any of this component's other consumers.
+  - **Follow-up, per request: an invalid-input error now renders inline in the Output panel
+    instead of a header notification, with a friendlier message than the backend's own raw
+    exception text.** `DevUtilsPage.tsx`'s four `onSubmit` closures dropped their `showError`
+    argument (suppressing `httpClient`'s toast without touching that shared client); a new
+    `error: DevUtilError | null` state, lifted the same way `output` already is, feeds a red-
+    outlined box rendered inside the Output panel (`"Cannot be processed"` headline + a monospace
+    detail line) instead. New `utils/errorFormatting.ts` (`buildDevUtilError`) supplies the detail:
+    for a JSON-input operation (`json-format`/`json-to-yaml`), it re-runs the browser's own
+    `JSON.parse(input)` purely to harvest its message — V8's own JSON syntax errors already match
+    the requested format verbatim (confirmed via a real Node check, not assumed). For
+    `yaml-to-json`/`html-beautify` (no client-side parser available), a `simplifyBackendMessage`
+    fallback strips the backend's own parser-internals noise (confirmed, via a background agent
+    reading the actual backend code, to be Jackson's `JsonProcessingException.getMessage()` reused
+    verbatim — a real, separately-documented backend bug: `DevUtilsErrorCode`'s own
+    `"Invalid {0}"`-style templates are defined but never applied, see
+    `dev-utils-service/CLAUDE.md`'s new note) down to one line plus a plain "(line N, column M)"
+    suffix, tolerant of both Jackson's and SnakeYAML's differing raw formats. Verified via a clean
+    `tsc --noEmit`, a successful `vite build`, and a real Node sanity check of the message-cleanup
+    logic against both raw shapes plus native `JSON.parse` calls — no Docker in this sandbox, so
+    the actual on-screen result is unverified in a real browser.
+  - **Follow-up, per direct request ("fix the backend too") — the `dev-utils-service` bug is now
+    actually fixed server-side, not just worked around/documented client-side.** New
+    `dev-utils-service` class `exception/ParsingExceptionMessages` builds a clean error message
+    structurally from a `JsonProcessingException` (`getOriginalMessage()` + the structured
+    `getLocation()`, never string-parsed off `getMessage()`), and each of the three JSON/YAML
+    operations' catch blocks now passes that message through a `(Object)` cast so
+    `BusinessException`'s varargs constructor — the one that actually applies
+    `DevUtilsErrorCode.INVALID_JSON`/`INVALID_YAML`'s own `"Invalid {0}"` template — finally gets
+    selected instead of the raw-message overload. Verified end-to-end via a real standalone Java
+    harness compiled and run against the actual resolved Jackson 2.19.2 jars and this reactor's own
+    compiled classes (not just read and trusted): 4 real malformed JSON/YAML inputs each produced a
+    clean, single-line, noise-free message, and a full `BusinessException` round trip confirmed the
+    `"Invalid JSON: ..."` template now actually applies. `gui`'s own `errorFormatting.ts` was
+    updated to match — `simplifyBackendMessage` gained an idempotency guard so it no longer
+    re-appends its own location suffix on top of a message the backend now already ends with one 
+    (verified via a Node check); the client-side `JSON.parse` path for `json-format`/`json-to-yaml`
+    is untouched, since it was always a better message than the backend's own regardless of this
+    fix. See `dev-utils-service/CLAUDE.md`'s own updated note for the full fix detail. Verified via
+    a clean `tsc --noEmit` and a successful `vite build` on the GUI side and a targeted
+    `-pl dev-utils-service -am compile` on the backend side — no Docker in this sandbox, so the
+    actual on-screen result through a running backend is unverified in a real browser.
+  - **Follow-up, per request: the Output panel's background is now state-driven** — white by
+    default and on a failed submit, switching to black only once a real result is showing — plus a
+    decorative download icon above the empty placeholder's text. New `OUTPUT_BG_LIGHT`
+    (`'#ffffff'`) alongside the renamed `OUTPUT_BG_DARK` (was `OUTPUT_BG_COLOR`), and a new
+    `OUTPUT_ERROR_COLOR` (`'#cf222e'`, the light theme's own error red used as a fixed literal
+    rather than the `error.main` token, which swaps to a brighter dark-mode red that would clash
+    with this panel's now-always-white error background) — all three colors are fixed literals, not
+    theme tokens, matching this panel's existing "independent of the app's light/dark toggle"
+    precedent. This deliberately reintroduces the white → black transition on a successful submit
+    that an earlier fix removed — that fix solved a different problem (a jarring flash between two
+    *same-colored* states) which no longer applies now that empty/error and populated are
+    intentionally different colors by design. Verified via a clean `tsc --noEmit` and a successful
+    `vite build` only — no Docker in this sandbox, so the actual on-screen appearance is unverified
+    in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

@@ -9,16 +9,19 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import ContentPasteIcon from '@mui/icons-material/ContentPaste';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import DownloadIcon from '@mui/icons-material/Download';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import SubmitButton from '@shared/components/SubmitButton';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { DevUtilsResponse } from '../types';
+import { buildDevUtilError, DevUtilError } from '../utils/errorFormatting';
 
 interface DevUtilToolPanelProps {
   /** Controlled — lifted up to `DevUtilsPage.tsx` so its own headline row's Sample/Clear buttons
@@ -29,8 +32,16 @@ interface DevUtilToolPanelProps {
    * blank the Output panel alongside the Input one. */
   output: string | null;
   onOutputChange: (value: string | null) => void;
+  /** Controlled too — a failed submit renders inline in the Output panel instead of a header
+   * notification, so the headline row's Clear button needs to be able to dismiss it as well.
+   * Mutually exclusive with `output` — `handleSubmit` always clears one before setting the other. */
+  error: DevUtilError | null;
+  onErrorChange: (error: DevUtilError | null) => void;
   actionLabel: string;
   inputPlaceholder: string;
+  /** What format the *input* box holds — feeds `buildDevUtilError`'s choice of how to re-derive a
+   * friendly message from a failed submit; see that function's own doc comment. */
+  inputFormat: 'json' | 'yaml' | 'html';
   /** Prism language for the output syntax highlighter: 'json' | 'yaml' | 'markup' (HTML). */
   outputLanguage: string;
   /** Whether this tool exposes a minify checkbox at all — false only for JSON→YAML, which has no
@@ -41,10 +52,19 @@ interface DevUtilToolPanelProps {
   onSubmit: (input: string, minify: boolean) => Promise<DevUtilsResponse>;
 }
 
-// vscDarkPlus's own background (react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus.js) —
-// applied to the Output panel's empty placeholder too, so switching from "no output yet" to a real
-// result doesn't flash white -> black once the syntax highlighter's own dark background appears.
-const OUTPUT_BG_COLOR = '#1e1e1e';
+// The Output panel's background is state-driven, per request — white by default (no result yet,
+// or a failed submit), switching to vscDarkPlus's own dark background
+// (react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus.js) only once a real result is
+// showing. Both are fixed literals, not theme tokens (`background.paper` etc.) — this box's own
+// color scheme is deliberately independent of the app's light/dark mode toggle, the same way a
+// code editor's own theme doesn't follow the surrounding app's chrome.
+const OUTPUT_BG_DARK = '#1e1e1e';
+const OUTPUT_BG_LIGHT = '#ffffff';
+// The light theme's own error red (`shared/constants/colors.ts`'s BRAND_COLORS.light.error) — used
+// literally rather than the theme's own `error.main` token, since that token swaps to a brighter
+// red tuned for a dark surface once the app is in dark mode, which would look wrong against this
+// panel's always-white error background.
+const OUTPUT_ERROR_COLOR = '#cf222e';
 
 function downloadTextFile(fileName: string, content: string): void {
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
@@ -64,21 +84,40 @@ function downloadTextFile(fileName: string, content: string): void {
  * entirely (not just disabled) when the operation doesn't support it. Each tab configures this
  * for its own operation rather than this component knowing about any specific one.
  *
- * <p>`input` and `output` are both controlled props, not local state — lifted up to
+ * <p>`input`, `output`, and `error` are all controlled props, not local state — lifted up to
  * `DevUtilsPage.tsx` once that page's own headline row needed Sample/Clear buttons able to
  * set/reset them directly (this panel's own Paste button and the `TextField`'s typing both just
- * call `onInputChange` now, the same as that page's own callers; a successful submit calls
- * `onOutputChange` instead of a local setter). Every other piece of state here
- * (`minify`/`saving`/`copied`) stays local — `DevUtilsPage.tsx` still remounts this component on
- * tool switch (`key={...}`) to reset those, independently of the parent's own `input`/`output`
- * reset. */
+ * call `onInputChange` now, the same as that page's own callers; a submit calls `onOutputChange`
+ * on success or `onErrorChange` on failure instead of local setters). Every other piece of state
+ * here (`minify`/`saving`/`copied`) stays local — `DevUtilsPage.tsx` still remounts this component
+ * on tool switch (`key={...}`) to reset those, independently of the parent's own `input`/`output`/
+ * `error` reset.
+ *
+ * <p>A submit failure is **not** surfaced via the header notification (`showNotification`/
+ * `showError`) at all anymore, per a direct request — `onSubmit`'s own `devUtilsApi.*` calls are
+ * wired up with no `showError` argument (see `DevUtilsPage.tsx`'s own `onSubmit` closures), so
+ * `httpClient` never fires that toast for these four operations; the thrown `Error`'s `.message`
+ * is instead fed through `errorFormatting.ts#buildDevUtilError` and rendered inline in the Output
+ * panel below (see that function's own doc comment for exactly what it does with the raw backend
+ * message, and why the two JSON-input operations bypass it entirely in favor of the browser's own
+ * `JSON.parse`).
+ *
+ * <p>The Output panel's own background is state-driven, per request — white (`OUTPUT_BG_LIGHT`)
+ * for both the empty placeholder and an `error`, switching to black (`OUTPUT_BG_DARK`, the syntax
+ * highlighter's own dark theme) only once `output` actually holds a real result. This deliberately
+ * reintroduces the white → black transition an earlier fix had removed (see git history/
+ * `docs/CHANGELOG.md` around that fix if picking through this box's own color history) — that
+ * transition is the explicit ask here, not an oversight. */
 export default function DevUtilToolPanel({
   input,
   onInputChange,
   output,
   onOutputChange,
+  error,
+  onErrorChange,
   actionLabel,
   inputPlaceholder,
+  inputFormat,
   outputLanguage,
   supportsMinify,
   downloadFileName,
@@ -93,13 +132,16 @@ export default function DevUtilToolPanel({
     setSaving(true);
     try {
       const result = await onSubmit(input, minify);
+      onErrorChange(null);
       onOutputChange(result.output);
-    } catch {
-      // showError already called by httpClient
+    } catch (submitError) {
+      onOutputChange(null);
+      const message = submitError instanceof Error ? submitError.message : String(submitError);
+      onErrorChange(buildDevUtilError(input, inputFormat === 'json', message));
     } finally {
       setSaving(false);
     }
-  }, [input, minify, onSubmit, onOutputChange]);
+  }, [input, minify, onSubmit, onOutputChange, onErrorChange, inputFormat]);
 
   const handlePaste = useCallback(async () => {
     try {
@@ -218,7 +260,42 @@ export default function DevUtilToolPanel({
           </Stack>
         </Stack>
 
-        {output !== null ? (
+        {error !== null ? (
+          <Box sx={{ p: 2, height: 420, overflow: 'auto', bgcolor: OUTPUT_BG_LIGHT }}>
+            <Stack
+              direction="row"
+              spacing={1.5}
+              sx={{
+                p: 2,
+                borderRadius: 1,
+                border: '1px solid',
+                borderColor: OUTPUT_ERROR_COLOR,
+                bgcolor: alpha(OUTPUT_ERROR_COLOR, 0.08),
+              }}
+            >
+              <ErrorOutlineIcon fontSize="small" sx={{ color: OUTPUT_ERROR_COLOR, mt: '2px' }} />
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="subtitle2" fontWeight={700} sx={{ color: OUTPUT_ERROR_COLOR }}>
+                  {error.headline}
+                </Typography>
+                <Typography
+                  component="pre"
+                  sx={{
+                    m: 0,
+                    mt: 0.5,
+                    color: 'grey.800',
+                    fontFamily: 'monospace',
+                    fontSize: '0.8rem',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {error.detail}
+                </Typography>
+              </Box>
+            </Stack>
+          </Box>
+        ) : output !== null ? (
           <SyntaxHighlighter
             language={outputLanguage}
             style={vscDarkPlus}
@@ -229,26 +306,23 @@ export default function DevUtilToolPanel({
               padding: '16px',
               height: 420,
               overflow: 'auto',
-              background: OUTPUT_BG_COLOR,
+              background: OUTPUT_BG_DARK,
             }}
           >
             {output}
           </SyntaxHighlighter>
         ) : (
-          <Box
-            sx={{
-              p: 2,
-              height: 420,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              bgcolor: OUTPUT_BG_COLOR,
-            }}
+          <Stack
+            spacing={1.5}
+            alignItems="center"
+            justifyContent="center"
+            sx={{ p: 2, height: 420, bgcolor: OUTPUT_BG_LIGHT }}
           >
-            <Typography variant="body2" sx={{ color: 'grey.500' }}>
+            <DownloadIcon sx={{ fontSize: 40, color: 'grey.400' }} />
+            <Typography variant="body2" sx={{ color: 'grey.600' }}>
               Output will appear here.
             </Typography>
-          </Box>
+          </Stack>
         )}
       </Paper>
     </Box>

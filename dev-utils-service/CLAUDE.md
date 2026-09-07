@@ -62,6 +62,62 @@ caller.** Every operation is a pure text-in/text-out transform:
 - `exception/DevUtilsErrorCode` — `INVALID_JSON`/`INVALID_YAML` only. No `INVALID_HTML` — jsoup's
   parser is deliberately lenient and never throws on malformed markup, so there is no invalid-HTML
   failure path to name.
+  - **Fixed, per direct follow-up request, a bug originally found while investigating a `gui`
+    error-message complaint (see that complaint's own history below for the client-side half of
+    this story).** `INVALID_JSON`/`INVALID_YAML`'s own `"Invalid JSON: {0}"`/`"Invalid YAML: {0}"`
+    templates were defined but never actually applied — `JsonFormatOperation`/`JsonToYamlOperation`/
+    `YamlToJsonOperation` all caught their `JsonProcessingException` and called
+    `new BusinessException(errorCode, e.getMessage())`, a plain `String` argument that
+    overload-resolves to `BusinessException(ErrorCode, String message)` (the raw-message
+    constructor), never the varargs `(ErrorCode, Object... templateArgs)` overload that runs the
+    message through `ErrorCode.formatMessage()`. So the client-facing `errorMessage` used to be
+    Jackson's own raw exception text verbatim — no "Invalid JSON:"/"Invalid YAML:" prefix despite
+    the enum implying one, and, worse, it leaked Jackson's own parser-internals diagnostics
+    (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION`, `[Source: REDACTED (...)]`) straight to any
+    API caller. **Two-part fix, both confirmed with a real standalone Java harness against the
+    actual resolved Jackson 2.19.2 (not just read and assumed):**
+    1. **New `exception/ParsingExceptionMessages` (`friendlyMessage(JsonProcessingException e)`)**
+       builds a clean detail string structurally, not by string-parsing `e.getMessage()`: it starts
+       from `e.getOriginalMessage()` (Jackson's own pre-location-suffix message, so
+       `getMessage()`'s own separately-appended `[Source: ...]` clause is gone for free), strips
+       two further noise shapes via regex (Jackson's own inline `"(start marker at [Source:
+       ...])"` clause some structural errors bake directly into their original message — confirmed
+       real via the harness, e.g. an unclosed `{` — and SnakeYAML's own `"in '<name>', line N,
+       column M:"` mark blocks, each followed by a 2-line source-snippet + `^`-pointer, which a
+       single YAML error can carry *twice* — a "context" mark and a "problem" mark, interleaved
+       with the two sentences that actually explain the failure, confirmed via the harness against
+       a real malformed-flow-sequence YAML input), then re-appends the real location from
+       `e.getLocation()` (a structured `JsonLocation` — `getLineNr()`/`getColumnNr()`, never
+       string-parsed). Harness output for 4 real inputs: an unclosed JSON object → `"Unexpected
+       end-of-input: expected close marker for Object (line 1, column 14)"`; a missing-comma JSON
+       object → `"Unexpected character ('"' (code 34)): was expecting comma to separate Object
+       entries (line 1, column 15)"`; a malformed YAML flow sequence (`tools: [JSON,,Base64]`,
+       both SnakeYAML marks) → `"while parsing a flow node expected the node content, but found
+       ',' (line 1, column 13)"`; a bad YAML indent → `"mapping values are not allowed here (line
+       2, column 6)"` — all four clean, single-line, zero Jackson/SnakeYAML internals.
+    2. **Each operation's catch block now passes that clean message through a `(Object)` cast**:
+       `new BusinessException(errorCode, (Object) ParsingExceptionMessages.friendlyMessage(e))`.
+       The cast is load-bearing, not decorative — it's what actually fixes the "template never
+       applied" half of the bug: a plain `String` argument always resolves to
+       `BusinessException(ErrorCode, String message)` in Java's overload resolution (phase 1, no
+       boxing/varargs needed, since the argument already *is* a `String`); casting to `Object`
+       makes that overload inapplicable (an `Object` doesn't implicitly narrow to `String`),
+       forcing resolution onto the varargs `(ErrorCode, Object... templateArgs)` overload instead
+       — the one that actually calls `ErrorCode.formatMessage()`. Confirmed end-to-end via the same
+       harness (not just each half in isolation): a real `readTree` failure fed through both fixes
+       together produced `errorMessage = "Invalid JSON: Unexpected end-of-input within/between
+       Object entries (line 1, column 79)"` — the template prefix finally applies, and the message
+       is clean.
+    - **`gui`'s own `dev-utils/utils/errorFormatting.ts` keeps its client-side logic regardless of
+      this fix — it was never purely a workaround for this bug, and this fix doesn't make it dead
+      code.** For a JSON-input operation, the browser's own `JSON.parse` still produces a *more*
+      precise, more familiar message (native V8 phrasing) than this service's Jackson-based one
+      ever could, so that client-side path stays as the better option, not a stopgap. For
+      `yaml-to-json` (the one operation whose message the GUI still shows verbatim from this
+      service), `errorFormatting.ts`'s own `simplifyBackendMessage` was updated in the same pass to
+      stay idempotent against this now-already-clean message (it used to unconditionally re-append
+      its own `"(line N, column M)"` suffix, which would have doubled up against this service's own
+      new one) — see that file's own doc comment.
 - `service/DevUtilOperation` — a bare **marker interface** (no method), purely for IDE "Find
   Implementations" grouping — the same role `infra.event.ApplicationEventHandler`/
   `infra.service.seed.Seeder` already play in this reactor. Deliberately **not** a textbook GoF

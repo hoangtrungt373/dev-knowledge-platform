@@ -49,7 +49,21 @@ interface SubmitButtonProps {
  * unmount can't cross-fade; only two already-present elements trading `opacity` can). `pointerEvents:
  * 'none'` on the spinner keeps it from intercepting the button's own click target while faded out
  * (harmless for the click itself, since a click on any child still bubbles to `Button`'s own
- * handler regardless, but avoids it fighting text selection/hover on the label underneath it). */
+ * handler regardless, but avoids it fighting text selection/hover on the label underneath it).
+ *
+ * <p>**Fourth report, same complaint, root cause finally outside the label/spinner slot
+ * entirely**: `disabled={saving || disabled}` makes `Button` apply MUI's own `.Mui-disabled`
+ * styling the instant `saving` flips true — a genuinely different color scheme (`action.disabled`
+ * text over `action.disabledBackground`, not this button's own contained-primary look) — so for a
+ * fast request the *whole button* was flashing to a muted grey and back, independent of (and more
+ * visible than) the label/spinner cross-fade above, which the first three fixes never touched
+ * since they only ever looked at the label/spinner slot. `disabled` still has to stay wired to
+ * `saving` (a real, unrelated invalid-input `disabled` needs to keep looking disabled, and a
+ * genuinely slow request still needs the click blocked) — so instead of dropping that, `sx`
+ * conditionally overrides `&.Mui-disabled`'s own color/background back to the plain
+ * `primary.main`/`primary.contrastText` contained look, but **only while `saving`**, not for a
+ * real `disabled` prop — an invalid-input button should still look visibly disabled; only the
+ * saving-induced flash needed suppressing. */
 export default function SubmitButton({
   saving,
   label,
@@ -72,7 +86,15 @@ export default function SubmitButton({
       fullWidth={fullWidth}
       size={size}
       startIcon={startIcon}
-      sx={sx}
+      sx={{
+        ...(saving && {
+          '&.Mui-disabled': {
+            backgroundColor: 'primary.main',
+            color: 'primary.contrastText',
+          },
+        }),
+        ...sx,
+      }}
     >
       <Box component="span" sx={{ position: 'relative', display: 'inline-flex' }}>
         <Box component="span" sx={{ opacity: saving ? 0 : 1, transition: 'opacity 0.15s ease' }}>
