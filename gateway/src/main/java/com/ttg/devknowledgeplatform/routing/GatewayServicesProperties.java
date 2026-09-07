@@ -45,4 +45,8 @@ public class GatewayServicesProperties {
     /** {@code ai-service} — RAG chat, admin indexing/embeddings/pipeline-metrics. */
     @NotBlank
     private String aiServiceBaseUrl;
+
+    /** {@code dev-utils-service} — stateless developer utilities (JSON/YAML/HTML). */
+    @NotBlank
+    private String devUtilsServiceBaseUrl;
 }

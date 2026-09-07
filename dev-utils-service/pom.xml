@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.ttg</groupId>
+        <artifactId>dev-knowledge-platform</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>dev-utils-service</artifactId>
+    <name>Dev Utils Service</name>
+    <description>Stateless developer utility tools: JSON format/validate, YAML/JSON conversion, HTML beautify</description>
+
+    <dependencies>
+
+        <!-- Internal -->
+        <dependency>
+            <groupId>com.ttg</groupId>
+            <artifactId>common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ttg</groupId>
+            <artifactId>infra</artifactId>
+        </dependency>
+
+        <!-- DevUtilsErrorCode implements the common ErrorCode interface and references HttpStatus
+             directly in main code; this module's own REST controller needs the full MVC stack too
+             — common declares spring-boot-starter-web as optional, so it isn't inherited
+             transitively. Same pattern as task-service's/content-service's own *ErrorCode. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Spring Security — NOT for authenticating callers (this module is the one deployable in
+             the reactor with no authenticated caller at all; see DevUtilsServiceApplication's own
+             Javadoc). It's unavoidable regardless: common's shared GlobalExceptionHandler declares
+             @ExceptionHandler methods over org.springframework.security.access.AccessDeniedException/
+             org.springframework.security.core.AuthenticationException, which Spring resolves via
+             reflection when that bean is registered at context startup — without spring-security-core
+             on the classpath that fails with a NoClassDefFoundError before this app ever serves a
+             request, regardless of whether either exception is ever actually thrown here. common
+             declares this starter optional, so it isn't inherited transitively the way it is for
+             every other service (which all need it anyway, for real JWT auth). This module's own
+             security.SecurityConfig turns Spring Boot's autoconfigured default (HTTP Basic + a
+             generated per-boot password) into an explicit permitAll() instead. No
+             oauth2-resource-server/oauth2-client dependency — nothing here ever verifies a JWT. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- YAML<->JSON conversion via Jackson's YAMLMapper. No explicit <version> — managed by
+             spring-boot-dependencies' own Jackson BOM import, same as every other
+             com.fasterxml.jackson.* artifact in this reactor. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+
+        <!-- jsoup — HTML parsing/pretty-printing for the beautify operation. Not the same use case
+             as ecommerce-service's owasp-java-html-sanitizer (that one strips unsafe markup from
+             admin-authored content before persisting it; this one only reformats whitespace/
+             indentation — nothing here is ever persisted or rendered as trusted HTML). -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+        </dependency>
+
+        <!-- Actuator — health/info/metrics endpoints, same convention as every other standalone
+             service in this reactor. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

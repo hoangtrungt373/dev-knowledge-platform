@@ -7,8 +7,10 @@ Boot entry point, security/JWT-filter wiring — but **it now depends on nothing
 `infra`, and has no Liquibase migrations of its own left at all** (see `database/sql/` below).
 
 **Now the single entry point for external clients — proxies HTTP traffic to all six standalone
-services** via Spring Cloud Gateway Server MVC (see `routing/` below and root `CLAUDE.md`'s
-Architecture → Routing section for the full path table). This is new territory for this module,
+services extracted from the monolith, plus `dev-utils-service` (built standalone from day one,
+never embedded here at all — see that module's own `CLAUDE.md`)** via Spring Cloud Gateway Server
+MVC (see `routing/` below and root `CLAUDE.md`'s Architecture → Routing section for the full path
+table). This is new territory for this module,
 not another extraction: unlike everything else in this file's history (six Maven dependencies
 removed, one at a time), routing is the first thing this module has *gained* since it lost its
 last embedded feature module — a real network call to each standalone service's own REST layer,
@@ -133,6 +135,15 @@ both `identity-service` and `social-service` were extracted into standalone serv
     `java.net.ConnectException` at `ChatStreamProxyController.java`'s exact `httpClient.send()`
     line that it correctly attempts to reach `ai-service`'s configured base URL, not some other
     target or a silently-swallowed no-op.
+  - **`devUtilsServiceRoutes()` routes `/api/v1/dev-utils/**` to `dev-utils-service` — the one
+    backend whose entire surface is public, no JWT at all.** `GatewayServicesProperties` gained a
+    matching `devUtilsServiceBaseUrl`. This app's own `SecurityConfig` needed a new
+    `.requestMatchers("/api/v1/dev-utils/**").permitAll()` rule alongside the existing
+    `/api/v1/public/**`/`/api/v1/users/public/**` ones — this app gates `/api/v1/**` behind
+    `.anyRequest().authenticated()` before ever proxying anywhere, so `dev-utils-service`'s own
+    permissive filter chain isn't sufficient on its own (same two-layer reasoning as
+    `identity-service`'s registration endpoint carve-out below). See `dev-utils-service/CLAUDE.md`
+    for why that service needs a real `SecurityConfig` of its own despite authenticating no one.
   No load balancing or service discovery — deliberately not built, since there is exactly one
   instance of each service at a fixed address. Rate limiting, timeouts (beyond the one above),
   retry, and circuit breaker are not built yet either — see `gateway/ROADMAP.md` for the backlog

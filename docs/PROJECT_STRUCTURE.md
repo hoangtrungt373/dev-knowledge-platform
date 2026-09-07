@@ -25,7 +25,13 @@ microservices-study exercise — see their own `## content-service`/`## ecommerc
 and root `CLAUDE.md`). All six still compile against `common`+`infra` as ordinary library
 dependencies. `ai-service` was the sixth and final extraction — `gateway` now has **zero** embedded
 feature modules left, closing out the microservices-extraction-plan project (see root `CLAUDE.md`'s
-Long-term direction section). `infra`'s Redis cache TTL config (`CacheTtlProperties`/`CacheNames`)
+Long-term direction section).
+
+`dev-utils-service/` is also not in the tree above, for a related but distinct reason: it's a
+**seventh** standalone Spring Boot application, but a new one, not an eighth extraction — it was
+built directly standalone from day one, never embedded in `gateway` at all (see its own `##
+dev-utils-service` section further down). It's also the one standalone service with no schema, no
+JWT verification, and no Liquibase changelog of any kind — see that section for the full reasoning. `infra`'s Redis cache TTL config (`CacheTtlProperties`/`CacheNames`)
 was deleted outright during `ai-service`'s extraction, not moved — see that module's own section
 further down for the dead-code finding.
 
@@ -2253,6 +2259,81 @@ for the rules this module follows.
 
 ---
 
+## dev-utils-service
+
+A stateless developer-utility API — JSON format/validate, YAML↔JSON conversion, HTML beautify.
+**A standalone Spring Boot application built directly as standalone, not an extraction** — unlike
+every module in the six sections above, this one never lived inside `gateway` at all, so there was
+nothing to pull out (see root `CLAUDE.md`'s Long-term direction section). It's also the one
+deployable in the whole reactor with genuinely nothing to persist and no authenticated caller.
+
+```
+dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
+├── DevUtilsServiceApplication.java — @SpringBootApplication +
+│                                      @Import({JacksonConfig.class, TraceContextFilter.class,
+│                                      GlobalExceptionHandler.class}). No Keycloak-related import,
+│                                      no CurrentUserIdArgumentResolver — no authenticated
+│                                      principal exists to resolve.
+├── security/
+│   └── SecurityConfig.java        — deliberately permissive: .anyRequest().permitAll(), CSRF
+│                                     disabled, stateless session policy. Exists specifically so
+│                                     Spring Boot's autoconfigured default (HTTP Basic + a
+│                                     generated per-boot password) never applies — this module
+│                                     still needs spring-boot-starter-security on its classpath
+│                                     regardless of authenticating no one, since common's shared
+│                                     GlobalExceptionHandler needs spring-security-core's
+│                                     AccessDeniedException/AuthenticationException classes
+│                                     resolvable at context startup (see that class's own Javadoc).
+│                                     No oauth2-resource-server/oauth2-client dependency at all —
+│                                     nothing here ever verifies a JWT.
+├── exception/
+│   └── DevUtilsErrorCode.java     — INVALID_JSON/INVALID_YAML only. No INVALID_HTML — jsoup's
+│                                     parser is deliberately lenient and never throws on malformed
+│                                     markup.
+├── service/
+│   ├── DevUtilOperation.java      — Strategy interface (execute(String input): String), chosen
+│   │                                 over a flat facade specifically because more operations
+│   │                                 (Base64, UUID generation, regex test, JWT decode) are a
+│   │                                 likely next step for this module.
+│   └── impl/
+│       ├── JsonFormatOperation.java     — validates + pretty-prints in one pass (doubles as
+│       │                                   "JSON validate")
+│       ├── YamlToJsonOperation.java     — reuses the JacksonConfig-customized ObjectMapper for
+│       │                                   its JSON side, a plain local YAMLMapper for its YAML
+│       │                                   side
+│       ├── JsonToYamlOperation.java     — same mapper pair, opposite direction
+│       └── HtmlBeautifyOperation.java   — Jsoup.parseBodyFragment (not a full document) — a
+│                                           snippet in yields a snippet out
+├── dto/
+│   └── {DevUtilRequest,DevUtilResponse}.java — one shared record pair (input/output, both plain
+│                                                 strings) for every operation — the shape really
+│                                                 is identical across all four endpoints
+└── api/
+    ├── DevUtilsApi.java           — POST /api/v1/dev-utils/{json/format,yaml-to-json,
+    │                                 json-to-yaml,html/beautify}. Every endpoint is public — no
+    │                                 @CurrentUserId, no authenticated principal at all.
+    └── impl/DevUtilsController.java — implements DevUtilsApi; injects each operation by its
+                                        concrete type (no enum-keyed registry — one fixed endpoint
+                                        per operation leaves no runtime dispatch decision to make)
+
+dev-utils-service/
+├── Dockerfile                     — multi-stage build, port 8087, mirrors the other six services'
+│                                     shape exactly (same poms-only-then-sources COPY pattern)
+└── src/main/resources/
+    └── application.yml            — server.port 8087, no datasource/Keycloak config of any kind
+```
+
+No schema, no Liquibase changelog, no entry in `services-liquibase`'s migration loop, no
+`depends_on` in its own `docker-compose.apps.yml` block at all. `gateway`'s own `SecurityConfig`
+needed a matching `.requestMatchers("/api/v1/dev-utils/**").permitAll()` carve-out (this app gates
+`/api/v1/**` behind `.anyRequest().authenticated()` before ever proxying anywhere, so a public
+downstream service needs its own carve-out at that layer too) — see `gateway/CLAUDE.md`'s
+`routing/` section. Full detail, including the two-layer public-endpoint reasoning and the
+`common.exception.GlobalExceptionHandler` classpath dependency that makes
+`spring-boot-starter-security` unavoidable here despite authenticating no one: `dev-utils-service/CLAUDE.md`.
+
+---
+
 ## gateway
 
 Renamed from `api` once its last REST controller (`UserApi.search`/`getPublicProfile`) moved to
@@ -2264,8 +2345,10 @@ embedded feature modules left to depend on more than one of. This closes out the
 microservices-extraction-plan project — see root `CLAUDE.md`'s Long-term direction section.
 
 **Now the single entry point for external clients** — proxies HTTP traffic to all six standalone
-services via Spring Cloud Gateway Server MVC (`routing/GatewayRoutesConfig`, below) — the first
-thing this module has gained since losing its last embedded feature module, not another extraction.
+services extracted from the monolith, plus `dev-utils-service` (built standalone from day one, see
+its own section above), via Spring Cloud Gateway Server MVC (`routing/GatewayRoutesConfig`, below)
+— the first thing this module has gained since losing its last embedded feature module, not
+another extraction.
 
 ```
 gateway/src/main/java/com/ttg/devknowledgeplatform/
@@ -2546,21 +2629,24 @@ expected over time, and are modelled as data, not schema:
 
 ## Deployment
 
-Seven independently-runnable Spring Boot processes exist today — `gateway` (now a bare
+Eight independently-runnable Spring Boot processes exist today — `gateway` (now a bare
 JWT-verification shell with zero embedded feature modules, zero local user persistence, and zero
 Liquibase migrations of its own),
 `ecommerce-service`, `identity-service`, `task-service`, `social-service`, `content-service`, and
 `ai-service` (the latter six standalone microservices-study extractions, `ai-service` the sixth and
-final) — each with its own `Dockerfile` (multi-stage: `maven:3.9.9-eclipse-temurin-21` build stage
+final), plus `dev-utils-service` (a seventh standalone service, but a new module built directly
+standalone from day one — not an eighth extraction, see its own section above) — each with its own
+`Dockerfile` (multi-stage: `maven:3.9.9-eclipse-temurin-21` build stage
 running `mvn -pl <module> -am package` against the full reactor, `eclipse-temurin:21-jre-jammy`
-runtime stage). All seven Dockerfiles use the **repo root** as their build context, since the Maven
+runtime stage). All eight Dockerfiles use the **repo root** as their build context, since the Maven
 reactor build needs sibling-module sources (`docker build -f gateway/Dockerfile .`, not
 `docker build gateway/`). `gateway`'s `Dockerfile` only `COPY`s the sources of modules it actually
 depends on (`common`/`infra`) plus every module's `pom.xml` (needed for Maven to parse the reactor's
 full `<modules>` list even for modules it won't build) — it does not copy `identity-service`,
-`ecommerce-service`, `task-service`, `social-service`, `content-service`, or `ai-service` sources.
+`ecommerce-service`, `task-service`, `social-service`, `content-service`, `ai-service`, or
+`dev-utils-service` sources.
 
-`docker-compose.apps.yml` (repo root) brings up all seven app containers plus
+`docker-compose.apps.yml` (repo root) brings up all eight app containers plus
 **one consolidated `services-liquibase` container** that runs all six standalone services'
 migrations sequentially in a single `sh -c` loop (`ecommerce-service` → `identity-service` →
 `task-service` → `social-service` → `content-service` → `ai-service`, each its own
@@ -2599,7 +2685,11 @@ docker compose -f docker-compose.infra.yml \
 (`ecommerce`/`identity`/`task`/`social`/`content`/`ai` vs. `gateway`'s `product`, which now holds no
 live tables at all — see the Database section above) — per-service-per-schema, not
 per-service-per-database (see root `CLAUDE.md`'s Database Conventions and the
-`project-microservices-extraction-plan` memory for why). `task-service` and `social-service` are
+`project-microservices-extraction-plan` memory for why). **`dev-utils-service` shares none of
+this** — its own `docker-compose.apps.yml` container block has no `SPRING_DATASOURCE_*`/
+`KEYCLOAK_ISSUER_URI` env vars and no `depends_on` at all (not even `services-liquibase`), since it
+has no database connection, no schema, and no JWT verification of any kind — see its own section
+above. `task-service` and `social-service` are
 the only two with their own standalone single-service `*-liquibase.yml` compose file at the repo
 root for migrating outside the combined apps-compose flow (`task-service-liquibase.yml`,
 `social-service-liquibase.yml`) — see the Migration Runners note above for why the other four don't

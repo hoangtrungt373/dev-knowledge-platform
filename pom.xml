@@ -28,6 +28,7 @@
         <module>social-service</module>
         <module>identity-service</module>
         <module>ecommerce-service</module>
+        <module>dev-utils-service</module>
         <module>gateway</module>
     </modules>
 
@@ -40,7 +41,7 @@
              this reactor is always built (./mvnw from the repo root, with or without -pl) — it does
              NOT get resolved if a child pom is ever built standalone with no relativePath back to
              this parent (not a scenario this reactor uses today). -->
-        <revision>0.0.2-SNAPSHOT</revision>
+        <revision>0.0.3-SNAPSHOT</revision>
         <java.version>21</java.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         <langchain4j.version>0.33.0</langchain4j.version>
@@ -63,6 +64,9 @@
              identity-service's KeycloakAdminService uses this to call Keycloak's Admin REST API
              for user registration. -->
         <keycloak-admin-client.version>26.0.0</keycloak-admin-client.version>
+        <!-- dev-utils-service's HtmlBeautifyOperation — HTML parsing/pretty-printing, not managed
+             by spring-boot-dependencies the way com.fasterxml.jackson.* artifacts are. -->
+        <jsoup.version>1.17.2</jsoup.version>
     </properties>
 
     <dependencyManagement>
@@ -109,6 +113,11 @@
                 <artifactId>ecommerce-service</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.ttg</groupId>
+                <artifactId>dev-utils-service</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- ==================== BOMs ==================== -->
             <dependency>
@@ -150,6 +159,14 @@
                 <groupId>org.springdoc</groupId>
                 <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
                 <version>${springdoc.version}</version>
+            </dependency>
+
+            <!-- jsoup — HTML parsing/pretty-printing, dev-utils-service's HTML beautify operation
+                 only, for now. -->
+            <dependency>
+                <groupId>org.jsoup</groupId>
+                <artifactId>jsoup</artifactId>
+                <version>${jsoup.version}</version>
             </dependency>
 
             <!-- MinIO -->

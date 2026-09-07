@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: dev-utils-service
+
+# Server — 8087, the next free port after ai-service's 8086 (see root CLAUDE.md's port table).
+server:
+  port: ${SERVER_PORT:8087}
+
+# Logging
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} [traceId=%X{traceId:-}, spanId=%X{spanId:-}] - %msg%n"
+
+# Management
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized

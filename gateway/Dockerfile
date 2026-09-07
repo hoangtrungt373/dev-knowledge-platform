@@ -17,6 +17,7 @@ COPY task-service/pom.xml task-service/pom.xml
 COPY social-service/pom.xml social-service/pom.xml
 COPY identity-service/pom.xml identity-service/pom.xml
 COPY ecommerce-service/pom.xml ecommerce-service/pom.xml
+COPY dev-utils-service/pom.xml dev-utils-service/pom.xml
 COPY gateway/pom.xml gateway/pom.xml
 RUN mvn -B -pl gateway -am dependency:go-offline
 

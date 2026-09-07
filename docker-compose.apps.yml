@@ -198,3 +198,16 @@ services:
         condition: service_healthy
       content-service:
         condition: service_started
+
+  dev-utils-service:
+    build:
+      context: .
+      dockerfile: dev-utils-service/Dockerfile
+    container_name: dev-premier-dev-utils-service
+    restart: on-failure
+    # No SPRING_DATASOURCE_*/KEYCLOAK_ISSUER_URI — this service has no schema, no Liquibase
+    # changelog, and no JWT verification of its own (see dev-utils-service/CLAUDE.md). No
+    # depends_on either — not even services-liquibase, since there is nothing here for it to
+    # migrate, and no other container this one needs to be up before it starts.
+    ports:
+      - "8087:8087"

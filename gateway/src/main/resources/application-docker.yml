@@ -28,6 +28,7 @@ app:
     social-service-base-url: http://social-service:8084
     content-service-base-url: http://content-service:8085
     ai-service-base-url: http://ai-service:8086
+    dev-utils-service-base-url: http://dev-utils-service:8087
 
 # Logging
 logging:

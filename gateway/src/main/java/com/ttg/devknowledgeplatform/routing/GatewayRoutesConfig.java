@@ -59,6 +59,11 @@ import lombok.RequiredArgsConstructor;
  * {@code ChatStreamProxyController} owns. The GUI never calls {@code ai-service} directly for
  * anything anymore — see that class's own Javadoc for why, and why {@code ai-service}'s own
  * {@code CorsConfig} was deleted outright (not just narrowed) once this landed.
+ *
+ * <p><b>{@code dev-utils-service}'s {@code /api/v1/dev-utils/**} is routed normally through this
+ * class</b> — unlike every other backend, its whole surface is public (no JWT at all), so
+ * {@code security.SecurityConfig}'s own {@code permitAll()} carve-out for this prefix is what
+ * actually makes that true; this class itself just forwards the path like any other.
  */
 @Configuration
 @RequiredArgsConstructor
@@ -154,6 +159,21 @@ public class GatewayRoutesConfig {
                 .route(path("/api/v1/admin/embeddings/**"), http(baseUrl))
                 .route(path("/api/v1/admin/indexing/**"), http(baseUrl))
                 .route(path("/api/v1/admin/pipeline-metrics/**"), http(baseUrl))
+                .build();
+    }
+
+    /**
+     * Routes {@code /api/v1/dev-utils/**} to {@code dev-utils-service}. The one route in this
+     * class fronting a fully public backend — {@code security.SecurityConfig}'s own
+     * {@code permitAll()} carve-out for this same prefix is what actually makes that true at this
+     * app's own filter chain, since that chain runs before any of these routes ever forward a
+     * request; see that carve-out's own comment.
+     */
+    @Bean
+    public RouterFunction<ServerResponse> devUtilsServiceRoutes() {
+        String baseUrl = services.getDevUtilsServiceBaseUrl();
+        return route("dev-utils-service")
+                .route(path("/api/v1/dev-utils/**"), http(baseUrl))
                 .build();
     }
 }

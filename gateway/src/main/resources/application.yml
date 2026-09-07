@@ -69,6 +69,7 @@ app:
     social-service-base-url: ${SOCIAL_SERVICE_BASE_URL:http://localhost:8084}
     content-service-base-url: ${CONTENT_SERVICE_BASE_URL:http://localhost:8085}
     ai-service-base-url: ${AI_SERVICE_BASE_URL:http://localhost:8086}
+    dev-utils-service-base-url: ${DEV_UTILS_SERVICE_BASE_URL:http://localhost:8087}
 
 # Logging
 logging:
