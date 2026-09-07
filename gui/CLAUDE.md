@@ -17,11 +17,14 @@ gui/src/
 │   ├── content/       — content-CRUD admin screens (Category/Tag/QuestionAnswer)
 │   ├── ai/             — ai-service admin/monitoring screens (pipeline metrics, embeddings index)
 │   ├── tasks/           — personal task/project management, fronting task-service
-│   └── ecommerce/        — ecommerce-service admin screens (Product Categories, Products incl.
-│                            variant/image gallery management, Order Fulfillment) + pages/shop/
-│                            (the public storefront: browse/search/filter, product detail) +
-│                            pages/cart/, pages/checkout/ (Epic 2) + pages/orders/ (Epic 3's
-│                            shopper-facing order history/detail, US-3.3/3.5/3.6)
+│   ├── ecommerce/        — ecommerce-service admin screens (Product Categories, Products incl.
+│   │                        variant/image gallery management, Order Fulfillment) + pages/shop/
+│   │                        (the public storefront: browse/search/filter, product detail) +
+│   │                        pages/cart/, pages/checkout/ (Epic 2) + pages/orders/ (Epic 3's
+│   │                        shopper-facing order history/detail, US-3.3/3.5/3.6)
+│   └── dev-utils/        — fronts dev-utils-service: JSON format/validate, YAML↔JSON, HTML
+│                            beautify. One page (Tabs, one per operation), genuinely public — see
+│                            its own rules-section entry below
 ├── app/          — app shell: App.tsx (routes), main.tsx, theme.ts, NavBar, GuestRoute/PrivateRoute,
 │                    admin-shell/ (AdminLayout, AdminDashboard — the admin nav frame + landing page),
 │                    account-shell/ (AccountLayout — the shopper's own Profile+Addresses sidebar)
@@ -34,7 +37,7 @@ gui/src/
 Each `features/<name>/` folder owns its own `api/`, `types.ts`, `pages/`, `components/`, `hooks/` —
 whichever of those it needs; nothing is centralized by layer anymore (see "Why this shape" below).
 Cross-directory imports use path aliases (`@shared/*`, `@app/*`, `@auth/*`, `@chat/*`, `@friends/*`,
-`@messaging/*`, `@content/*`, `@ai/*`, `@tasks/*`, `@ecommerce/*` — defined in both `tsconfig.json`'s `compilerOptions.paths` and
+`@messaging/*`, `@content/*`, `@ai/*`, `@tasks/*`, `@ecommerce/*`, `@dev-utils/*` — defined in both `tsconfig.json`'s `compilerOptions.paths` and
 `vite.config.ts`'s `resolve.alias`, and must be kept in sync between the two) instead of relative
 `../../` traversal — imports within a single feature (e.g. a page importing its own feature's
 `api/`) stay relative (`../api/chatApi`), only *cross*-feature imports use the alias.
@@ -2443,6 +2446,42 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   `AccountLayout`), and actively wrong now that `/orders` isn't top-level either. Verified via a
   clean `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the actual
   nav-highlighting/routing/layout-width behavior is unverified in a real browser.
+- **`@dev-utils` — fronts `dev-utils-service` (JSON format/validate, YAML↔JSON conversion, HTML
+  beautify). One page, `/dev-utils`, genuinely public — no `PrivateRoute`, mirroring `/shop`'s own
+  precedent exactly (`dev-utils-service` itself requires no JWT at all; see root `CLAUDE.md`'s
+  Security section). `NavBar.tsx`'s "Dev Utils" button is rendered unconditionally alongside Shop's,
+  outside the `isAuthed`/`!isAuthed` branches every other button lives in.**
+  - **One page, MUI `Tabs`, one tab per operation — not four separate routes**, per an explicit
+    choice over the alternative (a route per tool): the four tools share enough UI (one input
+    box, an optional minify toggle, one output panel) that a shared `components/DevUtilToolPanel.tsx`
+    configured per tab was a better fit than four near-duplicate pages.
+  - **Each tool still gets its own shareable/bookmarkable URL, via the hash — `/dev-utils#json-format`,
+    `/dev-utils#yaml-to-json`, `/dev-utils#json-to-yaml`, `/dev-utils#html-beautify` — not a second-
+    level `<Route>`, per request.** `App.tsx` registers `/dev-utils` exactly once;
+    `DevUtilsPage.tsx` reads/writes `useLocation().hash`/`useNavigate()` itself. A `useEffect` keyed
+    on `location.hash` covers a direct deep link and the browser's back/forward buttons; clicking a
+    `Tab` calls `navigate('/dev-utils#<tab>', { replace: true })` — `replace`, not `push`, so
+    switching tabs doesn't fill the back-button history with every click (the page's own initial
+    load, or an external deep link, is the meaningful history entry).
+  - `api/devUtilsApi.ts` — one method per backend operation (`formatJson`/`yamlToJson`/
+    `jsonToYaml`/`beautifyHtml`), not a generic dispatcher — `jsonToYaml` has no `minify` parameter
+    at all (the backend operation has no single-line/flow-style YAML form to toggle), so its
+    signature is genuinely different, not the same shape with an ignored argument.
+  - `components/DevUtilToolPanel.tsx` — the shared per-tab UI: an input `TextField`
+    (`multiline rows={10}` — no code-editor dependency exists anywhere in this app, matching every
+    other plain-text input in the codebase), an optional minify `Checkbox` (omitted, not
+    disabled, when the tab's operation doesn't support it), `@shared/components/SubmitButton`, and
+    a read-only output panel using `react-syntax-highlighter`'s `Prism`/`vscDarkPlus` (already a
+    dependency — used read-only elsewhere in `@chat/components/MarkdownRenderer.tsx` — no new
+    package needed) plus a new `@shared/components/CopyIconButton.tsx` (no copy-to-clipboard
+    primitive existed anywhere in this app before this; reuse it, don't hand-roll a second one).
+    **The HTML-beautify tab's output is always displayed as syntax-highlighted source text, never
+    `dangerouslySetInnerHTML`'d** — don't reach for that pattern here by analogy with
+    `ProductDetailPage.tsx`'s own (DOMPurify-sanitized) rendered-HTML use case; this is a
+    completely different situation; showing beautified markup *as* markup, not rendering it.
+  - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+    sandbox, so the actual tab-switching/hash-sync/copy/output behavior is unverified in a real
+    browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

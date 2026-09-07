@@ -143,6 +143,24 @@ section again. Full unabridged entry-by-entry history for all three lives in
     `JsonFormatOperation` tried to parse it — not a bug in the new `@Size` cap, just the wrong test
     fixture; switched to a JSON array wrapping one long string (`["aaa...a"]`) to sidestep it. 21
     tests total, verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
+  - **Follow-up: `gui` feature (`@dev-utils`), per request — one page, `/dev-utils`, genuinely
+    public (no `PrivateRoute`, mirroring `/shop`'s existing precedent) with an MUI `Tabs`-based UI,
+    one tab per operation, each tool additionally getting its own shareable/bookmarkable URL via
+    the hash (`/dev-utils#json-format`, `#yaml-to-json`, `#json-to-yaml`, `#html-beautify`) rather
+    than a second-level route.** New `features/dev-utils/{types.ts,api/devUtilsApi.ts,
+    components/DevUtilToolPanel.tsx,pages/DevUtilsPage.tsx}` — `devUtilsApi`'s `jsonToYaml` has no
+    `minify` parameter at all, matching the backend's own operation shape; `DevUtilToolPanel` is
+    the one shared per-tab UI (input `TextField`, optional minify `Checkbox`, `SubmitButton`, a
+    read-only output panel via the already-installed `react-syntax-highlighter` Prism/`vscDarkPlus`
+    — no new dependency). New `@shared/components/CopyIconButton.tsx` — no copy-to-clipboard
+    primitive existed anywhere in this app before this. New `@dev-utils/*` path alias
+    (`tsconfig.json` + `vite.config.ts`, kept in sync per this repo's own standing warning about
+    the two not sharing config). `App.tsx` gained the `/dev-utils` route (public, in the same
+    region as `/shop`); `NavBar.tsx` gained an unconditionally-rendered "Dev Utils" button
+    (`CodeIcon`) alongside Shop's, outside the `isAuthed`/`!isAuthed` branches every other button
+    lives in. Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in
+    this sandbox, so the actual tab-switching/hash-sync/copy/output behavior is unverified in a
+    real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

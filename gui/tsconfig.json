@@ -32,7 +32,8 @@
       "@content/*": ["src/features/content/*"],
       "@ai/*": ["src/features/ai/*"],
       "@tasks/*": ["src/features/tasks/*"],
-      "@ecommerce/*": ["src/features/ecommerce/*"]
+      "@ecommerce/*": ["src/features/ecommerce/*"],
+      "@dev-utils/*": ["src/features/dev-utils/*"]
     }
   },
   "include": ["src"],

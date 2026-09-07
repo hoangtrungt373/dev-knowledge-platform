@@ -9,6 +9,7 @@ import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import StorefrontIcon from '@mui/icons-material/Storefront';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import CodeIcon from '@mui/icons-material/Code';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { authService } from '@auth/services/authService';
 import { useFriendRequestsCount } from '@friends/hooks/useFriendRequestsCount';
@@ -104,6 +105,17 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
           sx={{ mr: 0.5 }}
         >
           Shop
+        </NavButton>
+
+        {/* Dev Utils is genuinely public too (dev-utils-service requires no auth at all) — same
+            unconditional-rendering treatment as Shop above, for the same reason. */}
+        <NavButton
+          active={isActive('/dev-utils')}
+          startIcon={<CodeIcon fontSize="small" />}
+          onClick={() => navigate('/dev-utils')}
+          sx={{ mr: 0.5 }}
+        >
+          Dev Utils
         </NavButton>
 
         {isAuthed && (

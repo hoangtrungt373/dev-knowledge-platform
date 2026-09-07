@@ -28,6 +28,7 @@ import CheckoutPage from '@ecommerce/pages/checkout/CheckoutPage';
 import OrderHistoryPage from '@ecommerce/pages/orders/OrderHistoryPage';
 import OrderDetailPage from '@ecommerce/pages/orders/OrderDetailPage';
 import AddressBookPage from '@ecommerce/pages/AddressBookPage';
+import DevUtilsPage from '@dev-utils/pages/DevUtilsPage';
 import { NotificationProvider } from '@shared/contexts/NotificationContext';
 import { CartProvider } from '@ecommerce/context/CartContext';
 import { StompConnectionProvider } from '@messaging/context/StompConnectionContext';
@@ -81,6 +82,13 @@ function App() {
                 same logged in or out) */}
             <Route path="/shop" element={<ShopPage />} />
             <Route path="/shop/:slug" element={<ProductDetailPage />} />
+
+            {/* Dev Utils — genuinely public too (dev-utils-service requires no auth/JWT at all,
+                unlike every other feature below); a small toolbox of stateless JSON/YAML/HTML
+                formatting endpoints with no per-user data, so there's nothing here that needs
+                gating. Each tool has its own URL via the hash (#json-format, #yaml-to-json, etc.
+                — see DevUtilsPage.tsx), not a second-level route — this is still one <Route>. */}
+            <Route path="/dev-utils" element={<DevUtilsPage />} />
 
             {/* Protected user routes */}
             {/* /dashboard is kept as a redirect, not removed — AuthCallback.tsx/AdminLogin.tsx/
