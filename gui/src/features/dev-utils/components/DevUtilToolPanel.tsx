@@ -1,86 +1,224 @@
 import { useCallback, useState } from 'react';
-import { Box, Checkbox, FormControlLabel, Paper, Stack, TextField, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  IconButton,
+  Paper,
+  Stack,
+  TextField,
+  Tooltip,
+  Typography,
+} from '@mui/material';
+import ContentPasteIcon from '@mui/icons-material/ContentPaste';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import DownloadIcon from '@mui/icons-material/Download';
+import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import SubmitButton from '@shared/components/SubmitButton';
-import CopyIconButton from '@shared/components/CopyIconButton';
+import { useNotification } from '@shared/contexts/NotificationContext';
 import { DevUtilsResponse } from '../types';
 
 interface DevUtilToolPanelProps {
+  /** Controlled — lifted up to `DevUtilsPage.tsx` so its own headline row's Sample/Clear buttons
+   * can set/reset it directly, alongside this panel's own Paste button and typing. */
+  input: string;
+  onInputChange: (value: string) => void;
+  /** Controlled too, for the same reason as `input` — the headline row's Clear button needs to
+   * blank the Output panel alongside the Input one. */
+  output: string | null;
+  onOutputChange: (value: string | null) => void;
   actionLabel: string;
-  inputLabel: string;
   inputPlaceholder: string;
   /** Prism language for the output syntax highlighter: 'json' | 'yaml' | 'markup' (HTML). */
   outputLanguage: string;
   /** Whether this tool exposes a minify checkbox at all — false only for JSON→YAML, which has no
    * minify concept (see devUtilsApi.jsonToYaml's own comment). */
   supportsMinify: boolean;
+  /** Filename offered by the Output panel's Download button, e.g. "formatted.json". */
+  downloadFileName: string;
   onSubmit: (input: string, minify: boolean) => Promise<DevUtilsResponse>;
 }
 
-/** The one reusable panel every /dev-utils tab renders — input, an optional minify toggle, a
- * submit button, and a syntax-highlighted read-only output with a copy button. Each tab configures
- * it for its own operation rather than this component knowing about any specific one. */
+// vscDarkPlus's own background (react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus.js) —
+// applied to the Output panel's empty placeholder too, so switching from "no output yet" to a real
+// result doesn't flash white -> black once the syntax highlighter's own dark background appears.
+const OUTPUT_BG_COLOR = '#1e1e1e';
+
+function downloadTextFile(fileName: string, content: string): void {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+/** The Input/Output split panel every /dev-utils tool renders — each side is its own bordered
+ * card, per request, with its action buttons on the same line as its own title ("Input   [Paste]
+ * [<actionLabel>] [Minify]" / "Output   [Copy] [Download]") rather than a separate toolbar row.
+ * Minify is its own toggle button (`variant` swaps outlined/contained to show pressed state),
+ * not a `Checkbox`, per a follow-up request — positioned after the action button, and omitted
+ * entirely (not just disabled) when the operation doesn't support it. Each tab configures this
+ * for its own operation rather than this component knowing about any specific one.
+ *
+ * <p>`input` and `output` are both controlled props, not local state — lifted up to
+ * `DevUtilsPage.tsx` once that page's own headline row needed Sample/Clear buttons able to
+ * set/reset them directly (this panel's own Paste button and the `TextField`'s typing both just
+ * call `onInputChange` now, the same as that page's own callers; a successful submit calls
+ * `onOutputChange` instead of a local setter). Every other piece of state here
+ * (`minify`/`saving`/`copied`) stays local — `DevUtilsPage.tsx` still remounts this component on
+ * tool switch (`key={...}`) to reset those, independently of the parent's own `input`/`output`
+ * reset. */
 export default function DevUtilToolPanel({
+  input,
+  onInputChange,
+  output,
+  onOutputChange,
   actionLabel,
-  inputLabel,
   inputPlaceholder,
   outputLanguage,
   supportsMinify,
+  downloadFileName,
   onSubmit,
 }: DevUtilToolPanelProps): JSX.Element {
-  const [input, setInput] = useState('');
+  const { showError, showSuccess } = useNotification();
   const [minify, setMinify] = useState(false);
-  const [output, setOutput] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const handleSubmit = useCallback(async () => {
     setSaving(true);
     try {
       const result = await onSubmit(input, minify);
-      setOutput(result.output);
+      onOutputChange(result.output);
     } catch {
       // showError already called by httpClient
     } finally {
       setSaving(false);
     }
-  }, [input, minify, onSubmit]);
+  }, [input, minify, onSubmit, onOutputChange]);
+
+  const handlePaste = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      onInputChange(text);
+    } catch {
+      showError('Could not read from the clipboard — check your browser permissions.');
+    }
+  }, [onInputChange, showError]);
+
+  const handleCopy = useCallback(async () => {
+    if (output === null) return;
+    await navigator.clipboard.writeText(output);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [output]);
+
+  const handleDownload = useCallback(() => {
+    if (output === null) return;
+    downloadTextFile(downloadFileName, output);
+    showSuccess(`Downloaded ${downloadFileName}`);
+  }, [output, downloadFileName, showSuccess]);
 
   return (
-    <Stack spacing={2}>
-      <TextField
-        label={inputLabel}
-        placeholder={inputPlaceholder}
-        multiline
-        rows={10}
-        fullWidth
-        value={input}
-        onChange={e => setInput(e.target.value)}
-      />
-
-      <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-        {supportsMinify ? (
-          <FormControlLabel
-            control={<Checkbox checked={minify} onChange={e => setMinify(e.target.checked)} />}
-            label="Minify output"
-          />
-        ) : (
-          <Box />
-        )}
-        <SubmitButton saving={saving} label={actionLabel} onClick={handleSubmit} disabled={!input.trim()} />
-      </Stack>
-
-      {output !== null && (
-        <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-          <Stack
-            direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-            sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}
-          >
-            <Typography variant="subtitle2">Output</Typography>
-            <CopyIconButton value={output} />
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+      <Paper variant="outlined" sx={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column' }}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}
+        >
+          <Typography variant="subtitle2" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Input
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={handlePaste}>
+              Paste
+            </Button>
+            <SubmitButton
+              saving={saving}
+              label={actionLabel}
+              startIcon={<PlayArrowIcon fontSize="small" />}
+              onClick={handleSubmit}
+              disabled={!input.trim()}
+            />
+            {supportsMinify && (
+              <Button
+                size="small"
+                variant={minify ? 'contained' : 'outlined'}
+                startIcon={<UnfoldLessIcon fontSize="small" />}
+                onClick={() => setMinify(m => !m)}
+                aria-pressed={minify}
+              >
+                Minify
+              </Button>
+            )}
           </Stack>
+        </Stack>
+
+        <Box sx={{ p: 2 }}>
+          <TextField
+            placeholder={inputPlaceholder}
+            multiline
+            rows={16}
+            fullWidth
+            value={input}
+            onChange={e => onInputChange(e.target.value)}
+            // Hides the outlined variant's own border — without this, the TextField's box sits
+            // visibly nested inside this Input card's own Paper border, reading as "a box inside
+            // a box." All three states are targeted explicitly (default/hover/focused), not just
+            // the base `.MuiOutlinedInput-notchedOutline` selector alone — MUI's own hover/focus
+            // rules for that same element are more specific (extra pseudo-class), so an override
+            // scoped to only the base selector would silently lose on hover/focus, the identical
+            // specificity gotcha just fixed on the sidebar's selected-item background.
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                '&:hover .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { border: 'none' },
+              },
+            }}
+          />
+        </Box>
+      </Paper>
+
+      <Paper variant="outlined" sx={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column' }}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}
+        >
+          <Typography variant="subtitle2" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Output
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ContentCopyIcon fontSize="small" />}
+              onClick={handleCopy}
+              disabled={output === null}
+            >
+              {copied ? 'Copied!' : 'Copy'}
+            </Button>
+            <Tooltip title="Download">
+              {/* span wrapper — MUI requires one around a disabled button for the Tooltip to still
+                  attach its listeners */}
+              <span>
+                <IconButton size="small" onClick={handleDownload} disabled={output === null}>
+                  <DownloadIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Stack>
+        </Stack>
+
+        {output !== null ? (
           <SyntaxHighlighter
             language={outputLanguage}
             style={vscDarkPlus}
@@ -88,15 +226,31 @@ export default function DevUtilToolPanel({
               margin: 0,
               borderRadius: 0,
               fontSize: '0.8rem',
-              padding: '12px 16px',
-              maxHeight: 400,
+              padding: '16px',
+              height: 420,
               overflow: 'auto',
+              background: OUTPUT_BG_COLOR,
             }}
           >
             {output}
           </SyntaxHighlighter>
-        </Paper>
-      )}
-    </Stack>
+        ) : (
+          <Box
+            sx={{
+              p: 2,
+              height: 420,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              bgcolor: OUTPUT_BG_COLOR,
+            }}
+          >
+            <Typography variant="body2" sx={{ color: 'grey.500' }}>
+              Output will appear here.
+            </Typography>
+          </Box>
+        )}
+      </Paper>
+    </Box>
   );
 }

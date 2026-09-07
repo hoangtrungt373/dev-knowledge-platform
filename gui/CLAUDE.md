@@ -2451,10 +2451,202 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   precedent exactly (`dev-utils-service` itself requires no JWT at all; see root `CLAUDE.md`'s
   Security section). `NavBar.tsx`'s "Dev Utils" button is rendered unconditionally alongside Shop's,
   outside the `isAuthed`/`!isAuthed` branches every other button lives in.**
-  - **One page, MUI `Tabs`, one tab per operation — not four separate routes**, per an explicit
-    choice over the alternative (a route per tool): the four tools share enough UI (one input
-    box, an optional minify toggle, one output panel) that a shared `components/DevUtilToolPanel.tsx`
-    configured per tab was a better fit than four near-duplicate pages.
+  - **One page, one operation list, not four separate routes**, per an explicit choice over the
+    alternative (a route per tool): the four tools share enough UI (one input box, an optional
+    minify toggle, one output panel) that a shared `components/DevUtilToolPanel.tsx` configured
+    per operation was a better fit than four near-duplicate pages.
+  - **Operations render as a left sidebar (a plain `Paper` + `List`/`ListItemButton`), not MUI
+    `Tabs` — per a follow-up request, replacing this page's original horizontal `Tabs` bar.**
+    Mirrors `app/account-shell/AccountLayout.tsx`'s own sidebar shape exactly, including *why* it's
+    a plain `Paper` and not a `Drawer`: `variant="permanent"` still renders `position: fixed` by
+    default in MUI's own `styled()` definition regardless of variant, which caused two real,
+    already-diagnosed bugs there (overlapping surrounding chrome, and a `%`-width resolving against
+    the viewport instead of the flex row) — a plain `Paper` never had that baked-in fixed
+    positioning to begin with. `alignItems: 'flex-start'` on the row keeps the sidebar sized to its
+    own short content instead of stretching to match whichever tool panel is currently taller, same
+    reasoning `AccountLayout.tsx` documents for the identical shape. Each operation gets its own
+    icon (`DataObjectIcon`/`SyncAltIcon`/`SwapHorizIcon`/`AutoFixHighIcon`) — verified present in
+    the installed `@mui/icons-material` version before use, per this file's own standing reminder.
+    An `OperationConfig[]` array (category/label/description/icon/action label/placeholder/output
+    language/`supportsMinify`/`downloadFileName`/`onSubmit`) drives the sidebar list, the
+    operation headline (below), and which `DevUtilToolPanel` props render — the active panel is
+    keyed by `activeOperation.key` so switching tools still remounts it, resetting its own local
+    input/output/minify state, the same reset a tool switch already caused under the old
+    conditional-rendering shape.
+    - **Follow-up, 4 changes per one request:** (1) the selected sidebar item now gets an
+      **explicit** `bgcolor: 'action.selected'` (plus a bolder `fontWeight` on its label) rather
+      than relying on `ListItemButton`'s own default `selected` styling alone — the same
+      `active ? 'action.selected' : 'transparent'` convention `app/NavBar.tsx`'s own `NavButton`
+      already establishes for "is this the active route," applied here for consistency and
+      guaranteed visibility regardless of theme. **Further follow-up, per request: the background
+      changed again — from the generic gray `action.selected` to a primary-brand-tinted
+      `alpha(theme.palette.primary.main, 0.16)` (`0.24` on hover)** — same `sx={{ bgcolor: (theme)
+      => alpha(...) }}` callback-function shape `@shared/components/UploadingOverlay.tsx` already
+      established in this codebase for a themed translucent color, rather than a hardcoded literal
+      — **and `fontWeight` is now fixed at `600` regardless of selection**, so only the background
+      distinguishes the selected item, not bold text (the bolder-when-selected treatment from the
+      first pass was explicitly reversed).
+      - **Bug fix, reported directly ("the bgColor does not change when I select the item"):**
+        the override wasn't visibly taking effect because it targeted a plain `bgcolor` on the
+        `ListItemButton`'s own root class, but `selected={isSelected}` (still passed, for
+        semantics) makes MUI apply its own baked-in `&.Mui-selected { backgroundColor:
+        action.selected }` rule — a **higher-specificity** selector (root class + `Mui-selected`
+        class) than a plain single-class `bgcolor` override, so MUI's own gray default was
+        silently winning regardless of the `isSelected` conditional already choosing the right
+        value in JS (the CSS specificity war doesn't know or care about that JS logic — only the
+        emitted selectors matter). Fixed by targeting `&.Mui-selected`/`&.Mui-selected:hover`
+        explicitly in the `sx` object — the standard, documented way to override a component's own
+        selected-state styling, matching the selector MUI itself uses so the override actually
+        wins.
+      - **Further follow-up, per request: the operation headline block (category/title/
+        description, above the Input/Output panels) is now its own `Paper variant="outlined"`
+        card (`bgcolor: 'background.paper'`, `p: 2`) instead of a plain unstyled `Box`** — visual
+        parity with the Input/Output cards below it, which are `Paper variant="outlined"` too.
+        The category line (`'Formatters'`/`'Converters'`) also gained `color="primary.main"` and
+        `fontWeight={700}` (was plain `text.secondary`, inheriting `overline`'s own default
+        weight) — a bolder, brand-colored "eyebrow" label instead of the same gray as the
+        description line beneath it.
+      - **Further follow-up: Sample and Clear buttons on the headline card's own right side, per
+        request — Sample fills the input with the operation's own placeholder text
+        (`AutoAwesomeIcon`), Clear empties it (`ClearIcon`, disabled while already empty).** This
+        needed a real state-lifting refactor, not just new buttons: `input` used to be local state
+        inside `DevUtilToolPanel.tsx`, but the headline card is that component's *sibling*, not an
+        ancestor, so it can't reach into the panel's own state — `input` moved up into
+        `DevUtilsPage.tsx` (`useState`, reset to `''` in a `useEffect` keyed on `tab`) and is now
+        passed down to `DevUtilToolPanel` as a controlled `input`/`onInputChange` pair; that
+        component's own Paste button and the `TextField`'s typing both call `onInputChange` now
+        instead of a local setter. Every *other* piece of `DevUtilToolPanel`'s own state
+        (`minify`/`output`/`saving`/`copied`) stays local, still reset by the existing
+        `key={activeOperation.key}` remount on tool switch — the two reset mechanisms (the
+        parent's `useEffect` for `input`, the child's remount for everything else) now run
+        independently but land on the same result.
+      - **Follow-up: the Sample content itself made richer, per request — a mixed-type example
+        (string/boolean/array/number) instead of the bare `{"foo": "bar"}` reused from the
+        placeholder.** Reversed the original "Sample reuses `inputPlaceholder`, one source of
+        truth" decision once it became clear a genuinely *demonstrative* sample and a *brief empty-
+        box hint* are different jobs — `OperationConfig` gained a separate `sampleInput` field
+        (`inputPlaceholder` stays short, since it's shown as ghost text inside an empty textarea
+        and a long placeholder there reads as cluttered). All four operations share the same "Vui
+        Coding" project theme so the four samples read as one consistent example, not four
+        unrelated snippets: `json-format`/`json-to-yaml` both use
+        `{"project":"Vui Coding","online":true,"tools":["JSON","Base64","JWT"],"stars":128}`;
+        `yaml-to-json` uses the equivalent YAML document (proper multi-line block style, not a
+        one-liner — YAML's own natural shape); `html-beautify` uses a small nested markup snippet
+        expressing the same data (`<div class="card">` wrapping a heading/paragraph/list).
+      - **Follow-up: `sampleInput` reversed back out, per request — "use `sampleInput` value for
+        the `inputPlaceholder` too, then remove one of the two."** The split from the previous
+        bullet lasted exactly one request: `OperationConfig.inputPlaceholder` now holds the same
+        richer "Vui Coding" value each operation's `sampleInput` held, and `sampleInput` itself was
+        deleted outright (the field, all four operations' entries, `handleUseSample`, and the
+        field's own doc comment) rather than the other way around — kept the name already threaded
+        through to `DevUtilToolPanel`'s own `TextField` `placeholder` prop, so no prop rename was
+        needed there. One field now does both jobs (empty-textarea ghost text and the Sample
+        button's fill value) — accepted trade-off, since the ghost text is no longer brief the way
+        the original `inputPlaceholder` design intended, but that was the explicit ask.
+        `handleUseSample` reads `activeOperation.inputPlaceholder` instead of `.sampleInput`.
+        Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+        sandbox, so the actual placeholder/Sample-button rendering is unverified in a real browser.
+      - **Follow-up: Clear now also blanks the Output panel, per request** — it previously only
+        reset `input`, leaving a stale result showing in Output. This needed `output` lifted out of
+        `DevUtilToolPanel.tsx`'s own local state into `DevUtilsPage.tsx` too, the identical move
+        `input` already went through for the same Sample/Clear reason: `DevUtilToolPanelProps`
+        gained `output`/`onOutputChange` (controlled, mirroring `input`/`onInputChange`) —
+        `handleSubmit` now calls `onOutputChange(result.output)` instead of a local `setOutput`;
+        `Copy`/`Download` read the prop, unchanged otherwise. `DevUtilsPage.tsx` owns `output` (a
+        `useState<string | null>(null)`, alongside `input`), resets it to `null` in the same
+        tab-switch `useEffect` that already resets `input`, and `handleClearInput` now sets both.
+        The Clear button's own `disabled` condition widened from `!input` to `!input && !output`
+        — without this, manually clearing the input `TextField` by hand (not via the Clear button)
+        left a non-empty `output` with a now-disabled Clear button unable to blank it. Verified via
+        a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so
+        the actual Clear-blanks-both-panels behavior is unverified in a real browser.
+      - **Follow-up: the Output panel's empty-state placeholder now carries the same dark
+        background the syntax highlighter itself uses, per request — the panel used to flash
+        white → black the instant an operation ran**, since the empty state rendered on the
+        theme's own `Paper` background (white in light mode) while a populated result switched to
+        `react-syntax-highlighter`'s `vscDarkPlus` theme, whose own background
+        (`#1e1e1e` — confirmed from `vsc-dark-plus.js` itself, not guessed) has nothing to do with
+        the app's light/dark mode toggle. New local `OUTPUT_BG_COLOR = '#1e1e1e'` constant applied
+        to both: the empty-state `Box`'s `bgcolor`, and an explicit `background` in the
+        `SyntaxHighlighter`'s own `customStyle` (redundant with `vscDarkPlus`'s own default today,
+        but pins the two to the same literal so they can't drift if the theme import ever changes).
+        The placeholder `Typography`'s color changed from the theme-driven `text.secondary` (too
+        low-contrast against a fixed dark background, since it resolves differently between the
+        app's own light/dark modes) to a fixed `grey.500` for consistent legibility. **Deliberately
+        not applied to the Input panel** — that side is a real, editable `TextField`, still meant
+        to look like standard input chrome and follow the app's own light/dark theme, not adopt the
+        Output panel's fixed dark result-viewer look. Verified via a clean `tsc --noEmit` and a
+        successful `vite build` only — no Docker in this sandbox, so the actual color transition is
+        unverified in a real browser.
+      - **Bug fix, reported directly ("the button suddenly glitches/changes its width then returns
+        to normal") — the Format/Convert/Beautify button's own width visibly shrank while a
+        request was in flight and snapped back on completion.** Root cause was in the **shared**
+        `@shared/components/SubmitButton.tsx`, not anything specific to this feature — it swapped
+        its `children` outright between `label` (e.g. `"Format"`) and a `CircularProgress` spinner
+        while `saving`, and a small spinner is narrower than most labels, so the button's own
+        content-driven width shrank for the request's duration on every one of its ~20 call sites
+        across this app, not just this one — this feature's `SubmitButton` just happened to be
+        where it got noticed and reported. **Fixed at the shared component, not with a per-call-site
+        `minWidth` override here** — the bug is general, so the fix should be too. `SubmitButton`
+        now always renders `label` (wrapped in a `Box component="span"`, `visibility: hidden` while
+        `saving` — never removed from the flow), so the button's own width is permanently driven by
+        the label regardless of `saving`; the `CircularProgress` renders `position: absolute`,
+        centered over that label via a new `position: relative` on the `Button` itself, so it no
+        longer contributes to the flow width at all. `startIcon` (already documented as staying
+        visible during `saving`) is unaffected — this only changes how the swapped-out label vs.
+        spinner slot behaves. Verified via a clean `tsc --noEmit` and a successful `vite build` only
+        — no Docker in this sandbox, so the actual no-more-width-jump behavior is unverified in a
+        real browser, on this page or any of `SubmitButton`'s other ~20 consumers.
+      - **Follow-up bug fix, reported directly ("the button is look like it have been re-rendered
+        when i click it") — the width-jump fix above had introduced a real, if more subtle,
+        alignment bug of its own, again in the shared `SubmitButton.tsx`, not this feature.** The
+        spinner's `position: absolute` centering targeted the whole `Button`'s own box (via
+        `position: relative` on `Button` itself), which is correct only when there's no
+        `startIcon` — this panel's action button always has one (`PlayArrowIcon`), so the spinner
+        ended up centered over *icon + label combined*, landing visibly to the left of where the
+        label itself actually sat; the resulting jump on click read as a "re-render." Fixed by
+        moving `position: relative` off `Button` and onto a new inner wrapper `Box` around just the
+        label (the spinner's `position: absolute` now targets that wrapper instead) — the spinner
+        now always lands exactly on the label's own position, regardless of whether/how wide a
+        `startIcon` is. See `SubmitButton.tsx`'s own updated doc comment for the full before/after
+        reasoning. Verified via a clean `tsc --noEmit` and a successful `vite build` only — no
+        Docker in this sandbox, so the actual spinner-alignment fix is unverified in a real
+        browser, on this page or any of `SubmitButton`'s other consumers.
+      - **Third follow-up bug fix, reported directly ("the button re-render still occur, the text
+        in button blink for a moment") — same underlying `SubmitButton.tsx`, a third distinct issue
+        from the same two fixes above.** The label ⇄ spinner swap was still an instant, untransitioned
+        toggle (`visibility: hidden`/`visible`, plus the spinner conditionally mounted/unmounted
+        outright) — for a request fast enough to resolve well under a second, which every one of
+        this feature's own operations typically is (a local JSON/YAML/HTML transform, no real
+        latency), that instant flip reads as a literal flash/blink, since nothing smooths the two
+        states apart. Fixed by cross-fading `opacity` on both the label and the spinner instead,
+        each with a short `transition: 'opacity 0.15s ease'` — and the spinner is now always
+        mounted (never conditionally rendered), since a mount/unmount can't cross-fade, only two
+        already-present elements trading opacity can. Added `pointerEvents: 'none'` to the spinner
+        so it doesn't sit on top of the label fighting hover/selection while faded out (harmless
+        either way for the actual click, which bubbles to `Button`'s own handler regardless of
+        which child was hit). Verified via a clean `tsc --noEmit` and a successful `vite build`
+        only — no Docker in this sandbox, so the actual cross-fade is unverified in a real browser,
+        on this page or any of `SubmitButton`'s other consumers.
+
+      (2) A search `TextField` (`SearchIcon` leading
+      adornment) sits above the sidebar `List`, filtering by label/category/description — purely
+      client-side (the whole operation list, today 4 items, is always already in hand; no backend
+      round trip), and it only ever filters what the *sidebar* shows, never which tool's panel is
+      currently displayed — an empty result shows a plain "No tools found." message instead of an
+      empty list. (3) Each operation gained `category` (`'Formatters'` for JSON Format/HTML
+      Beautify, `'Converters'` for the two YAML↔JSON tools — descriptive grouping only; the sidebar
+      list itself stays flat, not sectioned by category, unless the operation count grows enough to
+      warrant it) and `description` (a one-line summary), rendered as a new headline block above
+      the Input/Output panels: `variant="overline"` category (MUI's own built-in uppercase/
+      letter-spaced "eyebrow" style) → `h6` operation title → `body2` description. `json-format`'s
+      own sidebar label was renamed "JSON Format" → "JSON Format/Validate" in the same pass, so the
+      sidebar and this new headline never disagree on the operation's own name. (4) The Input/
+      Output card headers (`DevUtilToolPanel.tsx`) are now uppercase (`textTransform: 'uppercase'`,
+      `letterSpacing: 0.5`, `fontWeight: 700`) instead of plain "Input"/"Output" text.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual search filtering, selected-item highlight, and headline rendering are
+      unverified in a real browser.
   - **Each tool still gets its own shareable/bookmarkable URL, via the hash — `/dev-utils#json-format`,
     `/dev-utils#yaml-to-json`, `/dev-utils#json-to-yaml`, `/dev-utils#html-beautify` — not a second-
     level `<Route>`, per request.** `App.tsx` registers `/dev-utils` exactly once;
@@ -2467,15 +2659,51 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     `jsonToYaml`/`beautifyHtml`), not a generic dispatcher — `jsonToYaml` has no `minify` parameter
     at all (the backend operation has no single-line/flow-style YAML form to toggle), so its
     signature is genuinely different, not the same shape with an ignored argument.
-  - `components/DevUtilToolPanel.tsx` — the shared per-tab UI: an input `TextField`
-    (`multiline rows={10}` — no code-editor dependency exists anywhere in this app, matching every
-    other plain-text input in the codebase), an optional minify `Checkbox` (omitted, not
-    disabled, when the tab's operation doesn't support it), `@shared/components/SubmitButton`, and
-    a read-only output panel using `react-syntax-highlighter`'s `Prism`/`vscDarkPlus` (already a
-    dependency — used read-only elsewhere in `@chat/components/MarkdownRenderer.tsx` — no new
-    package needed) plus a new `@shared/components/CopyIconButton.tsx` (no copy-to-clipboard
-    primitive existed anywhere in this app before this; reuse it, don't hand-roll a second one).
-    **The HTML-beautify tab's output is always displayed as syntax-highlighted source text, never
+  - **`components/DevUtilToolPanel.tsx` — split into two side-by-side bordered cards, Input and
+    Output, per a follow-up request; each card's action buttons sit on the same line as its own
+    title, not a separate toolbar row.** `Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}`
+    wrapping two `Paper variant="outlined"` cards (`flex: 1, minWidth: 320` each, so a narrow
+    viewport stacks them). **Input card**: header row = `Typography variant="subtitle2"` "Input" +
+    a **Paste** button (`ContentPasteIcon`, calls `navigator.clipboard.readText()`, a caught
+    failure — e.g. denied permission — surfaces via `useNotification().showError` called directly
+    inside this component, not threaded in as a prop) + the operation's own submit action
+    (`@shared/components/SubmitButton`, now with a `PlayArrowIcon` `startIcon` — `SubmitButton`
+    already supported one, just unused here before) + **Minify** (a follow-up: moved from a
+    `Checkbox` below the input into a toggle button in this same header row, after the action
+    button — a plain `Button` whose `variant` swaps `outlined`↔`contained` to show pressed state
+    (`UnfoldLessIcon`, `aria-pressed={minify}`), not MUI's own `ToggleButton` — kept as the same
+    `Button` component the row's other buttons already use rather than introducing a second
+    component type with its own default styling to reconcile; omitted entirely, not just
+    disabled, when the operation doesn't support it (still true after the move)); below the header,
+    the input `TextField` (`multiline rows={16}` — no code-editor dependency exists anywhere in
+    this app, matching every other plain-text input in the codebase), now with nothing else
+    beneath it. **Its outlined-variant border is hidden via `sx`, per a follow-up request** — left
+    as-is, the `TextField` visibly nested its own bordered box inside this card's own `Paper`
+    border, reading as "a box inside a box." Targets `.MuiOutlinedInput-notchedOutline` under all
+    three states explicitly (default/`&:hover`/`&.Mui-focused`), not just the base selector alone
+    — MUI's own hover/focus rules for that element carry an extra pseudo-class, so a plain
+    base-selector-only override would have silently lost on hover/focus, the identical specificity
+    gotcha just fixed on the sidebar's selected-item background (see that follow-up's own note
+    above). **Output card**: header row = "Output" +
+    **Copy** (`ContentCopyIcon`, text label swaps to "Copied!" for 1.5s, mirrors the deleted
+    `CopyIconButton`'s own timing) + **Download** (icon-only, `DownloadIcon` + `Tooltip`, no visible
+    label per request) — both `disabled` while `output === null`. Download uses a small local
+    `downloadTextFile(fileName, content)` helper (`Blob` → `URL.createObjectURL` → a temporary
+    `<a download>` click → `URL.revokeObjectURL`) — no existing helper anywhere in this app did
+    this, so nothing to reuse; each operation supplies its own `downloadFileName` (e.g.
+    `formatted.json`, `beautified.html`) via a new `OperationConfig.downloadFileName` field in
+    `DevUtilsPage.tsx`. Below that: the read-only output panel via `react-syntax-highlighter`'s
+    `Prism`/`vscDarkPlus` (already a dependency — used read-only elsewhere in
+    `@chat/components/MarkdownRenderer.tsx` — no new package needed) when `output !== null`, else a
+    centered "Output will appear here." placeholder — both sides fixed at `height: 420` so the two
+    cards read as a matched pair regardless of content length.
+    **`@shared/components/CopyIconButton.tsx` (the icon-only copy button from the previous pass)
+    was deleted outright once this redesign left it with zero remaining consumers** — the Output
+    card's own Copy button is now a full text+icon `Button` built inline instead (a different
+    visual shape than that component supported), and nothing else in the app had adopted it yet;
+    rebuild an icon-only variant if a future spot genuinely needs one, don't assume this one is
+    still there.
+    **The HTML-beautify tool's output is always displayed as syntax-highlighted source text, never
     `dangerouslySetInnerHTML`'d** — don't reach for that pattern here by analogy with
     `ProductDetailPage.tsx`'s own (DOMPurify-sanitized) rendered-HTML use case; this is a
     completely different situation; showing beautified markup *as* markup, not rendering it.

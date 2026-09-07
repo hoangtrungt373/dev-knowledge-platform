@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Button, CircularProgress, SxProps, Theme } from '@mui/material';
+import { Box, Button, CircularProgress, SxProps, Theme } from '@mui/material';
 
 interface SubmitButtonProps {
   saving: boolean;
@@ -24,7 +24,32 @@ interface SubmitButtonProps {
  * near-duplicates with a drifting, undocumented spinner size (16/18/20/24, no rule) — see
  * gui/CLAUDE.md's ecommerce style-audit note. `spinnerSize` now defaults off `size` instead of
  * being picked ad hoc per call site: 24 for a `"large"` CTA, 16 for everything else (MUI's own
- * default `size`, "small", per `theme.ts`). */
+ * default `size`, "small", per `theme.ts`).
+ *
+ * <p>The label is always rendered, just `visibility: hidden` while `saving` — never swapped out
+ * for the spinner outright, per a bug report ("the button suddenly glitches/changes its width"):
+ * a spinner is narrower than most labels, so replacing the label with it shrank the button for the
+ * request's duration and snapped it back on completion. Keeping the (invisible) label in the flow
+ * means the button's own width is always driven by `label`, regardless of `saving`.
+ *
+ * <p>The spinner itself is `position: absolute`, centered over a wrapper `Box` around just the
+ * label — **not** over the whole `Button` — via `position: relative` on that same wrapper, not on
+ * `Button` itself. A first cut centered it on the `Button`'s own box instead, which looked right
+ * with no `startIcon`, but with one (this component's other supported slot, rendered unconditionally
+ * alongside the label) the spinner centered over *icon + label combined*, landing visibly off from
+ * where the label itself sat — a second bug report ("looks like the button has been re-rendered
+ * when clicked") turned out to be this exact misalignment, not a rerender at all.
+ *
+ * <p>Label ⇄ spinner cross-fade via `opacity` + a short CSS `transition`, not an instant
+ * `visibility`/mount toggle — per a **third** report on the exact same underlying issue ("the text
+ * in button blink for a moment"): for a request fast enough to resolve in well under a second (the
+ * common case for most of this app's own mutations), an un-transitioned `visibility: hidden` ⇄
+ * `visible` flip reads as a literal flash, since there's nothing to smooth the two states apart —
+ * the spinner isn't even conditionally mounted/unmounted anymore for the same reason (a mount/
+ * unmount can't cross-fade; only two already-present elements trading `opacity` can). `pointerEvents:
+ * 'none'` on the spinner keeps it from intercepting the button's own click target while faded out
+ * (harmless for the click itself, since a click on any child still bubbles to `Button`'s own
+ * handler regardless, but avoids it fighting text selection/hover on the label underneath it). */
 export default function SubmitButton({
   saving,
   label,
@@ -49,7 +74,25 @@ export default function SubmitButton({
       startIcon={startIcon}
       sx={sx}
     >
-      {saving ? <CircularProgress size={resolvedSpinnerSize} color="inherit" /> : label}
+      <Box component="span" sx={{ position: 'relative', display: 'inline-flex' }}>
+        <Box component="span" sx={{ opacity: saving ? 0 : 1, transition: 'opacity 0.15s ease' }}>
+          {label}
+        </Box>
+        <CircularProgress
+          size={resolvedSpinnerSize}
+          color="inherit"
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            marginTop: `-${resolvedSpinnerSize / 2}px`,
+            marginLeft: `-${resolvedSpinnerSize / 2}px`,
+            opacity: saving ? 1 : 0,
+            transition: 'opacity 0.15s ease',
+            pointerEvents: 'none',
+          }}
+        />
+      </Box>
     </Button>
   );
 }
