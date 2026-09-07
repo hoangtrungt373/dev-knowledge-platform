@@ -390,6 +390,79 @@ section again. Full unabridged entry-by-entry history for all three lives in
     intentionally different colors by design. Verified via a clean `tsc --noEmit` and a successful
     `vite build` only — no Docker in this sandbox, so the actual on-screen appearance is unverified
     in a real browser.
+  - **Follow-up, per request: a new info row between the Output header and its content area**
+    ("File type: <label>" / "File name: <downloadFileName>", both already known statically per
+    operation) rendered identically across all three content states, plus `showLineNumbers` on the
+    actual response's syntax highlighter (muted line-number color, `userSelect: 'none'` so a select-
+    all/copy doesn't grab the line-number column). New `OUTPUT_LANGUAGE_LABELS` maps each
+    operation's existing Prism language id to a human label. Verified via a clean `tsc --noEmit`
+    and a successful `vite build` only — no Docker in this sandbox, so the actual on-screen result
+    is unverified in a real browser.
+  - **Follow-up, per request: the info row's labels were dropped (values only), its background
+    became a fixed dark shade instead of the theme's `background.paper`, and the two values are
+    now horizontally aligned with the code content below them.** New `OUTPUT_INFO_BG`
+    (`'#252526'`, a shade lighter than the content area's own `'#1e1e1e'`) + `OUTPUT_INFO_TEXT_COLOR`;
+    new `LINE_NUMBER_GUTTER_WIDTH` (`'3.5em'`, matching the syntax highlighter's own
+    `lineNumberStyle`) sizes a leading column so the file-type value lines up with the line-number
+    column and the file-name value lines up with where the response text starts — both info-row
+    `Typography`s switched to `fontFamily: 'monospace'` to match the highlighter's own font, since
+    `em`-based alignment only holds between elements sharing a font. Verified via a clean
+    `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the actual
+    on-screen alignment/coloring is unverified in a real browser.
+  - **Follow-up, 5 fixes per request — clarified first via `AskUserQuestion`** (layout stayed
+    side-by-side; "dark" text meant a readable dark-theme tone, not literally low-contrast; the
+    vertical divider is confirmed full-height): (1) fixed a baseline mismatch between the file-type
+    and file-name values (the same `Typography`-vs-flex-context half-leading mismatch `@tasks`'s
+    `TaskRow.tsx` already documents — both values now sit in their own `display: 'flex',
+    alignItems: 'center'` wrapper); (2) one continuous vertical gutter-divider line
+    (`OUTPUT_LINE_COLOR`, `'#3c3c3c'`) now spans the info row and content area, painted last so it
+    draws over their opaque backgrounds; (3) the file-type value's color now varies per language
+    (`OUTPUT_LANGUAGE_COLORS` — blue/purple/orange for JSON/YAML/HTML); (4) file-name/line-number
+    colors switched to VS Code's own editor/line-number tones (`OUTPUT_FILENAME_COLOR`
+    `'#d4d4d4'`/`OUTPUT_LINE_NUMBER_COLOR` `'#858585'`); (5) the info row's border-bottom switched
+    from the theme's `divider` token (barely visible against a hardcoded dark background) to the
+    same fixed `OUTPUT_LINE_COLOR`. Verified via a clean `tsc --noEmit` and a successful
+    `vite build` only — no Docker in this sandbox, so the actual on-screen result is unverified in
+    a real browser.
+  - **Follow-up, 2 fixes per request, reversing part of the previous pass**: (1) the vertical
+    gutter-divider line was removed outright — the `position: absolute`/`relative` wrapper it
+    needed is gone too, the info row and content states are direct `Paper` children again; (2)
+    file-name and line-number colors both switched to one muted grey (`'#6e7681'`, reused for both
+    `OUTPUT_FILENAME_COLOR`/`OUTPUT_LINE_NUMBER_COLOR`), reversing the previous pass's brighter
+    VS Code editor-foreground/line-number colors — neither is the focused content, so both are
+    deliberately de-emphasized now. The file-type value's per-language color is unaffected.
+    Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+    sandbox, so the actual on-screen result is unverified in a real browser.
+  - **Follow-up, per request — the info row simplified from two aligned columns down to one plain
+    "`<TYPE> | <filename>`" line**, with a concrete template supplied showing exactly what was
+    wanted. The `LINE_NUMBER_GUTTER_WIDTH`-wide alignment columns (lining the type/filename values
+    up with the line-number/response columns beneath them) are gone, along with that now-unused
+    constant — superseded by three plain `Box component="span"`s inside one `Typography` (type
+    segment keeps its per-language color and bold weight; separator + filename use the muted
+    `OUTPUT_FILENAME_COLOR` grey). Rendering all three as inline spans in one text flow also
+    incidentally resolves the earlier baseline-mismatch bug for free. Verified via a clean
+    `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the actual
+    on-screen line is unverified in a real browser.
+  - **Bug fix, reported directly with the exact wrong color observed ("the output is #6a9955")** —
+    `lineNumberStyle`'s `color` had never actually taken effect; line numbers always rendered in
+    vscDarkPlus's own comment-token green. Root-caused by reading `react-syntax-highlighter`'s own
+    source (not guessed) and confirmed with a server-render harness: the library tags every
+    line-number span with a `comment` className, and its style-merge spreads the theme's
+    `stylesheet['comment']` color on top of `lineNumberStyle` unconditionally, overwriting it no
+    matter what value was passed — confirmed the rendered span's inline style still read
+    `color:#6a9955` even with `color` removed from `lineNumberStyle` entirely. Since this is a
+    plain (non-`!important`) inline style, only a `!important` CSS rule can still override it —
+    fixed by wrapping the `SyntaxHighlighter` in a `Box` targeting the library's own
+    `.react-syntax-highlighter-line-number` class via `sx` with an `!important` color. Verified via
+    a clean `tsc --noEmit`, a successful `vite build`, and the same server-render harness confirming
+    the diagnosis — the fix's actual on-screen effect couldn't be confirmed the same way, since
+    server rendering doesn't resolve CSS at all.
+  - **Follow-up, per request: the info row now renders only once `output` actually holds a real
+    result** — `null` for both the empty-placeholder and `error` states, where it used to show
+    unconditionally across all three. A single `{output !== null && (...)}` guard around the
+    existing `Stack`, no other change to its own markup/colors. Verified via a clean `tsc --noEmit`
+    and a successful `vite build` only — no Docker in this sandbox, so the actual on-screen result
+    is unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

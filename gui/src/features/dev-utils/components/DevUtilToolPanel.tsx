@@ -65,6 +65,40 @@ const OUTPUT_BG_LIGHT = '#ffffff';
 // red tuned for a dark surface once the app is in dark mode, which would look wrong against this
 // panel's always-white error background.
 const OUTPUT_ERROR_COLOR = '#cf222e';
+// A shade lighter than OUTPUT_BG_DARK, per request ("use bgColor black also, less black than the
+// content") — VS Code Dark+'s own toolbar/sidebar tone, distinguishing the info row from the code
+// content below it without breaking from the dark, theme-independent look this panel already has.
+const OUTPUT_INFO_BG = '#252526';
+// A muted, de-emphasized grey for the file-name value and the line-number gutter, per request —
+// neither is the focused content (the response itself is), so both stay visually secondary rather
+// than reading as bright/prominent text. Still light enough to stay legible against the dark
+// backgrounds, just clearly dimmer than the response text itself or the file-type badge colors.
+const OUTPUT_FILENAME_COLOR = '#6e7681';
+const OUTPUT_LINE_NUMBER_COLOR = '#6e7681';
+// A fixed mid-dark grey (VS Code's own default border/separator tone) used for the info row's own
+// border-bottom — deliberately not the theme's `divider` token, which is a translucent black/white
+// that barely shows up against a hardcoded dark background (or, in one case, disappears into it
+// depending on the app's own light/dark mode), the same "fixed literal, not a theme token"
+// reasoning as this panel's other colors. Reads as a normal dark rule against the white content
+// states too.
+const OUTPUT_LINE_COLOR = '#3c3c3c';
+
+// Human-readable label for the info row's file-type value — keyed by the same Prism language id
+// each operation already passes as `outputLanguage`, so no separate per-operation field was needed.
+const OUTPUT_LANGUAGE_LABELS: Record<string, string> = {
+  json: 'JSON',
+  yaml: 'YAML',
+  markup: 'HTML',
+};
+
+// A distinct color per file type, per request ("each color per filetype") — common language-badge
+// hues (JSON blue, YAML purple, HTML orange), each bright enough to stay readable against both
+// OUTPUT_INFO_BG and OUTPUT_BG_DARK.
+const OUTPUT_LANGUAGE_COLORS: Record<string, string> = {
+  json: '#4fc1ff',
+  yaml: '#c586c0',
+  markup: '#e37933',
+};
 
 function downloadTextFile(fileName: string, content: string): void {
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
@@ -107,7 +141,38 @@ function downloadTextFile(fileName: string, content: string): void {
  * highlighter's own dark theme) only once `output` actually holds a real result. This deliberately
  * reintroduces the white → black transition an earlier fix had removed (see git history/
  * `docs/CHANGELOG.md` around that fix if picking through this box's own color history) — that
- * transition is the explicit ask here, not an oversight. */
+ * transition is the explicit ask here, not an oversight.
+ *
+ * <p>Between the header row and the content area, a small info row shows a single
+ * "{@code <TYPE> | <filename>}" line — no "File type:"/"File name:" labels — but **only once
+ * `output` actually holds a real result**, per a follow-up request; it renders `null` for the
+ * empty-placeholder and `error` states, unlike an earlier version of this row that showed it
+ * unconditionally across all three (don't reintroduce that without confirming it's wanted again).
+ * Both values are already known statically per operation (`outputLanguage`/`downloadFileName`), so
+ * nothing here is actually derived from the response itself — only the decision of *whether* to
+ * show them is now response-gated. `OUTPUT_LANGUAGE_LABELS` maps the Prism language id
+ * (`json`/`yaml`/`markup`) each operation
+ * already passes to a human label (`JSON`/`YAML`/`HTML`). Its background is a fixed `OUTPUT_INFO_BG`
+ * (a shade lighter than `OUTPUT_BG_DARK` — always dark, unlike the content area below it, which
+ * still switches white/black by state) rather than a theme token, same "independent of the app's
+ * light/dark toggle" reasoning as this panel's other colors. The `<TYPE>` segment is colored per
+ * language (`OUTPUT_LANGUAGE_COLORS` — a distinct hue per `json`/`yaml`/`markup`, common
+ * language-badge convention) and bold; the `|` separator and the filename both use the muted
+ * `OUTPUT_FILENAME_COLOR` grey, since neither is the focused content — the response itself is. All
+ * three segments are plain `<Box component="span">`s inside one `Typography`, not separate
+ * flex-positioned elements — a simpler one-line rendering superseded an earlier attempt at
+ * horizontally aligning the type/filename with the line-number/response columns beneath them (that
+ * column-alignment scheme, plus a full-height vertical gutter-divider line and a baseline-mismatch
+ * fix it needed, were all tried in earlier passes and then explicitly simplified away per a direct
+ * request for this plainer template — don't reintroduce that alignment complexity without
+ * confirming it's wanted again). The syntax highlighter itself still has `showLineNumbers` (own
+ * `OUTPUT_LINE_NUMBER_COLOR`) — only meaningful for the actual `output` branch, not the
+ * error/placeholder ones, since neither of those renders line-oriented content.
+ *
+ * <p>The info row's own border-bottom uses a fixed `OUTPUT_LINE_COLOR` rather than the theme's
+ * `divider` token — `divider` is a translucent black/white overlay tuned for the app's own
+ * background, which barely shows (or vanishes, depending on light/dark app mode) against this
+ * panel's hardcoded dark background. */
 export default function DevUtilToolPanel({
   input,
   onInputChange,
@@ -260,6 +325,27 @@ export default function DevUtilToolPanel({
           </Stack>
         </Stack>
 
+        {output !== null && (
+          <Stack
+            direction="row"
+            alignItems="center"
+            sx={{ px: 2, py: 1, borderBottom: 1, borderColor: OUTPUT_LINE_COLOR, bgcolor: OUTPUT_INFO_BG }}
+          >
+            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+              <Box
+                component="span"
+                sx={{ color: OUTPUT_LANGUAGE_COLORS[outputLanguage] ?? OUTPUT_FILENAME_COLOR, fontWeight: 700 }}
+              >
+                {OUTPUT_LANGUAGE_LABELS[outputLanguage] ?? outputLanguage}
+              </Box>
+              <Box component="span" sx={{ color: OUTPUT_FILENAME_COLOR }}>
+                {' | '}
+                {downloadFileName}
+              </Box>
+            </Typography>
+          </Stack>
+        )}
+
         {error !== null ? (
           <Box sx={{ p: 2, height: 420, overflow: 'auto', bgcolor: OUTPUT_BG_LIGHT }}>
             <Stack
@@ -296,21 +382,37 @@ export default function DevUtilToolPanel({
             </Stack>
           </Box>
         ) : output !== null ? (
-          <SyntaxHighlighter
-            language={outputLanguage}
-            style={vscDarkPlus}
-            customStyle={{
-              margin: 0,
-              borderRadius: 0,
-              fontSize: '0.8rem',
-              padding: '16px',
-              height: 420,
-              overflow: 'auto',
-              background: OUTPUT_BG_DARK,
-            }}
-          >
-            {output}
-          </SyntaxHighlighter>
+          // react-syntax-highlighter tags every line-number span with a `comment` className
+          // alongside `linenumber` (highlight.js's own createLineElement) so it can reuse the
+          // theme's comment-token color as a sensible default — but its style-merge order then
+          // re-applies that theme color *after* `lineNumberStyle`'s own `color`, silently
+          // clobbering it (confirmed by inspecting react-syntax-highlighter's own createElement/
+          // createStyleObject source, not guessed): `stylesheet['comment']` — vscDarkPlus's own
+          // `{ color: '#6a9955' }` — is spread on top of `lineNumberStyle`'s merged style, so
+          // `lineNumberStyle.color` never actually reaches the DOM. A `!important` CSS rule is the
+          // only thing that can still win here, since CSS's own cascade ranks any `!important`
+          // declaration above a plain (non-`!important`) inline style regardless of origin —
+          // targeting the `.react-syntax-highlighter-line-number` class this same library adds
+          // specifically for cases like this.
+          <Box sx={{ '& .react-syntax-highlighter-line-number': { color: `${OUTPUT_LINE_NUMBER_COLOR} !important` } }}>
+            <SyntaxHighlighter
+              language={outputLanguage}
+              style={vscDarkPlus}
+              showLineNumbers
+              lineNumberStyle={{ minWidth: '2.5em', paddingRight: '1em', userSelect: 'none' }}
+              customStyle={{
+                margin: 0,
+                borderRadius: 0,
+                fontSize: '0.8rem',
+                padding: '16px',
+                height: 420,
+                overflow: 'auto',
+                background: OUTPUT_BG_DARK,
+              }}
+            >
+              {output}
+            </SyntaxHighlighter>
+          </Box>
         ) : (
           <Stack
             spacing={1.5}
