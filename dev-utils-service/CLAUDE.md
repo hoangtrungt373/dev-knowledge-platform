@@ -21,7 +21,15 @@ caller.** Every operation is a pure text-in/text-out transform:
 
 - **No Postgres schema, no JPA entity, no Liquibase changelog at all** — the only deployable in
   the reactor with zero database story of any kind. Not in `services-liquibase`'s `for svc in ...`
-  loop, no changelog directory to mount.
+  loop, no changelog directory to mount. **`DevUtilsServiceApplication` excludes
+  `DataSourceAutoConfiguration`/`HibernateJpaAutoConfiguration` — not optional, found by an actual
+  boot attempt.** `common` declares `spring-boot-starter-data-jpa` non-optional (for
+  `AbstractEntity`'s `@MappedSuperclass`), which every consumer inherits transitively regardless of
+  whether it maps any entities. Every other service in this reactor never notices, since each one
+  already configures a real `spring.datasource.url` + `org.postgresql:postgresql`; left
+  un-excluded here, Spring Boot tried to build a `HikariDataSource` anyway and the app failed to
+  start at all (`DataSourceBeanCreationException: Failed to determine a suitable driver class`) —
+  caught by a real `@SpringBootTest` context-load failure, not anticipated up front.
 - **Every endpoint is public — no JWT verification at all.** `security/SecurityConfig` declares an
   explicit `.anyRequest().permitAll()` filter chain rather than the `.anyRequest().authenticated()`
   every other service in this reactor uses. See that class's own Javadoc for the two-layer reason
@@ -84,11 +92,19 @@ caller.** Every operation is a pure text-in/text-out transform:
   `<html>` document's `<head>` is dropped, the same trade-off most standalone HTML-beautifier
   tools make. `minify` maps to jsoup's own `prettyPrint(false)` mode — not a true single-line
   guarantee (whitespace already present inside a source text node is preserved as-is).
+- `dto/DevUtilsLimits` — one shared `MAX_INPUT_LENGTH` constant (`100_000` characters, a
+  deliberately generous but finite first-version bound), referenced by both request DTOs' `@Size`
+  constraint below. This is the one fully public, unauthenticated endpoint in the reactor — an
+  unbounded `input` would be a real resource-exhaustion vector (a large body fully buffered/parsed
+  before any other check runs) — so every operation shares one cap rather than each endpoint
+  guessing its own number; split it per operation later if a real use case needs a different bound
+  for one of them.
 - `dto/{MinifiableTextRequest,TextRequest,DevUtilResponse}` — request DTOs are shared **only where
   the shape genuinely matches**: `MinifiableTextRequest` (`input`/`minify`) backs
   `json/format`/`yaml-to-json`/`html/beautify`, which really do share that shape; `TextRequest`
   (`input` only) backs `json-to-yaml`, which has no minify concept at all — not the same type with
-  an ignored field. `DevUtilResponse` (`output`) stays shared across all four today, but a future
+  an ignored field. Both `input` fields carry `@NotBlank @Size(max = DevUtilsLimits.MAX_INPUT_LENGTH)`.
+  `DevUtilResponse` (`output`) stays shared across all four today, but a future
   operation with a genuinely richer output (e.g. a Number Base Converter's several
   representations) should get its own response type rather than being forced into this one. See
   `DevUtilOperation`'s own Javadoc for the full reasoning against one shared request/response pair.
@@ -97,6 +113,21 @@ caller.** Every operation is a pure text-in/text-out transform:
   concrete type rather than dispatching through an enum-keyed registry — with one fixed REST
   endpoint per operation, there's no runtime "which operation" decision left to make (see
   `DevUtilOperation`'s own Javadoc).
+
+**Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
+(`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
+`HtmlBeautifyOperationTest`), no Mockito — each constructs real `ObjectMapper`/`YAMLMapper`
+instances rather than mocking Jackson, since the whole point is verifying real parse/serialize
+behavior (pretty vs. minified output, malformed-input rejection, round-trip structural equality
+via `readTree`, jsoup's lenient-parsing/indent behavior). Plus
+`DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)` +
+`@AutoConfigureMockMvc`) — boots the real Spring context and hits all four endpoints with **no**
+`Authorization` header through the real filter chain, confirming end to end (not just by static
+reasoning) that the app actually starts and every endpoint is genuinely public. This is exactly
+the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also covers the
+`MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the latter caught
+by `@Size` before ever reaching an operation). 21 tests total,
+verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module
 

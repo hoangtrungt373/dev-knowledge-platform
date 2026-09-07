@@ -1,0 +1,112 @@
+package com.ttg.devknowledgeplatform.devutils;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+
+import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
+
+/**
+ * Boots the real Spring context and hits every endpoint through the real filter chain via
+ * {@link MockMvc} — verifies, end to end rather than by static reasoning alone, that this app
+ * actually starts (the {@code GlobalExceptionHandler}/{@code spring-boot-starter-security}
+ * classpath dependency reasoning in {@code security.SecurityConfig}'s own Javadoc holds up) and
+ * that every endpoint is genuinely reachable with no {@code Authorization} header at all.
+ */
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureMockMvc
+class DevUtilsServiceApplicationTests {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Test
+    void contextLoads() {
+    }
+
+    @Test
+    void formatJsonIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/json/format")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"{}\",\"minify\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("output")));
+    }
+
+    @Test
+    void yamlToJsonIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/yaml-to-json")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"name: Alice\",\"minify\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Alice")));
+    }
+
+    @Test
+    void jsonToYamlIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/json-to-yaml")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"{\\\"name\\\":\\\"Alice\\\"}\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Alice")));
+    }
+
+    @Test
+    void beautifyHtmlIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/html/beautify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"<p>Hi</p>\",\"minify\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Hi")));
+    }
+
+    @Test
+    void malformedJsonReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/json/format")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"not valid json\",\"minify\":false}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_001")));
+    }
+
+    @Test
+    void blankInputFailsBeanValidationWith400() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/json/format")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"\",\"minify\":false}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void inputOverTheSizeCapFailsBeanValidationWith400() throws Exception {
+        String oversizedInput = "1".repeat(DevUtilsLimits.MAX_INPUT_LENGTH + 1);
+
+        mockMvc.perform(post("/api/v1/dev-utils/json/format")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"" + oversizedInput + "\",\"minify\":false}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void inputAtExactlyTheSizeCapIsAccepted() throws Exception {
+        // A JSON array holding one long string ["aaa...a"] is valid JSON of an exact, easy-to-
+        // compute length, and — unlike a run of bare digits — doesn't trip Jackson's own separate
+        // StreamReadConstraints.getMaxNumberLength() guard (a single JSON number token capped at
+        // 1000 digits by default), which is a different, pre-existing Jackson safety limit, not
+        // the @Size cap this test is actually about.
+        String innerJson = "[\"" + "a".repeat(DevUtilsLimits.MAX_INPUT_LENGTH - 4) + "\"]";
+        String escapedForRequestBody = innerJson.replace("\"", "\\\"");
+
+        mockMvc.perform(post("/api/v1/dev-utils/json/format")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"" + escapedForRequestBody + "\",\"minify\":true}"))
+                .andExpect(status().isOk());
+    }
+}

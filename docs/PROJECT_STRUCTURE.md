@@ -2269,11 +2269,17 @@ deployable in the whole reactor with genuinely nothing to persist and no authent
 
 ```
 dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
-├── DevUtilsServiceApplication.java — @SpringBootApplication +
+├── DevUtilsServiceApplication.java — @SpringBootApplication(exclude =
+│                                      {DataSourceAutoConfiguration.class,
+│                                      HibernateJpaAutoConfiguration.class}) +
 │                                      @Import({JacksonConfig.class, TraceContextFilter.class,
 │                                      GlobalExceptionHandler.class}). No Keycloak-related import,
 │                                      no CurrentUserIdArgumentResolver — no authenticated
-│                                      principal exists to resolve.
+│                                      principal exists to resolve. The exclude isn't optional —
+│                                      common's non-optional spring-boot-starter-data-jpa
+│                                      dependency makes Spring Boot try to build a DataSource
+│                                      regardless of entities mapped; left un-excluded, this app
+│                                      failed to boot at all (found via a real @SpringBootTest).
 ├── security/
 │   └── SecurityConfig.java        — deliberately permissive: .anyRequest().permitAll(), CSRF
 │                                     disabled, stateless session policy. Exists specifically so
@@ -2318,9 +2324,14 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │                                           snippet in yields a snippet out; minify maps to jsoup's
 │                                           own prettyPrint(false) mode
 ├── dto/
-│   ├── MinifiableTextRequest.java — input/minify; backs json/format, yaml-to-json, html/beautify
-│   │                                 — the three operations that genuinely share this shape
-│   ├── TextRequest.java           — input only; backs json-to-yaml, which has no minify concept
+│   ├── DevUtilsLimits.java        — MAX_INPUT_LENGTH = 100_000, shared by both request DTOs'
+│   │                                 @Size constraint — the one fully public, unauthenticated
+│   │                                 endpoint in the reactor, so a finite input-size bound matters
+│   ├── MinifiableTextRequest.java — input (@NotBlank @Size(max=MAX_INPUT_LENGTH))/minify; backs
+│   │                                 json/format, yaml-to-json, html/beautify — the three
+│   │                                 operations that genuinely share this shape
+│   ├── TextRequest.java           — input only (same @Size cap); backs json-to-yaml, which has no
+│   │                                 minify concept
 │   └── DevUtilResponse.java       — output; shared by all four today, not a rule going forward —
 │                                     a future operation with a richer output gets its own type
 └── api/

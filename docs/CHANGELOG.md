@@ -102,6 +102,47 @@ section again. Full unabridged entry-by-entry history for all three lives in
     entirely from that operation's own `execute` signature rather than kept as an ignored
     parameter. `DevUtilResponse` stays shared across all four today, documented as not a rule going
     forward. Old `dto.DevUtilRequest` deleted outright.
+  - **Follow-up: unit test suite for all four operations, per request.** One plain JUnit 5 class
+    per operation (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
+    `HtmlBeautifyOperationTest`) — no Mockito, each constructs real `ObjectMapper`/`YAMLMapper`
+    instances rather than mocking Jackson, since the point is verifying real parse/serialize
+    behavior: pretty-vs-minified output, malformed-input rejection with the correct
+    `DevUtilsErrorCode`, round-trip structural equality (`readTree` comparison, avoiding brittle
+    exact-string assertions against YAML's own quoting/marker formatting), and jsoup's
+    lenient-parsing/indent behavior. 12 tests total, verified via a real
+    `mvn -pl dev-utils-service -am test` run (JDK 21) — this module's first real runtime
+    verification of any kind since it was scaffolded.
+  - **Bug fix, found by an actual boot attempt: the app could not start at all.** New
+    `DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)` +
+    `@AutoConfigureMockMvc`) — a context-load + end-to-end `MockMvc` smoke test hitting all four
+    endpoints with no `Authorization` header — immediately failed with
+    `DataSourceBeanCreationException: Failed to determine a suitable driver class`. Root cause:
+    `common` declares `spring-boot-starter-data-jpa` as a **non-optional** dependency (needed there
+    for `AbstractEntity`'s `@MappedSuperclass`/`@Entity` support), which every consumer inherits
+    transitively regardless of whether it maps any entities — every other service in this reactor
+    never notices because each one already configures a real `spring.datasource.url` +
+    `org.postgresql:postgresql`; this module deliberately has neither. Fixed with
+    `@SpringBootApplication(exclude = {DataSourceAutoConfiguration.class,
+    HibernateJpaAutoConfiguration.class})` on `DevUtilsServiceApplication`. Re-ran: 19/19 tests
+    pass, including all four endpoints returning `200` with zero authentication and a malformed-
+    input case correctly returning `400` with `DEVUTILS_001` through the shared
+    `GlobalExceptionHandler`. This is the module's first genuine confirmation that it actually
+    boots — every claim in its own `CLAUDE.md` about "no schema, no auth" had, until this test,
+    only ever been verified by static reasoning, not by starting the app.
+  - **Follow-up: an `input` size cap, per request — a deliberately generous but finite first-version
+    bound (`100_000` characters), since this is the one fully public, unauthenticated endpoint in
+    the reactor.** New `dto.DevUtilsLimits.MAX_INPUT_LENGTH`, referenced by a new
+    `@Size(max = ...)` on both `MinifiableTextRequest.input`/`TextRequest.input` (alongside the
+    existing `@NotBlank`) — one shared constant rather than each DTO guessing its own number.
+    Verified via two new `DevUtilsServiceApplicationTests` cases: input one character over the cap
+    is rejected `400` by Bean Validation before ever reaching an operation; input at exactly the
+    cap is accepted. The boundary test's own first draft used a 100,000-digit run (simultaneously
+    valid JSON — a single large integer literal — and trivial to size exactly), which incidentally
+    tripped a *different*, pre-existing Jackson safety limit
+    (`StreamReadConstraints.getMaxNumberLength()`, default 1000 digits per JSON number token) once
+    `JsonFormatOperation` tried to parse it — not a bug in the new `@Size` cap, just the wrong test
+    fixture; switched to a JSON array wrapping one long string (`["aaa...a"]`) to sidestep it. 21
+    tests total, verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

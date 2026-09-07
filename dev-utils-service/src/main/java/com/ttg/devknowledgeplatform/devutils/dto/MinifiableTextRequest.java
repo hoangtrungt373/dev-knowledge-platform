@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.devutils.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 /**
  * Request body for an operation whose output can be either pretty-printed or compact/single-line —
@@ -12,8 +13,12 @@ import jakarta.validation.constraints.NotBlank;
  * being forced through this one. See {@code service.DevUtilOperation}'s own Javadoc for the full
  * reasoning behind not sharing one request/response pair across every operation.
  *
+ * @param input  raw text to transform, capped at {@link DevUtilsLimits#MAX_INPUT_LENGTH} — see
+ *               that class's own Javadoc for why.
  * @param minify {@code true} for compact/single-line output, {@code false} (the default, when
  *               omitted) for pretty-printed.
  */
-public record MinifiableTextRequest(@NotBlank String input, boolean minify) {
+public record MinifiableTextRequest(
+        @NotBlank @Size(max = DevUtilsLimits.MAX_INPUT_LENGTH) String input,
+        boolean minify) {
 }

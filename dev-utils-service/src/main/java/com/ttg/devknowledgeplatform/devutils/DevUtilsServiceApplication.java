@@ -2,6 +2,8 @@ package com.ttg.devknowledgeplatform.devutils;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
+import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration;
 import org.springframework.context.annotation.Import;
 
 import com.ttg.devknowledgeplatform.common.exception.GlobalExceptionHandler;
@@ -21,6 +23,20 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
  * out to be unavoidable even though this module authenticates no one, and how its own filter chain
  * neutralizes Spring Boot's autoconfigured default rather than relying on the dependency's absence.
  *
+ * <p><b>{@code exclude = {DataSourceAutoConfiguration.class, HibernateJpaAutoConfiguration.class}}
+ * is not optional — found by an actual boot attempt, not anticipated up front.</b> {@code common}
+ * declares {@code spring-boot-starter-data-jpa} as a non-optional dependency (needed there for
+ * {@code AbstractEntity}'s {@code @MappedSuperclass}/{@code @Entity} annotation support), which
+ * every consumer of {@code common} inherits transitively — including this module, even though it
+ * maps zero entities. Every other service in this reactor never notices, because each one already
+ * configures a real {@code spring.datasource.url} and declares {@code org.postgresql:postgresql}
+ * at runtime; this module deliberately has neither. Left un-excluded, Spring Boot's
+ * {@code DataSourceAutoConfiguration} still tries to build a {@code HikariDataSource} regardless of
+ * whether anything needs an {@code EntityManagerFactory}, and fails outright
+ * ({@code DataSourceBeanCreationException: Failed to determine a suitable driver class}) before
+ * this app ever starts serving traffic — confirmed via a real {@code @SpringBootTest} context-load
+ * failure, not a hypothetical.
+ *
  * <p>{@code @Import} names the exact {@code infra}/{@code common} beans this module actually uses,
  * same convention every other standalone service in this reactor follows (see root
  * {@code CLAUDE.md}'s "Post-extraction hardening" section for the three-round bug history that
@@ -32,7 +48,7 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
  * imports it. No Keycloak-related import, no {@code CurrentUserIdArgumentResolver} — there is no
  * authenticated principal to resolve.
  */
-@SpringBootApplication
+@SpringBootApplication(exclude = {DataSourceAutoConfiguration.class, HibernateJpaAutoConfiguration.class})
 @Import({JacksonConfig.class, TraceContextFilter.class, GlobalExceptionHandler.class})
 public class DevUtilsServiceApplication {
 
