@@ -54,21 +54,44 @@ caller.** Every operation is a pure text-in/text-out transform:
 - `exception/DevUtilsErrorCode` — `INVALID_JSON`/`INVALID_YAML` only. No `INVALID_HTML` — jsoup's
   parser is deliberately lenient and never throws on malformed markup, so there is no invalid-HTML
   failure path to name.
-- `service/DevUtilOperation` — the Strategy interface (`execute(String input): String`) every
-  operation implements. See its own Javadoc for the design-pattern discussion (Strategy chosen
-  over a flat facade, specifically because more operations — Base64, UUID generation, regex test,
-  JWT decode — are a likely next step, not a closed door).
+- `service/DevUtilOperation` — a bare **marker interface** (no method), purely for IDE "Find
+  Implementations" grouping — the same role `infra.event.ApplicationEventHandler`/
+  `infra.service.seed.Seeder` already play in this reactor. Deliberately **not** a textbook GoF
+  Strategy with a shared `execute(...)` signature — an earlier revision forced every operation
+  through `execute(String input, boolean minify): String`, which broke down once a genuinely
+  different-shaped operation (a future Unix Time Converter needing timestamp+timezone+format, a
+  Number Base Converter needing value+two integer bases) was considered — neither fits "one string
+  in, one bool flag, one string out," and packing them into that shape would mean hand-parsing a
+  packed string apart instead of real typed parameters. A shared method signature only pays for
+  itself when something dispatches through it polymorphically; nothing here does — the controller
+  injects and calls each operation by its own concrete type. See its own Javadoc for the full
+  reasoning. Each operation is free to declare whatever parameter/return shape actually fits it.
+- `config/YamlMapperConfig` — a `YAMLMapper` `@Bean`, the YAML-side counterpart to `infra`'s
+  shared `ObjectMapper` (`JacksonConfig`). Lives here, not `infra` — this module is the only
+  consumer today; promote it there only once a second module genuinely needs the same bean.
+  Mirrors `JacksonConfig`'s own customization (`JavaTimeModule`, tolerant deserialization,
+  ISO-8601 dates) for consistency, even though neither operation below can currently observe a
+  difference (both work over a generic `JsonNode` tree, never a typed POJO).
 - `service/impl/{JsonFormatOperation,YamlToJsonOperation,JsonToYamlOperation,HtmlBeautifyOperation}`
-  — one `@Component` per operation. `JsonFormatOperation` validates and pretty-prints in one pass
-  (doubles as "JSON validate"). `YamlToJsonOperation`/`JsonToYamlOperation` both reuse the
-  `JacksonConfig`-customized `ObjectMapper` for their JSON side and a plain locally-constructed
-  `YAMLMapper` for their YAML side (no second Spring-managed `ObjectMapper` bean needed).
-  `HtmlBeautifyOperation` parses input as a body fragment (`Jsoup.parseBodyFragment`), not a full
-  document — a snippet in yields a snippet out; a full `<html>` document's `<head>` is dropped, the
-  same trade-off most standalone HTML-beautifier tools make.
-- `dto/{DevUtilRequest,DevUtilResponse}` — one shared record pair for every operation
-  (`input`/`output`, both plain strings) — deliberately not one DTO per operation, since the shape
-  really is identical across all four endpoints.
+  — one `@Component` per operation. `JsonFormatOperation` validates and pretty-prints (or, with
+  `minify`, compact-serializes) in one pass (doubles as "JSON validate"). `YamlToJsonOperation`
+  applies the same pretty/minify choice to its JSON output; both it and `JsonToYamlOperation`
+  inject the shared `ObjectMapper`/`YAMLMapper` beans — no operation constructs its own mapper.
+  **`JsonToYamlOperation` accepts but ignores `minify`** — `jackson-dataformat-yaml` has no
+  supported single-line/flow-style toggle, so output is always the same block-style YAML
+  regardless of the flag. `HtmlBeautifyOperation` parses input as a body fragment
+  (`Jsoup.parseBodyFragment`), not a full document — a snippet in yields a snippet out; a full
+  `<html>` document's `<head>` is dropped, the same trade-off most standalone HTML-beautifier
+  tools make. `minify` maps to jsoup's own `prettyPrint(false)` mode — not a true single-line
+  guarantee (whitespace already present inside a source text node is preserved as-is).
+- `dto/{MinifiableTextRequest,TextRequest,DevUtilResponse}` — request DTOs are shared **only where
+  the shape genuinely matches**: `MinifiableTextRequest` (`input`/`minify`) backs
+  `json/format`/`yaml-to-json`/`html/beautify`, which really do share that shape; `TextRequest`
+  (`input` only) backs `json-to-yaml`, which has no minify concept at all — not the same type with
+  an ignored field. `DevUtilResponse` (`output`) stays shared across all four today, but a future
+  operation with a genuinely richer output (e.g. a Number Base Converter's several
+  representations) should get its own response type rather than being forced into this one. See
+  `DevUtilOperation`'s own Javadoc for the full reasoning against one shared request/response pair.
 - `api/DevUtilsApi` (+ `api/impl/DevUtilsController`) — `POST /api/v1/dev-utils/json/format`,
   `/yaml-to-json`, `/json-to-yaml`, `/html/beautify`. The controller injects each operation by its
   concrete type rather than dispatching through an enum-keyed registry — with one fixed REST
@@ -77,6 +100,15 @@ caller.** Every operation is a pure text-in/text-out transform:
 
 ## Rules specific to this module
 
+- **Don't force a new operation's request/response shape (or its `execute(...)` signature) to
+  match an existing one just for consistency.** `DevUtilOperation` is a bare marker interface and
+  `dto/` DTOs are shared only where the shape genuinely matches (see both their own Javadoc) —
+  this was a real, corrected mistake: an earlier revision forced every operation through one
+  shared `execute(String input, boolean minify): String` signature and one shared request/response
+  DTO pair, which only looked reasonable because every operation at the time really was "text in, a
+  minify flag, text out." A future operation with a genuinely different shape (Unix Time Converter:
+  timestamp+timezone+format; Number Base Converter: value+two integer bases) gets its own request/
+  response type and its own `execute(...)` signature, not a bent version of an existing one.
 - **Depends only on `common` + `infra`.** Never add a Maven dependency on `gateway`,
   `ecommerce-service`, `identity-service`, `task-service`, `social-service`, `content-service`, or
   `ai-service` — and none of them may depend on this module either. A future operation that needs

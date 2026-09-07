@@ -2290,24 +2290,39 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   └── DevUtilsErrorCode.java     — INVALID_JSON/INVALID_YAML only. No INVALID_HTML — jsoup's
 │                                     parser is deliberately lenient and never throws on malformed
 │                                     markup.
+├── config/
+│   └── YamlMapperConfig.java      — a YAMLMapper @Bean, the YAML-side counterpart to infra's
+│                                     shared ObjectMapper (JacksonConfig). Lives here, not infra —
+│                                     this module is the only consumer today.
 ├── service/
-│   ├── DevUtilOperation.java      — Strategy interface (execute(String input): String), chosen
-│   │                                 over a flat facade specifically because more operations
-│   │                                 (Base64, UUID generation, regex test, JWT decode) are a
-│   │                                 likely next step for this module.
+│   ├── DevUtilOperation.java      — bare marker interface (no method), same "Find
+│   │                                 Implementations" role as infra's ApplicationEventHandler/
+│   │                                 Seeder. Deliberately not a shared execute(...) signature — an
+│   │                                 earlier revision forced one (execute(String, boolean)), which
+│   │                                 broke down once a genuinely different-shaped future operation
+│   │                                 (Unix Time Converter, Number Base Converter) was considered;
+│   │                                 nothing dispatches through this interface polymorphically, so
+│   │                                 each operation now declares whatever shape fits it.
 │   └── impl/
-│       ├── JsonFormatOperation.java     — validates + pretty-prints in one pass (doubles as
-│       │                                   "JSON validate")
-│       ├── YamlToJsonOperation.java     — reuses the JacksonConfig-customized ObjectMapper for
-│       │                                   its JSON side, a plain local YAMLMapper for its YAML
-│       │                                   side
-│       ├── JsonToYamlOperation.java     — same mapper pair, opposite direction
-│       └── HtmlBeautifyOperation.java   — Jsoup.parseBodyFragment (not a full document) — a
-│                                           snippet in yields a snippet out
+│       ├── JsonFormatOperation.java     — execute(String input, boolean minify); validates +
+│       │                                   pretty-prints (or, minified, compact-serializes) in one
+│       │                                   pass (doubles as "JSON validate")
+│       ├── YamlToJsonOperation.java     — execute(String input, boolean minify); injects both
+│       │                                   shared mapper beans (ObjectMapper for its JSON output,
+│       │                                   YAMLMapper for its YAML input)
+│       ├── JsonToYamlOperation.java     — execute(String input) — no minify parameter at all;
+│       │                                   jackson-dataformat-yaml has no single-line/flow-style
+│       │                                   toggle, so there's nothing to accept
+│       └── HtmlBeautifyOperation.java   — execute(String input, boolean minify);
+│                                           Jsoup.parseBodyFragment (not a full document) — a
+│                                           snippet in yields a snippet out; minify maps to jsoup's
+│                                           own prettyPrint(false) mode
 ├── dto/
-│   └── {DevUtilRequest,DevUtilResponse}.java — one shared record pair (input/output, both plain
-│                                                 strings) for every operation — the shape really
-│                                                 is identical across all four endpoints
+│   ├── MinifiableTextRequest.java — input/minify; backs json/format, yaml-to-json, html/beautify
+│   │                                 — the three operations that genuinely share this shape
+│   ├── TextRequest.java           — input only; backs json-to-yaml, which has no minify concept
+│   └── DevUtilResponse.java       — output; shared by all four today, not a rule going forward —
+│                                     a future operation with a richer output gets its own type
 └── api/
     ├── DevUtilsApi.java           — POST /api/v1/dev-utils/{json/format,yaml-to-json,
     │                                 json-to-yaml,html/beautify}. Every endpoint is public — no

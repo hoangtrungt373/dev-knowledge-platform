@@ -4,8 +4,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.ttg.devknowledgeplatform.devutils.api.DevUtilsApi;
-import com.ttg.devknowledgeplatform.devutils.dto.DevUtilRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.DevUtilResponse;
+import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
+import com.ttg.devknowledgeplatform.devutils.dto.TextRequest;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlBeautifyOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonFormatOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToYamlOperation;
@@ -29,22 +30,22 @@ public class DevUtilsController implements DevUtilsApi {
     private final HtmlBeautifyOperation htmlBeautifyOperation;
 
     @Override
-    public ResponseEntity<DevUtilResponse> formatJson(DevUtilRequest request) {
-        return ResponseEntity.ok(new DevUtilResponse(jsonFormatOperation.execute(request.input())));
+    public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(jsonFormatOperation.execute(request.input(), request.minify())));
     }
 
     @Override
-    public ResponseEntity<DevUtilResponse> yamlToJson(DevUtilRequest request) {
-        return ResponseEntity.ok(new DevUtilResponse(yamlToJsonOperation.execute(request.input())));
+    public ResponseEntity<DevUtilResponse> yamlToJson(MinifiableTextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(yamlToJsonOperation.execute(request.input(), request.minify())));
     }
 
     @Override
-    public ResponseEntity<DevUtilResponse> jsonToYaml(DevUtilRequest request) {
+    public ResponseEntity<DevUtilResponse> jsonToYaml(TextRequest request) {
         return ResponseEntity.ok(new DevUtilResponse(jsonToYamlOperation.execute(request.input())));
     }
 
     @Override
-    public ResponseEntity<DevUtilResponse> beautifyHtml(DevUtilRequest request) {
-        return ResponseEntity.ok(new DevUtilResponse(htmlBeautifyOperation.execute(request.input())));
+    public ResponseEntity<DevUtilResponse> beautifyHtml(MinifiableTextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(htmlBeautifyOperation.execute(request.input(), request.minify())));
     }
 }

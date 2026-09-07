@@ -13,23 +13,24 @@ import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Converts a raw YAML string to pretty-printed JSON. {@code YAMLMapper} needs no customization
- * from {@code JacksonConfig}'s shared {@code ObjectMapper}, so it's a plain locally-constructed
- * field rather than a second Spring-managed {@code ObjectMapper} bean — reusing the injected one
- * (JSON-configured) purely for the output side keeps this module to a single customized mapper.
+ * Converts a raw YAML string to pretty-printed JSON. Both mappers are Spring-managed beans
+ * ({@code objectMapper} from {@code infra}'s shared {@code JacksonConfig}, {@code yamlMapper} from
+ * this module's own {@code config.YamlMapperConfig}) — see the latter's Javadoc for why a second,
+ * YAML-side bean exists instead of a plain {@code new YAMLMapper()} field.
  */
 @Component
 @RequiredArgsConstructor
 public class YamlToJsonOperation implements DevUtilOperation {
 
     private final ObjectMapper objectMapper;
-    private final YAMLMapper yamlMapper = new YAMLMapper();
+    private final YAMLMapper yamlMapper;
 
-    @Override
-    public String execute(String input) {
+    public String execute(String input, boolean minify) {
         try {
             JsonNode node = yamlMapper.readTree(input);
-            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(node);
+            return minify
+                    ? objectMapper.writeValueAsString(node)
+                    : objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(node);
         } catch (JsonProcessingException e) {
             throw new BusinessException(DevUtilsErrorCode.INVALID_YAML, e.getMessage());
         }

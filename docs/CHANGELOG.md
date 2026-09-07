@@ -65,6 +65,43 @@ section again. Full unabridged entry-by-entry history for all three lives in
     build that never touches this module's own sources.
   - Root `pom.xml`: new module registered, new internal `dependencyManagement` entry, new
     `jsoup.version` property + managed dependency.
+  - **Follow-up: `YamlToJsonOperation`/`JsonToYamlOperation` now inject a shared `YAMLMapper` bean
+    (new `config.YamlMapperConfig`) instead of each constructing its own `new YAMLMapper()`**, per
+    request — the YAML-side counterpart to `infra`'s shared `ObjectMapper` (`JacksonConfig`).
+    Mirrors that bean's own customization (`JavaTimeModule`, tolerant deserialization, ISO-8601
+    dates) for consistency, even though neither operation can currently observe a difference (both
+    work over a generic `JsonNode` tree, never a typed POJO) — kept anyway so a future operation
+    that does deserialize into a typed object doesn't hit a silent inconsistency between the two
+    mappers. Lives in this module, not `infra` — it's the only consumer today.
+  - **Follow-up: a `minify` flag on the shared `DevUtilRequest`, per request** — compact/
+    single-line output instead of pretty-printed (the default, `false`, when omitted — non-breaking
+    for any existing caller). `service.DevUtilOperation#execute` gained a `boolean minify`
+    parameter; `JsonFormatOperation`/`YamlToJsonOperation` honor it on their JSON output
+    (`objectMapper.writeValueAsString` vs. `.writerWithDefaultPrettyPrinter()`);
+    `HtmlBeautifyOperation` maps it to jsoup's own `prettyPrint(false)` mode (not a true
+    single-line guarantee — whitespace already present inside a source text node is preserved
+    as-is, the standard content-safe way jsoup distinguishes formatted from unformatted output).
+    **`JsonToYamlOperation` accepts but ignores it** — `jackson-dataformat-yaml` has no supported
+    single-line/flow-style toggle, so there's no safe way to produce a compact YAML document;
+    output is always the same block-style YAML regardless of the flag.
+  - **Follow-up: `DevUtilOperation`/the shared request DTOs were corrected away from a forced
+    uniform shape, per a direct question about future operations (Unix Time Converter, Number Base
+    Converter) that wouldn't fit it.** The `minify` follow-up above had forced every operation
+    through one `execute(String input, boolean minify): String` signature and one shared
+    `DevUtilRequest`/`DevUtilResponse` DTO pair — reasonable while every operation really was "text
+    in, a minify flag, text out," but a genuinely different-shaped future operation (a timestamp+
+    timezone+format, or a value+two integer bases) wouldn't fit either, and forcing it through would
+    mean hand-packing multiple values into one string instead of real typed parameters.
+    `DevUtilOperation` is now a bare **marker interface** (no method at all) — the same "Find
+    Implementations" role `infra.event.ApplicationEventHandler`/`infra.service.seed.Seeder` already
+    play in this reactor — since nothing dispatches through it polymorphically anyway (the
+    controller always calls each operation by its own concrete type). New `dto.MinifiableTextRequest`
+    (`input`/`minify`) replaces the shared `DevUtilRequest` for the three operations that genuinely
+    share that shape (`json/format`, `yaml-to-json`, `html/beautify`); new `dto.TextRequest`
+    (`input` only) replaces it for `json-to-yaml`, which never had a minify concept — dropped
+    entirely from that operation's own `execute` signature rather than kept as an ignored
+    parameter. `DevUtilResponse` stays shared across all four today, documented as not a rule going
+    forward. Old `dto.DevUtilRequest` deleted outright.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

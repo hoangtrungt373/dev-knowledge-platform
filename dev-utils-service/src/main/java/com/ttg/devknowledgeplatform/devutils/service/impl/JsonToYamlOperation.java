@@ -15,16 +15,23 @@ import lombok.RequiredArgsConstructor;
 /**
  * Converts a raw JSON string to YAML. The input being validated is JSON (the source format), so a
  * malformed input throws {@link DevUtilsErrorCode#INVALID_JSON} — same convention
- * {@link YamlToJsonOperation} follows in the other direction.
+ * {@link YamlToJsonOperation} follows in the other direction. Both mappers are Spring-managed
+ * beans — see {@code config.YamlMapperConfig}'s Javadoc for why {@code yamlMapper} is a bean rather
+ * than a plain {@code new YAMLMapper()} field.
+ *
+ * <p><b>No {@code minify} parameter</b> — {@code jackson-dataformat-yaml} has no supported
+ * single-line/flow-style toggle, so there's no safe way to produce a "compact" YAML document at
+ * all; output is always the same block-style YAML. See {@code service.DevUtilOperation}'s own
+ * Javadoc for why this operation isn't forced to accept (and ignore) a parameter it has no use
+ * for.
  */
 @Component
 @RequiredArgsConstructor
 public class JsonToYamlOperation implements DevUtilOperation {
 
     private final ObjectMapper objectMapper;
-    private final YAMLMapper yamlMapper = new YAMLMapper();
+    private final YAMLMapper yamlMapper;
 
-    @Override
     public String execute(String input) {
         try {
             JsonNode node = objectMapper.readTree(input);
