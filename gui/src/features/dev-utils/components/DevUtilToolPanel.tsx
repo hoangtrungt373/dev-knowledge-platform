@@ -10,11 +10,15 @@ import {
   Typography,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import ContentPasteIcon from '@mui/icons-material/ContentPaste';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import DownloadIcon from '@mui/icons-material/Download';
-import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
+import ContentPasteIcon from '@mui/icons-material/ContentPasteOutlined';
+import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
+import PlayArrowIcon from '@mui/icons-material/PlayArrowOutlined';
+import DownloadIcon from '@mui/icons-material/DownloadOutlined';
+import UnfoldLessIcon from '@mui/icons-material/UnfoldLessOutlined';
+// Already an outline-style glyph under its own distinct name (not the "Outlined" suffix
+// convention every other icon above uses) — MUI ships "Error" (filled) and "ErrorOutline" as two
+// separately named icons, not a base/Outlined pair, so there's no further outlined variant to
+// switch to here.
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';

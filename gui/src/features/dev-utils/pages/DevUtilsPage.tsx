@@ -17,16 +17,16 @@ import {
   Typography,
 } from '@mui/material';
 import {alpha} from '@mui/material/styles';
-import SearchIcon from '@mui/icons-material/Search';
-import DataObjectIcon from '@mui/icons-material/DataObject';
-import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
-import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import ClearIcon from '@mui/icons-material/Clear';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import TableChartIcon from '@mui/icons-material/TableChart';
-import StorageIcon from '@mui/icons-material/Storage';
+import SearchIcon from '@mui/icons-material/SearchOutlined';
+import DataObjectIcon from '@mui/icons-material/DataObjectOutlined';
+import SwapHorizIcon from '@mui/icons-material/SwapHorizOutlined';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHighOutlined';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesomeOutlined';
+import ClearIcon from '@mui/icons-material/ClearOutlined';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeftOutlined';
+import ChevronRightIcon from '@mui/icons-material/ChevronRightOutlined';
+import TableChartIcon from '@mui/icons-material/TableChartOutlined';
+import StorageIcon from '@mui/icons-material/StorageOutlined';
 import {devUtilsApi} from '../api/devUtilsApi';
 import {DevUtilsResponse} from '../types';
 import {DevUtilError} from '../utils/errorFormatting';
