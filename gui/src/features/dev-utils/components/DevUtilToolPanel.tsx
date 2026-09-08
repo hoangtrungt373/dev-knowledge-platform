@@ -26,6 +26,7 @@ import SubmitButton from '@shared/components/SubmitButton';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { DevUtilsResponse } from '../types';
 import { buildDevUtilError, DevUtilError } from '../utils/errorFormatting';
+import { OUTPUT_LANGUAGE_INFO, OutputLanguage } from '../config/outputLanguages';
 
 interface DevUtilToolPanelProps {
   /** Controlled — lifted up to `DevUtilsPage.tsx` so its own headline row's Sample/Clear buttons
@@ -43,27 +44,14 @@ interface DevUtilToolPanelProps {
   onErrorChange: (error: DevUtilError | null) => void;
   actionLabel: string;
   inputPlaceholder: string;
-  /** What format the *input* box holds — feeds `buildDevUtilError`'s choice of how to re-derive a
-   * friendly message from a failed submit; see that function's own doc comment. Only 'json' is
-   * ever actually branched on there — every other value (including the ones that can never fail a
-   * submit at all: 'css'/'less'/'scss'/'js'/'erb'/'sql'/'text') just takes the same fallback. */
-  inputFormat:
-    | 'json'
-    | 'yaml'
-    | 'html'
-    | 'css'
-    | 'less'
-    | 'scss'
-    | 'js'
-    | 'erb'
-    | 'xml'
-    | 'csv'
-    | 'sql'
-    | 'php'
-    | 'text';
-  /** Prism language for the output syntax highlighter: 'json' | 'yaml' | 'markup' (HTML) | 'css' |
-   * 'less' | 'scss' | 'javascript' | 'erb' | 'xml' | 'csv' | 'sql' | 'php' | 'text'. */
-  outputLanguage: string;
+  /** What format the *input* box holds. Only ever actually branched on for the literal `'json'`
+   * (picks `buildDevUtilError`'s client-side `JSON.parse` fast path); every other value just takes
+   * that function's own doc comment for exactly which operations' backend can genuinely reject
+   * their input (and therefore ever actually populate its fallback path). */
+  inputFormat: 'json' | 'yaml' | 'html' | 'css' | 'less' | 'scss' | 'js' | 'erb' | 'xml' | 'csv' | 'sql' | 'php' | 'text';
+  /** Prism language for the output syntax highlighter — also the key into
+   * `config/outputLanguages.ts#OUTPUT_LANGUAGE_INFO` for this panel's own info-row badge. */
+  outputLanguage: OutputLanguage;
   /** Whether this tool exposes a minify checkbox at all — false only for JSON→YAML, which has no
    * minify concept (see devUtilsApi.jsonToYaml's own comment). */
   supportsMinify: boolean;
@@ -107,52 +95,11 @@ const OUTPUT_LINE_COLOR = '#3c3c3c';
 // result alike) — keeps it growing with content up to a reasonable height, then scrolling
 // internally, roughly matching the Input TextField's own minRows/maxRows auto-grow range.
 const OUTPUT_MAX_HEIGHT = 800;
-
-// Human-readable label for the info row's file-type value — keyed by the same Prism language id
-// each operation already passes as `outputLanguage`, so no separate per-operation field was needed.
-// 'xml' is its own key, not folded into 'markup' — Prism/refractor's `markup` grammar registers
-// 'xml' as one of its own aliases (so highlighting still works), but this app-level label/color
-// lookup is keyed on the exact string each operation passes, so XML gets its own label/color
-// distinct from HTML rather than silently reading as "HTML" too.
-const OUTPUT_LANGUAGE_LABELS: Record<string, string> = {
-  json: 'JSON',
-  yaml: 'YAML',
-  markup: 'HTML',
-  css: 'CSS',
-  less: 'LESS',
-  scss: 'SCSS',
-  javascript: 'JS',
-  erb: 'ERB',
-  xml: 'XML',
-  csv: 'CSV',
-  sql: 'SQL',
-  php: 'PHP',
-  // No real Prism grammar for "labelled plain-text lines" (String Case Converter's own output) —
-  // 'text' renders unstyled, which is exactly right here; still gets a real label/color so its
-  // info-row badge doesn't fall back to the raw language id.
-  text: 'TEXT',
-};
-
-// A distinct color per file type, per request ("each color per filetype") — common language-badge
-// hues (JSON blue, YAML purple, HTML orange, CSS blue, LESS indigo, SCSS pink/Sass brand, JS
-// yellow, ERB Ruby-red, XML teal, CSV green/spreadsheet, SQL amber, PHP's own brand indigo, TEXT
-// neutral grey since it isn't really a "language"), each bright enough to stay readable against
-// both OUTPUT_INFO_BG and OUTPUT_BG_DARK.
-const OUTPUT_LANGUAGE_COLORS: Record<string, string> = {
-  json: '#4fc1ff',
-  yaml: '#c586c0',
-  markup: '#e37933',
-  css: '#42a5f5',
-  less: '#5a67d8',
-  scss: '#cf649a',
-  javascript: '#f0db4f',
-  erb: '#cc342d',
-  xml: '#4ec9b0',
-  csv: '#8bc34a',
-  sql: '#dcb67a',
-  php: '#8892bf',
-  text: '#cccccc',
-};
+// The empty placeholder's own starting height — deliberately taller than a "just enough for the
+// icon + one line of text" box would need, so it roughly matches the Input side's own starting
+// height (`minRows={20}` below, at this panel's line-height/padding) rather than visibly
+// shrinking the whole Output card the moment there's no result yet.
+const OUTPUT_EMPTY_MIN_HEIGHT = 425;
 
 function downloadTextFile(fileName: string, content: string): void {
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
@@ -204,15 +151,17 @@ function downloadTextFile(fileName: string, content: string): void {
  * unconditionally across all three (don't reintroduce that without confirming it's wanted again).
  * Both values are already known statically per operation (`outputLanguage`/`downloadFileName`), so
  * nothing here is actually derived from the response itself — only the decision of *whether* to
- * show them is now response-gated. `OUTPUT_LANGUAGE_LABELS` maps the Prism language id
- * (`json`/`yaml`/`markup`) each operation
- * already passes to a human label (`JSON`/`YAML`/`HTML`). Its background is a fixed `OUTPUT_INFO_BG`
- * (a shade lighter than `OUTPUT_BG_DARK` — always dark, unlike the content area below it, which
- * still switches white/black by state) rather than a theme token, same "independent of the app's
- * light/dark toggle" reasoning as this panel's other colors. The `<TYPE>` segment is colored per
- * language (`OUTPUT_LANGUAGE_COLORS` — a distinct hue per `json`/`yaml`/`markup`, common
- * language-badge convention) and bold; the `|` separator and the filename both use the muted
- * `OUTPUT_FILENAME_COLOR` grey, since neither is the focused content — the response itself is. All
+ * show them is now response-gated. `config/outputLanguages.ts#OUTPUT_LANGUAGE_INFO` maps the
+ * Prism language id (`outputLanguage`) each operation already passes to a human label
+ * (`JSON`/`YAML`/`HTML`/etc.) and a per-language badge color, one shared map so the two can never
+ * drift out of sync with each other (see that file's own doc comment — it used to be two
+ * independently-maintained `Record<string, string>`s here). Its background is a fixed
+ * `OUTPUT_INFO_BG` (a shade lighter than `OUTPUT_BG_DARK` — always dark, unlike the content area
+ * below it, which still switches white/black by state) rather than a theme token, same
+ * "independent of the app's light/dark toggle" reasoning as this panel's other colors. The
+ * `<TYPE>` segment is colored per language (common language-badge convention) and bold; the `|`
+ * separator and the filename both use the muted `OUTPUT_FILENAME_COLOR` grey, since neither is the
+ * focused content — the response itself is. All
  * three segments are plain `<Box component="span">`s inside one `Typography`, not separate
  * flex-positioned elements — a simpler one-line rendering superseded an earlier attempt at
  * horizontally aligning the type/filename with the line-number/response columns beneath them (that
@@ -392,11 +341,8 @@ export default function DevUtilToolPanel({
             sx={{ px: 2, py: 1, borderBottom: 1, borderColor: OUTPUT_LINE_COLOR, bgcolor: OUTPUT_INFO_BG }}
           >
             <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-              <Box
-                component="span"
-                sx={{ color: OUTPUT_LANGUAGE_COLORS[outputLanguage] ?? OUTPUT_FILENAME_COLOR, fontWeight: 700 }}
-              >
-                {OUTPUT_LANGUAGE_LABELS[outputLanguage] ?? outputLanguage}
+              <Box component="span" sx={{ color: OUTPUT_LANGUAGE_INFO[outputLanguage].color, fontWeight: 700 }}>
+                {OUTPUT_LANGUAGE_INFO[outputLanguage].label}
               </Box>
               <Box component="span" sx={{ color: OUTPUT_FILENAME_COLOR }}>
                 {' | '}
@@ -488,7 +434,7 @@ export default function DevUtilToolPanel({
             spacing={1.5}
             alignItems="center"
             justifyContent="center"
-            sx={{ p: 2, flex: 1, minHeight: 425, maxHeight: OUTPUT_MAX_HEIGHT, bgcolor: OUTPUT_BG_LIGHT }}
+            sx={{ p: 2, flex: 1, minHeight: OUTPUT_EMPTY_MIN_HEIGHT, maxHeight: OUTPUT_MAX_HEIGHT, bgcolor: OUTPUT_BG_LIGHT }}
           >
             <DownloadIcon sx={{ fontSize: 40, color: 'grey.400' }} />
             <Typography variant="body2" sx={{ color: 'grey.600' }}>

@@ -1,5 +1,5 @@
-import {useCallback, useEffect, useState} from 'react';
-import {useLocation, useNavigate} from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -7,70 +7,22 @@ import {
   IconButton,
   InputAdornment,
   List,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
   Paper,
   Stack,
   TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
-import {alpha} from '@mui/material/styles';
 import SearchIcon from '@mui/icons-material/SearchOutlined';
-import DataObjectIcon from '@mui/icons-material/DataObjectOutlined';
-import SwapHorizIcon from '@mui/icons-material/SwapHorizOutlined';
-import AutoFixHighIcon from '@mui/icons-material/AutoFixHighOutlined';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import ClearIcon from '@mui/icons-material/ClearOutlined';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeftOutlined';
 import ChevronRightIcon from '@mui/icons-material/ChevronRightOutlined';
-import TableChartIcon from '@mui/icons-material/TableChartOutlined';
-import StorageIcon from '@mui/icons-material/StorageOutlined';
-import FilterListOutlinedIcon from '@mui/icons-material/FilterListOutlined';
-import TerminalOutlinedIcon from '@mui/icons-material/TerminalOutlined';
-import {devUtilsApi} from '../api/devUtilsApi';
-import {DevUtilsResponse, StringCaseResponse} from '../types';
-import {DevUtilError} from '../utils/errorFormatting';
+
+import { DevUtilError } from '../utils/errorFormatting';
 import DevUtilToolPanel from '../components/DevUtilToolPanel';
-
-type TabKey =
-  | 'json-format'
-  | 'yaml-to-json'
-  | 'json-to-yaml'
-  | 'html-beautify'
-  | 'css-beautify'
-  | 'less-beautify'
-  | 'scss-beautify'
-  | 'js-beautify'
-  | 'erb-beautify'
-  | 'xml-beautify'
-  | 'json-to-csv'
-  | 'csv-to-json'
-  | 'sql-format'
-  | 'php-to-json'
-  | 'json-to-php'
-  | 'string-case-convert';
-
-const TAB_KEYS: TabKey[] = [
-  'json-format',
-  'yaml-to-json',
-  'json-to-yaml',
-  'html-beautify',
-  'css-beautify',
-  'less-beautify',
-  'scss-beautify',
-  'js-beautify',
-  'erb-beautify',
-  'xml-beautify',
-  'json-to-csv',
-  'csv-to-json',
-  'sql-format',
-  'php-to-json',
-  'json-to-php',
-  'string-case-convert',
-];
-const DEFAULT_TAB: TabKey = 'json-format';
+import DevUtilSidebarItem from '../components/DevUtilSidebarItem';
+import { OPERATIONS, TabKey, tabFromHash } from '../config/operations';
 
 // A standing preference (like AdminLayout's own sidebar collapse), not per-session UI state, so
 // it's persisted to localStorage the same way — see AdminLayout.tsx's own COLLAPSE_STORAGE_KEY.
@@ -78,119 +30,41 @@ const SIDEBAR_COLLAPSE_STORAGE_KEY = 'devUtilsSidebarCollapsed';
 const SIDEBAR_EXPANDED_WIDTH = 240;
 const SIDEBAR_COLLAPSED_WIDTH = 56;
 
-function tabFromHash(hash: string): TabKey {
-  const key = hash.replace(/^#/, '');
-  return (TAB_KEYS as string[]).includes(key) ? (key as TabKey) : DEFAULT_TAB;
-}
-
-// String Case Converter is the one operation whose backend response (StringCaseResponse) isn't a
-// single string — every other operation's `onSubmit` returns `Promise<DevUtilsResponse>`
-// (`{ output: string }`), which `DevUtilToolPanel` renders as one syntax-highlighted block. Rather
-// than building a second, parallel result-rendering path just for this one operation, its own
-// `onSubmit` (below) formats the 7 case variants into that same "output" shape — one
-// "<Label>\n<value>" pair per variant, blank-line separated — reusing the entire existing
-// Input/Output panel (copy/download/etc.) for free. This is also exactly the plain-text layout a
-// case-converter tool's own output conventionally takes.
-function formatStringCaseResult(result: StringCaseResponse): string {
-  const variants: Array<[string, string]> = [
-    ['camelCase', result.camelCase],
-    ['PascalCase', result.pascalCase],
-    ['snake_case', result.snakeCase],
-    ['kebab-case', result.kebabCase],
-    ['CONSTANT_CASE', result.constantCase],
-    ['Title Case', result.titleCase],
-    ['Sentence case', result.sentenceCase],
-  ];
-  return variants.map(([label, value]) => `${label}\n${value}`).join('\n\n');
-}
-
-interface OperationConfig {
-  key: TabKey;
-  /** Sidebar group label, also shown as the eyebrow line above the Input/Output panels — e.g.
-   * "Formatters" vs. "Converters". Purely descriptive today (the sidebar list itself stays flat,
-   * not grouped into sections) — group it visually too if the operation count grows enough to
-   * warrant it. */
-  category: string;
-  label: string;
-  /** One-line summary shown above the Input/Output panels, under the operation's own title. */
-  description: string;
-  icon: JSX.Element;
-  actionLabel: string;
-  /** Doubles as both the empty-textarea ghost text and the value the headline card's Sample
-   * button fills in — unified into one field per request, after `sampleInput` had briefly existed
-   * as a separate, richer field (see gui/CLAUDE.md's dev-utils section for that reversal's own
-   * history). A realistic, mixed-type example, not a minimal one, since it now has to do both
-   * jobs at once. */
-  inputPlaceholder: string;
-  /** What format the *input* box holds — 'json' for json-format/json-to-yaml/json-to-csv/
-   * json-to-php (all four genuinely take JSON input, including json-to-csv/json-to-php, whose
-   * backend operations both reuse INVALID_JSON for their own failures — see
-   * devUtilsApi.jsonToCsv's own comment), 'yaml' for yaml-to-json, 'html' for html-beautify, and
-   * one literal per other operation. Drives `errorFormatting.ts#buildDevUtilError`'s choice
-   * between a client-side `JSON.parse` re-derivation (for 'json' only) and a best-effort cleanup
-   * of the backend's own message (everything else) — in practice that fallback only ever actually
-   * renders anything for 'yaml'/'xml'/'csv'/'php', the four operations with a real backend
-   * invalid-input error path; 'html'/'css'/'less'/'scss'/'js'/'erb'/'sql'/'text' can never fail a
-   * submit at all (see each one's own backend Javadoc), so this field is otherwise inert for them,
-   * kept only so every operation still declares an honest, specific value rather than reusing an
-   * unrelated one. */
-  inputFormat:
-    | 'json'
-    | 'yaml'
-    | 'html'
-    | 'css'
-    | 'less'
-    | 'scss'
-    | 'js'
-    | 'erb'
-    | 'xml'
-    | 'csv'
-    | 'sql'
-    | 'php'
-    | 'text';
-  /** Prism language for the output syntax highlighter: 'json' | 'yaml' | 'markup' (HTML) | 'css' |
-   * 'less' | 'scss' | 'javascript' | 'erb' | 'xml' | 'csv' | 'sql' | 'php' | 'text' (the last one,
-   * String Case Converter, has no real Prism grammar to highlight against — see that operation's
-   * own `outputLanguage` comment below). */
-  outputLanguage: string;
-  supportsMinify: boolean;
-  /** Filename offered by the Output panel's Download button. */
-  downloadFileName: string;
-  onSubmit: (input: string, minify: boolean) => Promise<DevUtilsResponse>;
-}
-
 /** Each tool has its own route via the URL hash (/dev-utils#json-format, /dev-utils#yaml-to-json,
  * etc.), per request — deep-linkable/bookmarkable/shareable, and the browser back/forward buttons
  * step between tools. Still one route/one page (`App.tsx` only registers `/dev-utils` once) — the
  * hash is client-side-only state React Router already exposes via `useLocation().hash`, not a
  * second-level `<Route>`.
  *
+ * <p>The operation catalog itself (`TabKey`/`OPERATIONS`/`tabFromHash`) lives in
+ * `config/operations.tsx`, not here — this page owns layout/routing, that file owns "what tools
+ * exist and how each one calls its own backend endpoint." Splitting them keeps a future new
+ * operation's own diff to that one small, focused file instead of this page's own render logic.
+ *
  * <p>Operations render as a left sidebar (a plain `Paper` + `List`, not an MUI `Drawer` — same
  * `AccountLayout.tsx` precedent, chosen to avoid that component's own real, documented `Drawer`
  * bugs) with a search box above the list (per request — filters by label/category/description;
- * client-side only, since the full operation list is always in hand) and an explicit
- * `action.selected` background on the active item (per request — same convention `app/NavBar.tsx`'s
- * own `NavButton` already establishes for "is this the active route," rather than relying on
- * `ListItemButton`'s own default `selected` styling alone). **The sidebar is collapsible, per
- * request** — a chevron `IconButton` in its own header row toggles `sidebarCollapsed`
+ * client-side only, since the full operation list is always in hand). Each row is rendered by
+ * `DevUtilSidebarItem` (own file) — including the `action.selected` background on the active item
+ * (per request — same convention `app/NavBar.tsx`'s own `NavButton` already establishes) and the
+ * collapsed-sidebar icon-only/`Tooltip` treatment. **The sidebar is collapsible, per request** — a
+ * chevron `IconButton` in its own header row toggles `sidebarCollapsed`
  * (`SIDEBAR_EXPANDED_WIDTH`/`SIDEBAR_COLLAPSED_WIDTH`, persisted to `localStorage` via
  * `SIDEBAR_COLLAPSE_STORAGE_KEY` — a standing preference, same "persist across reloads" reasoning
  * `AdminLayout.tsx`'s own `COLLAPSE_STORAGE_KEY` documents, not per-session state); collapsed, the
- * search box and item labels hide (icon-only rows, each wrapped in a `Tooltip` carrying the label —
- * same shape `AdminLayout.tsx`'s own collapsed sidebar uses) and the search filter itself is
- * bypassed (`visibleOperations`) rather than possibly showing a filtered list with no visible box to
- * explain or clear it. `alignItems: 'flex-start'` on the row
- * keeps the sidebar sized to its own (short) content instead of stretching to match whichever tool
- * panel is taller, same reasoning `AccountLayout.tsx` documents for the identical layout shape.
+ * search box hides and the search filter itself is bypassed (`visibleOperations`) rather than
+ * possibly showing a filtered list with no visible box to explain or clear it.
+ * `alignItems: 'flex-start'` on the row keeps the sidebar sized to its own (short) content instead
+ * of stretching to match whichever tool panel is taller, same reasoning `AccountLayout.tsx`
+ * documents for the identical layout shape.
  *
  * <p>The headline card (category/title/description) also carries **Sample** (fills the input with
- * the operation's own `inputPlaceholder` value — unified back into one field, see that field's own
- * doc comment for the history) and **Clear** buttons, per request — which is *why*
- * `input` is owned here (`useState`, reset to `''` whenever `tab` changes) and passed down to
- * `DevUtilToolPanel` as a controlled prop, rather than staying local state inside that component:
- * this headline row needs to read/write it directly, and it's a sibling of the panel, not an
- * ancestor, so the state had to move up to their common parent (this component) — the standard
- * "lift state up" fix for two components that both need the same piece of state.
+ * the operation's own `inputPlaceholder` value) and **Clear** buttons, per request — which is
+ * *why* `input` is owned here (`useState`, reset to `''` whenever `tab` changes) and passed down
+ * to `DevUtilToolPanel` as a controlled prop, rather than staying local state inside that
+ * component: this headline row needs to read/write it directly, and it's a sibling of the panel,
+ * not an ancestor, so the state had to move up to their common parent (this component) — the
+ * standard "lift state up" fix for two components that both need the same piece of state.
  */
 export default function DevUtilsPage(): JSX.Element {
   const location = useLocation();
@@ -241,252 +115,7 @@ export default function DevUtilsPage(): JSX.Element {
     [navigate]
   );
 
-  const operations: OperationConfig[] = [
-    {
-      key: 'json-format',
-      category: 'Formatters',
-      label: 'JSON Format/Validate',
-      description: 'Beautify, minify, and validate JSON',
-      icon: <DataObjectIcon fontSize="small" />,
-      actionLabel: 'Format',
-      inputPlaceholder: '{"project":"Vui Coding","online":true,"tools":["JSON","Base64","JWT"],"stars":128}',
-      inputFormat: 'json',
-      outputLanguage: 'json',
-      supportsMinify: true,
-      downloadFileName: 'formatted.json',
-      onSubmit: (input, minify) => devUtilsApi.formatJson(input, minify),
-    },
-    {
-      key: 'yaml-to-json',
-      category: 'Converters',
-      label: 'YAML to JSON',
-      description: 'Convert YAML documents into JSON',
-      icon: <SwapHorizIcon fontSize="small" />,
-      actionLabel: 'Convert',
-      inputPlaceholder: 'project: Vui Coding\nonline: true\ntools:\n  - JSON\n  - Base64\n  - JWT\nstars: 128\n',
-      inputFormat: 'yaml',
-      outputLanguage: 'json',
-      supportsMinify: true,
-      downloadFileName: 'converted.json',
-      onSubmit: (input, minify) => devUtilsApi.yamlToJson(input, minify),
-    },
-    {
-      key: 'json-to-yaml',
-      category: 'Converters',
-      label: 'JSON to YAML',
-      description: 'Convert JSON documents into YAML',
-      icon: <SwapHorizIcon fontSize="small" />,
-      actionLabel: 'Convert',
-      inputPlaceholder: '{"project":"Vui Coding","online":true,"tools":["JSON","Base64","JWT"],"stars":128}',
-      inputFormat: 'json',
-      outputLanguage: 'yaml',
-      // No minify option here — jackson-dataformat-yaml has no single-line/flow-style toggle, so
-      // devUtilsApi.jsonToYaml doesn't even accept the parameter (see its own comment).
-      supportsMinify: false,
-      downloadFileName: 'converted.yaml',
-      onSubmit: input => devUtilsApi.jsonToYaml(input),
-    },
-    {
-      key: 'html-beautify',
-      category: 'Formatters',
-      label: 'HTML Beautify',
-      description: 'Beautify or minify HTML markup',
-      icon: <AutoFixHighIcon fontSize="small" />,
-      actionLabel: 'Beautify',
-      inputPlaceholder:
-        '<div class="card"><h2>Vui Coding</h2><p>Online: <strong>true</strong></p><ul><li>JSON</li><li>Base64</li><li>JWT</li></ul></div>',
-      inputFormat: 'html',
-      outputLanguage: 'markup',
-      supportsMinify: true,
-      downloadFileName: 'beautified.html',
-      onSubmit: (input, minify) => devUtilsApi.beautifyHtml(input, minify),
-    },
-    {
-      key: 'css-beautify',
-      category: 'Formatters',
-      label: 'CSS Beautify/Minify',
-      description: 'Beautify or minify CSS stylesheets',
-      icon: <AutoFixHighIcon fontSize="small" />,
-      actionLabel: 'Beautify',
-      inputPlaceholder:
-        '.card{background:#fff;padding:16px;}.card h2{color:#333;font-size:20px;}/* Vui Coding */',
-      inputFormat: 'css',
-      outputLanguage: 'css',
-      supportsMinify: true,
-      downloadFileName: 'beautified.css',
-      onSubmit: (input, minify) => devUtilsApi.beautifyCss(input, minify),
-    },
-    {
-      key: 'less-beautify',
-      category: 'Formatters',
-      label: 'LESS Beautify/Minify',
-      description: 'Beautify or minify LESS stylesheets',
-      icon: <AutoFixHighIcon fontSize="small" />,
-      actionLabel: 'Beautify',
-      inputPlaceholder:
-        '@primary: #333; // Vui Coding\n.card{background:#fff;padding:16px;h2{color:@primary;font-size:20px;}}',
-      inputFormat: 'less',
-      outputLanguage: 'less',
-      supportsMinify: true,
-      downloadFileName: 'beautified.less',
-      onSubmit: (input, minify) => devUtilsApi.beautifyLess(input, minify),
-    },
-    {
-      key: 'scss-beautify',
-      category: 'Formatters',
-      label: 'SCSS Beautify/Minify',
-      description: 'Beautify or minify SCSS stylesheets',
-      icon: <AutoFixHighIcon fontSize="small" />,
-      actionLabel: 'Beautify',
-      inputPlaceholder:
-        '$primary: #333; // Vui Coding\n.card{background:#fff;padding:16px;h2{color:$primary;font-size:20px;}}',
-      inputFormat: 'scss',
-      outputLanguage: 'scss',
-      supportsMinify: true,
-      downloadFileName: 'beautified.scss',
-      onSubmit: (input, minify) => devUtilsApi.beautifyScss(input, minify),
-    },
-    {
-      key: 'js-beautify',
-      category: 'Formatters',
-      label: 'JS Beautify/Minify',
-      description: 'Beautify or minify JavaScript code',
-      icon: <AutoFixHighIcon fontSize="small" />,
-      actionLabel: 'Beautify',
-      inputPlaceholder:
-        'function describe(project){if(project.online){return project.name+" has "+project.stars+" stars";}return null;}',
-      inputFormat: 'js',
-      outputLanguage: 'javascript',
-      supportsMinify: true,
-      downloadFileName: 'beautified.js',
-      onSubmit: (input, minify) => devUtilsApi.beautifyJs(input, minify),
-    },
-    {
-      key: 'erb-beautify',
-      category: 'Formatters',
-      label: 'ERB Beautify/Minify',
-      description: 'Beautify or minify ERB (Embedded RuBy) templates',
-      icon: <AutoFixHighIcon fontSize="small" />,
-      actionLabel: 'Beautify',
-      inputPlaceholder: '<div class="card"><h2><%= project.name %></h2><% if project.online %><p>Online</p><% end %></div>',
-      inputFormat: 'erb',
-      outputLanguage: 'erb',
-      supportsMinify: true,
-      downloadFileName: 'beautified.erb',
-      onSubmit: (input, minify) => devUtilsApi.beautifyErb(input, minify),
-    },
-    {
-      key: 'xml-beautify',
-      category: 'Formatters',
-      label: 'XML Beautify/Minify',
-      description: 'Validate, beautify, or minify XML documents',
-      icon: <AutoFixHighIcon fontSize="small" />,
-      actionLabel: 'Beautify',
-      inputPlaceholder:
-        '<project><name>Vui Coding</name><online>true</online><tools><tool>JSON</tool><tool>Base64</tool></tools></project>',
-      inputFormat: 'xml',
-      outputLanguage: 'xml',
-      supportsMinify: true,
-      downloadFileName: 'beautified.xml',
-      onSubmit: (input, minify) => devUtilsApi.beautifyXml(input, minify),
-    },
-    {
-      key: 'json-to-csv',
-      category: 'Converters',
-      label: 'JSON to CSV',
-      description: 'Convert a JSON array of objects into CSV',
-      icon: <TableChartIcon fontSize="small" />,
-      actionLabel: 'Convert',
-      inputPlaceholder:
-          '[{"tool":"JSON","stars":128},{"tool":"Base64","stars":64},{"tool":"JWT","stars":32}]',
-      inputFormat: 'json',
-      outputLanguage: 'csv',
-      // No minify option here — CSV has no distinct "compact" form, same reasoning JSON to YAML
-      // has none (see devUtilsApi.jsonToCsv's own comment).
-      supportsMinify: false,
-      downloadFileName: 'converted.csv',
-      onSubmit: input => devUtilsApi.jsonToCsv(input),
-    },
-    {
-      key: 'csv-to-json',
-      category: 'Converters',
-      label: 'CSV to JSON',
-      description: 'Convert CSV (first row as header) into a JSON array of objects',
-      icon: <TableChartIcon fontSize="small" />,
-      actionLabel: 'Convert',
-      inputPlaceholder: 'tool,stars\nJSON,128\nBase64,64\nJWT,32\n',
-      inputFormat: 'csv',
-      outputLanguage: 'json',
-      supportsMinify: true,
-      downloadFileName: 'converted.json',
-      onSubmit: (input, minify) => devUtilsApi.csvToJson(input, minify),
-    },
-    {
-      key: 'sql-format',
-      category: 'Formatters',
-      label: 'SQL Format/Minify',
-      description: 'Format or minify a SQL query',
-      icon: <StorageIcon fontSize="small" />,
-      actionLabel: 'Format',
-      inputPlaceholder: 'select tool, stars from tools where stars > 50 order by stars desc',
-      inputFormat: 'sql',
-      outputLanguage: 'sql',
-      supportsMinify: true,
-      downloadFileName: 'formatted.sql',
-      onSubmit: (input, minify) => devUtilsApi.formatSql(input, minify),
-    },
-    {
-      key: 'php-to-json',
-      category: 'Converters',
-      label: 'PHP to JSON',
-      description: 'Convert a PHP array literal into JSON',
-      icon: <TerminalOutlinedIcon fontSize="small" />,
-      actionLabel: 'Convert',
-      inputPlaceholder: "['tool' => 'JSON', 'stars' => 128, 'tags' => ['JSON', 'JWT']]",
-      inputFormat: 'php',
-      outputLanguage: 'json',
-      supportsMinify: true,
-      downloadFileName: 'converted.json',
-      onSubmit: (input, minify) => devUtilsApi.phpToJson(input, minify),
-    },
-    {
-      key: 'json-to-php',
-      category: 'Converters',
-      label: 'JSON to PHP',
-      description: 'Convert JSON into a PHP array literal',
-      icon: <TerminalOutlinedIcon fontSize="small" />,
-      actionLabel: 'Convert',
-      inputPlaceholder: '{"tool":"JSON","stars":128,"tags":["JSON","JWT"]}',
-      inputFormat: 'json',
-      outputLanguage: 'php',
-      supportsMinify: true,
-      downloadFileName: 'converted.php',
-      onSubmit: (input, minify) => devUtilsApi.jsonToPhp(input, minify),
-    },
-    {
-      key: 'string-case-convert',
-      // Neither a beautify/minify Formatter nor a format-A-to-format-B Converter — a dedicated
-      // third category for this one, rather than stretching either existing label to cover it.
-      category: 'Text Tools',
-      label: 'String Case Converter',
-      description: 'Convert text into camelCase, PascalCase, snake_case, kebab-case, and more',
-      icon: <FilterListOutlinedIcon fontSize="small" />,
-      actionLabel: 'Convert',
-      inputPlaceholder: 'Convert text into camelCase, PascalCase, snake_case, kebab-case, and more',
-      inputFormat: 'text',
-      // No real Prism grammar fits "a block of labelled plain-text lines" — 'text' just renders
-      // unstyled/no syntax coloring, which is exactly right here (see OUTPUT_LANGUAGE_LABELS/
-      // OUTPUT_LANGUAGE_COLORS in DevUtilToolPanel.tsx for the matching badge entry).
-      outputLanguage: 'text',
-      // No minify option — there's no "compact form" of a case conversion (see
-      // devUtilsApi.convertStringCase's own comment).
-      supportsMinify: false,
-      downloadFileName: 'string-case.txt',
-      onSubmit: async input => ({ output: formatStringCaseResult(await devUtilsApi.convertStringCase(input)) }),
-    }
-  ];
-
-  const activeOperation = operations.find(op => op.key === tab) ?? operations[0];
+  const activeOperation = OPERATIONS.find(op => op.key === tab) ?? OPERATIONS[0];
 
   const handleUseSample = useCallback(() => {
     setInput(activeOperation.inputPlaceholder);
@@ -499,23 +128,20 @@ export default function DevUtilsPage(): JSX.Element {
   }, []);
 
   // Client-side only — the full operation list is always already in hand, no need for a backend
-  // round trip to filter 4 (or even a few dozen, if this grows) known items. Only filters what the
-  // sidebar shows; it never changes which tool's panel is currently displayed. Plain recomputation
-  // each render, not useMemo — the list is tiny (4 items) and rebuilt every render regardless, so
-  // memoizing on `search` alone would either need `operations` in the dep array (defeating the
-  // memoization, since that array is a fresh reference every render anyway) or silently ignore it.
+  // round trip to filter a couple dozen known items. Only filters what the sidebar shows; it never
+  // changes which tool's panel is currently displayed.
   const query = search.trim().toLowerCase();
   const filteredOperations = query
-    ? operations.filter(
+    ? OPERATIONS.filter(
         op =>
           op.label.toLowerCase().includes(query) ||
           op.category.toLowerCase().includes(query) ||
           op.description.toLowerCase().includes(query)
       )
-    : operations;
+    : OPERATIONS;
   // The search box itself is hidden while collapsed (no room for it) — show every tool rather than
   // a possibly-filtered list the admin has no way to see the reason for or clear.
-  const visibleOperations = sidebarCollapsed ? operations : filteredOperations;
+  const visibleOperations = sidebarCollapsed ? OPERATIONS : filteredOperations;
 
   return (
     <Box sx={{ p: 3 }}>
@@ -587,65 +213,15 @@ export default function DevUtilsPage(): JSX.Element {
                 </Box>
               )
             ) : (
-              visibleOperations.map(op => {
-                const isSelected = op.key === tab;
-                const itemButton = (
-                  <ListItemButton
-                    key={op.key}
-                    selected={isSelected}
-                    onClick={() => selectTab(op.key)}
-                    sx={{
-                      borderRadius: 1,
-                      mx: 0.5,
-                      mb: 0.25,
-                      justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-                      // 1.5, not 2 — nudges the row (icon + label together) a little left so the
-                      // icon lines up with the search icon in the search box above, per request.
-                      px: sidebarCollapsed ? 1 : 1.5,
-                      // Target `&.Mui-selected` explicitly, not a plain `bgcolor` on the root —
-                      // ListItemButton's own baked-in selected-state rule
-                      // (`&.Mui-selected { backgroundColor: action.selected }`) has *higher* CSS
-                      // specificity (root class + Mui-selected class) than a plain `bgcolor` on
-                      // the component's own root class alone, so it was silently winning over
-                      // this override regardless of the `isSelected` conditional already choosing
-                      // the right value in JS — matching MUI's own selector exactly is what makes
-                      // this override actually take effect.
-                      '&.Mui-selected': {
-                        bgcolor: theme => alpha(theme.palette.primary.main, 0.16),
-                      },
-                      '&.Mui-selected:hover': {
-                        bgcolor: theme => alpha(theme.palette.primary.main, 0.24),
-                      },
-                      '&:hover': {
-                        bgcolor: 'action.hover',
-                      },
-                    }}
-                  >
-                    <ListItemIcon
-                      sx={{ minWidth: sidebarCollapsed ? 0 : 32, justifyContent: 'center', color: 'grey.500', mr: 0.5 }}
-                    >
-                      {op.icon}
-                    </ListItemIcon>
-                    {/* fontWeight is fixed regardless of selection — only the background above
-                        distinguishes the selected item now, per request. */}
-                    {!sidebarCollapsed && (
-                      <ListItemText
-                        primary={op.label}
-                        primaryTypographyProps={{ variant: 'body2', fontWeight: 600 }}
-                      />
-                    )}
-                  </ListItemButton>
-                );
-                // Collapsed sidebar has no room for the label — a tooltip carries it instead, same
-                // "icon-only row, label in a Tooltip" shape AdminLayout's own collapsed sidebar uses.
-                return sidebarCollapsed ? (
-                  <Tooltip key={op.key} title={op.label} placement="right">
-                    {itemButton}
-                  </Tooltip>
-                ) : (
-                  itemButton
-                );
-              })
+              visibleOperations.map(op => (
+                <DevUtilSidebarItem
+                  key={op.key}
+                  operation={op}
+                  isSelected={op.key === tab}
+                  collapsed={sidebarCollapsed}
+                  onSelect={() => selectTab(op.key)}
+                />
+              ))
             )}
           </List>
         </Paper>
