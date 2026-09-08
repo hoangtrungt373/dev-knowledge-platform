@@ -574,6 +574,40 @@ plus a fortified `preservesAlreadyMultilineSelectorLists` (now documents the exa
 guards) and an updated `indentsNestedBlocksByDefault` (now expects the blank line its own nested
 `.b` rule should get, per this fix).
 
+**Fifth follow-up bug, two real issues reported together against JSON↔CSV: an overly-conservative
+default quoting rule in `JsonToCsvOperation`, plus a scoped, direct-request change to
+`CsvToJsonOperation`'s own "never guess a cell's type" rule.**
+- **`JsonToCsvOperation` silently quoted a value for containing nothing more than a plain space**
+  (e.g. `JSON Formatter` → `"JSON Formatter"`) — found by decompiling Jackson's own
+  `CsvEncoder` (no sources jar available for this Jackson module) rather than guessing:
+  `CsvMapper`'s default ("loose") quoting check quotes any cell value containing *any* character
+  below ASCII 45 (comma, the default separator, plus one) — a deliberately conservative Jackson
+  default, not what RFC 4180 actually requires (the separator, the quote character, or a line
+  break). Fixed by building the `CsvMapper` with `CsvGenerator.Feature.STRICT_CHECK_FOR_QUOTING`
+  enabled — Jackson's own "strict" check, which quotes only when RFC 4180 requires it. Verified via
+  a standalone harness against the actual resolved `jackson-dataformat-csv:2.19.2` jar, confirming
+  both halves: a plain-space value now stays unquoted, and a value that genuinely contains a
+  quote/comma/newline is still correctly quoted (with the internal quote doubled, per RFC 4180).
+- **`CsvToJsonOperation` gained one deliberately narrow exception to its own "every value comes
+  back as a string" design** — a cell that's exactly `true`/`false` (case-insensitive) now becomes
+  a real JSON boolean; every other value, numbers included, still stays a string exactly as before.
+  This was a real design question, not an obvious bug fix — the original "never guess a type" rule
+  has a concrete, still-valid reason behind it (a ZIP code like `"007"` would silently lose its
+  leading zero if reinterpreted as a number), so **the scope was confirmed with the user before
+  implementing** (three options presented: booleans only, booleans + numbers, or leave as-is) —
+  booleans-only was chosen specifically because it's the one type with no such ambiguity: there's
+  no legitimate CSV convention where the literal text `true`/`false` needs to survive as a *string*
+  with some other meaning, unlike a number. `parseCsv` now reads every cell as a `String` (Jackson's
+  CSV reader has no other option — a CSV cell is text by definition) and post-processes each one
+  through a new `toCellValue` (the one place the boolean-recognition rule lives, not duplicated per
+  row) before handing `List<Map<String, Object>>` (was `Map<String, String>`) to `JsonNodeIo.write`
+  — a `Boolean` value serializes as a bare JSON `true`/`false` automatically, no writer-side change
+  needed. 4 new tests total across both operations (a plain-space-value case and a
+  genuinely-needs-quoting case for `JsonToCsvOperation`; a mixed-case-boolean-vs-similar-string case
+  and the exact reported round-trip example for `CsvToJsonOperation`), plus the existing
+  `everyValueComesBackAsAJsonStringNeverAnInferredNumber` test left unchanged and still passing
+  (confirming numeric strings are genuinely untouched by this fix).
+
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
 `HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
@@ -607,11 +641,12 @@ latter caught by `@Size` before ever reaching an operation) and confirms malform
 return `400` with `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005` respectively through the shared
 `GlobalExceptionHandler`. Plus `service/impl/support/ConventionalJsonPrettyPrinterTest` (the one
 support class in this module with its own dedicated test file rather than only being exercised
-indirectly through an operation's own tests — see that class's own note above for why). 153 tests
+indirectly through an operation's own tests — see that class's own note above for why). 157 tests
 total (133 original, plus the 5 code-quality-pass regressions, the 6 JSON-pretty-printer-fix
-tests, the 1 YAML-formatting-fix test, the 5 CSS-colon/blank-line-fix tests, and the 3 LESS
-blank-line-generalization/comma-spacing-fix tests above — both fixes' own updated tests changed
-content but not the count), verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
+tests, the 1 YAML-formatting-fix test, the 5 CSS-colon/blank-line-fix tests, the 3 LESS
+blank-line-generalization/comma-spacing-fix tests, and the 4 JSON↔CSV-quoting/boolean-fix tests
+above — updated tests across these fixes changed content but not the count), verified via a real
+`mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module
 

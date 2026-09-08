@@ -919,6 +919,21 @@ section again. Full unabridged entry-by-entry history for all three lives in
   trailing comma from its closer). 3 new tests in `CurlyBraceFormatterTest`, plus a fortified
   `preservesAlreadyMultilineSelectorLists` and an updated `indentsNestedBlocksByDefault`. Test
   suite grew from 150 to 153.
+- **`dev-utils-service` — fifth follow-up, two real issues reported together against JSON↔CSV.**
+  `JsonToCsvOperation` silently quoted a value for containing nothing more than a plain space (e.g.
+  `JSON Formatter` → `"JSON Formatter"`) — found by decompiling Jackson's own `CsvEncoder`:
+  `CsvMapper`'s default ("loose") quoting check quotes any value containing *any* character below
+  ASCII 45, not just what RFC 4180 actually requires. Fixed by enabling
+  `CsvGenerator.Feature.STRICT_CHECK_FOR_QUOTING`, verified via a standalone harness confirming both
+  a plain-space value now stays unquoted and a value genuinely needing quoting still gets it.
+  Separately, `CsvToJsonOperation` gained one deliberately narrow exception to its own "every value
+  comes back as a string" design — a cell that's exactly `true`/`false` (case-insensitive) now
+  becomes a real JSON boolean, every other value (numbers included) still stays a string. **This
+  was a real design question, not an obvious bug fix** — confirmed the scope with the user before
+  implementing (booleans only vs. booleans + numbers vs. leave as-is), since the original "never
+  guess a type" rule has a concrete, still-valid reason (a ZIP code like `"007"` would lose its
+  leading zero as a number) that booleans alone don't share. 4 new tests total across both
+  operations. Test suite grew from 153 to 157.
 
 ## [0.0.3] — 2026-09-07
 

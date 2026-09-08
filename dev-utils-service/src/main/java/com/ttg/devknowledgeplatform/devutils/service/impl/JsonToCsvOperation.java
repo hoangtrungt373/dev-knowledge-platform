@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.csv.CsvGenerator;
 import com.fasterxml.jackson.dataformat.csv.CsvMapper;
 import com.fasterxml.jackson.dataformat.csv.CsvSchema;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
@@ -46,6 +47,17 @@ import lombok.RequiredArgsConstructor;
  * message; valid JSON that isn't shaped as an array of objects (or a lone object) — e.g. a bare
  * array of numbers, or a scalar at the root — reuses the same error code with a plain, specific
  * message, since it's still fundamentally "this JSON isn't valid input for this operation."
+ *
+ * <p><b>{@code CsvGenerator.Feature.STRICT_CHECK_FOR_QUOTING} is not optional — a real bug,
+ * reported directly against a real payload.</b> {@link CsvMapper}'s own default ("loose") quoting
+ * check quotes a cell value for containing *any* character below ASCII 45 (comma, the default
+ * separator, plus one) — not just what RFC 4180 actually requires (the separator, the quote
+ * character, or a line break) — so a value with nothing more than a plain space (e.g.
+ * {@code "JSON Formatter"}) was silently rendered {@code "\"JSON Formatter\""}. Enabling this
+ * feature switches to Jackson's own "strict" check, which quotes only when RFC 4180 requires it —
+ * verified via a standalone harness against the actual resolved {@code jackson-dataformat-csv}
+ * jar, including confirming a value that genuinely contains a quote/comma/newline is still
+ * correctly quoted (with the internal quote doubled, per RFC 4180) with this flag set.
  */
 @Component
 @RequiredArgsConstructor
@@ -73,7 +85,21 @@ public class JsonToCsvOperation implements DevUtilOperation {
         CsvSchema schema = schemaBuilder.build().withHeader();
 
         try {
-            return new CsvMapper().writer(schema).writeValueAsString(rowMaps);
+            // STRICT_CHECK_FOR_QUOTING is not optional here — a real bug, reported directly
+            // against a real payload, found by decompiling Jackson's own CsvEncoder rather than
+            // guessing: CsvGenerator's default ("loose") quoting check quotes any cell value
+            // containing *any* character below ASCII 45 (comma, the default separator, plus one) —
+            // not just the RFC 4180-required comma/quote/newline — which silently quotes a value
+            // for containing nothing more than a plain space (e.g. "JSON Formatter" -> "\"JSON
+            // Formatter\""), a leading punctuation character, etc. Enabling this feature switches
+            // to Jackson's own "strict" quoting check, which quotes only when RFC 4180 actually
+            // requires it (the value itself contains the separator, the quote character, or a line
+            // break) — verified via a standalone harness against the actual resolved
+            // jackson-dataformat-csv:2.19.2 jar, including a value with a literal quote/comma/
+            // newline still correctly quoted (with the internal quote doubled, per RFC 4180) once
+            // this flag is set.
+            CsvMapper csvMapper = CsvMapper.builder().enable(CsvGenerator.Feature.STRICT_CHECK_FOR_QUOTING).build();
+            return csvMapper.writer(schema).writeValueAsString(rowMaps);
         } catch (JsonProcessingException e) {
             // Only reachable if Jackson's own CSV writer rejects the schema/data shape we just
             // built ourselves — every cell value is already a plain String by this point, so this

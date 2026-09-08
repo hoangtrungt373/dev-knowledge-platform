@@ -68,4 +68,32 @@ class JsonToCsvOperationTest {
     void emptyArrayProducesEmptyOutput() {
         assertThat(operation.execute("[]")).isEmpty();
     }
+
+    @Test
+    void doesNotQuoteAPlainValueThatOnlyContainsASpace() {
+        // A real bug: Jackson's CsvMapper's own default ("loose") quoting check quotes a value
+        // for containing any character below ASCII 45 (comma + 1) — including a plain space, not
+        // just what RFC 4180 actually requires — so "JSON Formatter" used to render quoted with
+        // no genuine reason to be. See this operation's own Javadoc for the STRICT_CHECK_FOR_QUOTING
+        // fix.
+        String result = operation.execute(
+                "[{\"name\":\"JSON Formatter\",\"category\":\"Format\",\"free\":true},"
+                        + "{\"name\":\"JWT Debugger\",\"category\":\"Inspect\",\"free\":true}]"
+        );
+
+        assertThat(result).isEqualToNormalizingNewlines(
+                "name,category,free\nJSON Formatter,Format,true\nJWT Debugger,Inspect,true\n"
+        );
+    }
+
+    @Test
+    void stillQuotesAValueThatGenuinelyContainsACommaOrQuoteOrNewline() {
+        // The other half of the STRICT_CHECK_FOR_QUOTING fix — confirms switching off the
+        // overly-conservative default didn't also switch off RFC 4180's own real requirements.
+        String result = operation.execute("[{\"note\":\"has a \\\"quote\\\", a comma, and a\\nnewline\"}]");
+
+        assertThat(result).isEqualToNormalizingNewlines(
+                "note\n\"has a \"\"quote\"\", a comma, and a\nnewline\"\n"
+        );
+    }
 }

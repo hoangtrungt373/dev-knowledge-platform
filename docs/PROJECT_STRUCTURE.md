@@ -2379,11 +2379,19 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   objects (or a single object) → CSV, header = union of
 │       │                                   every row's own field names in first-seen order, a
 │       │                                   nested value is written as its own compact JSON string
-│       │                                   in the cell (CSV can't represent nesting losslessly)
+│       │                                   in the cell (CSV can't represent nesting losslessly).
+│       │                                   CsvMapper built with CsvGenerator.Feature
+│       │                                   .STRICT_CHECK_FOR_QUOTING — Jackson's own default
+│       │                                   quoting check is overly conservative (quotes a value
+│       │                                   for containing any char below ASCII 45, e.g. a plain
+│       │                                   space); this switches to RFC 4180-minimal quoting
 │       ├── CsvToJsonOperation.java      — execute(String input, boolean minify); first row = the
 │       │                                   header (Jackson CsvMapper); every cell comes back as a
-│       │                                   JSON string, deliberately — never infers a number/
-│       │                                   boolean type; minify controls pretty vs. compact JSON
+│       │                                   JSON string — deliberately never infers a number — with
+│       │                                   one narrow, direct-request exception: a cell that's
+│       │                                   exactly true/false (case-insensitive) becomes a real
+│       │                                   JSON boolean, via a new toCellValue helper; minify
+│       │                                   controls pretty vs. compact JSON
 │       ├── SqlFormatOperation.java      — execute(String input, boolean minify); delegates
 │       │                                   entirely to support/SqlFormatter
 │       ├── PhpToJsonOperation.java      — execute(String input, boolean minify); delegates the
