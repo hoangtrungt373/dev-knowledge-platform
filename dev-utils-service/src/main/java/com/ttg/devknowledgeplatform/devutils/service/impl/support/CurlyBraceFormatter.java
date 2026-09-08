@@ -34,14 +34,45 @@ package com.ttg.devknowledgeplatform.devutils.service.impl.support;
  * anyway) — the same "not a true single-line guarantee" caveat {@code HtmlBeautifyOperation}'s own
  * Javadoc already documents for jsoup's minify mode.
  *
- * <p>Also known and deliberate: {@code beautify} never normalizes the spacing around a {@code :}
- * (e.g. {@code color:red} is left exactly as written, not turned into {@code color: red}) — a
- * blanket "always insert a space after {@code :}" rule would corrupt a CSS/LESS/SCSS pseudo-class
- * selector like {@code :hover}/{@code ::before}, which relies on *no* space between the colon and
- * what follows; telling a declaration's colon apart from a selector's would need real grammar
- * awareness this formatter deliberately doesn't have. {@code minify} does the opposite for the same
- * reason it's safe there: {@code :} is one of this class's own {@link #SAFE_BOUNDARY_CHARS}, so any
- * existing space around it is stripped, same as around {@code ;}/{@code {}/{@code }}.
+ * <p><b>{@code beautify} now normalizes the spacing after a declaration's {@code :} (e.g.
+ * {@code color:red} becomes {@code color: red}), while leaving a selector's own {@code :}
+ * untouched (e.g. {@code .a:hover {}}/{@code &:hover {}} stay exactly as written) — a real bug,
+ * reported directly against a real CSS example, fixed once it became clear the two really are
+ * locally distinguishable without a full grammar parser after all.</b> The two contexts a bare
+ * colon can appear in are told apart with two bounded, still-lenient checks rather than one
+ * blanket rule:
+ * <ul>
+ *   <li>A running {@code parenDepth} counter (incremented/decremented alongside brace
+ *       {@code depth}, but for {@code (}/{@code )}) — a colon already inside an open paren (e.g.
+ *       a media feature, {@code @media (min-width: 768px)}, or an SCSS map key) is always treated
+ *       as declaration-style and gets a space, regardless of what follows.</li>
+ *   <li>Otherwise, {@link #selectorFollowsBeforeStatementEnd} looks forward from the colon (past
+ *       any intervening string literal, comment, or unquoted {@code url(...)} argument, atomic the
+ *       same way the main scan already treats them) for whichever of {@code {}/{@code ;}/{@code }}
+ *       comes first: a {@code {} means this colon started a nested rule's own selector (e.g.
+ *       {@code &:hover {}, no space); a {@code ;}/{@code }}/end of input means it ended a
+ *       declaration's property name (e.g. {@code color:red;}, gets a space).</li>
+ * </ul>
+ * <p>Both checks only ever look forward from the colon's own position to the next natural
+ * statement boundary — never across an entire rule or beyond — so this stays a bounded, local
+ * heuristic, not a step toward a real CSS grammar. <b>Known remaining imprecision, accepted rather
+ * than chased further:</b> a pseudo-class function argument that itself contained an unescaped
+ * {@code {}/{@code ;}/{@code }} (not legal in real CSS) would still be misread the same way a
+ * lookahead-based heuristic always could; this hasn't come up in practice. When a space is added,
+ * any existing run of spaces/tabs right after the colon is first collapsed away so the source's
+ * own spacing (already-spaced, doubly-spaced, or unspaced) always normalizes to exactly one space
+ * — never a doubled space. {@code minify} needed no matching change: {@code :} was already one of
+ * this class's own {@link #SAFE_BOUNDARY_CHARS}, so it already strips *all* surrounding whitespace
+ * unconditionally, which is correct for both contexts in minified output.
+ *
+ * <p><b>A blank line now separates two genuinely top-level rules, per the same real bug report
+ * above</b> — {@code .a {...}} immediately followed by {@code .a:hover {...}} used to render with
+ * no visual break between them. Whenever a {@code }} brings brace-nesting {@code depth} back down
+ * to {@code 0} (i.e., this really was a top-level rule closing, not a nested one inside another
+ * rule/at-rule), an extra blank line is appended before whatever comes next. A trailing blank line
+ * at the very end of input is harmless — it's trimmed away by this method's own final
+ * {@code .strip()} — so this is always safe to append unconditionally rather than needing to look
+ * ahead for "is there more content after this."
  *
  * <p>Also known and deliberate: this formatter never invents structure the source didn't already
  * signal via whitespace — e.g. a comma-separated selector list already split across lines
@@ -81,6 +112,11 @@ public final class CurlyBraceFormatter {
     public static String beautify(String input) {
         StringBuilder out = new StringBuilder();
         int depth = 0;
+        // Tracks nesting inside (...) — e.g. a media feature (min-width: 768px) or a pseudo-class
+        // function :not(.foo) — independently of brace depth. Consulted by the `:` handling below
+        // to decide whether a colon is declaration-style (inside parens, always spaced) before
+        // even trying the selector-vs-declaration lookahead. See this class's own Javadoc.
+        int parenDepth = 0;
         boolean atLineStart = true;
         int n = input.length();
         int i = 0;
@@ -129,6 +165,53 @@ public final class CurlyBraceFormatter {
                 i = end;
                 continue;
             }
+            if (c == '(') {
+                if (atLineStart) {
+                    appendIndent(out, depth);
+                    atLineStart = false;
+                }
+                out.append(c);
+                parenDepth++;
+                i++;
+                continue;
+            }
+            if (c == ')') {
+                if (atLineStart) {
+                    appendIndent(out, depth);
+                    atLineStart = false;
+                }
+                out.append(c);
+                parenDepth = Math.max(0, parenDepth - 1);
+                i++;
+                continue;
+            }
+            if (c == ':') {
+                if (atLineStart) {
+                    appendIndent(out, depth);
+                    atLineStart = false;
+                }
+                out.append(c);
+                i++;
+                // Declaration-style whenever already inside parens (a media feature, an SCSS map
+                // key, etc.) — otherwise, look forward for whichever of {/;/} comes first. See
+                // this class's own Javadoc for the full reasoning and known remaining imprecision.
+                if (parenDepth > 0 || !selectorFollowsBeforeStatementEnd(input, i)) {
+                    // Collapse any existing run of spaces/tabs right after the colon before
+                    // re-inserting our own single space, so "color:red", "color: red", and
+                    // "color:   red" all normalize to exactly one space rather than doubling up
+                    // on whatever the source already had. A newline is deliberately left alone —
+                    // it falls through to the ordinary whitespace handling below, which already
+                    // preserves it (and trims any trailing space this branch just added) via the
+                    // same ASI-safety-driven logic this class's Javadoc documents elsewhere.
+                    int j = i;
+                    while (j < n && (input.charAt(j) == ' ' || input.charAt(j) == '\t')) {
+                        j++;
+                    }
+                    i = j;
+                    out.append(' ');
+                }
+                continue;
+            }
             if (c == '{') {
                 if (atLineStart) {
                     appendIndent(out, depth);
@@ -150,6 +233,12 @@ public final class CurlyBraceFormatter {
                 }
                 appendIndent(out, depth);
                 out.append("}\n");
+                if (depth == 0) {
+                    // A blank line between top-level rules, per request — see this class's own
+                    // Javadoc. Safe to append unconditionally; a trailing one is trimmed by this
+                    // method's own final .strip() when this was the last rule in the input.
+                    out.append('\n');
+                }
                 atLineStart = true;
                 i++;
                 continue;
@@ -287,6 +376,48 @@ public final class CurlyBraceFormatter {
 
     private static boolean isQuoteAt(String s, int i) {
         return i < s.length() && (s.charAt(i) == '\'' || s.charAt(i) == '"' || s.charAt(i) == '`');
+    }
+
+    /** Bounded forward lookahead from just after a {@code :} (already confirmed not inside any
+     * open parens by the caller) deciding whether it opens a nested rule's own selector or ends a
+     * declaration's property name — see this class's own Javadoc for the full reasoning. Returns
+     * {@code true} when a {@code {} is the first of {@code {}/{@code ;}/{@code }} reached (a
+     * selector colon, e.g. {@code &:hover {}), {@code false} otherwise (a declaration colon, e.g.
+     * {@code color:red;}, or end of input reached with no clear terminator — the safer default,
+     * since it only ever adds a space that wasn't already there). Skips over string literals,
+     * comments, and an unquoted {@code url(...)} argument the same way the main scan does, so a
+     * {@code {}/{@code ;}/{@code }} inside any of those (e.g. {@code content: "a;b"}) never
+     * confuses the scan. */
+    private static boolean selectorFollowsBeforeStatementEnd(String s, int from) {
+        int n = s.length();
+        int i = from;
+        while (i < n) {
+            char c = s.charAt(i);
+            if (c == '{') {
+                return true;
+            }
+            if (c == ';' || c == '}') {
+                return false;
+            }
+            if (c == '\'' || c == '"' || c == '`') {
+                i = scanStringLiteral(s, i, c);
+                continue;
+            }
+            if (c == '/' && i + 1 < n && s.charAt(i + 1) == '*') {
+                i = indexOfOrEnd(s, "*/", i + 2);
+                continue;
+            }
+            if (c == '/' && i + 1 < n && s.charAt(i + 1) == '/') {
+                i = indexOfOrEnd(s, '\n', i + 2);
+                continue;
+            }
+            if ((c == 'u' || c == 'U') && isUrlFunctionStart(s, i) && !isQuoteAt(s, i + 4)) {
+                i = scanUrlFunctionArg(s, i);
+                continue;
+            }
+            i++;
+        }
+        return false;
     }
 
     /** Scans an unquoted {@code url(...)} argument starting at the {@code u} of {@code "url("}

@@ -880,6 +880,24 @@ section again. Full unabridged entry-by-entry history for all three lives in
   call, so the test can never again silently drift from the real bean's own configuration, plus a
   new test locking in the exact expected byte sequence. `YamlToJsonOperation` (the read direction)
   is unaffected. Test suite grew from 144 to 145.
+- **`dev-utils-service` — third follow-up, same bug shape, reported directly against a real CSS
+  example: `CurlyBraceFormatter`'s "beautify never spaces a `:`" behavior was previously a
+  deliberate, documented limitation (avoiding corruption of `:hover`/`&:hover`), but turned out to
+  be genuinely fixable once the reported example made clear the two contexts are locally
+  distinguishable.** Two bounded checks now tell a declaration's colon (`display:grid` → gets a
+  space) from a selector's (`.card:hover`/`&:hover` → stays untouched): a running `parenDepth`
+  counter (a colon already inside parens — a media feature, `@media (min-width: 768px)` — is
+  always declaration-style) and, otherwise, a forward lookahead (`selectorFollowsBeforeStatementEnd`)
+  for whichever of `{`/`;`/`}` comes first from the colon. Existing spacing around the colon is
+  first normalized to exactly one space rather than doubling up when a space is added. Separately,
+  a blank line is now inserted after a `}` that closes a rule back down to brace-nesting depth `0`
+  (a genuinely top-level rule) — two adjacent top-level rules used to render with no visual break.
+  Both fixes are `beautify`-only, shared uniformly by `CssOperation`/`LessOperation`/
+  `ScssOperation`/`JsOperation` (this formatter's own "one shared reformatter" design, not
+  special-cased per operation); `minify` needed no change, since `:` was already stripped of all
+  surrounding whitespace unconditionally there. 5 new tests in `CurlyBraceFormatterTest`, plus 2
+  existing tests and one end-to-end `DevUtilsServiceApplicationTests` assertion updated from an
+  unspaced-colon expectation to a spaced one. Test suite grew from 145 to 150.
 
 ## [0.0.3] — 2026-09-07
 

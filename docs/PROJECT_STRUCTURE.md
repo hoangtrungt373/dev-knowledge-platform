@@ -2408,8 +2408,12 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │           │                               single grammar exists across all four languages a Java
 │           │                               library could parse uniformly. Never throws. See its own
 │           │                               Javadoc for the full reasoning, including its JS/ASI
-│           │                               line-break-safety guarantee and why it never normalizes
-│           │                               spacing around a bare `:` (would corrupt `:hover`)
+│           │                               line-break-safety guarantee, a running parenDepth
+│           │                               counter + forward lookahead that spaces a declaration's
+│           │                               `:` (`color:red` → `color: red`) while leaving a
+│           │                               selector's own `:` untouched (`.a:hover`/`&:hover`
+│           │                               stay unspaced), and a blank line inserted between two
+│           │                               genuinely top-level rules
 │           ├── SqlFormatter.java        — beautify(String)/minify(String), static utility, shared
 │           │                               only by SqlFormatOperation today — a lenient, keyword-
 │           │                               driven pretty-printer (line breaks before recognized

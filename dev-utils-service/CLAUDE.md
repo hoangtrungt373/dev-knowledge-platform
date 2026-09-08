@@ -498,6 +498,45 @@ formatting style) before this fix — plus a new test locking in the exact expec
 against the reported input. `YamlToJsonOperation` (the read direction) is unaffected — YAML*parser*
 behavior, not generator/output behavior, and none of the 3 changed features are parser-side.
 
+**Third follow-up bug, same shape, reported directly against a real CSS example — `CurlyBraceFormatter`'s
+own "beautify never spaces a `:`" behavior (previously a deliberate, documented limitation, not a
+bug) genuinely was fixable after all, plus a real, separate gap in blank-line separation between
+rules.** The original limitation existed because a blanket "always space after `:`" rule would
+corrupt a pseudo-class selector like `.card:hover`/`&:hover`, and telling a declaration's colon
+apart from a selector's *seemed* to need real grammar awareness this deliberately-lenient formatter
+doesn't have — reconsidered once the reported example (`display:grid` wanting a space,
+`.card:hover` not) made clear the two are locally distinguishable with two bounded checks, not a
+full parser:
+- A running `parenDepth` counter (mirrors the existing brace `depth` counter, but for `(`/`)`) —
+  a colon already inside an open paren (a media feature, `@media (min-width: 768px)`; an SCSS map
+  key) is always declaration-style, regardless of what follows.
+- Otherwise, new `selectorFollowsBeforeStatementEnd` looks forward from the colon (skipping any
+  intervening string literal, comment, or unquoted `url(...)` argument, atomic the same way the
+  main scan already treats them) for whichever of `{`/`;`/`}` comes first — a `{` means a nested
+  rule's own selector (`&:hover {`, no space); `;`/`}`/end of input means a declaration
+  (`color:red;`, gets a space).
+
+When a space is added, any existing run of spaces/tabs right after the colon is collapsed first,
+so `color:red`/`color: red`/`color:   red` all normalize to exactly one space rather than doubling
+up — `minify` needed no matching change, since `:` was already one of its own `SAFE_BOUNDARY_CHARS`
+and already strips all surrounding whitespace unconditionally in both contexts. **Known remaining
+imprecision, accepted rather than chased further**: a pseudo-class function argument containing an
+unescaped `{`/`;`/`}` (not legal in real CSS) would still be misread — hasn't come up in practice,
+and chasing it further would mean real paren-aware tokenization, past what this lenient formatter
+is meant to be. **Separately, a blank line is now inserted after a `}` that closes a rule back down
+to brace-nesting depth `0`** (a genuinely top-level rule, not a nested one) — `.a {...}` immediately
+followed by `.a:hover {...}` used to render with no visual break between them; a trailing blank
+line at the very end of input is harmless, trimmed by this method's own final `.strip()`. Both
+fixes are `beautify`-only (shared by `CssOperation`/`LessOperation`/`ScssOperation`/`JsOperation`,
+so both apply uniformly across all four "curly-brace languages" this formatter serves, per its own
+"one shared reformatter, not four near-identical copies" design — not special-cased per operation).
+5 new tests in `CurlyBraceFormatterTest` (the exact reported example, a nested-selector case, a
+media-feature-colon case, an existing-spacing-normalization case, and a plain blank-line case),
+plus 2 existing tests (`indentsNestedBlocksByDefault`,
+`beautifyDoesNotTreatDoubleSlashInsideUnquotedUrlAsALineComment`) and one end-to-end
+`DevUtilsServiceApplicationTests` assertion updated from an unspaced-colon expectation to a spaced
+one.
+
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
 `HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
@@ -531,9 +570,10 @@ latter caught by `@Size` before ever reaching an operation) and confirms malform
 return `400` with `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005` respectively through the shared
 `GlobalExceptionHandler`. Plus `service/impl/support/ConventionalJsonPrettyPrinterTest` (the one
 support class in this module with its own dedicated test file rather than only being exercised
-indirectly through an operation's own tests — see that class's own note above for why). 145 tests
+indirectly through an operation's own tests — see that class's own note above for why). 150 tests
 total (133 original, plus the 5 code-quality-pass regressions, the 6 JSON-pretty-printer-fix
-tests, and the 1 YAML-formatting-fix test above), verified via a real
+tests, the 1 YAML-formatting-fix test, and the 5 new CSS-colon/blank-line-fix tests above — that
+fix's own 3 updated tests changed content but not the count), verified via a real
 `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module

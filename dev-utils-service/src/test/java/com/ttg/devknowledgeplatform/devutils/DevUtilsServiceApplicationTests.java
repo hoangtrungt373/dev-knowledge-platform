@@ -74,7 +74,7 @@ class DevUtilsServiceApplicationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"input\":\".a{color:red;}\",\"minify\":false}"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("color:red")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("color: red")));
     }
 
     @Test
