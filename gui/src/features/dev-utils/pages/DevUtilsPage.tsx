@@ -224,7 +224,7 @@ export default function DevUtilsPage(): JSX.Element {
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
-        Developer Utilities
+        DevUtils
       </Typography>
 
       <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 3 }}>

@@ -231,7 +231,7 @@ export default function DevUtilToolPanel({
   }, [output, downloadFileName, showSuccess]);
 
   return (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
       <Paper variant="outlined" sx={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column' }}>
         <Stack
           direction="row"
@@ -271,7 +271,8 @@ export default function DevUtilToolPanel({
           <TextField
             placeholder={inputPlaceholder}
             multiline
-            rows={16}
+            minRows={20}
+            maxRows={40}
             fullWidth
             value={input}
             onChange={e => onInputChange(e.target.value)}
@@ -347,7 +348,7 @@ export default function DevUtilToolPanel({
         )}
 
         {error !== null ? (
-          <Box sx={{ p: 2, height: 420, overflow: 'auto', bgcolor: OUTPUT_BG_LIGHT }}>
+          <Box sx={{ p: 2, maxHeight: 420, overflow: 'auto', bgcolor: OUTPUT_BG_LIGHT }}>
             <Stack
               direction="row"
               spacing={1.5}
@@ -399,13 +400,13 @@ export default function DevUtilToolPanel({
               language={outputLanguage}
               style={vscDarkPlus}
               showLineNumbers
-              lineNumberStyle={{ minWidth: '2.5em', paddingRight: '1em', userSelect: 'none' }}
+              lineNumberStyle={{ minWidth: '2.5em', paddingRight: '0.25em', userSelect: 'none', marginRight: '16px' }}
               customStyle={{
                 margin: 0,
                 borderRadius: 0,
                 fontSize: '0.8rem',
                 padding: '16px',
-                height: 420,
+                maxHeight: 1420,
                 overflow: 'auto',
                 background: OUTPUT_BG_DARK,
               }}
@@ -418,7 +419,7 @@ export default function DevUtilToolPanel({
             spacing={1.5}
             alignItems="center"
             justifyContent="center"
-            sx={{ p: 2, height: 420, bgcolor: OUTPUT_BG_LIGHT }}
+            sx={{ p: 2, minHeight: 200, maxHeight: 420, bgcolor: OUTPUT_BG_LIGHT }}
           >
             <DownloadIcon sx={{ fontSize: 40, color: 'grey.400' }} />
             <Typography variant="body2" sx={{ color: 'grey.600' }}>
