@@ -56,4 +56,21 @@ export const devUtilsApi = {
   beautifyXml(input: string, minify: boolean, showError?: ShowError): Promise<DevUtilsResponse> {
     return httpClient.post('/api/v1/dev-utils/xml/beautify', { input, minify }, showError);
   },
+
+  // JSON<->CSV + SQL Formatter, added alongside dev-utils-service's own JsonToCsvOperation/
+  // CsvToJsonOperation/SqlFormatOperation. jsonToCsv has no `minify` field, same reasoning as
+  // jsonToYaml above (CSV has no distinct "compact" form to toggle either).
+  jsonToCsv(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post('/api/v1/dev-utils/json-to-csv', { input }, showError);
+  },
+
+  // The other operation (besides yamlToJson/beautifyXml) with a real backend invalid-input error
+  // path — dev-utils-service's CsvToJsonOperation is backed by a genuine Jackson CsvMapper parser.
+  csvToJson(input: string, minify: boolean, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post('/api/v1/dev-utils/csv-to-json', { input, minify }, showError);
+  },
+
+  formatSql(input: string, minify: boolean, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post('/api/v1/dev-utils/sql/format', { input, minify }, showError);
+  },
 };

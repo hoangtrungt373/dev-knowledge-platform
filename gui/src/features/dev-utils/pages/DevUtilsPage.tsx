@@ -25,6 +25,8 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import ClearIcon from '@mui/icons-material/Clear';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import TableChartIcon from '@mui/icons-material/TableChart';
+import StorageIcon from '@mui/icons-material/Storage';
 import {devUtilsApi} from '../api/devUtilsApi';
 import {DevUtilsResponse} from '../types';
 import {DevUtilError} from '../utils/errorFormatting';
@@ -40,7 +42,10 @@ type TabKey =
   | 'scss-beautify'
   | 'js-beautify'
   | 'erb-beautify'
-  | 'xml-beautify';
+  | 'xml-beautify'
+  | 'json-to-csv'
+  | 'csv-to-json'
+  | 'sql-format';
 
 const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -53,6 +58,9 @@ const TAB_KEYS: TabKey[] = [
   'js-beautify',
   'erb-beautify',
   'xml-beautify',
+  'json-to-csv',
+  'csv-to-json',
+  'sql-format',
 ];
 const DEFAULT_TAB: TabKey = 'json-format';
 
@@ -85,18 +93,20 @@ interface OperationConfig {
    * history). A realistic, mixed-type example, not a minimal one, since it now has to do both
    * jobs at once. */
   inputPlaceholder: string;
-  /** What format the *input* box holds — 'json' for json-format/json-to-yaml, 'yaml' for
-   * yaml-to-json, 'html' for html-beautify, and one literal per new operation below. Drives
+  /** What format the *input* box holds — 'json' for json-format/json-to-yaml/json-to-csv (all
+   * three genuinely take JSON input, including json-to-csv, whose backend operation reuses
+   * INVALID_JSON for its own failures — see devUtilsApi.jsonToCsv's own comment), 'yaml' for
+   * yaml-to-json, 'html' for html-beautify, and one literal per other operation. Drives
    * `errorFormatting.ts#buildDevUtilError`'s choice between a client-side `JSON.parse`
    * re-derivation (for 'json' only) and a best-effort cleanup of the backend's own message
    * (everything else) — in practice that fallback only ever actually renders anything for 'yaml'/
-   * 'xml', the two operations with a real backend invalid-input error path; 'html'/'css'/'less'/
-   * 'scss'/'js'/'erb' can never fail a submit at all (see each one's own backend Javadoc), so this
-   * field is otherwise inert for them, kept only so every operation still declares an honest,
-   * specific value rather than reusing an unrelated one. */
-  inputFormat: 'json' | 'yaml' | 'html' | 'css' | 'less' | 'scss' | 'js' | 'erb' | 'xml';
+   * 'xml'/'csv', the three operations with a real backend invalid-input error path; 'html'/'css'/
+   * 'less'/'scss'/'js'/'erb'/'sql' can never fail a submit at all (see each one's own backend
+   * Javadoc), so this field is otherwise inert for them, kept only so every operation still
+   * declares an honest, specific value rather than reusing an unrelated one. */
+  inputFormat: 'json' | 'yaml' | 'html' | 'css' | 'less' | 'scss' | 'js' | 'erb' | 'xml' | 'csv' | 'sql';
   /** Prism language for the output syntax highlighter: 'json' | 'yaml' | 'markup' (HTML) | 'css' |
-   * 'less' | 'scss' | 'javascript' | 'erb' | 'xml'. */
+   * 'less' | 'scss' | 'javascript' | 'erb' | 'xml' | 'csv' | 'sql'. */
   outputLanguage: string;
   supportsMinify: boolean;
   /** Filename offered by the Output panel's Download button. */
@@ -334,6 +344,51 @@ export default function DevUtilsPage(): JSX.Element {
       supportsMinify: true,
       downloadFileName: 'beautified.xml',
       onSubmit: (input, minify) => devUtilsApi.beautifyXml(input, minify),
+    },
+    {
+      key: 'json-to-csv',
+      category: 'Converters',
+      label: 'JSON to CSV',
+      description: 'Convert a JSON array of objects into CSV',
+      icon: <TableChartIcon fontSize="small" />,
+      actionLabel: 'Convert',
+      inputPlaceholder:
+          '[{"tool":"JSON","stars":128},{"tool":"Base64","stars":64},{"tool":"JWT","stars":32}]',
+      inputFormat: 'json',
+      outputLanguage: 'csv',
+      // No minify option here — CSV has no distinct "compact" form, same reasoning JSON to YAML
+      // has none (see devUtilsApi.jsonToCsv's own comment).
+      supportsMinify: false,
+      downloadFileName: 'converted.csv',
+      onSubmit: input => devUtilsApi.jsonToCsv(input),
+    },
+    {
+      key: 'csv-to-json',
+      category: 'Converters',
+      label: 'CSV to JSON',
+      description: 'Convert CSV (first row as header) into a JSON array of objects',
+      icon: <TableChartIcon fontSize="small" />,
+      actionLabel: 'Convert',
+      inputPlaceholder: 'tool,stars\nJSON,128\nBase64,64\nJWT,32\n',
+      inputFormat: 'csv',
+      outputLanguage: 'json',
+      supportsMinify: true,
+      downloadFileName: 'converted.json',
+      onSubmit: (input, minify) => devUtilsApi.csvToJson(input, minify),
+    },
+    {
+      key: 'sql-format',
+      category: 'Formatters',
+      label: 'SQL Format/Minify',
+      description: 'Format or minify a SQL query',
+      icon: <StorageIcon fontSize="small" />,
+      actionLabel: 'Format',
+      inputPlaceholder: 'select tool, stars from tools where stars > 50 order by stars desc',
+      inputFormat: 'sql',
+      outputLanguage: 'sql',
+      supportsMinify: true,
+      downloadFileName: 'formatted.sql',
+      onSubmit: (input, minify) => devUtilsApi.formatSql(input, minify),
     }
   ];
 

@@ -659,8 +659,40 @@ section again. Full unabridged entry-by-entry history for all three lives in
         each), plus 4 new `DevUtilsServiceApplicationTests` cases (reachability for all 3 new
         endpoints, plus malformed CSV returning `400` with `DEVUTILS_004`). 95 tests total in this
         module now, verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
-      - Backend-only pass, per request scope — the `gui`'s `/dev-utils` page was not wired up to
-        these 3 new endpoints in this pass.
+      - Backend-only pass, per request scope, at the time — the `gui`'s `/dev-utils` page wasn't
+        wired up to these 3 new endpoints yet. **Superseded by the follow-up directly below.**
+    - **Follow-up: `gui`'s `/dev-utils` page wired up to all 3 new endpoints, per request.**
+      `api/devUtilsApi.ts` gained `jsonToCsv` (no `minify` field, same reasoning `jsonToYaml`
+      already documents — CSV has no distinct "compact" form), `csvToJson`, `formatSql` — all thin
+      pass-throughs identical in shape to the existing methods. `DevUtilsPage.tsx`'s `TabKey`/
+      `TAB_KEYS` gained `json-to-csv`/`csv-to-json`/`sql-format`, and its `operations` array gained
+      one `OperationConfig` each — `json-to-csv`/`csv-to-json` inserted into the existing
+      `'Converters'` group (right after `json-to-yaml`, alongside `yaml-to-json`), `sql-format`
+      appended to the `'Formatters'` group (right after `xml-beautify`) — grouped by the same
+      "which backend concern does this front" convention every other operation here already
+      follows. Reused the sidebar's existing consolidated icons rather than adding new ones
+      (`SwapHorizIcon` for both CSV converters, matching the existing YAML/JSON converters;
+      `AutoFixHighIcon` for `sql-format`, matching every other Formatters-group entry) — the
+      per-operation icon variety from the original 6-operation pass had since been deliberately
+      simplified down to a handful of reused icons.
+      - **`OperationConfig.inputFormat`/`DevUtilToolPanelProps.inputFormat` widened** to add
+        `'csv' | 'sql'`. `json-to-csv` itself stays `'json'`, not a new value — its backend
+        operation reuses `INVALID_JSON` for its own failures (see `dev-utils-service/CLAUDE.md`),
+        so it correctly takes the same client-side `JSON.parse` fast path `json-format`/
+        `json-to-yaml` already get. `csv-to-json` is the third operation (after `yaml`/`xml`) with
+        a real backend invalid-input error path (`CsvToJsonOperation`'s own Jackson `CsvMapper`),
+        so it takes the same `simplifyBackendMessage` fallback those two already use — no
+        client-side CSV parser exists to give it a faster path the way JSON has one.
+        `sql-format`'s backend operation never throws at all (`SqlFormatter` is lenient, same as
+        `CurlyBraceFormatter`), so `'sql'` is inert the same way `'css'`/`'less'`/etc. already are.
+        `errorFormatting.ts`'s own doc comment updated to describe all three accurately.
+      - **`DevUtilToolPanel.tsx`'s `OUTPUT_LANGUAGE_LABELS`/`OUTPUT_LANGUAGE_COLORS` gained `csv`/
+        `sql` entries** (green for CSV, evoking a spreadsheet; amber for SQL) — both Prism/refractor
+        grammars confirmed present in the installed bundle first, same verification step the
+        earlier 6-operation pass already established.
+      - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+        sandbox, so the actual on-screen result (all 3 new sidebar entries, their placeholders,
+        submit/copy/download, and the info-row badge colors) is unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

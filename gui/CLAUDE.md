@@ -3027,6 +3027,39 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
       sandbox, so the actual on-screen result (all 6 new sidebar entries, their placeholders,
       submit/copy/download, and the info-row badge colors) is unverified in a real browser.
+  - **Follow-up: wired up to `dev-utils-service`'s 3 more operations (JSON↔CSV conversion, SQL
+    Formatter), per request — the GUI half of that backend pass documented in
+    `dev-utils-service/CLAUDE.md`.** `api/devUtilsApi.ts` gained `jsonToCsv` (no `minify` field,
+    same reasoning `jsonToYaml` already documents — CSV has no distinct "compact" form to toggle),
+    `csvToJson`, `formatSql` — all thin pass-throughs, identical in shape to the existing methods.
+    `DevUtilsPage.tsx`'s `TabKey`/`TAB_KEYS` gained `json-to-csv`/`csv-to-json`/`sql-format`, and
+    its `operations` array gained one `OperationConfig` each: `json-to-csv`/`csv-to-json` inserted
+    into the existing `'Converters'` group (right after `json-to-yaml`), `sql-format` appended to
+    the `'Formatters'` group (right after `xml-beautify`) — grouped by the same "which backend
+    concern does this front" convention every other operation already follows. Reused the
+    sidebar's existing consolidated icons rather than adding new ones (`SwapHorizIcon` for both
+    CSV converters, `AutoFixHighIcon` for `sql-format`) — the per-operation icon variety from the
+    original 6-operation pass had since been deliberately simplified down to a handful of reused
+    icons in a later request; this follow-up matches that simplified convention rather than
+    reintroducing per-operation icons.
+    - **`OperationConfig.inputFormat`/`DevUtilToolPanelProps.inputFormat` widened** to add
+      `'csv' | 'sql'`. `json-to-csv` itself stays `'json'`, not a new value — its backend operation
+      reuses `INVALID_JSON` for its own failures (see `dev-utils-service/CLAUDE.md`), so it
+      correctly takes the same client-side `JSON.parse` fast path `json-format`/`json-to-yaml`
+      already get. `csv-to-json` is the third operation (after `yaml`/`xml`) with a real backend
+      invalid-input error path (`CsvToJsonOperation`'s own Jackson `CsvMapper`), so it takes the
+      same `simplifyBackendMessage` fallback those two already use — no client-side CSV parser
+      exists to give it a faster path the way JSON has one. `sql-format`'s backend operation never
+      throws at all (`SqlFormatter` is lenient, same as `CurlyBraceFormatter`), so `'sql'` is inert
+      the same way `'css'`/`'less'`/etc. already are. `errorFormatting.ts`'s own doc comment
+      updated to describe all three accurately.
+    - **`DevUtilToolPanel.tsx`'s `OUTPUT_LANGUAGE_LABELS`/`OUTPUT_LANGUAGE_COLORS` gained `csv`/
+      `sql` entries** (green for CSV, evoking a spreadsheet; amber for SQL) — both Prism/refractor
+      grammars confirmed present in the installed bundle first, same verification step the earlier
+      6-operation pass already established.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual on-screen result (all 3 new sidebar entries, their placeholders,
+      submit/copy/download, and the info-row badge colors) is unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's
