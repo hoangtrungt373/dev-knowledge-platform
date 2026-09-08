@@ -5,8 +5,9 @@ Module-local guidance for `dev-utils-service`. Read alongside the root `CLAUDE.m
 ## What lives here
 
 A stateless developer-utility API: JSON format/validate, YAML↔JSON conversion, HTML/CSS/LESS/SCSS/
-JS/ERB beautify+minify, XML validate/beautify+minify, JSON↔CSV conversion, SQL format+minify.
-Package root: `com.ttg.devknowledgeplatform.devutils.*`.
+JS/ERB beautify+minify, XML validate/beautify+minify, JSON↔CSV conversion, SQL format+minify,
+PHP↔JSON conversion, String Case Converter. Package root:
+`com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike
 `ecommerce-service`/`identity-service`/`task-service`/`social-service`/`content-service`/
@@ -60,19 +61,23 @@ caller.** Every operation is a pure text-in/text-out transform:
   bean) and `TraceContextFilter` (reactor-wide tracing/access logging). No Keycloak-related
   import, no `CurrentUserIdArgumentResolver`.
 - `security/SecurityConfig` — see above.
-- `exception/DevUtilsErrorCode` — `INVALID_JSON`/`INVALID_YAML`/`INVALID_XML`/`INVALID_CSV`. No
-  `INVALID_HTML`/`INVALID_CSS`/`INVALID_LESS`/`INVALID_SCSS`/`INVALID_JS`/`INVALID_SQL` — jsoup's
-  parser (HTML, and `ErbOperation`'s own jsoup-based approach) is deliberately lenient and never
-  throws on malformed markup, `CssOperation`/`LessOperation`/`ScssOperation`/`JsOperation` all
-  delegate to the equally lenient `service/impl/support/CurlyBraceFormatter` (see below), and
-  `SqlFormatOperation` delegates to the similarly lenient `service/impl/support/SqlFormatter` (see
-  below) — none of these six have an invalid-input failure path to name. `INVALID_XML`/
-  `INVALID_CSV` are the exceptions among the newer operations: `XmlOperation`/`CsvToJsonOperation`
-  are backed by real parsers (JAXP, Jackson's `CsvMapper`, respectively), the same "real parse,
-  real invalid-input error" shape `INVALID_JSON`/`INVALID_YAML` already establish.
-  `JsonToCsvOperation` reuses `INVALID_JSON` rather than getting its own code — its input is JSON
-  either way, so a failure there (a genuine syntax error, or valid JSON in a shape that can't
-  become rows) is still honestly "Invalid JSON."
+- `exception/DevUtilsErrorCode` — `INVALID_JSON`/`INVALID_YAML`/`INVALID_XML`/`INVALID_CSV`/
+  `INVALID_PHP`. No `INVALID_HTML`/`INVALID_CSS`/`INVALID_LESS`/`INVALID_SCSS`/`INVALID_JS`/
+  `INVALID_SQL` — jsoup's parser (HTML, and `ErbOperation`'s own jsoup-based approach) is
+  deliberately lenient and never throws on malformed markup, `CssOperation`/`LessOperation`/
+  `ScssOperation`/`JsOperation` all delegate to the equally lenient `service/impl/support/
+  CurlyBraceFormatter` (see below), and `SqlFormatOperation` delegates to the similarly lenient
+  `service/impl/support/SqlFormatter` (see below) — none of these six have an invalid-input
+  failure path to name. `StringCaseOperation` is the same story for a different reason: it's a
+  pure text transform (split into words, re-case/re-join) with no notion of "invalid" input at
+  all. `INVALID_XML`/`INVALID_CSV`/`INVALID_PHP` are the exceptions among the newer operations:
+  `XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation` are backed by real parsers (JAXP,
+  Jackson's `CsvMapper`, and this module's own `service/impl/support/PhpArrayParser`,
+  respectively), the same "real parse, real invalid-input error" shape `INVALID_JSON`/
+  `INVALID_YAML` already establish. `JsonToCsvOperation`/`JsonToPhpOperation` both reuse
+  `INVALID_JSON` rather than getting their own code — their input is JSON either way, so a
+  failure there (a genuine syntax error, or — for `JsonToCsvOperation` only — valid JSON in a
+  shape that can't become rows) is still honestly "Invalid JSON."
   - **Fixed, per direct follow-up request, a bug originally found while investigating a `gui`
     error-message complaint (see that complaint's own history below for the client-side half of
     this story).** `INVALID_JSON`/`INVALID_YAML`'s own `"Invalid JSON: {0}"`/`"Invalid YAML: {0}"`
@@ -303,6 +308,48 @@ caller.** Every operation is a pure text-in/text-out transform:
     line break applies, never what to render. (2) `minify` never actually stripped comment tokens
     at all (they were tokenized correctly but never filtered out during rendering) — fixed by
     skipping any comment-shaped token when rendering in single-line mode.
+- **3 more operations (`PhpToJsonOperation`/`JsonToPhpOperation`/`StringCaseOperation`), backing
+  `POST /api/v1/dev-utils/{php-to-json,json-to-php,string-case/convert}`.**
+  - **`PhpToJsonOperation`/`JsonToPhpOperation` are a real bidirectional PHP↔JSON converter,
+    backed by two new, self-contained utilities — `service/impl/support/PhpArrayParser`
+    (PHP→value tree) and `service/impl/support/PhpArrayWriter`** (value tree→PHP), no third-party
+    PHP parsing library. **`PhpArrayParser` is a real, validating recursive-descent parser** (the
+    same "real parse, real invalid-input error" shape `XmlOperation`/`CsvToJsonOperation` already
+    establish), not a lenient reformatter — it has to fully understand the value structure to
+    convert it. Supports both bracket (`[...]`) and legacy `array(...)` syntax; single-quoted
+    strings honor only `\'`/`\\` as real escapes (PHP's own rule), double-quoted strings honor
+    the common `\n`/`\t`/`\r`/`\"`/`\\`/`\$` sequences (deliberately **not** evaluating variable
+    interpolation like `"$name"` — this is a literal text converter, not a PHP interpreter);
+    `//`/`#` line comments and block comments are skipped anywhere between tokens. **Tolerates a
+    full PHP snippet, not just the bare array literal** — an optional leading `<?php` tag, an
+    optional `return` keyword, and an optional trailing `;`/`?>` are all skipped if present, so
+    `JsonToPhpOperation`'s own output can be fed straight back into the parser unmodified
+    (verified by a real round-trip test). An array with no explicit `=>` keys, or whose explicit
+    keys form the exact sequence `0, 1, 2, ...` (PHP's own auto-increment keys, e.g. from a
+    `var_export()` dump), becomes a JSON array; any other array becomes a JSON object with every
+    key stringified. New `DevUtilsErrorCode.INVALID_PHP` (`DEVUTILS_005`) for
+    `PhpToJsonOperation`'s own real failure path (`PhpArrayParser.PhpParseException`'s message
+    already carries a `"(line N, column M)"` location, the same convention
+    `ParsingExceptionMessages`/`XmlOperation` already establish); `JsonToPhpOperation` reuses
+    `INVALID_JSON` instead — its input is JSON either way, and any valid JSON value can always
+    become a PHP array/scalar, so the only possible failure is a genuine JSON syntax error.
+    `JsonToPhpOperation`'s minify mode collapses to one line with no space around `=>`/after a
+    comma, the same "minimal necessary whitespace" style `JsonFormatOperation`'s own compact
+    writer already uses.
+  - **`StringCaseOperation` is the one operation in this batch whose output is genuinely richer
+    than a single string** — a new `dto/StringCaseResponse` (camelCase/pascalCase/snakeCase/
+    kebabCase/constantCase/titleCase/sentenceCase, all at once), exactly the scenario
+    `DevUtilResponse`'s own Javadoc anticipated for a future operation like this. Reuses
+    `TextRequest` (no minify concept — there's no "compact form" of a case conversion). Delegates
+    to a new `service/impl/support/StringCaseConverter` — splits input into words using the
+    standard two-part heuristic most case-conversion tools use (insert a boundary between a
+    lowercase-or-digit and a following uppercase letter, and between the last letter of an
+    uppercase run and a following capitalized word, e.g. `XMLHttpRequest` → `XML`, `Http`,
+    `Request`), so both delimiter-separated input (spaces/underscores/hyphens/punctuation, all
+    normalized to one boundary) and already-cased input (camelCase/snake_case/etc.) split
+    correctly — verified by a round-trip test confirming every case variant re-splits back into
+    the same words. A pure text transform with no notion of "invalid" input — never throws, no
+    matching `DevUtilsErrorCode`.
 - `dto/DevUtilsLimits` — one shared `MAX_INPUT_LENGTH` constant (`100_000` characters, a
   deliberately generous but finite first-version bound), referenced by both request DTOs' `@Size`
   constraint below. This is the one fully public, unauthenticated endpoint in the reactor — an
@@ -310,51 +357,60 @@ caller.** Every operation is a pure text-in/text-out transform:
   before any other check runs) — so every operation shares one cap rather than each endpoint
   guessing its own number; split it per operation later if a real use case needs a different bound
   for one of them.
-- `dto/{MinifiableTextRequest,TextRequest,DevUtilResponse}` — request DTOs are shared **only where
-  the shape genuinely matches**: `MinifiableTextRequest` (`input`/`minify`) backs every operation
-  with a real minify concept (`json/format`/`yaml-to-json`/`html/beautify`/`css/beautify`/
-  `less/beautify`/`scss/beautify`/`js/beautify`/`erb/beautify`/`xml/beautify`/`csv-to-json`/
-  `sql/format`); `TextRequest` (`input` only) backs `json-to-yaml`/`json-to-csv`, neither of which
-  has a minify concept at all (YAML/CSV both lack a distinct "compact" form to toggle) — not the
-  same type with an ignored field. Both `input` fields carry
+- `dto/{MinifiableTextRequest,TextRequest,DevUtilResponse,StringCaseResponse}` — request/response
+  DTOs are shared **only where the shape genuinely matches**: `MinifiableTextRequest`
+  (`input`/`minify`) backs every operation with a real minify concept (`json/format`/
+  `yaml-to-json`/`html/beautify`/`css/beautify`/`less/beautify`/`scss/beautify`/`js/beautify`/
+  `erb/beautify`/`xml/beautify`/`csv-to-json`/`sql/format`/`php-to-json`/`json-to-php`);
+  `TextRequest` (`input` only) backs `json-to-yaml`/`json-to-csv`/`string-case/convert`, none of
+  which has a minify concept at all (YAML/CSV/a case conversion all lack a distinct "compact" form
+  to toggle) — not the same type with an ignored field. Every `input` field carries
   `@NotBlank @Size(max = DevUtilsLimits.MAX_INPUT_LENGTH)`. `DevUtilResponse` (`output`) stays
-  shared across every operation today, but a future operation with a genuinely richer output (e.g.
-  a Number Base Converter's several representations) should get its own response type rather than
-  being forced into this one. See `DevUtilOperation`'s own Javadoc for the full reasoning against
-  one shared request/response pair.
+  shared across every single-string-output operation, but `StringCaseResponse` is the first
+  operation whose output is genuinely richer (7 named case variants at once) to actually need its
+  own response type instead — exactly the scenario `DevUtilResponse`'s own Javadoc anticipated. See
+  `DevUtilOperation`'s own Javadoc for the full reasoning against one shared request/response pair.
 - `api/DevUtilsApi` (+ `api/impl/DevUtilsController`) — `POST /api/v1/dev-utils/json/format`,
   `/yaml-to-json`, `/json-to-yaml`, `/html/beautify`, `/css/beautify`, `/less/beautify`,
   `/scss/beautify`, `/js/beautify`, `/erb/beautify`, `/xml/beautify`, `/json-to-csv`,
-  `/csv-to-json`, `/sql/format`. The controller injects each operation by its concrete type rather
-  than dispatching through an enum-keyed registry — with one fixed REST endpoint per operation,
-  there's no runtime "which operation" decision left to make (see `DevUtilOperation`'s own
-  Javadoc).
+  `/csv-to-json`, `/sql/format`, `/php-to-json`, `/json-to-php`, `/string-case/convert`. The
+  controller injects each operation by its concrete type rather than dispatching through an
+  enum-keyed registry — with one fixed REST endpoint per operation, there's no runtime "which
+  operation" decision left to make (see `DevUtilOperation`'s own Javadoc).
 
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
 `HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
 `JsOperationTest`, `ErbOperationTest`, `XmlOperationTest`, `JsonToCsvOperationTest`,
-`CsvToJsonOperationTest`, `SqlFormatOperationTest`), plus `service/impl/support/
+`CsvToJsonOperationTest`, `SqlFormatOperationTest`, `PhpToJsonOperationTest`,
+`JsonToPhpOperationTest`, `StringCaseOperationTest`), plus `service/impl/support/
 CurlyBraceFormatterTest` (the shared CSS/LESS/SCSS/JS reformatter — brace nesting, already-
 multiline selector lists, comment/string-literal protection, the JS ASI-safety guarantee,
-never-throws-on-unterminated-input) and `service/impl/support/SqlFormatterTest` (clause-keyword
-line breaks, `AND`/`OR` extra indent, subquery paren-depth indent, multi-word `JOIN`/`GROUP BY`
-phrase recognition, string-literal protection including keyword-like content inside a string,
-never splitting on a bare comma, minify's comment-stripping/single-line collapse, never-throws),
-no Mockito anywhere — each constructs real `ObjectMapper`/`YAMLMapper`/`CsvMapper` instances
-rather than mocking Jackson, since the whole point is verifying real parse/serialize behavior
-(pretty vs. minified output, malformed-input rejection, round-trip structural equality via
-`readTree`, jsoup's lenient-parsing/indent behavior, and — for `XmlOperation`/`CsvToJsonOperation`
-— real JAXP/CSV parsing and rejection behavior). Plus `DevUtilsServiceApplicationTests`
-(`@SpringBootTest(webEnvironment = RANDOM_PORT)` + `@AutoConfigureMockMvc`) — boots the real
-Spring context and hits all thirteen endpoints with **no** `Authorization` header through the real
-filter chain, confirming end to end (not just by static reasoning) that the app actually starts
-and every endpoint is genuinely public. This is exactly the test that caught the
-`DataSourceAutoConfiguration` boot failure above, and it also covers the `MAX_INPUT_LENGTH`
-boundary (accepted at exactly the cap, rejected one over it — the latter caught by `@Size` before
-ever reaching an operation) and confirms malformed XML/CSV both return `400` with
-`DEVUTILS_003`/`DEVUTILS_004` respectively through the shared `GlobalExceptionHandler`. 95 tests
-total, verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
+never-throws-on-unterminated-input), `service/impl/support/SqlFormatterTest` (clause-keyword line
+breaks, `AND`/`OR` extra indent, subquery paren-depth indent, multi-word `JOIN`/`GROUP BY` phrase
+recognition, string-literal protection including keyword-like content inside a string, never
+splitting on a bare comma, minify's comment-stripping/single-line collapse, never-throws),
+`service/impl/support/PhpArrayParserTest` (associative vs. list detection including the
+sequential-explicit-keys case, legacy `array(...)` syntax, single- vs. double-quoted escape rules,
+comment skipping, trailing commas, `PhpParseException` with a real line/column on malformed
+input), `service/impl/support/PhpArrayWriterTest` (pretty vs. minified output, string escaping, a
+real round-trip through `PhpArrayParser`), and `service/impl/support/StringCaseConverterTest`
+(every case variant, camelCase/acronym/delimiter word-splitting, a round-trip confirming every
+variant re-splits into the same words), no Mockito anywhere — each constructs real `ObjectMapper`/
+`YAMLMapper`/`CsvMapper` instances rather than mocking Jackson, since the whole point is verifying
+real parse/serialize behavior (pretty vs. minified output, malformed-input rejection, round-trip
+structural equality via `readTree`, jsoup's lenient-parsing/indent behavior, and — for
+`XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation` — real JAXP/CSV/PHP parsing and rejection
+behavior). Plus `DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)`
++ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all sixteen endpoints with
+**no** `Authorization` header through the real filter chain, confirming end to end (not just by
+static reasoning) that the app actually starts and every endpoint is genuinely public. This is
+exactly the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also
+covers the `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the
+latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP all
+return `400` with `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005` respectively through the shared
+`GlobalExceptionHandler`. 133 tests total, verified via a real `mvn -pl dev-utils-service -am
+test` run (JDK 21).
 
 ## Rules specific to this module
 

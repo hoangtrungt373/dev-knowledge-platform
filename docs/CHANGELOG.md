@@ -693,6 +693,65 @@ section again. Full unabridged entry-by-entry history for all three lives in
       - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
         sandbox, so the actual on-screen result (all 3 new sidebar entries, their placeholders,
         submit/copy/download, and the info-row badge colors) is unverified in a real browser.
+    - **Follow-up: 3 more backend operations, per request — bidirectional PHP↔JSON conversion and
+      a String Case Converter.** New endpoints, all under the existing `/api/v1/dev-utils/**`
+      prefix (no `gateway` change needed, same reasoning every prior follow-up in this entry
+      already established): `POST /api/v1/dev-utils/php-to-json` (`PhpToJsonOperation`,
+      `MinifiableTextRequest`), `POST /api/v1/dev-utils/json-to-php` (`JsonToPhpOperation`,
+      `MinifiableTextRequest`), `POST /api/v1/dev-utils/string-case/convert`
+      (`StringCaseOperation`, `TextRequest` in, a new `StringCaseResponse` out).
+      - **PHP↔JSON is backed by two new, self-contained utilities — no third-party PHP parsing
+        library** — `service.impl.support.PhpArrayParser` (PHP→value tree) and
+        `service.impl.support.PhpArrayWriter` (value tree→PHP). `PhpArrayParser` is a **real,
+        validating recursive-descent parser** (the same "real parse, real invalid-input error"
+        shape `XmlOperation`/`CsvToJsonOperation` already establish), not a lenient reformatter —
+        it has to fully understand the value structure to convert it. Supports bracket (`[...]`)
+        and legacy `array(...)` syntax; single-quoted strings honor only `\'`/`\\` as real escapes
+        (PHP's own rule), double-quoted strings honor `\n`/`\t`/`\r`/`\"`/`\\`/`\$` (deliberately
+        *not* evaluating variable interpolation like `"$name"` — a literal text converter, not a
+        PHP interpreter); `//`/`#`/block comments are skipped anywhere between tokens.
+        **Tolerates a full PHP snippet, not just the bare array literal** — an optional leading
+        `<?php` tag, an optional `return` keyword, and an optional trailing `;`/`?>` are all
+        skipped if present, so `JsonToPhpOperation`'s own output can be fed straight back into the
+        parser unmodified (verified by a real round-trip test). An array with no explicit `=>`
+        keys, or whose explicit keys form the exact sequence `0, 1, 2, ...` (PHP's own
+        auto-increment keys, e.g. from a `var_export()` dump), becomes a JSON array; any other
+        array becomes a JSON object with every key stringified. New
+        `DevUtilsErrorCode.INVALID_PHP` (`DEVUTILS_005`) for `PhpToJsonOperation`'s own real
+        failure path (`PhpArrayParser.PhpParseException`'s message already carries a
+        `"(line N, column M)"` location, the same convention `ParsingExceptionMessages`/
+        `XmlOperation` already establish); `JsonToPhpOperation` reuses `INVALID_JSON` instead —
+        any valid JSON value can always become a PHP array/scalar, so the only possible failure is
+        a genuine JSON syntax error. Both operations get a real minify choice too (unlike
+        `JsonToCsvOperation`'s own CSV-has-no-compact-form precedent) — a PHP array literal has
+        just as meaningful a single-line form as JSON does; `JsonToPhpOperation`'s minify mode
+        collapses to one line with no space around `=>`/after a comma, the same "minimal necessary
+        whitespace" style `JsonFormatOperation`'s own compact writer already uses.
+      - **`StringCaseOperation` is the one operation in this batch whose output is genuinely
+        richer than a single string** — new `dto.StringCaseResponse` (camelCase/pascalCase/
+        snakeCase/kebabCase/constantCase/titleCase/sentenceCase, all at once), exactly the
+        scenario `DevUtilResponse`'s own Javadoc anticipated for a future operation like this.
+        Reuses `TextRequest` (no minify — there's no "compact form" of a case conversion).
+        Delegates to a new `service.impl.support.StringCaseConverter` — splits input into words
+        using the standard two-part heuristic most case-conversion tools use (a boundary between a
+        lowercase-or-digit and a following uppercase letter, and between the last letter of an
+        uppercase run and a following capitalized word, e.g. `XMLHttpRequest` → `XML`, `Http`,
+        `Request`), so both delimiter-separated input and already-cased input (camelCase/
+        snake_case/etc.) split correctly — verified by a round-trip test confirming every case
+        variant re-splits back into the same words. A pure text transform with no notion of
+        "invalid" input — never throws, no matching `DevUtilsErrorCode`.
+      - **Test suite**: `PhpArrayParserTest` (14 cases — associative vs. list detection including
+        the sequential-explicit-keys case, legacy `array(...)` syntax, single- vs. double-quoted
+        escape rules, comment skipping, trailing commas, real `PhpParseException` line/column
+        assertions), `PhpArrayWriterTest` (6 cases, including a real round-trip through
+        `PhpArrayParser`), `StringCaseConverterTest` (7 cases, including a round-trip confirming
+        every variant re-splits into the same words), plus one JUnit 5 class per new operation
+        (`PhpToJsonOperationTest`/`JsonToPhpOperationTest`/`StringCaseOperationTest`), plus 5 new
+        `DevUtilsServiceApplicationTests` cases (reachability for all 3 new endpoints, plus
+        malformed PHP returning `400` with `DEVUTILS_005`). 133 tests total in this module now,
+        verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
+      - Backend-only pass, per request scope — the `gui`'s `/dev-utils` page was not wired up to
+        these 3 new endpoints in this pass.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

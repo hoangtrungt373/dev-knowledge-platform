@@ -12,7 +12,7 @@
 
     <artifactId>dev-utils-service</artifactId>
     <name>Dev Utils Service</name>
-    <description>Stateless developer utility tools: JSON format/validate, YAML/JSON/CSV conversion, HTML/CSS/LESS/SCSS/JS/ERB/SQL beautify+minify, XML validate/beautify+minify</description>
+    <description>Stateless developer utility tools: JSON format/validate, YAML/JSON/CSV/PHP conversion, HTML/CSS/LESS/SCSS/JS/ERB/SQL beautify+minify, XML validate/beautify+minify, String Case Converter</description>
 
     <dependencies>
 

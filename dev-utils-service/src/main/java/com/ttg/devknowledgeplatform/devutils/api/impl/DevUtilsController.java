@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.ttg.devknowledgeplatform.devutils.api.DevUtilsApi;
 import com.ttg.devknowledgeplatform.devutils.dto.DevUtilResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
+import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.TextRequest;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CssOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CsvToJsonOperation;
@@ -14,10 +15,13 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlBeautifyOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonFormatOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToCsvOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToPhpOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToYamlOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.LessOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.PhpToJsonOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.ScssOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.SqlFormatOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.StringCaseOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.XmlOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.YamlToJsonOperation;
 
@@ -46,6 +50,9 @@ public class DevUtilsController implements DevUtilsApi {
     private final JsonToCsvOperation jsonToCsvOperation;
     private final CsvToJsonOperation csvToJsonOperation;
     private final SqlFormatOperation sqlFormatOperation;
+    private final PhpToJsonOperation phpToJsonOperation;
+    private final JsonToPhpOperation jsonToPhpOperation;
+    private final StringCaseOperation stringCaseOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -110,5 +117,20 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<DevUtilResponse> formatSql(MinifiableTextRequest request) {
         return ResponseEntity.ok(new DevUtilResponse(sqlFormatOperation.execute(request.input(), request.minify())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> phpToJson(MinifiableTextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(phpToJsonOperation.execute(request.input(), request.minify())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> jsonToPhp(MinifiableTextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(jsonToPhpOperation.execute(request.input(), request.minify())));
+    }
+
+    @Override
+    public ResponseEntity<StringCaseResponse> convertStringCase(TextRequest request) {
+        return ResponseEntity.ok(stringCaseOperation.execute(request.input()));
     }
 }

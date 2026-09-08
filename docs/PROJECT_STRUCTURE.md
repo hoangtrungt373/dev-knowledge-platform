@@ -2262,7 +2262,8 @@ for the rules this module follows.
 ## dev-utils-service
 
 A stateless developer-utility API — JSON format/validate, YAML↔JSON conversion, HTML/CSS/LESS/SCSS/
-JS/ERB beautify+minify, XML validate/beautify+minify, JSON↔CSV conversion, SQL format+minify.
+JS/ERB beautify+minify, XML validate/beautify+minify, JSON↔CSV conversion, SQL format+minify,
+PHP↔JSON conversion, String Case Converter.
 **A standalone Spring Boot application built directly as standalone, not an extraction** — unlike
 every module in the six sections above, this one never lived inside `gateway` at all, so there was
 nothing to pull out (see root `CLAUDE.md`'s Long-term direction section). It's also the one
@@ -2294,15 +2295,19 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │                                     No oauth2-resource-server/oauth2-client dependency at all —
 │                                     nothing here ever verifies a JWT.
 ├── exception/
-│   ├── DevUtilsErrorCode.java     — INVALID_JSON/INVALID_YAML/INVALID_XML/INVALID_CSV only. No
-│   │                                 INVALID_HTML/INVALID_CSS/INVALID_LESS/INVALID_SCSS/
-│   │                                 INVALID_JS/INVALID_SQL — jsoup's parser (HTML/ERB) and the
-│   │                                 shared CurlyBraceFormatter (CSS/LESS/SCSS/JS)/SqlFormatter
-│   │                                 (SQL) are all deliberately lenient and never throw on
-│   │                                 malformed input; XmlOperation/CsvToJsonOperation are the
-│   │                                 exceptions, backed by real parsers (JAXP, Jackson's
-│   │                                 CsvMapper). JsonToCsvOperation reuses INVALID_JSON — its
-│   │                                 input is JSON either way.
+│   ├── DevUtilsErrorCode.java     — INVALID_JSON/INVALID_YAML/INVALID_XML/INVALID_CSV/
+│   │                                 INVALID_PHP only. No INVALID_HTML/INVALID_CSS/INVALID_LESS/
+│   │                                 INVALID_SCSS/INVALID_JS/INVALID_SQL — jsoup's parser
+│   │                                 (HTML/ERB) and the shared CurlyBraceFormatter (CSS/LESS/
+│   │                                 SCSS/JS)/SqlFormatter (SQL) are all deliberately lenient and
+│   │                                 never throw on malformed input; StringCaseOperation is the
+│   │                                 same story for a different reason (a pure text transform with
+│   │                                 no notion of "invalid" input at all). XmlOperation/
+│   │                                 CsvToJsonOperation/PhpToJsonOperation are the exceptions,
+│   │                                 backed by real parsers (JAXP, Jackson's CsvMapper, this
+│   │                                 module's own PhpArrayParser). JsonToCsvOperation/
+│   │                                 JsonToPhpOperation both reuse INVALID_JSON — their input is
+│   │                                 JSON either way.
 │   └── ParsingExceptionMessages.java — friendlyMessage(JsonProcessingException): builds a clean,
 │                                     noise-free message (getOriginalMessage() + the structured
 │                                     getLocation(), never string-parsed off getMessage()) for the
@@ -2374,6 +2379,18 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   boolean type; minify controls pretty vs. compact JSON
 │       ├── SqlFormatOperation.java      — execute(String input, boolean minify); delegates
 │       │                                   entirely to support/SqlFormatter
+│       ├── PhpToJsonOperation.java      — execute(String input, boolean minify); delegates the
+│       │                                   actual parsing to support/PhpArrayParser (a real,
+│       │                                   validating recursive-descent parser, not a lenient
+│       │                                   reformatter), then serializes the resulting value tree
+│       │                                   via the shared ObjectMapper
+│       ├── JsonToPhpOperation.java      — execute(String input, boolean minify); delegates the
+│       │                                   actual rendering to support/PhpArrayWriter; reuses
+│       │                                   INVALID_JSON rather than its own error code
+│       ├── StringCaseOperation.java     — execute(String input): StringCaseResponse — the one
+│       │                                   operation in this batch whose return type isn't a
+│       │                                   plain String; delegates entirely to
+│       │                                   support/StringCaseConverter
 │       └── support/
 │           ├── CurlyBraceFormatter.java — beautify(String)/minify(String), static utility (not a
 │           │                               DevUtilOperation itself). Shared by Css/Less/Scss/
@@ -2386,35 +2403,54 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │           │                               Javadoc for the full reasoning, including its JS/ASI
 │           │                               line-break-safety guarantee and why it never normalizes
 │           │                               spacing around a bare `:` (would corrupt `:hover`)
-│           └── SqlFormatter.java        — beautify(String)/minify(String), static utility, shared
-│                                           only by SqlFormatOperation today — a lenient, keyword-
-│                                           driven pretty-printer (line breaks before recognized
-│                                           clause keywords, indented by live paren-depth; never
-│                                           splits a comma-separated list, same reasoning
-│                                           CurlyBraceFormatter documents for CSS selector lists),
-│                                           not a real SQL-grammar parser or a specific dialect.
-│                                           Never throws. See its own Javadoc for the full
-│                                           reasoning, including why `(` never gets a leading space
+│           ├── SqlFormatter.java        — beautify(String)/minify(String), static utility, shared
+│           │                               only by SqlFormatOperation today — a lenient, keyword-
+│           │                               driven pretty-printer (line breaks before recognized
+│           │                               clause keywords, indented by live paren-depth; never
+│           │                               splits a comma-separated list, same reasoning
+│           │                               CurlyBraceFormatter documents for CSS selector lists),
+│           │                               not a real SQL-grammar parser or a specific dialect.
+│           │                               Never throws. See its own Javadoc for the full
+│           │                               reasoning, including why `(` never gets a leading space
+│           ├── PhpArrayParser.java      — parse(String): Object, a real recursive-descent parser
+│           │                               (bracket `[...]` or legacy `array(...)` syntax) into a
+│           │                               plain Map/List/String/Number/Boolean/null value tree;
+│           │                               throws PhpParseException (nested static class, message
+│           │                               already carries a "(line N, column M)" location) on
+│           │                               malformed input. Tolerates a full <?php ... ; snippet,
+│           │                               not just the bare array literal
+│           ├── PhpArrayWriter.java      — write(JsonNode, boolean minify): String, the JSON→PHP
+│           │                               counterpart — renders a JsonNode tree as a <?php
+│           │                               return ...; snippet PhpArrayParser can read back in
+│           └── StringCaseConverter.java — convert(String): StringCaseResponse, shared only by
+│                                           StringCaseOperation today — splits text into words
+│                                           (delimiter- and camelCase/acronym-boundary-aware) and
+│                                           re-joins them into all 7 case variants. Never throws
 ├── dto/
-│   ├── DevUtilsLimits.java        — MAX_INPUT_LENGTH = 100_000, shared by both request DTOs'
+│   ├── DevUtilsLimits.java        — MAX_INPUT_LENGTH = 100_000, shared by every request DTO's
 │   │                                 @Size constraint — the one fully public, unauthenticated
 │   │                                 endpoint in the reactor, so a finite input-size bound matters
 │   ├── MinifiableTextRequest.java — input (@NotBlank @Size(max=MAX_INPUT_LENGTH))/minify; backs
 │   │                                 every operation with a real minify concept (json/format,
 │   │                                 yaml-to-json, html/beautify, css/beautify, less/beautify,
 │   │                                 scss/beautify, js/beautify, erb/beautify, xml/beautify,
-│   │                                 csv-to-json, sql/format)
-│   ├── TextRequest.java           — input only (same @Size cap); backs json-to-yaml/json-to-csv,
-│   │                                 neither of which has a minify concept (YAML/CSV both lack a
-│   │                                 distinct "compact" form)
-│   └── DevUtilResponse.java       — output; shared by every operation today, not a rule going
-│                                     forward — a future operation with a richer output gets its
-│                                     own type
+│   │                                 csv-to-json, sql/format, php-to-json, json-to-php)
+│   ├── TextRequest.java           — input only (same @Size cap); backs json-to-yaml/json-to-csv/
+│   │                                 string-case/convert, none of which has a minify concept
+│   │                                 (YAML/CSV/a case conversion all lack a distinct "compact"
+│   │                                 form)
+│   ├── DevUtilResponse.java       — output; shared by every single-string-output operation, not a
+│   │                                 rule going forward
+│   └── StringCaseResponse.java    — camelCase/pascalCase/snakeCase/kebabCase/constantCase/
+│                                     titleCase/sentenceCase — the first operation whose output was
+│                                     genuinely richer than one string, so it got its own type
+│                                     instead of being forced into DevUtilResponse
 └── api/
     ├── DevUtilsApi.java           — POST /api/v1/dev-utils/{json/format,yaml-to-json,
     │                                 json-to-yaml,html/beautify,css/beautify,less/beautify,
     │                                 scss/beautify,js/beautify,erb/beautify,xml/beautify,
-    │                                 json-to-csv,csv-to-json,sql/format}. Every endpoint is
+    │                                 json-to-csv,csv-to-json,sql/format,php-to-json,json-to-php,
+    │                                 string-case/convert}. Every endpoint is
     │                                 public — no @CurrentUserId, no authenticated principal at all.
     └── impl/DevUtilsController.java — implements DevUtilsApi; injects each operation by its
                                         concrete type (no enum-keyed registry — one fixed endpoint

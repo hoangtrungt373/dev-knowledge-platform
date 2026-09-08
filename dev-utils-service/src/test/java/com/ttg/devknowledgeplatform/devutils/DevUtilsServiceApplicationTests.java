@@ -18,7 +18,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
  * {@link MockMvc} — verifies, end to end rather than by static reasoning alone, that this app
  * actually starts (the {@code GlobalExceptionHandler}/{@code spring-boot-starter-security}
  * classpath dependency reasoning in {@code security.SecurityConfig}'s own Javadoc holds up) and
- * that every one of the 13 operation endpoints is genuinely reachable with no
+ * that every one of the 16 operation endpoints is genuinely reachable with no
  * {@code Authorization} header at all.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -165,6 +165,42 @@ class DevUtilsServiceApplicationTests {
                         .content("{\"input\":\"select id from users\",\"minify\":false}"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("select id")));
+    }
+
+    @Test
+    void phpToJsonIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/php-to-json")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"['name' => 'Vui Coding']\",\"minify\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Vui Coding")));
+    }
+
+    @Test
+    void malformedPhpReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/php-to-json")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"['a', 'b'\",\"minify\":false}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_005")));
+    }
+
+    @Test
+    void jsonToPhpIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/json-to-php")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"{\\\"name\\\":\\\"Vui Coding\\\"}\",\"minify\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Vui Coding")));
+    }
+
+    @Test
+    void convertStringCaseIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/string-case/convert")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"Vui Coding\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("vuiCoding")));
     }
 
     @Test

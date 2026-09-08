@@ -18,13 +18,18 @@ import lombok.Getter;
  * delegate to a shared, equally lenient textual reformatter (see
  * {@code service.impl.support.CurlyBraceFormatter}/{@code SqlFormatter}'s own Javadoc for why
  * neither is a real grammar parser) — none of these six have an invalid-input failure path to name
- * here. {@code INVALID_XML}/{@code INVALID_CSV} are the exceptions among the newer operations:
- * {@code XmlOperation}/{@code CsvToJsonOperation} are backed by real parsers (JAXP, Jackson's
- * {@code CsvMapper}, respectively — see each class's own Javadoc), the same "real parse, real
- * invalid-input error" shape {@code INVALID_JSON}/{@code INVALID_YAML} already establish.
- * {@code JsonToCsvOperation} reuses {@code INVALID_JSON} rather than getting its own code — its
- * input is JSON either way, so a failure there (a genuine JSON syntax error, or valid JSON in a
- * shape this operation can't turn into rows) is still honestly described as "Invalid JSON."
+ * here. {@code StringCaseOperation} is the same story for a different reason: it's a pure text
+ * transform (split into words, re-case/re-join) with no notion of "invalid" input at all — any
+ * string, however unusual, produces *some* result for every case variant.
+ * {@code INVALID_XML}/{@code INVALID_CSV}/{@code INVALID_PHP} are the exceptions among the newer
+ * operations: {@code XmlOperation}/{@code CsvToJsonOperation}/{@code PhpToJsonOperation} are
+ * backed by real parsers (JAXP, Jackson's {@code CsvMapper}, and this module's own
+ * {@code service.impl.support.PhpArrayParser}, respectively — see each class's own Javadoc), the
+ * same "real parse, real invalid-input error" shape {@code INVALID_JSON}/{@code INVALID_YAML}
+ * already establish. {@code JsonToCsvOperation}/{@code JsonToPhpOperation} both reuse
+ * {@code INVALID_JSON} rather than getting their own code — their input is JSON either way, so a
+ * failure there (a genuine JSON syntax error, or — for {@code JsonToCsvOperation} only — valid
+ * JSON in a shape that can't become rows) is still honestly described as "Invalid JSON."
  */
 @Getter
 public enum DevUtilsErrorCode implements ErrorCode {
@@ -32,7 +37,8 @@ public enum DevUtilsErrorCode implements ErrorCode {
     INVALID_JSON("DEVUTILS_001", "Invalid JSON: {0}", HttpStatus.BAD_REQUEST),
     INVALID_YAML("DEVUTILS_002", "Invalid YAML: {0}", HttpStatus.BAD_REQUEST),
     INVALID_XML("DEVUTILS_003", "Invalid XML: {0}", HttpStatus.BAD_REQUEST),
-    INVALID_CSV("DEVUTILS_004", "Invalid CSV: {0}", HttpStatus.BAD_REQUEST);
+    INVALID_CSV("DEVUTILS_004", "Invalid CSV: {0}", HttpStatus.BAD_REQUEST),
+    INVALID_PHP("DEVUTILS_005", "Invalid PHP: {0}", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import com.ttg.devknowledgeplatform.devutils.dto.DevUtilResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
+import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.TextRequest;
 
 import jakarta.validation.Valid;
@@ -163,4 +164,34 @@ public interface DevUtilsApi {
      */
     @PostMapping("/sql/format")
     ResponseEntity<DevUtilResponse> formatSql(@Valid @RequestBody MinifiableTextRequest request);
+
+    /**
+     * Converts a raw PHP array literal ({@code [...]} or legacy {@code array(...)}) to JSON,
+     * pretty-printed or (with {@code request.minify()}) compact/single-line.
+     *
+     * @return {@code 200} with the converted JSON, or {@code 400} if {@code request.input()} is
+     *         not a valid PHP array literal
+     */
+    @PostMapping("/php-to-json")
+    ResponseEntity<DevUtilResponse> phpToJson(@Valid @RequestBody MinifiableTextRequest request);
+
+    /**
+     * Converts a raw JSON value to a PHP array literal, one clause per line, or (with
+     * {@code request.minify()}) compact/single-line.
+     *
+     * @return {@code 200} with the converted PHP, or {@code 400} if {@code request.input()} is
+     *         not valid JSON
+     */
+    @PostMapping("/json-to-php")
+    ResponseEntity<DevUtilResponse> jsonToPhp(@Valid @RequestBody MinifiableTextRequest request);
+
+    /**
+     * Converts raw text into every {@link StringCaseResponse} case variant at once (camelCase,
+     * PascalCase, snake_case, kebab-case, CONSTANT_CASE, Title Case, Sentence case). No minify
+     * option — there's no "compact form" of a case conversion — and this never fails on any input.
+     *
+     * @return {@code 200} with every case variant
+     */
+    @PostMapping("/string-case/convert")
+    ResponseEntity<StringCaseResponse> convertStringCase(@Valid @RequestBody TextRequest request);
 }
