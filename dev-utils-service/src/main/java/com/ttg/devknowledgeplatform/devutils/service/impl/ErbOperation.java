@@ -11,6 +11,7 @@ import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Component;
 
 import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
+import com.ttg.devknowledgeplatform.devutils.service.OperationGroup;
 
 /**
  * Reformats ERB (Embedded RuBy) markup — HTML with {@code <% %>}/{@code <%= %>} tags — by
@@ -50,6 +51,11 @@ public class ErbOperation implements DevUtilOperation {
     // Non-greedy + DOTALL — an ERB tag never nests, so the first %> after an opener always closes
     // it, and DOTALL lets a multi-line tag (e.g. a multi-statement <% ... %> block) match as one.
     private static final Pattern ERB_TAG = Pattern.compile("<%.*?%>", Pattern.DOTALL);
+
+    @Override
+    public OperationGroup group() {
+        return OperationGroup.FORMATTERS;
+    }
 
     /** Never throws — see this class's own Javadoc for why neither the ERB-tag extraction nor
      * jsoup's own lenient parsing has an invalid-input failure path. */

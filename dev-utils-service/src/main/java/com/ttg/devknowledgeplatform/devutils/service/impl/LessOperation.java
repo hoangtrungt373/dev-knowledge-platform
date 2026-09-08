@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.devutils.service.impl;
 import org.springframework.stereotype.Component;
 
 import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
+import com.ttg.devknowledgeplatform.devutils.service.OperationGroup;
 import com.ttg.devknowledgeplatform.devutils.service.impl.support.CurlyBraceFormatter;
 
 /**
@@ -20,6 +21,11 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.support.CurlyBraceForm
  */
 @Component
 public class LessOperation implements DevUtilOperation {
+
+    @Override
+    public OperationGroup group() {
+        return OperationGroup.FORMATTERS;
+    }
 
     /** Never throws — see this class's own Javadoc for why {@link CurlyBraceFormatter} has no
      * invalid-input failure path. */

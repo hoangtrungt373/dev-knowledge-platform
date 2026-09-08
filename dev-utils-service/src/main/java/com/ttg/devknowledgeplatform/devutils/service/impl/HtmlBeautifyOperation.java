@@ -5,6 +5,7 @@ import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Component;
 
 import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
+import com.ttg.devknowledgeplatform.devutils.service.OperationGroup;
 
 /**
  * Reformats raw HTML with consistent indentation, or, with {@code minify}, jsoup's own
@@ -27,6 +28,11 @@ import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
  */
 @Component
 public class HtmlBeautifyOperation implements DevUtilOperation {
+
+    @Override
+    public OperationGroup group() {
+        return OperationGroup.FORMATTERS;
+    }
 
     /** Never throws — see this class's own Javadoc for why jsoup's lenient parser has no
      * invalid-input failure path. */

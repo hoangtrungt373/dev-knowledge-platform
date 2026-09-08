@@ -790,6 +790,42 @@ section again. Full unabridged entry-by-entry history for all three lives in
         sandbox, so the actual on-screen result (all 3 new sidebar entries, their placeholders,
         submit/copy/download, the formatted case-variant output block, and the info-row badge
         colors) is unverified in a real browser.
+    - **Follow-up: operations grouped by a new `OperationGroup` (backend) / `group` field (`gui`),
+      per request — "Group all the existing Operation in a group calls 'FORMATTERS' since we will
+      implement new operations belongs to another group (ENCODERS/DECODERS, INSPECTORS, WEB,
+      GENERATORS) next."** Backend first, then the GUI, per the request's own explicit ordering.
+      - **Backend**: `service.DevUtilOperation` gained one real abstract method,
+        `group(): OperationGroup` — the one deliberate exception to this interface's own "no shared
+        method" marker-interface philosophy (see that class's own updated Javadoc for why this one
+        doesn't reopen the "forced shared `execute()` shape" problem the marker-interface design
+        exists to avoid). New `service.OperationGroup` enum — `FORMATTERS`/`ENCODERS_DECODERS`/
+        `INSPECTORS`/`WEB`/`GENERATORS`, each with a Title-Case `getLabel()` (the `gui` applies its
+        own CSS `text-transform`, matching the existing "Tools" sidebar caption convention). All 16
+        existing operations declare `FORMATTERS`; the other 4 groups are declared ahead of use, each
+        with a concrete future-operation example in the enum's own Javadoc, so the `gui`'s
+        group-by-label sidebar rendering already has a complete, stable section order today.
+        `group()` is abstract, not `default`, so a future non-`FORMATTERS` operation that forgets to
+        override it fails to compile rather than silently landing in the wrong sidebar section.
+        Verified via a full `mvn -pl dev-utils-service -am test` run (JDK 21) — 161/161 tests still
+        passing, 0 failures (a compile-time-only addition, nothing to assert differently).
+      - **`gui`**: `config/operations.tsx`'s `OperationConfig` gained a `group: OperationGroupName`
+        field (a new literal-union type mirroring the backend enum's own values, plus an
+        `OPERATION_GROUP_ORDER` constant mirroring its declaration order) — deliberately distinct
+        from the interface's existing, finer-grained `category` field (`'Formatters'`/
+        `'Converters'`/`'Text Tools'`), which stays as a per-operation eyebrow label within a group,
+        not replaced by it. All 16 `OPERATIONS` entries set `group: 'Formatters'`.
+        `pages/DevUtilsPage.tsx`'s sidebar `<List>` now buckets the (possibly search-filtered)
+        operation list by `OPERATION_GROUP_ORDER` via a new `groupedVisibleOperations` derivation
+        (a group with zero matching operations is dropped, not rendered as an empty headline),
+        rendering an uppercase section caption (`variant="caption" fontWeight={700}
+        sx={{textTransform:'uppercase', letterSpacing:0.5}}` — same styling the existing "Tools"
+        caption above the search box already establishes, hidden when the sidebar is collapsed)
+        above each group's own operations. Built generically off the fixed group order, not
+        hardcoded to a single "FORMATTERS" string, so the first `ENCODERS_DECODERS`/`INSPECTORS`/
+        `WEB`/`GENERATORS` operation gets its own sidebar section for free with no further page
+        change needed. Verified via a clean `tsc --noEmit` and a successful `vite build` only — no
+        Docker in this sandbox, so the actual on-screen section headline is unverified in a real
+        browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

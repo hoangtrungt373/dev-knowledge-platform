@@ -134,18 +134,51 @@ caller.** Every operation is a pure text-in/text-out transform:
       stay idempotent against this now-already-clean message (it used to unconditionally re-append
       its own `"(line N, column M)"` suffix, which would have doubled up against this service's own
       new one) — see that file's own doc comment.
-- `service/DevUtilOperation` — a bare **marker interface** (no method), purely for IDE "Find
-  Implementations" grouping — the same role `infra.event.ApplicationEventHandler`/
-  `infra.service.seed.Seeder` already play in this reactor. Deliberately **not** a textbook GoF
-  Strategy with a shared `execute(...)` signature — an earlier revision forced every operation
-  through `execute(String input, boolean minify): String`, which broke down once a genuinely
-  different-shaped operation (a future Unix Time Converter needing timestamp+timezone+format, a
-  Number Base Converter needing value+two integer bases) was considered — neither fits "one string
-  in, one bool flag, one string out," and packing them into that shape would mean hand-parsing a
-  packed string apart instead of real typed parameters. A shared method signature only pays for
-  itself when something dispatches through it polymorphically; nothing here does — the controller
-  injects and calls each operation by its own concrete type. See its own Javadoc for the full
-  reasoning. Each operation is free to declare whatever parameter/return shape actually fits it.
+- `service/DevUtilOperation` — for most of this module's life, a bare **marker interface** (no
+  method), purely for IDE "Find Implementations" grouping — the same role
+  `infra.event.ApplicationEventHandler`/`infra.service.seed.Seeder` already play in this reactor.
+  Deliberately **not** a textbook GoF Strategy with a shared `execute(...)` signature — an earlier
+  revision forced every operation through `execute(String input, boolean minify): String`, which
+  broke down once a genuinely different-shaped operation (a future Unix Time Converter needing
+  timestamp+timezone+format, a Number Base Converter needing value+two integer bases) was
+  considered — neither fits "one string in, one bool flag, one string out," and packing them into
+  that shape would mean hand-parsing a packed string apart instead of real typed parameters. A
+  shared method signature only pays for itself when something dispatches through it
+  polymorphically; nothing here does — the controller injects and calls each operation by its own
+  concrete type. See its own Javadoc for the full reasoning. Each operation is free to declare
+  whatever parameter/return shape actually fits it.
+  - **Gained one real abstract method, `group(): OperationGroup`, per direct request — "Group all
+    the existing Operation in a group calls 'FORMATTERS' since we will implement new operations
+    belongs to another group (ENCODERS/DECODERS, INSPECTORS, WEB, GENERATORS) next."** This is the
+    one deliberate exception to the interface's own "no shared method" philosophy above — `group()`
+    doesn't reintroduce the "forced shared `execute()` shape" problem the marker-interface design
+    exists to avoid, since it's closer to `Object#toString()` than to a Strategy's own
+    `execute(...)`: every operation, regardless of its own wildly different `execute(...)` shape,
+    genuinely has exactly one answer to "which page-level section does this belong to," the same
+    way every object has some string representation. New `service/OperationGroup` enum —
+    `FORMATTERS`/`ENCODERS_DECODERS`/`INSPECTORS`/`WEB`/`GENERATORS`, each with a Title-Case
+    `getLabel()` (not ALL-CAPS — the GUI sidebar applies its own CSS `text-transform`, matching the
+    existing "Tools" caption convention already established there). All 16 existing operations
+    declare `FORMATTERS`; the other 4 groups are declared **ahead of use**, with a concrete example
+    operation named in the enum's own Javadoc for each (a Base64/URL encoder for
+    `ENCODERS_DECODERS`, a JWT decoder/hash calculator for `INSPECTORS`, an HTTP header parser for
+    `WEB`, a UUID/Lorem-Ipsum generator for `GENERATORS`) — so the GUI's own group-by-label sidebar
+    rendering already has a complete, stable section order to render from day one, rather than
+    needing a second change once the first non-`FORMATTERS` operation actually lands. **`group()`
+    is abstract, not `default`** — a `default OperationGroup group() { return
+    OperationGroup.FORMATTERS; }` would let a future non-formatter operation silently inherit the
+    wrong group if its author forgot to override it; abstract forces a compile error instead,
+    catching the omission immediately rather than as a quiet mis-grouped sidebar entry. All 16
+    operation classes (`CssOperation`, `CsvToJsonOperation`, `ErbOperation`,
+    `HtmlBeautifyOperation`, `JsonFormatOperation`, `JsonToCsvOperation`, `JsonToPhpOperation`,
+    `JsonToYamlOperation`, `JsOperation`, `LessOperation`, `PhpToJsonOperation`, `ScssOperation`,
+    `SqlFormatOperation`, `StringCaseOperation`, `XmlOperation`, `YamlToJsonOperation`) implement it
+    identically (`return OperationGroup.FORMATTERS;`). No new `DevUtilsErrorCode`, no request/
+    response DTO change — this is a pure classification addition, orthogonal to every operation's
+    own input/output shape. Verified via a full `mvn -pl dev-utils-service -am test` run (JDK 21)
+    after the change — **161/161 tests still passing, 0 failures** (a compile-time-only addition, so
+    no test assertions needed updating). See `gui/CLAUDE.md`'s own dev-utils section for the
+    matching sidebar-headline GUI half of this feature.
 - `config/YamlMapperConfig` — a `YAMLMapper` `@Bean`, the YAML-side counterpart to `infra`'s
   shared `ObjectMapper` (`JacksonConfig`). Lives here, not `infra` — this module is the only
   consumer today; promote it there only once a second module genuinely needs the same bean.

@@ -2329,14 +2329,28 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │                                     sequence's "-" at the same column as its parent key instead
 │                                     of indented under it); see this class's own Javadoc.
 ├── service/
-│   ├── DevUtilOperation.java      — bare marker interface (no method), same "Find
-│   │                                 Implementations" role as infra's ApplicationEventHandler/
-│   │                                 Seeder. Deliberately not a shared execute(...) signature — an
-│   │                                 earlier revision forced one (execute(String, boolean)), which
-│   │                                 broke down once a genuinely different-shaped future operation
-│   │                                 (Unix Time Converter, Number Base Converter) was considered;
-│   │                                 nothing dispatches through this interface polymorphically, so
-│   │                                 each operation now declares whatever shape fits it.
+│   ├── DevUtilOperation.java      — one abstract method, group(): OperationGroup, plus the same
+│   │                                 "Find Implementations" role infra's ApplicationEventHandler/
+│   │                                 Seeder already play. Still deliberately not a shared
+│   │                                 execute(...) signature — an earlier revision forced one
+│   │                                 (execute(String, boolean)), which broke down once a genuinely
+│   │                                 different-shaped future operation (Unix Time Converter, Number
+│   │                                 Base Converter) was considered; nothing dispatches through this
+│   │                                 interface polymorphically, so each operation still declares
+│   │                                 whatever execute(...) shape fits it — group() is the one
+│   │                                 exception, closer to Object#toString() than to a Strategy's
+│   │                                 own execute(...). Deliberately abstract, not default — a
+│   │                                 default OperationGroup group() { return FORMATTERS; } would
+│   │                                 let a future non-formatter operation silently inherit the
+│   │                                 wrong group if its author forgot to override it.
+│   ├── OperationGroup.java        — enum (FORMATTERS/ENCODERS_DECODERS/INSPECTORS/WEB/GENERATORS),
+│   │                                 each with a Title-Case getLabel() (the GUI applies CSS
+│   │                                 text-transform, matching the existing "Tools" sidebar caption
+│   │                                 convention). All 16 current operations declare FORMATTERS; the
+│   │                                 other 4 are declared ahead of use so the GUI's group-by-label
+│   │                                 sidebar rendering already has a stable, complete section order
+│   │                                 from day one — see the enum's own Javadoc for a concrete future
+│   │                                 example operation per group.
 │   └── impl/
 │       ├── JsonFormatOperation.java     — execute(String input, boolean minify); validates +
 │       │                                   pretty-prints (or, minified, compact-serializes) in one

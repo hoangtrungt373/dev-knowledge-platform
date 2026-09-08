@@ -54,12 +54,37 @@ export function tabFromHash(hash: string): TabKey {
   return (TAB_KEYS as string[]).includes(key) ? (key as TabKey) : DEFAULT_TAB;
 }
 
+/** Mirrors the backend's own `service.OperationGroup` enum (`dev-utils-service`) — a much broader
+ * clustering than `OperationConfig.category` below, meant to span the whole page rather than one
+ * operation's own headline card. `'Formatters'` is the only group any operation actually declares
+ * today; the other four are declared ahead of the operations that will eventually use them (an
+ * encoder/decoder, an inspector, a web-specific tool, a generator — see the backend enum's own
+ * Javadoc for a real example of each), so `OPERATION_GROUP_ORDER`/`groupOperationsByGroup` below
+ * already have a stable, complete section order to render from day one. */
+export type OperationGroupName = 'Formatters' | 'Encoders/Decoders' | 'Inspectors' | 'Web' | 'Generators';
+
+/** Fixed rendering order for the sidebar's own group headlines — mirrors the backend enum's own
+ * declaration order exactly, so a future group's sidebar section always appears in the same place
+ * regardless of where its operations happen to sit in the `OPERATIONS` array below. */
+export const OPERATION_GROUP_ORDER: OperationGroupName[] = [
+  'Formatters',
+  'Encoders/Decoders',
+  'Inspectors',
+  'Web',
+  'Generators',
+];
+
 export interface OperationConfig {
   key: TabKey;
+  /** Which page-level sidebar section this operation's own entry renders under — see
+   * `OperationGroupName`'s own doc comment. */
+  group: OperationGroupName;
   /** Sidebar group label, also shown as the eyebrow line above the Input/Output panels — e.g.
-   * "Formatters" vs. "Converters" vs. "Text Tools". Purely descriptive today (the sidebar list
-   * itself stays flat, not grouped into sections) — group it visually too if the operation count
-   * grows enough to warrant it. */
+   * "Formatters" vs. "Converters" vs. "Text Tools". A finer-grained, per-`group`-internal
+   * subdivision than `group` itself (today, every operation's own `group` is `'Formatters'`, but
+   * their `category` still varies between "Formatters"/"Converters"/"Text Tools") — purely
+   * descriptive, the sidebar list within one group stays flat, not further subdivided into its own
+   * sub-sections. */
   category: string;
   label: string;
   /** One-line summary shown above the Input/Output panels, under the operation's own title. */
@@ -120,6 +145,7 @@ function formatStringCaseResult(result: StringCaseResponse): string {
 export const OPERATIONS: OperationConfig[] = [
   {
     key: 'json-format',
+    group: 'Formatters',
     category: 'Formatters',
     label: 'JSON Format/Validate',
     description: 'Beautify, minify, and validate JSON',
@@ -134,6 +160,7 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'yaml-to-json',
+    group: 'Formatters',
     category: 'Converters',
     label: 'YAML to JSON',
     description: 'Convert YAML documents into JSON',
@@ -148,6 +175,7 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'json-to-yaml',
+    group: 'Formatters',
     category: 'Converters',
     label: 'JSON to YAML',
     description: 'Convert JSON documents into YAML',
@@ -164,6 +192,7 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'html-beautify',
+    group: 'Formatters',
     category: 'Formatters',
     label: 'HTML Beautify',
     description: 'Beautify or minify HTML markup',
@@ -179,6 +208,7 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'css-beautify',
+    group: 'Formatters',
     category: 'Formatters',
     label: 'CSS Beautify/Minify',
     description: 'Beautify or minify CSS stylesheets',
@@ -193,6 +223,7 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'js-beautify',
+    group: 'Formatters',
     category: 'Formatters',
     label: 'JS Beautify/Minify',
     description: 'Beautify or minify JavaScript code',
@@ -208,6 +239,7 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'erb-beautify',
+    group: 'Formatters',
     category: 'Formatters',
     label: 'ERB Beautify/Minify',
     description: 'Beautify or minify ERB (Embedded RuBy) templates',
@@ -222,6 +254,7 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'less-beautify',
+    group: 'Formatters',
     category: 'Formatters',
     label: 'LESS Beautify/Minify',
     description: 'Beautify or minify LESS stylesheets',
@@ -237,6 +270,7 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'scss-beautify',
+    group: 'Formatters',
     category: 'Formatters',
     label: 'SCSS Beautify/Minify',
     description: 'Beautify or minify SCSS stylesheets',
@@ -252,6 +286,7 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'xml-beautify',
+    group: 'Formatters',
     category: 'Formatters',
     label: 'XML Beautify/Minify',
     description: 'Validate, beautify, or minify XML documents',
@@ -267,6 +302,7 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'json-to-csv',
+    group: 'Formatters',
     category: 'Converters',
     label: 'JSON to CSV',
     description: 'Convert a JSON array of objects into CSV',
@@ -283,6 +319,7 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'csv-to-json',
+    group: 'Formatters',
     category: 'Converters',
     label: 'CSV to JSON',
     description: 'Convert CSV (first row as header) into a JSON array of objects',
@@ -297,6 +334,7 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'sql-format',
+    group: 'Formatters',
     category: 'Formatters',
     label: 'SQL Format/Minify',
     description: 'Format or minify a SQL query',
@@ -313,6 +351,7 @@ export const OPERATIONS: OperationConfig[] = [
     key: 'string-case-convert',
     // Neither a beautify/minify Formatter nor a format-A-to-format-B Converter — a dedicated
     // third category for this one, rather than stretching either existing label to cover it.
+    group: 'Formatters',
     category: 'Text Tools',
     label: 'String Case Converter',
     description: 'Convert text into camelCase, PascalCase, snake_case, kebab-case, and more',
@@ -331,6 +370,7 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'php-to-json',
+    group: 'Formatters',
     category: 'Converters',
     label: 'PHP to JSON',
     description: 'Convert a PHP array literal into JSON',
@@ -345,6 +385,7 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'json-to-php',
+    group: 'Formatters',
     category: 'Converters',
     label: 'JSON to PHP',
     description: 'Convert JSON into a PHP array literal',

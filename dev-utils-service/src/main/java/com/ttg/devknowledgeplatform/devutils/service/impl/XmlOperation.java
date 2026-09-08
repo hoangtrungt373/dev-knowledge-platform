@@ -26,6 +26,7 @@ import org.xml.sax.SAXParseException;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.devutils.exception.DevUtilsErrorCode;
 import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
+import com.ttg.devknowledgeplatform.devutils.service.OperationGroup;
 
 /**
  * Validates a raw XML string and re-serializes it indented (or, with {@code minify}, with
@@ -59,6 +60,11 @@ import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
  */
 @Component
 public class XmlOperation implements DevUtilOperation {
+
+    @Override
+    public OperationGroup group() {
+        return OperationGroup.FORMATTERS;
+    }
 
     /**
      * @throws BusinessException wrapping {@link DevUtilsErrorCode#INVALID_XML} when {@code input}

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.devutils.exception.DevUtilsErrorCode;
 import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
+import com.ttg.devknowledgeplatform.devutils.service.OperationGroup;
 import com.ttg.devknowledgeplatform.devutils.service.impl.support.JsonNodeIo;
 import com.ttg.devknowledgeplatform.devutils.service.impl.support.PhpArrayWriter;
 
@@ -31,6 +32,11 @@ import lombok.RequiredArgsConstructor;
 public class JsonToPhpOperation implements DevUtilOperation {
 
     private final ObjectMapper objectMapper;
+
+    @Override
+    public OperationGroup group() {
+        return OperationGroup.FORMATTERS;
+    }
 
     /**
      * @throws BusinessException wrapping {@link DevUtilsErrorCode#INVALID_JSON} when

@@ -22,7 +22,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRightOutlined';
 import { DevUtilError } from '../utils/errorFormatting';
 import DevUtilToolPanel from '../components/DevUtilToolPanel';
 import DevUtilSidebarItem from '../components/DevUtilSidebarItem';
-import { OPERATIONS, TabKey, tabFromHash } from '../config/operations';
+import { OPERATION_GROUP_ORDER, OPERATIONS, TabKey, tabFromHash } from '../config/operations';
 
 // A standing preference (like AdminLayout's own sidebar collapse), not per-session UI state, so
 // it's persisted to localStorage the same way — see AdminLayout.tsx's own COLLAPSE_STORAGE_KEY.
@@ -186,6 +186,17 @@ export default function DevUtilsPage(): JSX.Element {
   // a possibly-filtered list the admin has no way to see the reason for or clear.
   const visibleOperations = sidebarCollapsed ? OPERATIONS : filteredOperations;
 
+  // Buckets the (possibly search-filtered) operation list under each OperationGroupName, in the
+  // same fixed order the backend's own OperationGroup enum declares them — a group with zero
+  // matching operations (every future group, today) is dropped entirely rather than rendering an
+  // empty headline. Built generically off OPERATION_GROUP_ORDER so a future ENCODERS_DECODERS/
+  // INSPECTORS/WEB/GENERATORS operation gets its own section headline for free, with no change
+  // needed here.
+  const groupedVisibleOperations = OPERATION_GROUP_ORDER.map(group => ({
+    group,
+    operations: visibleOperations.filter(op => op.group === group),
+  })).filter(entry => entry.operations.length > 0);
+
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
@@ -258,14 +269,35 @@ export default function DevUtilsPage(): JSX.Element {
                 </Box>
               )
             ) : (
-              visibleOperations.map(op => (
-                <DevUtilSidebarItem
-                  key={op.key}
-                  operation={op}
-                  isSelected={op.key === tab}
-                  collapsed={sidebarCollapsed}
-                  onSelect={() => selectTab(op.key)}
-                />
+              groupedVisibleOperations.map(({ group, operations }) => (
+                <Box key={group}>
+                  {!sidebarCollapsed && (
+                    <Typography
+                      variant="caption"
+                      fontWeight={700}
+                      color="text.secondary"
+                      sx={{
+                        display: 'block',
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                        px: 1.5,
+                        pt: 1,
+                        pb: 0.5,
+                      }}
+                    >
+                      {group}
+                    </Typography>
+                  )}
+                  {operations.map(op => (
+                    <DevUtilSidebarItem
+                      key={op.key}
+                      operation={op}
+                      isSelected={op.key === tab}
+                      collapsed={sidebarCollapsed}
+                      onSelect={() => selectTab(op.key)}
+                    />
+                  ))}
+                </Box>
               ))
             )}
           </List>

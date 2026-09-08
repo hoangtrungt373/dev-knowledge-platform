@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 
 import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
 import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
+import com.ttg.devknowledgeplatform.devutils.service.OperationGroup;
 import com.ttg.devknowledgeplatform.devutils.service.impl.support.StringCaseConverter;
 
 /**
@@ -21,6 +22,11 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.support.StringCaseConv
  */
 @Component
 public class StringCaseOperation implements DevUtilOperation {
+
+    @Override
+    public OperationGroup group() {
+        return OperationGroup.FORMATTERS;
+    }
 
     /** Never throws — see this class's own Javadoc for why a pure word-split/re-case transform
      * has no invalid-input failure path. */

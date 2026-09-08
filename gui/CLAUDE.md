@@ -3104,6 +3104,37 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       sandbox, so the actual on-screen result (all 3 new sidebar entries, their placeholders,
       submit/copy/download, the formatted case-variant output block, and the info-row badge
       colors) is unverified in a real browser.
+  - **Follow-up: sidebar operations grouped under a page-level section headline, per request — "Group
+    all the existing Operation in a group calls 'FORMATTERS' since we will implement new operations
+    belongs to another group (ENCODERS/DECODERS, INSPECTORS, WEB, GENERATORS) next... then move to
+    the gui (Add a headline 'FORMATTERS') at top of the list operation (below search bar)."** The
+    backend half landed first (`dev-utils-service`'s new `service.OperationGroup` enum +
+    `DevUtilOperation.group()` — see `dev-utils-service/CLAUDE.md`'s own note), then this GUI half.
+    - **New `OperationGroupName` literal-union type** (`'Formatters' | 'Encoders/Decoders' |
+      'Inspectors' | 'Web' | 'Generators'`) + `OPERATION_GROUP_ORDER: OperationGroupName[]` constant
+      in `config/operations.tsx`, mirroring the backend enum's own values and declaration order
+      exactly. `OperationConfig` gained a `group: OperationGroupName` field — **deliberately
+      distinct from the existing, finer-grained `category` field** (`'Formatters'`/`'Converters'`/
+      `'Text Tools'`, the eyebrow line above the Input/Output panels) rather than replacing it:
+      `group` is the new, broader page-level clustering this feature asked for; `category` stays a
+      narrower per-operation label *within* a group (today, every operation's own `group` is
+      `'Formatters'`, but its `category` still varies). All 16 `OPERATIONS` entries set
+      `group: 'Formatters'`.
+    - **`pages/DevUtilsPage.tsx`'s sidebar `<List>` now renders a headline per group, not one flat
+      list.** A new `groupedVisibleOperations` derivation buckets the (possibly search-filtered)
+      `visibleOperations` by `OPERATION_GROUP_ORDER`, dropping any group with zero matching
+      operations entirely (today, every group but `'Formatters'` is empty, so only one headline
+      ever renders — this was built generically off the fixed order, not hardcoded to a single
+      `"FORMATTERS"` string, so the first future `ENCODERS_DECODERS`/`INSPECTORS`/`WEB`/
+      `GENERATORS` operation gets its own sidebar section for free with no further change to this
+      page). Each group renders an uppercase `Typography variant="caption" fontWeight={700}
+      color="text.secondary" sx={{textTransform:'uppercase', letterSpacing:0.5}}` headline directly
+      above its own operations — the exact same styling the sidebar's existing "Tools" caption
+      (above the search box) already establishes, and, like that caption, hidden entirely while
+      `sidebarCollapsed` (no room for a text label in the icon-only collapsed state). Positioned
+      below the search bar, per the request's own explicit placement.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual on-screen section headline is unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's
