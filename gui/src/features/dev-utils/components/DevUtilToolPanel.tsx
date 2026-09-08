@@ -281,7 +281,7 @@ export default function DevUtilToolPanel({
           <TextField
             placeholder={inputPlaceholder}
             multiline
-            minRows={10}
+            minRows={20}
             maxRows={32}
             fullWidth
             value={input}
@@ -439,7 +439,7 @@ export default function DevUtilToolPanel({
             spacing={1.5}
             alignItems="center"
             justifyContent="center"
-            sx={{ p: 2, flex: 1, minHeight: 200, maxHeight: OUTPUT_MAX_HEIGHT, bgcolor: OUTPUT_BG_LIGHT }}
+            sx={{ p: 2, flex: 1, minHeight: 425, maxHeight: OUTPUT_MAX_HEIGHT, bgcolor: OUTPUT_BG_LIGHT }}
           >
             <DownloadIcon sx={{ fontSize: 40, color: 'grey.400' }} />
             <Typography variant="body2" sx={{ color: 'grey.600' }}>

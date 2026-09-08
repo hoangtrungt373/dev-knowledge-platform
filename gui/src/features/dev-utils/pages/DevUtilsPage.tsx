@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Divider,
+  IconButton,
   InputAdornment,
   List,
   ListItemButton,
@@ -12,6 +13,7 @@ import {
   Paper,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
@@ -22,6 +24,8 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import ClearIcon from '@mui/icons-material/Clear';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse } from '../types';
 import { DevUtilError } from '../utils/errorFormatting';
@@ -31,6 +35,12 @@ type TabKey = 'json-format' | 'yaml-to-json' | 'json-to-yaml' | 'html-beautify';
 
 const TAB_KEYS: TabKey[] = ['json-format', 'yaml-to-json', 'json-to-yaml', 'html-beautify'];
 const DEFAULT_TAB: TabKey = 'json-format';
+
+// A standing preference (like AdminLayout's own sidebar collapse), not per-session UI state, so
+// it's persisted to localStorage the same way — see AdminLayout.tsx's own COLLAPSE_STORAGE_KEY.
+const SIDEBAR_COLLAPSE_STORAGE_KEY = 'devUtilsSidebarCollapsed';
+const SIDEBAR_EXPANDED_WIDTH = 240;
+const SIDEBAR_COLLAPSED_WIDTH = 56;
 
 function tabFromHash(hash: string): TabKey {
   const key = hash.replace(/^#/, '');
@@ -80,7 +90,15 @@ interface OperationConfig {
  * client-side only, since the full operation list is always in hand) and an explicit
  * `action.selected` background on the active item (per request — same convention `app/NavBar.tsx`'s
  * own `NavButton` already establishes for "is this the active route," rather than relying on
- * `ListItemButton`'s own default `selected` styling alone). `alignItems: 'flex-start'` on the row
+ * `ListItemButton`'s own default `selected` styling alone). **The sidebar is collapsible, per
+ * request** — a chevron `IconButton` in its own header row toggles `sidebarCollapsed`
+ * (`SIDEBAR_EXPANDED_WIDTH`/`SIDEBAR_COLLAPSED_WIDTH`, persisted to `localStorage` via
+ * `SIDEBAR_COLLAPSE_STORAGE_KEY` — a standing preference, same "persist across reloads" reasoning
+ * `AdminLayout.tsx`'s own `COLLAPSE_STORAGE_KEY` documents, not per-session state); collapsed, the
+ * search box and item labels hide (icon-only rows, each wrapped in a `Tooltip` carrying the label —
+ * same shape `AdminLayout.tsx`'s own collapsed sidebar uses) and the search filter itself is
+ * bypassed (`visibleOperations`) rather than possibly showing a filtered list with no visible box to
+ * explain or clear it. `alignItems: 'flex-start'` on the row
  * keeps the sidebar sized to its own (short) content instead of stretching to match whichever tool
  * panel is taller, same reasoning `AccountLayout.tsx` documents for the identical layout shape.
  *
@@ -98,6 +116,9 @@ export default function DevUtilsPage(): JSX.Element {
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>(() => tabFromHash(location.hash));
   const [search, setSearch] = useState('');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY) === 'true'
+  );
   // Lifted up from DevUtilToolPanel so the headline row's Sample/Clear buttons can set/reset them
   // directly — see DevUtilToolPanel.tsx's own updated Javadoc for the full reasoning.
   const [input, setInput] = useState('');
@@ -121,6 +142,14 @@ export default function DevUtilsPage(): JSX.Element {
     setOutput(null);
     setError(null);
   }, [tab]);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem(SIDEBAR_COLLAPSE_STORAGE_KEY, String(next));
+      return next;
+    });
+  }, []);
 
   const selectTab = useCallback(
     (newTab: TabKey) => {
@@ -220,6 +249,9 @@ export default function DevUtilsPage(): JSX.Element {
           op.description.toLowerCase().includes(query)
       )
     : operations;
+  // The search box itself is hidden while collapsed (no room for it) — show every tool rather than
+  // a possibly-filtered list the admin has no way to see the reason for or clear.
+  const visibleOperations = sidebarCollapsed ? operations : filteredOperations;
 
   return (
     <Box sx={{ p: 3 }}>
@@ -228,35 +260,72 @@ export default function DevUtilsPage(): JSX.Element {
       </Typography>
 
       <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 3 }}>
-        <Paper variant="outlined" sx={{ width: 240, flexShrink: 0, overflow: 'hidden' }}>
-          <Box sx={{ p: 1 }}>
-            <TextField
-              size="small"
-              fullWidth
-              placeholder="Search tools…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon fontSize="small" />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Box>
+        <Paper
+          variant="outlined"
+          sx={{
+            width: sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH,
+            flexShrink: 0,
+            overflow: 'hidden',
+            transition: 'width 0.2s ease',
+          }}
+        >
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent={sidebarCollapsed ? 'center' : 'space-between'}
+            sx={{ pl: sidebarCollapsed ? 0 : 1.5, pr: 0.5, py: 0.5 }}
+          >
+            {!sidebarCollapsed && (
+              <Typography
+                variant="caption"
+                fontWeight={700}
+                color="text.secondary"
+                sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}
+              >
+                Tools
+              </Typography>
+            )}
+            <Tooltip title={sidebarCollapsed ? 'Expand tools' : 'Collapse tools'}>
+              <IconButton size="small" onClick={toggleSidebar}>
+                {sidebarCollapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          </Stack>
           <Divider />
-          <List dense disablePadding sx={{ py: 0.5 }}>
-            {filteredOperations.length === 0 ? (
-              <Box sx={{ px: 2, py: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  No tools found.
-                </Typography>
+          {!sidebarCollapsed && (
+            <>
+              <Box sx={{ p: 1 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Search tools…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
               </Box>
+              <Divider />
+            </>
+          )}
+          <List dense disablePadding sx={{ py: 0.5 }}>
+            {visibleOperations.length === 0 ? (
+              !sidebarCollapsed && (
+                <Box sx={{ px: 2, py: 2 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No tools found.
+                  </Typography>
+                </Box>
+              )
             ) : (
-              filteredOperations.map(op => {
+              visibleOperations.map(op => {
                 const isSelected = op.key === tab;
-                return (
+                const itemButton = (
                   <ListItemButton
                     key={op.key}
                     selected={isSelected}
@@ -265,6 +334,8 @@ export default function DevUtilsPage(): JSX.Element {
                       borderRadius: 1,
                       mx: 0.5,
                       mb: 0.25,
+                      justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                      px: sidebarCollapsed ? 1 : 2,
                       // Target `&.Mui-selected` explicitly, not a plain `bgcolor` on the root —
                       // ListItemButton's own baked-in selected-state rule
                       // (`&.Mui-selected { backgroundColor: action.selected }`) has *higher* CSS
@@ -284,11 +355,27 @@ export default function DevUtilsPage(): JSX.Element {
                       },
                     }}
                   >
-                    <ListItemIcon sx={{ minWidth: 32 }}>{op.icon}</ListItemIcon>
+                    <ListItemIcon sx={{ minWidth: sidebarCollapsed ? 0 : 32, justifyContent: 'center' }}>
+                      {op.icon}
+                    </ListItemIcon>
                     {/* fontWeight is fixed regardless of selection — only the background above
                         distinguishes the selected item now, per request. */}
-                    <ListItemText primary={op.label} primaryTypographyProps={{ variant: 'body2', fontWeight: 600 }} />
+                    {!sidebarCollapsed && (
+                      <ListItemText
+                        primary={op.label}
+                        primaryTypographyProps={{ variant: 'body2', fontWeight: 600 }}
+                      />
+                    )}
                   </ListItemButton>
+                );
+                // Collapsed sidebar has no room for the label — a tooltip carries it instead, same
+                // "icon-only row, label in a Tooltip" shape AdminLayout's own collapsed sidebar uses.
+                return sidebarCollapsed ? (
+                  <Tooltip key={op.key} title={op.label} placement="right">
+                    {itemButton}
+                  </Tooltip>
+                ) : (
+                  itemButton
                 );
               })
             )}
