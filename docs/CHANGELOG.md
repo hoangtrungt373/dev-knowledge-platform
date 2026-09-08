@@ -585,6 +585,82 @@ section again. Full unabridged entry-by-entry history for all three lives in
       - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
         sandbox, so the actual on-screen result (all 6 new sidebar entries, their placeholders,
         submit/copy/download, and the info-row badge colors) is unverified in a real browser.
+    - **Follow-up: 3 more backend operations, per request — JSON↔CSV conversion and a SQL
+      Formatter.** New endpoints, all under the existing `/api/v1/dev-utils/**` prefix (no
+      `gateway` change needed, same reasoning the earlier 6-operation follow-up already
+      established): `POST /api/v1/dev-utils/json-to-csv` (`JsonToCsvOperation`, `TextRequest` — no
+      minify, CSV has no distinct "compact" form), `POST /api/v1/dev-utils/csv-to-json`
+      (`CsvToJsonOperation`, `MinifiableTextRequest`), `POST /api/v1/dev-utils/sql/format`
+      (`SqlFormatOperation`, `MinifiableTextRequest`).
+      - **New Maven dependency `com.fasterxml.jackson.dataformat:jackson-dataformat-csv`** — no
+        explicit `<version>`, resolves to `2.16.1` via the same Jackson BOM
+        `jackson-dataformat-yaml` already relies on (confirmed via `dependency:tree` before
+        writing any code, not assumed). `JsonToCsvOperation`'s column set is the **union** of every
+        row's own field names in first-seen order (not just the first row's), so a heterogeneous
+        array still produces one consistent header with blank cells for whichever rows lack a
+        given field; a nested object/array value is written as its own compact JSON string in the
+        cell rather than flattened into further columns (CSV is inherently flat — no lossless flat
+        representation exists for genuinely nested data). `CsvToJsonOperation` never infers a
+        cell's type — every value comes back as a JSON string, deliberately (a ZIP code like
+        `"007"` would lose its leading zero if reinterpreted as a number). New
+        `DevUtilsErrorCode.INVALID_CSV` (`DEVUTILS_004`) for `CsvToJsonOperation`'s real failure
+        path (backed by Jackson's own `CsvMapper`, a genuine parser); `JsonToCsvOperation` reuses
+        `INVALID_JSON` instead of getting its own code, since its input is JSON either way (a
+        genuine syntax error, or valid JSON in a shape that can't become rows — e.g. a bare array
+        of numbers).
+        - **Bug fix, found by a failing test, not anticipated up front**: Jackson's
+          `MappingIterator#next()` can't declare a checked exception (it implements
+          `java.util.Iterator`), so a structural CSV failure discovered mid-iteration (a row with a
+          different column count than the header — the exact scenario `INVALID_CSV` exists for)
+          surfaces as an *unchecked* `RuntimeJsonMappingException`, not the `IOException` a plain
+          `try`-with-resources `close()` can still throw. `CsvToJsonOperation`'s original single
+          `catch (IOException e)` never caught this at all, so that exact case slipped straight
+          through as an uncaught runtime exception (a raw `500`) instead of the intended `400`
+          with `DEVUTILS_004`. Fixed by adding a dedicated `catch (RuntimeJsonMappingException e)`
+          that unwraps `getCause()` (the original `JsonMappingException`, itself a
+          `JsonProcessingException`) through the same `ParsingExceptionMessages.friendlyMessage`
+          path the `IOException` branch already used.
+      - **`SqlFormatOperation` delegates entirely to a new `service/impl/support/SqlFormatter`** —
+        a lenient, **keyword-driven** pretty-printer/minifier for SQL, not a real SQL-grammar
+        parser, the same "textual reformatter" trade-off `CurlyBraceFormatter` already makes for
+        CSS/LESS/SCSS/JS, for a related reason: a real SQL parser would also have to commit to one
+        specific dialect (MySQL/Postgres/SQL Server/Oracle all diverge), which a general-purpose
+        formatting tool has no way to know in advance. Fully re-tokenizes and rebuilds the output
+        from scratch (no ASI-style hazard to preserve original whitespace against, unlike JS).
+        Line breaks are keyword-triggered (`SELECT`/`FROM`/`WHERE`/`GROUP BY`/`ORDER BY`/`HAVING`/
+        `LIMIT`/`OFFSET`/`INSERT INTO`/`VALUES`/`UPDATE`/`SET`/`DELETE FROM`/`UNION`/`UNION ALL`/
+        every `JOIN` variant/`ON`/`AND`/`OR`), indented by live paren-nesting depth (`AND`/`OR`
+        get one extra level) — a subquery's own clauses end up indented automatically, since
+        indentation tracks paren depth, not which clause "owns" them. **Deliberately does not
+        split a comma-separated column/value list onto separate lines** — same reasoning
+        `CurlyBraceFormatter` already documents for CSS selector lists: no context-free way to
+        tell a `SELECT` column list apart from a function call's argument list
+        (`COUNT(a, b)`) without real parsing. **Known, deliberate trade-off: `(` never gets a
+        leading space**, regardless of context — correct for a function call (`COUNT(*)`), merely
+        a different style preference for something like `VALUES(1, 2, 3)` — no parser-free way to
+        tell "function name" from "keyword that conventionally gets a space before its paren"
+        apart, so this picks the rule that's never actually *wrong*. Quote handling is
+        dialect-agnostic: `'...'`/`"..."`/`` `...` `` are all atomic tokens tolerating *either* a
+        doubled quote *or* a backslash escape. Comments (`-- line`, `# line` MySQL, `/* block */`)
+        are preserved verbatim by `beautify`, stripped by `minify`. Never throws — no matching
+        `DevUtilsErrorCode`.
+        - **Two real bugs caught by failing tests, both fixed before this landed**: (1) the
+          keyword-matching branch originally emitted the *canonical uppercase* keyword text from
+          its own lookup table instead of the actual input token, silently upper-casing every
+          recognized keyword regardless of how the caller wrote it — every single beautify test
+          with lowercase input failed on this alone. Fixed by appending the original token text,
+          using the lookup table only to decide *whether* a line break applies, never what to
+          render. (2) `minify` never actually stripped comment tokens — they were tokenized
+          correctly but never filtered out during rendering, so a comment survived straight into
+          the "minified" output. Fixed by skipping any comment-shaped token when rendering in
+          single-line mode.
+      - **Test suite**: `SqlFormatterTest` (10 cases) plus one JUnit 5 class per new operation
+        (`JsonToCsvOperationTest`/`CsvToJsonOperationTest`/`SqlFormatOperationTest`, 3–7 cases
+        each), plus 4 new `DevUtilsServiceApplicationTests` cases (reachability for all 3 new
+        endpoints, plus malformed CSV returning `400` with `DEVUTILS_004`). 95 tests total in this
+        module now, verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
+      - Backend-only pass, per request scope — the `gui`'s `/dev-utils` page was not wired up to
+        these 3 new endpoints in this pass.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

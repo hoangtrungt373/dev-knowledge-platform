@@ -5,8 +5,8 @@ Module-local guidance for `dev-utils-service`. Read alongside the root `CLAUDE.m
 ## What lives here
 
 A stateless developer-utility API: JSON format/validate, YAML↔JSON conversion, HTML/CSS/LESS/SCSS/
-JS/ERB beautify+minify, XML validate/beautify+minify. Package root:
-`com.ttg.devknowledgeplatform.devutils.*`.
+JS/ERB beautify+minify, XML validate/beautify+minify, JSON↔CSV conversion, SQL format+minify.
+Package root: `com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike
 `ecommerce-service`/`identity-service`/`task-service`/`social-service`/`content-service`/
@@ -60,14 +60,19 @@ caller.** Every operation is a pure text-in/text-out transform:
   bean) and `TraceContextFilter` (reactor-wide tracing/access logging). No Keycloak-related
   import, no `CurrentUserIdArgumentResolver`.
 - `security/SecurityConfig` — see above.
-- `exception/DevUtilsErrorCode` — `INVALID_JSON`/`INVALID_YAML`/`INVALID_XML`. No
-  `INVALID_HTML`/`INVALID_CSS`/`INVALID_LESS`/`INVALID_SCSS`/`INVALID_JS` — jsoup's parser (HTML,
-  and `ErbOperation`'s own jsoup-based approach) is deliberately lenient and never throws on
-  malformed markup, and `CssOperation`/`LessOperation`/`ScssOperation`/`JsOperation` all delegate to
-  the equally lenient `service/impl/support/CurlyBraceFormatter` (see below) — none of these five
-  have an invalid-input failure path to name. `INVALID_XML` is the one exception among the newer
-  operations: `XmlOperation` is backed by a real JAXP parser, the same "real parse, real
-  invalid-input error" shape `INVALID_JSON`/`INVALID_YAML` already establish.
+- `exception/DevUtilsErrorCode` — `INVALID_JSON`/`INVALID_YAML`/`INVALID_XML`/`INVALID_CSV`. No
+  `INVALID_HTML`/`INVALID_CSS`/`INVALID_LESS`/`INVALID_SCSS`/`INVALID_JS`/`INVALID_SQL` — jsoup's
+  parser (HTML, and `ErbOperation`'s own jsoup-based approach) is deliberately lenient and never
+  throws on malformed markup, `CssOperation`/`LessOperation`/`ScssOperation`/`JsOperation` all
+  delegate to the equally lenient `service/impl/support/CurlyBraceFormatter` (see below), and
+  `SqlFormatOperation` delegates to the similarly lenient `service/impl/support/SqlFormatter` (see
+  below) — none of these six have an invalid-input failure path to name. `INVALID_XML`/
+  `INVALID_CSV` are the exceptions among the newer operations: `XmlOperation`/`CsvToJsonOperation`
+  are backed by real parsers (JAXP, Jackson's `CsvMapper`, respectively), the same "real parse,
+  real invalid-input error" shape `INVALID_JSON`/`INVALID_YAML` already establish.
+  `JsonToCsvOperation` reuses `INVALID_JSON` rather than getting its own code — its input is JSON
+  either way, so a failure there (a genuine syntax error, or valid JSON in a shape that can't
+  become rows) is still honestly "Invalid JSON."
   - **Fixed, per direct follow-up request, a bug originally found while investigating a `gui`
     error-message complaint (see that complaint's own history below for the client-side half of
     this story).** `INVALID_JSON`/`INVALID_YAML`'s own `"Invalid JSON: {0}"`/`"Invalid YAML: {0}"`
@@ -237,6 +242,67 @@ caller.** Every operation is a pure text-in/text-out transform:
     `ErrorHandler` still rethrows on error/fatal error (unchanged behavior) but stops the JDK's
     default handler from spamming stderr for what is routine, expected invalid input on a fully
     public endpoint.
+- **3 more operations (`JsonToCsvOperation`/`CsvToJsonOperation`/`SqlFormatOperation`), backing
+  `POST /api/v1/dev-utils/{json-to-csv,csv-to-json,sql/format}`.**
+  - **`JsonToCsvOperation`/`CsvToJsonOperation`** use Jackson's `CsvMapper`
+    (`jackson-dataformat-csv`, new dependency — no explicit `<version>`, resolves to `2.16.1` via
+    the same Jackson BOM `jackson-dataformat-yaml` already relies on). `JsonToCsvOperation` accepts
+    a JSON array of flat objects (or a single object, treated as one row); its column set is the
+    **union** of every row's own field names in first-seen order, not just the first row's keys, so
+    a heterogeneous array still produces one consistent header (blank cells for rows missing a
+    given field); a nested object/array value is written as its own compact JSON string in the
+    cell rather than flattened into further columns (CSV is inherently flat — no lossless flat
+    representation exists for genuinely nested data). No `minify` — CSV has no distinct "compact"
+    form (`TextRequest`, same reasoning `JsonToYamlOperation` already documents for YAML).
+    `CsvToJsonOperation` reads the first row as the header (`CsvSchema.emptySchema().withHeader()`)
+    and **never infers a value's type** — every cell comes back as a JSON string, deliberately
+    (inferring number/boolean would be exactly the kind of surprising, silently-lossy behavior a
+    generic converter should avoid, e.g. a ZIP code like `"007"` losing its leading zero); `minify`
+    controls pretty vs. compact JSON output, same choice `JsonFormatOperation`/`YamlToJsonOperation`
+    already apply to their own JSON output. Real failure paths for both: `JsonToCsvOperation`
+    reuses `INVALID_JSON` (a genuine JSON syntax error, or valid JSON in a shape that can't become
+    rows — e.g. a bare array of numbers); `CsvToJsonOperation` uses the new `INVALID_CSV`
+    (`DEVUTILS_004`) for a genuine structural failure (a row with a different column count than the
+    header). **A real bug caught by a failing test**: Jackson's `MappingIterator#next()` can't
+    declare a checked exception (it implements `java.util.Iterator`), so a structural failure
+    discovered mid-iteration surfaces as an *unchecked* `RuntimeJsonMappingException`, not the
+    `IOException` a plain `try`-with-resources `close()` can still throw — without a dedicated
+    catch for it, `CsvToJsonOperation`'s own "different column count" case (the exact scenario
+    `INVALID_CSV` exists for) went completely uncaught, surfacing as a raw 500 instead of a clean
+    `400`.
+  - **`SqlFormatOperation`** delegates entirely to a new `service/impl/support/SqlFormatter` — a
+    lenient, **keyword-driven** pretty-printer/minifier for SQL, not a real SQL-grammar parser
+    (same "textual reformatter" trade-off `CurlyBraceFormatter` already makes for CSS/LESS/SCSS/JS,
+    for a related reason: a real SQL parser would also have to commit to one specific dialect —
+    MySQL/Postgres/SQL Server/Oracle all diverge — which a general-purpose formatting tool has no
+    way to know in advance). Fully re-tokenizes the input (string/quoted-identifier literals and
+    comments kept atomic) and rebuilds the output from scratch — unlike `CurlyBraceFormatter`, SQL
+    has no ASI-style hazard, so nothing about the original whitespace needs preserving. Line breaks
+    are **keyword-triggered** (`SELECT`/`FROM`/`WHERE`/`GROUP BY`/`ORDER BY`/`HAVING`/`LIMIT`/
+    `OFFSET`/`INSERT INTO`/`VALUES`/`UPDATE`/`SET`/`DELETE FROM`/`UNION`/`UNION ALL`/every `JOIN`
+    variant/`ON`/`AND`/`OR`), indented by live paren-nesting depth (2 spaces/level; `AND`/`OR` get
+    one extra level) — a subquery's own `SELECT`/`FROM`/`WHERE` end up indented automatically, since
+    indentation tracks paren depth, not which clause "owns" them. **Deliberately does not split a
+    comma-separated column/value list onto one item per line** — same reasoning
+    `CurlyBraceFormatter` already documents for never splitting a CSS selector list on a bare
+    comma: there's no context-free way to tell a `SELECT` column list apart from a function call's
+    argument list (`COUNT(a, b)`) without real parsing. **Known, deliberate spacing trade-off: `(`
+    never gets a leading space**, regardless of context — correct for a function call (`COUNT(*)`,
+    not `COUNT (*)`), merely a different style preference for something like `VALUES(1, 2, 3)` — no
+    parser-free way exists to tell "this is a function name" from "this keyword conventionally gets
+    a space before its paren" apart, so this picks the rule that's never actually *wrong*. Quote
+    handling is dialect-agnostic: `'...'` (strings), `"..."` (ANSI quoted identifiers), and
+    `` `...` `` (MySQL quoted identifiers) are all atomic tokens tolerating *either* a doubled quote
+    *or* a backslash escape, rather than committing to one dialect's actual rule. Comments —
+    `-- line`, `# line` (MySQL), `/* block */` — are preserved verbatim by `beautify`, stripped by
+    `minify`. Never throws — no matching `DevUtilsErrorCode`. **Two real bugs caught by failing
+    tests during development**: (1) the keyword-matching branch originally emitted the *canonical
+    uppercase* keyword text from its own lookup table instead of the token actually present in the
+    input, silently upper-casing every recognized keyword regardless of how the caller wrote it —
+    fixed by appending the original token text, using the lookup table only to decide *whether* a
+    line break applies, never what to render. (2) `minify` never actually stripped comment tokens
+    at all (they were tokenized correctly but never filtered out during rendering) — fixed by
+    skipping any comment-shaped token when rendering in single-line mode.
 - `dto/DevUtilsLimits` — one shared `MAX_INPUT_LENGTH` constant (`100_000` characters, a
   deliberately generous but finite first-version bound), referenced by both request DTOs' `@Size`
   constraint below. This is the one fully public, unauthenticated endpoint in the reactor — an
@@ -245,41 +311,50 @@ caller.** Every operation is a pure text-in/text-out transform:
   guessing its own number; split it per operation later if a real use case needs a different bound
   for one of them.
 - `dto/{MinifiableTextRequest,TextRequest,DevUtilResponse}` — request DTOs are shared **only where
-  the shape genuinely matches**: `MinifiableTextRequest` (`input`/`minify`) backs
-  `json/format`/`yaml-to-json`/`html/beautify`, which really do share that shape; `TextRequest`
-  (`input` only) backs `json-to-yaml`, which has no minify concept at all — not the same type with
-  an ignored field. Both `input` fields carry `@NotBlank @Size(max = DevUtilsLimits.MAX_INPUT_LENGTH)`.
-  `DevUtilResponse` (`output`) stays shared across all four today, but a future
-  operation with a genuinely richer output (e.g. a Number Base Converter's several
-  representations) should get its own response type rather than being forced into this one. See
-  `DevUtilOperation`'s own Javadoc for the full reasoning against one shared request/response pair.
+  the shape genuinely matches**: `MinifiableTextRequest` (`input`/`minify`) backs every operation
+  with a real minify concept (`json/format`/`yaml-to-json`/`html/beautify`/`css/beautify`/
+  `less/beautify`/`scss/beautify`/`js/beautify`/`erb/beautify`/`xml/beautify`/`csv-to-json`/
+  `sql/format`); `TextRequest` (`input` only) backs `json-to-yaml`/`json-to-csv`, neither of which
+  has a minify concept at all (YAML/CSV both lack a distinct "compact" form to toggle) — not the
+  same type with an ignored field. Both `input` fields carry
+  `@NotBlank @Size(max = DevUtilsLimits.MAX_INPUT_LENGTH)`. `DevUtilResponse` (`output`) stays
+  shared across every operation today, but a future operation with a genuinely richer output (e.g.
+  a Number Base Converter's several representations) should get its own response type rather than
+  being forced into this one. See `DevUtilOperation`'s own Javadoc for the full reasoning against
+  one shared request/response pair.
 - `api/DevUtilsApi` (+ `api/impl/DevUtilsController`) — `POST /api/v1/dev-utils/json/format`,
   `/yaml-to-json`, `/json-to-yaml`, `/html/beautify`, `/css/beautify`, `/less/beautify`,
-  `/scss/beautify`, `/js/beautify`, `/erb/beautify`, `/xml/beautify`. The controller injects each
-  operation by its concrete type rather than dispatching through an enum-keyed registry — with one
-  fixed REST endpoint per operation, there's no runtime "which operation" decision left to make
-  (see `DevUtilOperation`'s own Javadoc).
+  `/scss/beautify`, `/js/beautify`, `/erb/beautify`, `/xml/beautify`, `/json-to-csv`,
+  `/csv-to-json`, `/sql/format`. The controller injects each operation by its concrete type rather
+  than dispatching through an enum-keyed registry — with one fixed REST endpoint per operation,
+  there's no runtime "which operation" decision left to make (see `DevUtilOperation`'s own
+  Javadoc).
 
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
 `HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
-`JsOperationTest`, `ErbOperationTest`, `XmlOperationTest`), plus `service/impl/support/
+`JsOperationTest`, `ErbOperationTest`, `XmlOperationTest`, `JsonToCsvOperationTest`,
+`CsvToJsonOperationTest`, `SqlFormatOperationTest`), plus `service/impl/support/
 CurlyBraceFormatterTest` (the shared CSS/LESS/SCSS/JS reformatter — brace nesting, already-
 multiline selector lists, comment/string-literal protection, the JS ASI-safety guarantee,
-never-throws-on-unterminated-input), no Mockito anywhere — each constructs real `ObjectMapper`/
-`YAMLMapper` instances rather than mocking Jackson, since the whole point is verifying real
-parse/serialize behavior (pretty vs. minified output, malformed-input rejection, round-trip
-structural equality via `readTree`, jsoup's lenient-parsing/indent behavior, and — for
-`XmlOperation` — real JAXP parsing/XXE-rejection behavior). Plus
-`DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)` +
-`@AutoConfigureMockMvc`) — boots the real Spring context and hits all ten endpoints with **no**
-`Authorization` header through the real filter chain, confirming end to end (not just by static
-reasoning) that the app actually starts and every endpoint is genuinely public. This is exactly
-the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also covers the
-`MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the latter caught
-by `@Size` before ever reaching an operation) and confirms malformed XML returns `400` with
-`DEVUTILS_003` through the shared `GlobalExceptionHandler`. 66 tests total,
-verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
+never-throws-on-unterminated-input) and `service/impl/support/SqlFormatterTest` (clause-keyword
+line breaks, `AND`/`OR` extra indent, subquery paren-depth indent, multi-word `JOIN`/`GROUP BY`
+phrase recognition, string-literal protection including keyword-like content inside a string,
+never splitting on a bare comma, minify's comment-stripping/single-line collapse, never-throws),
+no Mockito anywhere — each constructs real `ObjectMapper`/`YAMLMapper`/`CsvMapper` instances
+rather than mocking Jackson, since the whole point is verifying real parse/serialize behavior
+(pretty vs. minified output, malformed-input rejection, round-trip structural equality via
+`readTree`, jsoup's lenient-parsing/indent behavior, and — for `XmlOperation`/`CsvToJsonOperation`
+— real JAXP/CSV parsing and rejection behavior). Plus `DevUtilsServiceApplicationTests`
+(`@SpringBootTest(webEnvironment = RANDOM_PORT)` + `@AutoConfigureMockMvc`) — boots the real
+Spring context and hits all thirteen endpoints with **no** `Authorization` header through the real
+filter chain, confirming end to end (not just by static reasoning) that the app actually starts
+and every endpoint is genuinely public. This is exactly the test that caught the
+`DataSourceAutoConfiguration` boot failure above, and it also covers the `MAX_INPUT_LENGTH`
+boundary (accepted at exactly the cap, rejected one over it — the latter caught by `@Size` before
+ever reaching an operation) and confirms malformed XML/CSV both return `400` with
+`DEVUTILS_003`/`DEVUTILS_004` respectively through the shared `GlobalExceptionHandler`. 95 tests
+total, verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module
 

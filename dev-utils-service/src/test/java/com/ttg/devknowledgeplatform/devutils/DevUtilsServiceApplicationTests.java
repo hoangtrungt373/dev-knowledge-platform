@@ -18,7 +18,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
  * {@link MockMvc} — verifies, end to end rather than by static reasoning alone, that this app
  * actually starts (the {@code GlobalExceptionHandler}/{@code spring-boot-starter-security}
  * classpath dependency reasoning in {@code security.SecurityConfig}'s own Javadoc holds up) and
- * that every one of the 10 operation endpoints is genuinely reachable with no
+ * that every one of the 13 operation endpoints is genuinely reachable with no
  * {@code Authorization} header at all.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -129,6 +129,42 @@ class DevUtilsServiceApplicationTests {
                         .content("{\"input\":\"<root><unclosed></root>\",\"minify\":false}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_003")));
+    }
+
+    @Test
+    void jsonToCsvIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/json-to-csv")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"[{\\\"id\\\":1,\\\"name\\\":\\\"Alice\\\"}]\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Alice")));
+    }
+
+    @Test
+    void csvToJsonIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/csv-to-json")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"id,name\\n1,Alice\\n\",\"minify\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Alice")));
+    }
+
+    @Test
+    void malformedCsvReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/csv-to-json")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"id,name\\n1,Alice,extra\\n\",\"minify\":true}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_004")));
+    }
+
+    @Test
+    void formatSqlIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/sql/format")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"select id from users\",\"minify\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("select id")));
     }
 
     @Test

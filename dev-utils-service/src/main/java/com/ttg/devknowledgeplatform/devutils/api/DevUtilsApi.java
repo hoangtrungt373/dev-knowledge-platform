@@ -21,11 +21,12 @@ import jakarta.validation.Valid;
  * why this is the one deployable in the reactor that isn't a JWT resource server, and this
  * module's own {@code CLAUDE.md} for the matching carve-out {@code gateway}'s own routing needs.
  *
- * <p>Each endpoint takes whichever request DTO actually fits its own operation — every operation
- * except {@code jsonToYaml} genuinely shares {@link MinifiableTextRequest}'s shape (raw text in, a
- * minify flag, transformed text out) — {@code jsonToYaml} does not (see {@link TextRequest}'s own
- * Javadoc) — rather than every endpoint being forced through one shared request type; see
- * {@code service.DevUtilOperation}'s own Javadoc for the full reasoning.
+ * <p>Each endpoint takes whichever request DTO actually fits its own operation — most genuinely
+ * share {@link MinifiableTextRequest}'s shape (raw text in, a minify flag, transformed text out);
+ * {@code jsonToYaml}/{@code jsonToCsv} do not, since neither YAML nor CSV has a distinct "compact"
+ * form to toggle (see {@link TextRequest}'s own Javadoc) — rather than every endpoint being forced
+ * through one shared request type; see {@code service.DevUtilOperation}'s own Javadoc for the full
+ * reasoning.
  */
 @RequestMapping("/api/v1/dev-utils")
 public interface DevUtilsApi {
@@ -132,4 +133,34 @@ public interface DevUtilsApi {
      */
     @PostMapping("/xml/beautify")
     ResponseEntity<DevUtilResponse> beautifyXml(@Valid @RequestBody MinifiableTextRequest request);
+
+    /**
+     * Converts a raw JSON array of objects (or a single object) to CSV. No minify option — see
+     * {@link TextRequest}'s own Javadoc for why; CSV has no distinct "compact" form to toggle.
+     *
+     * @return {@code 200} with the converted CSV, or {@code 400} if {@code request.input()} isn't
+     *         valid JSON shaped as an array of objects (or a single object)
+     */
+    @PostMapping("/json-to-csv")
+    ResponseEntity<DevUtilResponse> jsonToCsv(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Converts raw CSV (first row treated as the header) to a JSON array of objects, pretty-printed
+     * or (with {@code request.minify()}) compact/single-line.
+     *
+     * @return {@code 200} with the converted JSON, or {@code 400} if {@code request.input()} is
+     *         not valid CSV
+     */
+    @PostMapping("/csv-to-json")
+    ResponseEntity<DevUtilResponse> csvToJson(@Valid @RequestBody MinifiableTextRequest request);
+
+    /**
+     * Reformats a raw SQL query/script with one clause per line, or, with
+     * {@code request.minify()}, a compact form with comments stripped. Lenient — see
+     * {@code SqlFormatOperation}'s own Javadoc — this never fails on malformed input.
+     *
+     * @return {@code 200} with the formatted (or minified) SQL
+     */
+    @PostMapping("/sql/format")
+    ResponseEntity<DevUtilResponse> formatSql(@Valid @RequestBody MinifiableTextRequest request);
 }

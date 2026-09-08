@@ -8,13 +8,16 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.TextRequest;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CssOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.CsvToJsonOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.ErbOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlBeautifyOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonFormatOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToCsvOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToYamlOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.LessOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.ScssOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.SqlFormatOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.XmlOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.YamlToJsonOperation;
 
@@ -40,6 +43,9 @@ public class DevUtilsController implements DevUtilsApi {
     private final JsOperation jsOperation;
     private final ErbOperation erbOperation;
     private final XmlOperation xmlOperation;
+    private final JsonToCsvOperation jsonToCsvOperation;
+    private final CsvToJsonOperation csvToJsonOperation;
+    private final SqlFormatOperation sqlFormatOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -89,5 +95,20 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<DevUtilResponse> beautifyXml(MinifiableTextRequest request) {
         return ResponseEntity.ok(new DevUtilResponse(xmlOperation.execute(request.input(), request.minify())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> jsonToCsv(TextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(jsonToCsvOperation.execute(request.input())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> csvToJson(MinifiableTextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(csvToJsonOperation.execute(request.input(), request.minify())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> formatSql(MinifiableTextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(sqlFormatOperation.execute(request.input(), request.minify())));
     }
 }

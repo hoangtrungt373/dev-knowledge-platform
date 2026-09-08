@@ -12,7 +12,7 @@
 
     <artifactId>dev-utils-service</artifactId>
     <name>Dev Utils Service</name>
-    <description>Stateless developer utility tools: JSON format/validate, YAML/JSON conversion, HTML beautify</description>
+    <description>Stateless developer utility tools: JSON format/validate, YAML/JSON/CSV conversion, HTML/CSS/LESS/SCSS/JS/ERB/SQL beautify+minify, XML validate/beautify+minify</description>
 
     <dependencies>
 
@@ -59,6 +59,14 @@
         <dependency>
             <groupId>com.fasterxml.jackson.dataformat</groupId>
             <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+
+        <!-- CSV<->JSON conversion via Jackson's CsvMapper — same "no explicit <version>, managed by
+             spring-boot-dependencies' own Jackson BOM" convention as jackson-dataformat-yaml above;
+             both live under the same com.fasterxml.jackson.dataformat groupId/BOM. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-csv</artifactId>
         </dependency>
 
         <!-- jsoup — HTML parsing/pretty-printing for the beautify operation. Not the same use case

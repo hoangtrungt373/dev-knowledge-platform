@@ -2262,7 +2262,7 @@ for the rules this module follows.
 ## dev-utils-service
 
 A stateless developer-utility API — JSON format/validate, YAML↔JSON conversion, HTML/CSS/LESS/SCSS/
-JS/ERB beautify+minify, XML validate/beautify+minify.
+JS/ERB beautify+minify, XML validate/beautify+minify, JSON↔CSV conversion, SQL format+minify.
 **A standalone Spring Boot application built directly as standalone, not an extraction** — unlike
 every module in the six sections above, this one never lived inside `gateway` at all, so there was
 nothing to pull out (see root `CLAUDE.md`'s Long-term direction section). It's also the one
@@ -2294,12 +2294,15 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │                                     No oauth2-resource-server/oauth2-client dependency at all —
 │                                     nothing here ever verifies a JWT.
 ├── exception/
-│   ├── DevUtilsErrorCode.java     — INVALID_JSON/INVALID_YAML/INVALID_XML only. No INVALID_HTML/
-│   │                                 INVALID_CSS/INVALID_LESS/INVALID_SCSS/INVALID_JS — jsoup's
-│   │                                 parser (HTML/ERB) and the shared CurlyBraceFormatter (CSS/
-│   │                                 LESS/SCSS/JS) are both deliberately lenient and never throw on
-│   │                                 malformed input; XmlOperation is the one exception, backed by
-│   │                                 a real JAXP parser.
+│   ├── DevUtilsErrorCode.java     — INVALID_JSON/INVALID_YAML/INVALID_XML/INVALID_CSV only. No
+│   │                                 INVALID_HTML/INVALID_CSS/INVALID_LESS/INVALID_SCSS/
+│   │                                 INVALID_JS/INVALID_SQL — jsoup's parser (HTML/ERB) and the
+│   │                                 shared CurlyBraceFormatter (CSS/LESS/SCSS/JS)/SqlFormatter
+│   │                                 (SQL) are all deliberately lenient and never throw on
+│   │                                 malformed input; XmlOperation/CsvToJsonOperation are the
+│   │                                 exceptions, backed by real parsers (JAXP, Jackson's
+│   │                                 CsvMapper). JsonToCsvOperation reuses INVALID_JSON — its
+│   │                                 input is JSON either way.
 │   └── ParsingExceptionMessages.java — friendlyMessage(JsonProcessingException): builds a clean,
 │                                     noise-free message (getOriginalMessage() + the structured
 │                                     getLocation(), never string-parsed off getMessage()) for the
@@ -2360,35 +2363,59 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   external entities/DTD loading, per the OWASP XXE
 │       │                                   Prevention Cheat Sheet's JAXP baseline) since this is a
 │       │                                   fully public, unauthenticated endpoint
+│       ├── JsonToCsvOperation.java      — execute(String input) — no minify; JSON array of flat
+│       │                                   objects (or a single object) → CSV, header = union of
+│       │                                   every row's own field names in first-seen order, a
+│       │                                   nested value is written as its own compact JSON string
+│       │                                   in the cell (CSV can't represent nesting losslessly)
+│       ├── CsvToJsonOperation.java      — execute(String input, boolean minify); first row = the
+│       │                                   header (Jackson CsvMapper); every cell comes back as a
+│       │                                   JSON string, deliberately — never infers a number/
+│       │                                   boolean type; minify controls pretty vs. compact JSON
+│       ├── SqlFormatOperation.java      — execute(String input, boolean minify); delegates
+│       │                                   entirely to support/SqlFormatter
 │       └── support/
-│           └── CurlyBraceFormatter.java — beautify(String)/minify(String), static utility (not a
-│                                           DevUtilOperation itself). Shared by Css/Less/Scss/
-│                                           JsOperation — a lenient, brace/semicolon-driven textual
-│                                           reformatter (tracks brace-nesting depth, statement-
-│                                           ending semicolons, and keeps comments/string literals
-│                                           atomic), not a real per-language grammar parser — no
-│                                           single grammar exists across all four languages a Java
-│                                           library could parse uniformly. Never throws. See its own
-│                                           Javadoc for the full reasoning, including its JS/ASI
-│                                           line-break-safety guarantee and why it never normalizes
-│                                           spacing around a bare `:` (would corrupt `:hover`)
+│           ├── CurlyBraceFormatter.java — beautify(String)/minify(String), static utility (not a
+│           │                               DevUtilOperation itself). Shared by Css/Less/Scss/
+│           │                               JsOperation — a lenient, brace/semicolon-driven textual
+│           │                               reformatter (tracks brace-nesting depth, statement-
+│           │                               ending semicolons, and keeps comments/string literals
+│           │                               atomic), not a real per-language grammar parser — no
+│           │                               single grammar exists across all four languages a Java
+│           │                               library could parse uniformly. Never throws. See its own
+│           │                               Javadoc for the full reasoning, including its JS/ASI
+│           │                               line-break-safety guarantee and why it never normalizes
+│           │                               spacing around a bare `:` (would corrupt `:hover`)
+│           └── SqlFormatter.java        — beautify(String)/minify(String), static utility, shared
+│                                           only by SqlFormatOperation today — a lenient, keyword-
+│                                           driven pretty-printer (line breaks before recognized
+│                                           clause keywords, indented by live paren-depth; never
+│                                           splits a comma-separated list, same reasoning
+│                                           CurlyBraceFormatter documents for CSS selector lists),
+│                                           not a real SQL-grammar parser or a specific dialect.
+│                                           Never throws. See its own Javadoc for the full
+│                                           reasoning, including why `(` never gets a leading space
 ├── dto/
 │   ├── DevUtilsLimits.java        — MAX_INPUT_LENGTH = 100_000, shared by both request DTOs'
 │   │                                 @Size constraint — the one fully public, unauthenticated
 │   │                                 endpoint in the reactor, so a finite input-size bound matters
 │   ├── MinifiableTextRequest.java — input (@NotBlank @Size(max=MAX_INPUT_LENGTH))/minify; backs
-│   │                                 json/format, yaml-to-json, html/beautify — the three
-│   │                                 operations that genuinely share this shape
-│   ├── TextRequest.java           — input only (same @Size cap); backs json-to-yaml, which has no
-│   │                                 minify concept
-│   └── DevUtilResponse.java       — output; shared by all four today, not a rule going forward —
-│                                     a future operation with a richer output gets its own type
+│   │                                 every operation with a real minify concept (json/format,
+│   │                                 yaml-to-json, html/beautify, css/beautify, less/beautify,
+│   │                                 scss/beautify, js/beautify, erb/beautify, xml/beautify,
+│   │                                 csv-to-json, sql/format)
+│   ├── TextRequest.java           — input only (same @Size cap); backs json-to-yaml/json-to-csv,
+│   │                                 neither of which has a minify concept (YAML/CSV both lack a
+│   │                                 distinct "compact" form)
+│   └── DevUtilResponse.java       — output; shared by every operation today, not a rule going
+│                                     forward — a future operation with a richer output gets its
+│                                     own type
 └── api/
     ├── DevUtilsApi.java           — POST /api/v1/dev-utils/{json/format,yaml-to-json,
     │                                 json-to-yaml,html/beautify,css/beautify,less/beautify,
-    │                                 scss/beautify,js/beautify,erb/beautify,xml/beautify}. Every
-    │                                 endpoint is public — no @CurrentUserId, no authenticated
-    │                                 principal at all.
+    │                                 scss/beautify,js/beautify,erb/beautify,xml/beautify,
+    │                                 json-to-csv,csv-to-json,sql/format}. Every endpoint is
+    │                                 public — no @CurrentUserId, no authenticated principal at all.
     └── impl/DevUtilsController.java — implements DevUtilsApi; injects each operation by its
                                         concrete type (no enum-keyed registry — one fixed endpoint
                                         per operation leaves no runtime dispatch decision to make)
