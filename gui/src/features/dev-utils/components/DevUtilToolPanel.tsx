@@ -83,6 +83,11 @@ const OUTPUT_LINE_NUMBER_COLOR = '#6e7681';
 // states too.
 const OUTPUT_LINE_COLOR = '#3c3c3c';
 
+// Shared cap for the Output panel's content area (error box / placeholder / syntax-highlighted
+// result alike) — keeps it growing with content up to a reasonable height, then scrolling
+// internally, roughly matching the Input TextField's own minRows/maxRows auto-grow range.
+const OUTPUT_MAX_HEIGHT = 800;
+
 // Human-readable label for the info row's file-type value — keyed by the same Prism language id
 // each operation already passes as `outputLanguage`, so no separate per-operation field was needed.
 const OUTPUT_LANGUAGE_LABELS: Record<string, string> = {
@@ -231,6 +236,11 @@ export default function DevUtilToolPanel({
   }, [output, downloadFileName, showSuccess]);
 
   return (
+    // Deliberately default align-items ('stretch') here, not 'flex-start' — it makes both Paper
+    // cards match the height of whichever one has more content (taller natural height), so Input
+    // and Output always end up the same overall height, driven by whichever has more lines. Each
+    // side's own content-area child below carries `flex: 1` so it's the *visible* content box
+    // (not just the Paper's own blank background) that actually fills the extra stretched height.
     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
       <Paper variant="outlined" sx={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column' }}>
         <Stack
@@ -267,12 +277,12 @@ export default function DevUtilToolPanel({
           </Stack>
         </Stack>
 
-        <Box sx={{ p: 2 }}>
+        <Box sx={{ p: 2, flex: 1, minHeight: 0 }}>
           <TextField
             placeholder={inputPlaceholder}
             multiline
-            minRows={20}
-            maxRows={40}
+            minRows={10}
+            maxRows={32}
             fullWidth
             value={input}
             onChange={e => onInputChange(e.target.value)}
@@ -348,7 +358,7 @@ export default function DevUtilToolPanel({
         )}
 
         {error !== null ? (
-          <Box sx={{ p: 2, maxHeight: 420, overflow: 'auto', bgcolor: OUTPUT_BG_LIGHT }}>
+          <Box sx={{ p: 2, flex: 1, minHeight: 0, maxHeight: OUTPUT_MAX_HEIGHT, overflow: 'auto', bgcolor: OUTPUT_BG_LIGHT }}>
             <Stack
               direction="row"
               spacing={1.5}
@@ -395,7 +405,16 @@ export default function DevUtilToolPanel({
           // declaration above a plain (non-`!important`) inline style regardless of origin —
           // targeting the `.react-syntax-highlighter-line-number` class this same library adds
           // specifically for cases like this.
-          <Box sx={{ '& .react-syntax-highlighter-line-number': { color: `${OUTPUT_LINE_NUMBER_COLOR} !important` } }}>
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              maxHeight: OUTPUT_MAX_HEIGHT,
+              display: 'flex',
+              flexDirection: 'column',
+              '& .react-syntax-highlighter-line-number': { color: `${OUTPUT_LINE_NUMBER_COLOR} !important` },
+            }}
+          >
             <SyntaxHighlighter
               language={outputLanguage}
               style={vscDarkPlus}
@@ -406,7 +425,8 @@ export default function DevUtilToolPanel({
                 borderRadius: 0,
                 fontSize: '0.8rem',
                 padding: '16px',
-                maxHeight: 1420,
+                flex: 1,
+                minHeight: 0,
                 overflow: 'auto',
                 background: OUTPUT_BG_DARK,
               }}
@@ -419,7 +439,7 @@ export default function DevUtilToolPanel({
             spacing={1.5}
             alignItems="center"
             justifyContent="center"
-            sx={{ p: 2, minHeight: 200, maxHeight: 420, bgcolor: OUTPUT_BG_LIGHT }}
+            sx={{ p: 2, flex: 1, minHeight: 200, maxHeight: OUTPUT_MAX_HEIGHT, bgcolor: OUTPUT_BG_LIGHT }}
           >
             <DownloadIcon sx={{ fontSize: 40, color: 'grey.400' }} />
             <Typography variant="body2" sx={{ color: 'grey.600' }}>
