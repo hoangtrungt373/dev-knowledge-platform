@@ -4,8 +4,9 @@ Module-local guidance for `dev-utils-service`. Read alongside the root `CLAUDE.m
 
 ## What lives here
 
-A stateless developer-utility API: JSON format/validate, YAML↔JSON conversion, HTML beautify.
-Package root: `com.ttg.devknowledgeplatform.devutils.*`.
+A stateless developer-utility API: JSON format/validate, YAML↔JSON conversion, HTML/CSS/LESS/SCSS/
+JS/ERB beautify+minify, XML validate/beautify+minify. Package root:
+`com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike
 `ecommerce-service`/`identity-service`/`task-service`/`social-service`/`content-service`/
@@ -59,9 +60,14 @@ caller.** Every operation is a pure text-in/text-out transform:
   bean) and `TraceContextFilter` (reactor-wide tracing/access logging). No Keycloak-related
   import, no `CurrentUserIdArgumentResolver`.
 - `security/SecurityConfig` — see above.
-- `exception/DevUtilsErrorCode` — `INVALID_JSON`/`INVALID_YAML` only. No `INVALID_HTML` — jsoup's
-  parser is deliberately lenient and never throws on malformed markup, so there is no invalid-HTML
-  failure path to name.
+- `exception/DevUtilsErrorCode` — `INVALID_JSON`/`INVALID_YAML`/`INVALID_XML`. No
+  `INVALID_HTML`/`INVALID_CSS`/`INVALID_LESS`/`INVALID_SCSS`/`INVALID_JS` — jsoup's parser (HTML,
+  and `ErbOperation`'s own jsoup-based approach) is deliberately lenient and never throws on
+  malformed markup, and `CssOperation`/`LessOperation`/`ScssOperation`/`JsOperation` all delegate to
+  the equally lenient `service/impl/support/CurlyBraceFormatter` (see below) — none of these five
+  have an invalid-input failure path to name. `INVALID_XML` is the one exception among the newer
+  operations: `XmlOperation` is backed by a real JAXP parser, the same "real parse, real
+  invalid-input error" shape `INVALID_JSON`/`INVALID_YAML` already establish.
   - **Fixed, per direct follow-up request, a bug originally found while investigating a `gui`
     error-message complaint (see that complaint's own history below for the client-side half of
     this story).** `INVALID_JSON`/`INVALID_YAML`'s own `"Invalid JSON: {0}"`/`"Invalid YAML: {0}"`
@@ -148,6 +154,89 @@ caller.** Every operation is a pure text-in/text-out transform:
   `<html>` document's `<head>` is dropped, the same trade-off most standalone HTML-beautifier
   tools make. `minify` maps to jsoup's own `prettyPrint(false)` mode — not a true single-line
   guarantee (whitespace already present inside a source text node is preserved as-is).
+- **6 new operations (`CssOperation`/`LessOperation`/`ScssOperation`/`JsOperation`/`ErbOperation`/
+  `XmlOperation`), each backing its own `POST /api/v1/dev-utils/{css,less,scss,js,erb,xml}/beautify`
+  endpoint — all reusing `MinifiableTextRequest`/`DevUtilResponse`, the same shape every existing
+  operation already shares (raw text in, a minify flag, transformed text out).**
+  - **`CssOperation`/`LessOperation`/`ScssOperation`/`JsOperation` all delegate entirely to a new
+    shared `service/impl/support/CurlyBraceFormatter`** (`beautify(String)`/`minify(String)`,
+    static utility, not itself a `DevUtilOperation`) — a lenient, brace/semicolon-driven textual
+    reformatter, not a real per-language grammar parser. There's no single grammar a Java library
+    could parse across CSS/LESS/SCSS/JS uniformly (LESS/SCSS extend CSS with variables/nesting/
+    mixins a strict CSS parser rejects; JS has its own grammar entirely) — building four real
+    parsers is a fundamentally bigger undertaking (that's what Prettier/Terser/UglifyJS actually
+    do). Instead it tracks only what all four "curly-brace languages" share structurally:
+    brace-nesting depth, statement-ending semicolons, and comment/string literals kept atomic so
+    their contents are never touched. Same "lenient, no invalid-input failure path" trade-off
+    `HtmlBeautifyOperation` already makes for HTML — **never throws**, so none of these four
+    operations have a matching `DevUtilsErrorCode`. `LessOperation`/`ScssOperation` only
+    *reformat* — they do not compile LESS/SCSS to plain CSS; each language's own extensions
+    (`@width`/`$width` variables, `&` nesting, `@mixin`/`@include`) pass through as literal text,
+    exactly as written.
+    - **Known, documented limitation: JavaScript's Automatic Semicolon Insertion (ASI).** A textual
+      reformatter with no real JS parser can't know that `return\nx;` means `return; x;` (the
+      restricted-production rule after `return`/`break`/`continue`/`throw`) — collapsing that line
+      break into a space or nothing would silently change what the code returns. Both
+      `beautify`/`minify` guard against this the same way: a real line break between two ordinary
+      (non-punctuation) characters is always preserved as an actual newline, never collapsed to a
+      space or dropped entirely — this doesn't require recognizing the ASI-restricted keywords by
+      name, it just never removes a line break where doing so could be semantically significant.
+      Cost: `minify` doesn't guarantee single-line output for JS the way it mostly does for
+      CSS/LESS/SCSS (whose declarations are semicolon/brace-delimited at nearly every whitespace
+      boundary already, so most of their whitespace sits next to a safely-droppable punctuation
+      character regardless).
+    - Also deliberate: `beautify` never normalizes spacing around a bare `:` (e.g. `color:red`
+      stays exactly as written, never becomes `color: red`) — a blanket "always insert a space
+      after `:`" rule would corrupt a CSS/LESS/SCSS pseudo-class selector like `:hover`/
+      `::before`, which requires *no* space between the colon and what follows; telling a
+      declaration's colon apart from a selector's needs real grammar awareness this formatter
+      deliberately doesn't have. `minify` does the opposite, safely: `:` is one of a small set of
+      "safe to tighten" punctuation characters (alongside `; { } , ( ) [ ]`) whose surrounding
+      whitespace is always droppable regardless of context.
+    - Also deliberate: this formatter never invents structure the source didn't already signal via
+      whitespace — an already-multi-line comma-separated selector list (`h1,\nh2 {...}`) stays
+      multi-line (each original line break between ordinary characters is preserved, per the
+      ASI-safety rule above), but one written on a single line (`h1,h2{...}`) is not proactively
+      re-split. Blindly splitting on every comma would corrupt a function call/argument list
+      (`rgba(0, 0, 0, .5)`, a JS array literal `[1,2,3]`) that also uses commas but isn't a
+      selector list — telling those apart needs real grammar awareness too.
+  - **`ErbOperation` reuses `HtmlBeautifyOperation`'s jsoup-based approach**, with one added step:
+    every `<%...%>` tag is extracted and replaced with an opaque placeholder *before* jsoup ever
+    parses the input, then restored verbatim afterward. Needed because jsoup's tokenizer treats a
+    `<` not followed by `!`/`/`/an ASCII letter/`?` as plain text (per the HTML5 tokenizer spec) —
+    so `<%` alone would already survive parsing — but jsoup then HTML-escapes text-node content on
+    serialization (a literal `<` becomes `&lt;`), which would corrupt the tag's own delimiters on
+    the way back out; protecting the whole tag as one opaque unit also means the embedded Ruby's
+    own `<`/`>` (e.g. `<% if x < y %>`) never reaches jsoup's tokenizer at all, regardless of what
+    it contains. **The placeholder scheme itself went through a real, test-caught fix**: control
+    characters (STX/ETX) were tried first, on the assumption jsoup only escapes
+    `<`/`>`/`&`/quotes — wrong, caught by an actual failing test: jsoup's own `Entities`
+    serialization also escapes non-printable control codepoints as numeric character references
+    (`&#x2;`, not the original byte), breaking the placeholder-matching restore step. Fixed by
+    switching to a random alphanumeric marker (via `UUID`, generated fresh per call so it can't
+    collide with anything a previous request produced) — plain letters/digits are never escaped by
+    any HTML serializer. Like `HtmlBeautifyOperation`, this never throws.
+  - **`XmlOperation` is the one operation in this batch backed by a real grammar parser (JAXP,
+    built into the JDK — no new Maven dependency)**, the same "real parse, real invalid-input
+    error" shape `JsonFormatOperation`/`YamlToJsonOperation` already establish — new
+    `DevUtilsErrorCode.INVALID_XML` (`DEVUTILS_003`). Beautify strips whitespace-only text nodes
+    from the parsed DOM (otherwise `Transformer`'s own indent mode would double up on whatever
+    whitespace the source already had) then re-serializes with 2-space indent (matching this
+    module's existing convention); minify does the same with indent off. A text node with real
+    (non-blank) content is never touched, whitespace-only or not. Preserves (or omits) the
+    `<?xml ...?>` declaration based on whether the *input* had one, rather than always adding or
+    dropping it. **XXE (XML External Entity) hardening is not optional** — this is one of the
+    fully public, unauthenticated endpoints in this reactor, and a `DocumentBuilderFactory` left at
+    JDK defaults will happily resolve a `<!DOCTYPE>`'s external entities: a textbook injection
+    vector where a malicious caller's DTD references a local file or an internal network URL and
+    has it echoed back in the "beautified" output. Hardened per the OWASP XXE Prevention Cheat
+    Sheet's JAXP baseline: `<!DOCTYPE>` disallowed outright (the simplest, most robust defense —
+    this operation has no legitimate use for a DTD anyway), external general/parameter entities and
+    external DTD loading disabled as defense in depth, and the `TransformerFactory` used to
+    serialize the result has external DTD/stylesheet access disabled too. A custom, silent
+    `ErrorHandler` still rethrows on error/fatal error (unchanged behavior) but stops the JDK's
+    default handler from spamming stderr for what is routine, expected invalid input on a fully
+    public endpoint.
 - `dto/DevUtilsLimits` — one shared `MAX_INPUT_LENGTH` constant (`100_000` characters, a
   deliberately generous but finite first-version bound), referenced by both request DTOs' `@Size`
   constraint below. This is the one fully public, unauthenticated endpoint in the reactor — an
@@ -165,24 +254,31 @@ caller.** Every operation is a pure text-in/text-out transform:
   representations) should get its own response type rather than being forced into this one. See
   `DevUtilOperation`'s own Javadoc for the full reasoning against one shared request/response pair.
 - `api/DevUtilsApi` (+ `api/impl/DevUtilsController`) — `POST /api/v1/dev-utils/json/format`,
-  `/yaml-to-json`, `/json-to-yaml`, `/html/beautify`. The controller injects each operation by its
-  concrete type rather than dispatching through an enum-keyed registry — with one fixed REST
-  endpoint per operation, there's no runtime "which operation" decision left to make (see
-  `DevUtilOperation`'s own Javadoc).
+  `/yaml-to-json`, `/json-to-yaml`, `/html/beautify`, `/css/beautify`, `/less/beautify`,
+  `/scss/beautify`, `/js/beautify`, `/erb/beautify`, `/xml/beautify`. The controller injects each
+  operation by its concrete type rather than dispatching through an enum-keyed registry — with one
+  fixed REST endpoint per operation, there's no runtime "which operation" decision left to make
+  (see `DevUtilOperation`'s own Javadoc).
 
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
-`HtmlBeautifyOperationTest`), no Mockito — each constructs real `ObjectMapper`/`YAMLMapper`
-instances rather than mocking Jackson, since the whole point is verifying real parse/serialize
-behavior (pretty vs. minified output, malformed-input rejection, round-trip structural equality
-via `readTree`, jsoup's lenient-parsing/indent behavior). Plus
+`HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
+`JsOperationTest`, `ErbOperationTest`, `XmlOperationTest`), plus `service/impl/support/
+CurlyBraceFormatterTest` (the shared CSS/LESS/SCSS/JS reformatter — brace nesting, already-
+multiline selector lists, comment/string-literal protection, the JS ASI-safety guarantee,
+never-throws-on-unterminated-input), no Mockito anywhere — each constructs real `ObjectMapper`/
+`YAMLMapper` instances rather than mocking Jackson, since the whole point is verifying real
+parse/serialize behavior (pretty vs. minified output, malformed-input rejection, round-trip
+structural equality via `readTree`, jsoup's lenient-parsing/indent behavior, and — for
+`XmlOperation` — real JAXP parsing/XXE-rejection behavior). Plus
 `DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)` +
-`@AutoConfigureMockMvc`) — boots the real Spring context and hits all four endpoints with **no**
+`@AutoConfigureMockMvc`) — boots the real Spring context and hits all ten endpoints with **no**
 `Authorization` header through the real filter chain, confirming end to end (not just by static
 reasoning) that the app actually starts and every endpoint is genuinely public. This is exactly
 the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also covers the
 `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the latter caught
-by `@Size` before ever reaching an operation). 21 tests total,
+by `@Size` before ever reaching an operation) and confirms malformed XML returns `400` with
+`DEVUTILS_003` through the shared `GlobalExceptionHandler`. 66 tests total,
 verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module

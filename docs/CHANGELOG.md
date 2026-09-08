@@ -463,6 +463,89 @@ section again. Full unabridged entry-by-entry history for all three lives in
     existing `Stack`, no other change to its own markup/colors. Verified via a clean `tsc --noEmit`
     and a successful `vite build` only — no Docker in this sandbox, so the actual on-screen result
     is unverified in a real browser.
+  - **Follow-up: 6 new operations, per request — CSS/LESS/SCSS/JS Beautify+Minify (one endpoint
+    per language, `minify` flag same as the existing operations, not separate endpoints), ERB
+    Beautify+Minify, and XML Beautify+Minify.** New endpoints, all under the existing
+    `/api/v1/dev-utils/**` prefix (`gateway`'s own wildcard route/`permitAll()` already covers a new
+    sub-path — no `gateway` change needed): `POST /api/v1/dev-utils/{css,less,scss,js,erb,xml}/beautify`,
+    all reusing the existing `MinifiableTextRequest`/`DevUtilResponse` DTOs (every one of the six
+    genuinely shares that "text in, minify flag, text out" shape) and a new operation class each
+    (`CssOperation`/`LessOperation`/`ScssOperation`/`JsOperation`/`ErbOperation`/`XmlOperation`,
+    injected into `DevUtilsController` by concrete type same as every other operation).
+    - **CSS/LESS/SCSS/JS share one new textual reformatter, `service.impl.support.
+      CurlyBraceFormatter`, rather than four separate implementations or a real per-language
+      parser.** There's no single grammar a Java library could parse across all four uniformly
+      (LESS/SCSS extend CSS with variables/nesting/mixins a strict CSS parser rejects; JS has its
+      own grammar entirely) — a real per-language parser for each is a fundamentally bigger
+      undertaking (that's what Prettier/Terser actually do). Instead, this tracks only the
+      structural signals all four "curly-brace languages" share: brace-nesting depth,
+      statement-ending semicolons, and comment/string literals kept atomic. Same "lenient,
+      best-effort, no invalid-input failure path" trade-off `HtmlBeautifyOperation` already makes
+      for HTML — none of these four operations have a matching `DevUtilsErrorCode`, since none of
+      them can throw. `LessOperation`/`ScssOperation` only reformat — they do not compile LESS/SCSS
+      to plain CSS; their own extensions pass through as literal text, untouched.
+      - **Known, documented limitation: JavaScript's Automatic Semicolon Insertion (ASI).** A
+        textual reformatter with no real JS parser can't know that `return\nx;` means `return; x;`
+        (the restricted-production rule after `return`/`break`/`continue`/`throw`) — collapsing
+        that line break into a space would silently change what the code returns. Both
+        `beautify`/`minify` guard against this generically (never collapse a real line break
+        between two ordinary, non-punctuation characters into "nothing" or a plain space — only
+        another real newline can replace it), without needing to special-case those keywords by
+        name. The practical cost: `minify` doesn't guarantee single-line output for JS the way it
+        mostly does for CSS/LESS/SCSS (whose declarations are semicolon/brace-delimited at nearly
+        every whitespace boundary already).
+      - Also deliberate: `beautify` never normalizes spacing around a bare `:` (e.g. `color:red`
+        stays exactly as written) — inserting a space unconditionally would corrupt a pseudo-class
+        selector like `:hover`/`::before`, which requires *no* space after the colon; telling a
+        declaration's colon from a selector's needs real grammar awareness this formatter
+        deliberately doesn't have. `minify` does the opposite, safely: `:` is one of a small set of
+        "safe to tighten" punctuation characters (alongside `; { } , ( ) [ ]`) whose surrounding
+        whitespace is always droppable regardless of context.
+    - **`ErbOperation` reuses `HtmlBeautifyOperation`'s jsoup-based approach**, with one added
+      step: every `<%...%>` tag is extracted and replaced with an opaque placeholder before jsoup
+      ever parses the input, then restored verbatim afterward. Needed because jsoup HTML-escapes
+      text-node content on serialization (a literal `<` becomes `&lt;`), which would otherwise
+      corrupt the ERB tag's own delimiters on the way back out, and because protecting the whole
+      tag as one unit means the embedded Ruby's own `<`/`>` (e.g. `<% if x < y %>`) never reaches
+      jsoup's tokenizer at all. **The placeholder itself went through a real, test-caught fix**:
+      control characters (STX/ETX) were tried first on the assumption jsoup only escapes
+      `<`/`>`/`&`/quotes — wrong, confirmed by an actual failing test: jsoup's own `Entities`
+      serialization also escapes non-printable control codepoints as numeric character references
+      (`&#x2;`, not the original byte), which broke the placeholder-matching restore step just as
+      badly as leaving ERB tags unprotected would have. Switched to a random alphanumeric marker
+      (via `UUID`, generated fresh per call) instead — plain letters/digits are never escaped by any
+      HTML serializer.
+    - **`XmlOperation` is the one operation in this batch backed by a real grammar parser (JAXP,
+      built into the JDK — no new Maven dependency), the same "real parse, real invalid-input
+      error" shape `JsonFormatOperation`/`YamlToJsonOperation` already establish** — new
+      `DevUtilsErrorCode.INVALID_XML` (`DEVUTILS_003`). Beautify strips whitespace-only text nodes
+      then re-serializes via `Transformer`'s indent mode (2-space, matching this module's existing
+      convention); minify does the same with indent off — a text node with real (non-blank)
+      content is never touched either way, whitespace-only or not. Preserves (or omits) the
+      `<?xml ...?>` declaration based on whether the *input* had one, rather than always adding or
+      always dropping it. **XXE (XML External Entity) hardening is not optional here** — this is
+      one of the fully public, unauthenticated endpoints in this reactor, and a
+      `DocumentBuilderFactory` left at JDK defaults will happily resolve a `<!DOCTYPE>`'s external
+      entities (a textbook injection vector: a malicious caller's DTD could reference a local file
+      or internal URL and have it echoed back in the output). Hardened per the OWASP XXE
+      Prevention Cheat Sheet's JAXP baseline: `<!DOCTYPE>` disallowed outright, external general/
+      parameter entities and external DTD loading disabled as defense in depth, and the
+      `TransformerFactory` used to serialize the result has external DTD/stylesheet access disabled
+      too. A custom, silent `ErrorHandler` still rethrows on error/fatal error (unchanged behavior)
+      but stops the JDK's default handler from spamming stderr for what is routine, expected
+      invalid input on a fully public endpoint.
+    - **Test suite**: `CurlyBraceFormatterTest` (10 cases covering brace nesting, already-multiline
+      selector lists, comments, string-literal protection, the ASI-safety guarantee, and
+      never-throws-on-unterminated-input) plus one JUnit 5 class per new operation
+      (`CssOperationTest`/`LessOperationTest`/`ScssOperationTest`/`JsOperationTest`/
+      `ErbOperationTest`/`XmlOperationTest`, 3–7 cases each — no Mockito, same convention as every
+      existing operation test), plus 6 new `DevUtilsServiceApplicationTests` cases confirming each
+      new endpoint is reachable with no `Authorization` header and that malformed XML returns `400`
+      with `DEVUTILS_003` through the shared `GlobalExceptionHandler`. 66 tests total in this
+      module, verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
+    - Backend-only pass, per request scope — the `gui`'s `/dev-utils` page (sidebar operation list,
+      `DevUtilsPage.tsx`'s `OperationConfig[]`) was not wired up to these 6 new endpoints; that's a
+      natural next step, not done here.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

@@ -21,10 +21,11 @@ import jakarta.validation.Valid;
  * why this is the one deployable in the reactor that isn't a JWT resource server, and this
  * module's own {@code CLAUDE.md} for the matching carve-out {@code gateway}'s own routing needs.
  *
- * <p>Each endpoint takes whichever request DTO actually fits its own operation — three of the four
- * genuinely share {@link MinifiableTextRequest}'s shape, {@code jsonToYaml} does not (see
- * {@link TextRequest}'s own Javadoc) — rather than every endpoint being forced through one shared
- * request type; see {@code service.DevUtilOperation}'s own Javadoc for the full reasoning.
+ * <p>Each endpoint takes whichever request DTO actually fits its own operation — every operation
+ * except {@code jsonToYaml} genuinely shares {@link MinifiableTextRequest}'s shape (raw text in, a
+ * minify flag, transformed text out) — {@code jsonToYaml} does not (see {@link TextRequest}'s own
+ * Javadoc) — rather than every endpoint being forced through one shared request type; see
+ * {@code service.DevUtilOperation}'s own Javadoc for the full reasoning.
  */
 @RequestMapping("/api/v1/dev-utils")
 public interface DevUtilsApi {
@@ -67,4 +68,68 @@ public interface DevUtilsApi {
      */
     @PostMapping("/html/beautify")
     ResponseEntity<DevUtilResponse> beautifyHtml(@Valid @RequestBody MinifiableTextRequest request);
+
+    /**
+     * Reformats raw CSS with consistent indentation, or, with {@code request.minify()}, a compact
+     * form with comments and non-essential whitespace stripped. Lenient — see
+     * {@code CssOperation}'s own Javadoc — this never fails on malformed input.
+     *
+     * @return {@code 200} with the beautified (or minified) CSS
+     */
+    @PostMapping("/css/beautify")
+    ResponseEntity<DevUtilResponse> beautifyCss(@Valid @RequestBody MinifiableTextRequest request);
+
+    /**
+     * Reformats raw LESS with consistent indentation, or, with {@code request.minify()}, a compact
+     * form with comments and non-essential whitespace stripped. Reformats only — does not compile
+     * LESS to plain CSS (see {@code LessOperation}'s own Javadoc) — and, like {@code beautifyCss},
+     * never fails on malformed input.
+     *
+     * @return {@code 200} with the beautified (or minified) LESS
+     */
+    @PostMapping("/less/beautify")
+    ResponseEntity<DevUtilResponse> beautifyLess(@Valid @RequestBody MinifiableTextRequest request);
+
+    /**
+     * Reformats raw SCSS with consistent indentation, or, with {@code request.minify()}, a compact
+     * form with comments and non-essential whitespace stripped. Reformats only — does not compile
+     * SCSS to plain CSS (see {@code ScssOperation}'s own Javadoc) — and, like {@code beautifyCss},
+     * never fails on malformed input.
+     *
+     * @return {@code 200} with the beautified (or minified) SCSS
+     */
+    @PostMapping("/scss/beautify")
+    ResponseEntity<DevUtilResponse> beautifyScss(@Valid @RequestBody MinifiableTextRequest request);
+
+    /**
+     * Reformats raw JavaScript with consistent indentation, or, with {@code request.minify()}, a
+     * compact form with comments and non-essential whitespace stripped. See {@code JsOperation}'s
+     * own Javadoc for its Automatic Semicolon Insertion (ASI) safety guarantee — this never fails
+     * on malformed input.
+     *
+     * @return {@code 200} with the beautified (or minified) JavaScript
+     */
+    @PostMapping("/js/beautify")
+    ResponseEntity<DevUtilResponse> beautifyJs(@Valid @RequestBody MinifiableTextRequest request);
+
+    /**
+     * Reformats ERB (Embedded RuBy) markup with consistent indentation, or, with
+     * {@code request.minify()}, jsoup's own unformatted output mode — {@code <% %>}/{@code <%= %>}
+     * tags are preserved verbatim regardless (see {@code ErbOperation}'s own Javadoc). Never fails
+     * on malformed input, the same jsoup-backed leniency {@code beautifyHtml} has.
+     *
+     * @return {@code 200} with the beautified (or minified) ERB
+     */
+    @PostMapping("/erb/beautify")
+    ResponseEntity<DevUtilResponse> beautifyErb(@Valid @RequestBody MinifiableTextRequest request);
+
+    /**
+     * Validates a raw XML string and re-serializes it indented, or, with {@code request.minify()},
+     * with insignificant inter-element whitespace stripped.
+     *
+     * @return {@code 200} with the beautified (or minified) XML, or {@code 400} if
+     *         {@code request.input()} is not well-formed XML
+     */
+    @PostMapping("/xml/beautify")
+    ResponseEntity<DevUtilResponse> beautifyXml(@Valid @RequestBody MinifiableTextRequest request);
 }

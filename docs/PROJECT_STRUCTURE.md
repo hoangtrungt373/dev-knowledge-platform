@@ -2261,7 +2261,8 @@ for the rules this module follows.
 
 ## dev-utils-service
 
-A stateless developer-utility API — JSON format/validate, YAML↔JSON conversion, HTML beautify.
+A stateless developer-utility API — JSON format/validate, YAML↔JSON conversion, HTML/CSS/LESS/SCSS/
+JS/ERB beautify+minify, XML validate/beautify+minify.
 **A standalone Spring Boot application built directly as standalone, not an extraction** — unlike
 every module in the six sections above, this one never lived inside `gateway` at all, so there was
 nothing to pull out (see root `CLAUDE.md`'s Long-term direction section). It's also the one
@@ -2293,9 +2294,12 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │                                     No oauth2-resource-server/oauth2-client dependency at all —
 │                                     nothing here ever verifies a JWT.
 ├── exception/
-│   ├── DevUtilsErrorCode.java     — INVALID_JSON/INVALID_YAML only. No INVALID_HTML — jsoup's
-│   │                                 parser is deliberately lenient and never throws on malformed
-│   │                                 markup.
+│   ├── DevUtilsErrorCode.java     — INVALID_JSON/INVALID_YAML/INVALID_XML only. No INVALID_HTML/
+│   │                                 INVALID_CSS/INVALID_LESS/INVALID_SCSS/INVALID_JS — jsoup's
+│   │                                 parser (HTML/ERB) and the shared CurlyBraceFormatter (CSS/
+│   │                                 LESS/SCSS/JS) are both deliberately lenient and never throw on
+│   │                                 malformed input; XmlOperation is the one exception, backed by
+│   │                                 a real JAXP parser.
 │   └── ParsingExceptionMessages.java — friendlyMessage(JsonProcessingException): builds a clean,
 │                                     noise-free message (getOriginalMessage() + the structured
 │                                     getLocation(), never string-parsed off getMessage()) for the
@@ -2328,10 +2332,46 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       ├── JsonToYamlOperation.java     — execute(String input) — no minify parameter at all;
 │       │                                   jackson-dataformat-yaml has no single-line/flow-style
 │       │                                   toggle, so there's nothing to accept
-│       └── HtmlBeautifyOperation.java   — execute(String input, boolean minify);
-│                                           Jsoup.parseBodyFragment (not a full document) — a
-│                                           snippet in yields a snippet out; minify maps to jsoup's
-│                                           own prettyPrint(false) mode
+│       ├── HtmlBeautifyOperation.java   — execute(String input, boolean minify);
+│       │                                   Jsoup.parseBodyFragment (not a full document) — a
+│       │                                   snippet in yields a snippet out; minify maps to jsoup's
+│       │                                   own prettyPrint(false) mode
+│       ├── CssOperation.java            — execute(String input, boolean minify); delegates
+│       │                                   entirely to support/CurlyBraceFormatter
+│       ├── LessOperation.java           — same shape as CssOperation; reformats only — does not
+│       │                                   compile LESS to plain CSS (variables/nesting/mixins
+│       │                                   pass through as literal text)
+│       ├── ScssOperation.java           — same shape as LessOperation, for SCSS's own extensions
+│       ├── JsOperation.java             — same shape as CssOperation; see CurlyBraceFormatter's
+│       │                                   own Javadoc for its Automatic Semicolon Insertion (ASI)
+│       │                                   safety guarantee
+│       ├── ErbOperation.java            — execute(String input, boolean minify); reuses
+│       │                                   HtmlBeautifyOperation's jsoup approach, with every
+│       │                                   <%...%> tag extracted to a random alphanumeric
+│       │                                   placeholder before jsoup ever parses the input (jsoup
+│       │                                   HTML-escapes text-node content on serialization, which
+│       │                                   would otherwise corrupt the tag's own delimiters), then
+│       │                                   restored verbatim afterward
+│       ├── XmlOperation.java            — execute(String input, boolean minify); the one
+│       │                                   operation in this batch backed by a real grammar parser
+│       │                                   (JAXP, built into the JDK) — strips whitespace-only text
+│       │                                   nodes then re-serializes via Transformer's indent mode;
+│       │                                   XXE-hardened (disallows <!DOCTYPE> outright, disables
+│       │                                   external entities/DTD loading, per the OWASP XXE
+│       │                                   Prevention Cheat Sheet's JAXP baseline) since this is a
+│       │                                   fully public, unauthenticated endpoint
+│       └── support/
+│           └── CurlyBraceFormatter.java — beautify(String)/minify(String), static utility (not a
+│                                           DevUtilOperation itself). Shared by Css/Less/Scss/
+│                                           JsOperation — a lenient, brace/semicolon-driven textual
+│                                           reformatter (tracks brace-nesting depth, statement-
+│                                           ending semicolons, and keeps comments/string literals
+│                                           atomic), not a real per-language grammar parser — no
+│                                           single grammar exists across all four languages a Java
+│                                           library could parse uniformly. Never throws. See its own
+│                                           Javadoc for the full reasoning, including its JS/ASI
+│                                           line-break-safety guarantee and why it never normalizes
+│                                           spacing around a bare `:` (would corrupt `:hover`)
 ├── dto/
 │   ├── DevUtilsLimits.java        — MAX_INPUT_LENGTH = 100_000, shared by both request DTOs'
 │   │                                 @Size constraint — the one fully public, unauthenticated
@@ -2345,8 +2385,10 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │                                     a future operation with a richer output gets its own type
 └── api/
     ├── DevUtilsApi.java           — POST /api/v1/dev-utils/{json/format,yaml-to-json,
-    │                                 json-to-yaml,html/beautify}. Every endpoint is public — no
-    │                                 @CurrentUserId, no authenticated principal at all.
+    │                                 json-to-yaml,html/beautify,css/beautify,less/beautify,
+    │                                 scss/beautify,js/beautify,erb/beautify,xml/beautify}. Every
+    │                                 endpoint is public — no @CurrentUserId, no authenticated
+    │                                 principal at all.
     └── impl/DevUtilsController.java — implements DevUtilsApi; injects each operation by its
                                         concrete type (no enum-keyed registry — one fixed endpoint
                                         per operation leaves no runtime dispatch decision to make)

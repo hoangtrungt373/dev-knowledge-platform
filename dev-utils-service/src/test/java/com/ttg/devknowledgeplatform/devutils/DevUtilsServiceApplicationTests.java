@@ -18,7 +18,8 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
  * {@link MockMvc} — verifies, end to end rather than by static reasoning alone, that this app
  * actually starts (the {@code GlobalExceptionHandler}/{@code spring-boot-starter-security}
  * classpath dependency reasoning in {@code security.SecurityConfig}'s own Javadoc holds up) and
- * that every endpoint is genuinely reachable with no {@code Authorization} header at all.
+ * that every one of the 10 operation endpoints is genuinely reachable with no
+ * {@code Authorization} header at all.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
@@ -65,6 +66,69 @@ class DevUtilsServiceApplicationTests {
                         .content("{\"input\":\"<p>Hi</p>\",\"minify\":false}"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Hi")));
+    }
+
+    @Test
+    void beautifyCssIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/css/beautify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\".a{color:red;}\",\"minify\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("color:red")));
+    }
+
+    @Test
+    void beautifyLessIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/less/beautify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\".a{@width: 10px;}\",\"minify\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("@width")));
+    }
+
+    @Test
+    void beautifyScssIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/scss/beautify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\".a{$width: 10px;}\",\"minify\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("$width")));
+    }
+
+    @Test
+    void beautifyJsIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/js/beautify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"function f(){return 1;}\",\"minify\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("return 1")));
+    }
+
+    @Test
+    void beautifyErbIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/erb/beautify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"<p><%= name %></p>\",\"minify\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<%= name %>")));
+    }
+
+    @Test
+    void beautifyXmlIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/xml/beautify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"<root><child>Hi</child></root>\",\"minify\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Hi")));
+    }
+
+    @Test
+    void malformedXmlReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/xml/beautify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"<root><unclosed></root>\",\"minify\":false}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_003")));
     }
 
     @Test
