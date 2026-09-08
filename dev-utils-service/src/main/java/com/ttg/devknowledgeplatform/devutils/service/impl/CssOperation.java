@@ -17,6 +17,8 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.support.CurlyBraceForm
 @Component
 public class CssOperation implements DevUtilOperation {
 
+    /** Never throws — see this class's own Javadoc for why {@link CurlyBraceFormatter} has no
+     * invalid-input failure path. */
     public String execute(String input, boolean minify) {
         return minify ? CurlyBraceFormatter.minify(input) : CurlyBraceFormatter.beautify(input);
     }

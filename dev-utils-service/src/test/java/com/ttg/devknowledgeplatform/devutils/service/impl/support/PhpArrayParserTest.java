@@ -129,4 +129,28 @@ class PhpArrayParserTest {
         assertThatThrownBy(() -> PhpArrayParser.parse("['a"))
                 .isInstanceOf(PhpArrayParser.PhpParseException.class);
     }
+
+    @Test
+    void throwsPhpParseExceptionRatherThanNumberFormatExceptionOnAnIntegerLiteralWiderThanALong() {
+        // A real bug: Long.parseLong on a 22-digit literal used to throw the unchecked
+        // NumberFormatException straight through parseNumber() uncaught — not a PhpParseException,
+        // so it skipped this operation's own catch clause entirely and surfaced as a generic 500
+        // instead of the clean 400/INVALID_PHP this parser exists to produce for malformed input.
+        assertThatThrownBy(() -> PhpArrayParser.parse("[9999999999999999999999]"))
+                .isInstanceOf(PhpArrayParser.PhpParseException.class)
+                .hasMessageContaining("line")
+                .hasMessageContaining("column");
+    }
+
+    @Test
+    void throwsPhpParseExceptionRatherThanNumberFormatExceptionOnAnIncompleteExponent() {
+        // Same bug, different trigger: "1e" (an 'e' with no digits after it) reaches
+        // Double.parseDouble as-is, since consumeDigits() is a no-op when there's nothing to
+        // consume — Double.parseDouble("1e") throws NumberFormatException, same failure shape as
+        // the oversized-integer case above.
+        assertThatThrownBy(() -> PhpArrayParser.parse("[1e]"))
+                .isInstanceOf(PhpArrayParser.PhpParseException.class)
+                .hasMessageContaining("line")
+                .hasMessageContaining("column");
+    }
 }

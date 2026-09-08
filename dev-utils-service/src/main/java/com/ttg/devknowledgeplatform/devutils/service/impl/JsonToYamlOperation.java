@@ -8,8 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.devutils.exception.DevUtilsErrorCode;
-import com.ttg.devknowledgeplatform.devutils.exception.ParsingExceptionMessages;
 import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.support.JsonNodeIo;
 
 import lombok.RequiredArgsConstructor;
 
@@ -33,16 +33,21 @@ public class JsonToYamlOperation implements DevUtilOperation {
     private final ObjectMapper objectMapper;
     private final YAMLMapper yamlMapper;
 
+    /**
+     * @throws BusinessException wrapping {@link DevUtilsErrorCode#INVALID_JSON} when
+     *                           {@code input} isn't valid JSON. {@code yamlMapper} itself has no
+     *                           write-side failure path worth naming here — see this class's own
+     *                           Javadoc for why the source format (JSON), not the YAML output, is
+     *                           what gets validated.
+     */
     public String execute(String input) {
+        JsonNode node = JsonNodeIo.readTree(objectMapper, input, DevUtilsErrorCode.INVALID_JSON);
         try {
-            JsonNode node = objectMapper.readTree(input);
             return yamlMapper.writeValueAsString(node);
         } catch (JsonProcessingException e) {
-            // (Object) cast forces the varargs BusinessException(ErrorCode, Object... templateArgs)
-            // overload instead of BusinessException(ErrorCode, String message) — see
-            // JsonFormatOperation's identical catch block for the full overload-resolution
-            // reasoning, and ParsingExceptionMessages for why the message is cleaned up first.
-            throw new BusinessException(DevUtilsErrorCode.INVALID_JSON, (Object) ParsingExceptionMessages.friendlyMessage(e));
+            // Only reachable if the YAML re-serialization step itself fails for a value tree
+            // that just parsed successfully as JSON — a defensive catch, not an expected path.
+            throw new BusinessException(DevUtilsErrorCode.INVALID_JSON, (Object) e.getOriginalMessage());
         }
     }
 }

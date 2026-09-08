@@ -22,6 +22,8 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.support.StringCaseConv
 @Component
 public class StringCaseOperation implements DevUtilOperation {
 
+    /** Never throws — see this class's own Javadoc for why a pure word-split/re-case transform
+     * has no invalid-input failure path. */
     public StringCaseResponse execute(String input) {
         return StringCaseConverter.convert(input);
     }

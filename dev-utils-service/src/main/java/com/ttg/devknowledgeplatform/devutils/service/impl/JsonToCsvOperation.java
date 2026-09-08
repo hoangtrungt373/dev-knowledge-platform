@@ -16,8 +16,8 @@ import com.fasterxml.jackson.dataformat.csv.CsvMapper;
 import com.fasterxml.jackson.dataformat.csv.CsvSchema;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.devutils.exception.DevUtilsErrorCode;
-import com.ttg.devknowledgeplatform.devutils.exception.ParsingExceptionMessages;
 import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.support.JsonNodeIo;
 
 import lombok.RequiredArgsConstructor;
 
@@ -53,8 +53,13 @@ public class JsonToCsvOperation implements DevUtilOperation {
 
     private final ObjectMapper objectMapper;
 
+    /**
+     * @throws BusinessException wrapping {@link DevUtilsErrorCode#INVALID_JSON} when
+     *                           {@code input} isn't valid JSON, or is valid JSON that isn't
+     *                           shaped as an array of objects (or a lone object)
+     */
     public String execute(String input) {
-        JsonNode root = parse(input);
+        JsonNode root = JsonNodeIo.readTree(objectMapper, input, DevUtilsErrorCode.INVALID_JSON);
         List<JsonNode> rows = extractRows(root);
         if (rows.isEmpty()) {
             return "";
@@ -74,15 +79,6 @@ public class JsonToCsvOperation implements DevUtilOperation {
             // built ourselves — every cell value is already a plain String by this point, so this
             // is a defensive catch, not an expected path.
             throw new BusinessException(DevUtilsErrorCode.INVALID_JSON, (Object) e.getOriginalMessage());
-        }
-    }
-
-    private JsonNode parse(String input) {
-        try {
-            return objectMapper.readTree(input);
-        } catch (JsonProcessingException e) {
-            throw new BusinessException(DevUtilsErrorCode.INVALID_JSON,
-                    (Object) ParsingExceptionMessages.friendlyMessage(e));
         }
     }
 

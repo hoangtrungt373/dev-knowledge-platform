@@ -2,13 +2,12 @@ package com.ttg.devknowledgeplatform.devutils.service.impl;
 
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.devutils.exception.DevUtilsErrorCode;
-import com.ttg.devknowledgeplatform.devutils.exception.ParsingExceptionMessages;
 import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.support.JsonNodeIo;
 
 import lombok.RequiredArgsConstructor;
 
@@ -23,22 +22,12 @@ public class JsonFormatOperation implements DevUtilOperation {
 
     private final ObjectMapper objectMapper;
 
+    /**
+     * @throws BusinessException wrapping {@link DevUtilsErrorCode#INVALID_JSON} when
+     *                           {@code input} isn't valid JSON
+     */
     public String execute(String input, boolean minify) {
-        try {
-            JsonNode node = objectMapper.readTree(input);
-            return minify
-                    ? objectMapper.writeValueAsString(node)
-                    : objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(node);
-        } catch (JsonProcessingException e) {
-            // (Object) is load-bearing, not decorative — a plain String argument here would
-            // resolve to BusinessException(ErrorCode, String message), which sets the exception's
-            // message verbatim and skips ErrorCode#formatMessage() (INVALID_JSON's own
-            // "Invalid JSON: {0}" template) entirely. Casting to Object rules that overload out of
-            // Java's phase-1 (no-boxing/no-varargs) resolution, so the varargs
-            // BusinessException(ErrorCode, Object... templateArgs) overload — the one that actually
-            // applies the template — gets picked instead. See ParsingExceptionMessages for why the
-            // message is cleaned up first rather than passing e.getMessage() straight through.
-            throw new BusinessException(DevUtilsErrorCode.INVALID_JSON, (Object) ParsingExceptionMessages.friendlyMessage(e));
-        }
+        JsonNode node = JsonNodeIo.readTree(objectMapper, input, DevUtilsErrorCode.INVALID_JSON);
+        return JsonNodeIo.write(objectMapper, node, minify, DevUtilsErrorCode.INVALID_JSON);
     }
 }

@@ -28,6 +28,8 @@ import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
 @Component
 public class HtmlBeautifyOperation implements DevUtilOperation {
 
+    /** Never throws — see this class's own Javadoc for why jsoup's lenient parser has no
+     * invalid-input failure path. */
     public String execute(String input, boolean minify) {
         Document document = Jsoup.parseBodyFragment(input);
         document.outputSettings().prettyPrint(!minify).indentAmount(2);

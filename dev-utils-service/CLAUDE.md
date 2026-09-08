@@ -378,6 +378,65 @@ caller.** Every operation is a pure text-in/text-out transform:
   enum-keyed registry — with one fixed REST endpoint per operation, there's no runtime "which
   operation" decision left to make (see `DevUtilOperation`'s own Javadoc).
 
+**Code-quality analysis pass (mirroring the earlier `gui` dev-utils analysis) found and fixed 2
+real bugs, plus duplication/doc-drift/Javadoc-coverage issues — all implemented in one pass, per
+direct request.**
+
+- **Real bug: `CurlyBraceFormatter` mishandled an unquoted `url(http://...)` argument** — a very
+  common CSS pattern (`background: url(http://example.com/x.png);`). Its comment scanner had no
+  awareness of "inside a `url()` argument" and misread the `//` after the scheme colon as a line
+  comment start — the quote-literal handling only protected `'...'`/`"..."`/`` `...` ``, and a raw
+  `url(...)` value is conventionally unquoted. In `beautify` this broke brace-depth tracking for
+  everything after it (a trailing `}` swallowed into the "comment" never decremented `depth`); in
+  `minify` — worse — a single-line declaration has no `\n` to stop the scan, so everything from the
+  `//` to the end of the input was silently **discarded**, not just mis-formatted. Fixed by treating
+  an unquoted `url(...)` argument as one atomic span (new `isUrlFunctionStart`/`scanUrlFunctionArg`
+  helpers), the same protection a quoted string literal already had — a quoted `url("...")` is left
+  untouched, since the existing string-literal handling already covers it. 3 new regression tests in
+  `CurlyBraceFormatterTest`.
+- **Real bug: `PhpArrayParser.parseNumber()` could throw an uncaught `NumberFormatException`** —
+  an integer literal wider than a `long` (22+ digits) or an incomplete exponent (e.g. `1e`, where
+  `consumeDigits()` is a no-op with nothing left to consume) both reach `Long.parseLong`/
+  `Double.parseDouble` unguarded. Neither exception is a `PhpParseException`, so both skipped
+  `PhpToJsonOperation`'s own catch clause entirely and surfaced as a generic `500` instead of the
+  clean `400`/`INVALID_PHP` this parser exists to produce for exactly this class of malformed
+  input — the same "an unanticipated unchecked exception slips past a narrower catch clause on a
+  fully public endpoint" shape this module has now hit and fixed three times (see the
+  `BusinessException` varargs-template fix and the CSV `RuntimeJsonMappingException` fix
+  documented above/below). Fixed by wrapping the two parse calls in a try/catch, rethrown via the
+  same `errorAt(...)` helper every other failure path in this class already uses. 2 new regression
+  tests in `PhpArrayParserTest`.
+- **New `service/impl/support/JsonNodeIo`** — two static helpers, `readTree`/`write`, factoring out
+  a pair of blocks that had been copy-pasted near-verbatim across `JsonFormatOperation`,
+  `YamlToJsonOperation`, `JsonToYamlOperation` (its read half only — its write half calls
+  `yamlMapper.writeValueAsString` directly, which has no pretty/minify choice to factor out),
+  `JsonToCsvOperation`, `JsonToPhpOperation`, `CsvToJsonOperation`, and `PhpToJsonOperation`:
+  "parse JSON (or YAML, via a `YAMLMapper` — itself an `ObjectMapper` subtype), and on failure throw
+  a `BusinessException` carrying `ParsingExceptionMessages`'s own cleaned-up message" and
+  "serialize either pretty-printed or, with `minify`, compact/single-line." Roughly 8 duplicated
+  blocks across 7 classes, removed with each caller still owning its own error code (and, for
+  `readTree`, whatever it does with the parsed tree afterward) — this doesn't force operations with
+  genuinely different shapes through one common method the way `DevUtilOperation`'s own Javadoc
+  warns against for the operations themselves; it only removes literal Jackson call-and-catch
+  boilerplate every caller already did identically. No dedicated `JsonNodeIoTest` — its behavior
+  (pretty/minify output, malformed-input rejection) is already exercised by every one of the 7
+  operations' own existing test classes, which now exercise it indirectly rather than duplicating
+  those same assertions a second time against the helper directly.
+- **Doc drift fixed in 4 files** that still described this module at its original 3-4-operation
+  size: `dto.MinifiableTextRequest`/`dto.TextRequest` (both claimed to be shared by an operation
+  list that had since grown well past what was named — `MinifiableTextRequest`'s own Javadoc said
+  "exactly" 3 operations when it backs 13 today), `DevUtilsServiceApplication`'s class Javadoc
+  (still listed only JSON format/YAML↔JSON/HTML beautify), and `dto.DevUtilResponse` (described
+  `StringCaseResponse`'s multi-value-response shape as hypothetical future work when it already
+  exists today) — the exact "comment drift" pattern root `CLAUDE.md` already calls out as having
+  bitten this project before.
+- **Every one of the 16 operations' `execute(...)` methods, plus
+  `exception.ParsingExceptionMessages#friendlyMessage`, gained method-level Javadoc** — per root
+  `CLAUDE.md`'s own rule ("Javadoc for every … public method"), which this module's otherwise
+  thorough class-level Javadoc had drifted away from at the method level across every operation.
+  Each documents its real `@throws BusinessException` failure path where one exists, or states
+  explicitly that it never throws (mirroring each class's own Javadoc) where one doesn't.
+
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
 `HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
@@ -409,8 +468,8 @@ exactly the test that caught the `DataSourceAutoConfiguration` boot failure abov
 covers the `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the
 latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP all
 return `400` with `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005` respectively through the shared
-`GlobalExceptionHandler`. 133 tests total, verified via a real `mvn -pl dev-utils-service -am
-test` run (JDK 21).
+`GlobalExceptionHandler`. 138 tests total (133 plus the 5 regression tests added by the
+code-quality pass above), verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module
 

@@ -51,6 +51,8 @@ public class ErbOperation implements DevUtilOperation {
     // it, and DOTALL lets a multi-line tag (e.g. a multi-statement <% ... %> block) match as one.
     private static final Pattern ERB_TAG = Pattern.compile("<%.*?%>", Pattern.DOTALL);
 
+    /** Never throws — see this class's own Javadoc for why neither the ERB-tag extraction nor
+     * jsoup's own lenient parsing has an invalid-input failure path. */
     public String execute(String input, boolean minify) {
         // Generated fresh per call, not a fixed constant — makes an adversarial "craft input that
         // already contains the placeholder text" collision effectively impossible, for a

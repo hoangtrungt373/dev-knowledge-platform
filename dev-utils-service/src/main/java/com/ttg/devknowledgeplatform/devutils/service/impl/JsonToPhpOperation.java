@@ -2,13 +2,12 @@ package com.ttg.devknowledgeplatform.devutils.service.impl;
 
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.devutils.exception.DevUtilsErrorCode;
-import com.ttg.devknowledgeplatform.devutils.exception.ParsingExceptionMessages;
 import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.support.JsonNodeIo;
 import com.ttg.devknowledgeplatform.devutils.service.impl.support.PhpArrayWriter;
 
 import lombok.RequiredArgsConstructor;
@@ -33,14 +32,12 @@ public class JsonToPhpOperation implements DevUtilOperation {
 
     private final ObjectMapper objectMapper;
 
+    /**
+     * @throws BusinessException wrapping {@link DevUtilsErrorCode#INVALID_JSON} when
+     *                           {@code input} isn't valid JSON
+     */
     public String execute(String input, boolean minify) {
-        JsonNode root;
-        try {
-            root = objectMapper.readTree(input);
-        } catch (JsonProcessingException e) {
-            throw new BusinessException(DevUtilsErrorCode.INVALID_JSON,
-                    (Object) ParsingExceptionMessages.friendlyMessage(e));
-        }
+        JsonNode root = JsonNodeIo.readTree(objectMapper, input, DevUtilsErrorCode.INVALID_JSON);
         return PhpArrayWriter.write(root, minify);
     }
 }

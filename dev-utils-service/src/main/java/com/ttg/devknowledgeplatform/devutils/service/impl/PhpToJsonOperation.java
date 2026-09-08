@@ -2,11 +2,11 @@ package com.ttg.devknowledgeplatform.devutils.service.impl;
 
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.devutils.exception.DevUtilsErrorCode;
 import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.support.JsonNodeIo;
 import com.ttg.devknowledgeplatform.devutils.service.impl.support.PhpArrayParser;
 
 import lombok.RequiredArgsConstructor;
@@ -30,6 +30,10 @@ public class PhpToJsonOperation implements DevUtilOperation {
 
     private final ObjectMapper objectMapper;
 
+    /**
+     * @throws BusinessException wrapping {@link DevUtilsErrorCode#INVALID_PHP} when {@code input}
+     *                           isn't a valid PHP array literal
+     */
     public String execute(String input, boolean minify) {
         Object value;
         try {
@@ -37,16 +41,6 @@ public class PhpToJsonOperation implements DevUtilOperation {
         } catch (PhpArrayParser.PhpParseException e) {
             throw new BusinessException(DevUtilsErrorCode.INVALID_PHP, (Object) e.getMessage());
         }
-
-        try {
-            return minify
-                    ? objectMapper.writeValueAsString(value)
-                    : objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(value);
-        } catch (JsonProcessingException e) {
-            // Only reachable if the JSON serialization step itself fails — `value` is already a
-            // plain Map/List/String/Number/Boolean/null tree by this point, so this is a
-            // defensive catch, not an expected path.
-            throw new BusinessException(DevUtilsErrorCode.INVALID_PHP, (Object) e.getOriginalMessage());
-        }
+        return JsonNodeIo.write(objectMapper, value, minify, DevUtilsErrorCode.INVALID_PHP);
     }
 }

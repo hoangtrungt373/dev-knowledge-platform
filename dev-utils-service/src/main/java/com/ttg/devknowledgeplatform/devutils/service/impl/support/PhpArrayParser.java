@@ -310,7 +310,18 @@ public final class PhpArrayParser {
         if (raw.isEmpty() || raw.equals("-")) {
             throw errorAt(start, "Invalid number literal");
         }
-        return isFloat ? (Object) Double.parseDouble(raw) : (Object) Long.parseLong(raw);
+        // Long.parseLong/Double.parseDouble both throw the unchecked NumberFormatException for a
+        // syntactically-plausible-looking literal they still can't actually parse — an integer
+        // wider than a long (e.g. 22+ digits), or an exponent with no digits after 'e' (consumeDigits()
+        // above is a no-op there, so raw ends up as e.g. "1e"). Uncaught, that exception isn't a
+        // PhpParseException, so it would skip PhpToJsonOperation's own catch clause entirely and
+        // surface as a generic 500 instead of the clean 400/INVALID_PHP this parser exists to
+        // produce for exactly this class of malformed input.
+        try {
+            return isFloat ? (Object) Double.parseDouble(raw) : (Object) Long.parseLong(raw);
+        } catch (NumberFormatException e) {
+            throw errorAt(start, "Invalid number literal");
+        }
     }
 
     private void consumeDigits() {

@@ -93,4 +93,36 @@ class CurlyBraceFormatterTest {
         assertThatCode(() -> CurlyBraceFormatter.minify(".a { content: \"unterminated"))
                 .doesNotThrowAnyException();
     }
+
+    @Test
+    void beautifyDoesNotTreatDoubleSlashInsideUnquotedUrlAsALineComment() {
+        // A real bug: the `//` in an unquoted url(http://...) argument used to be misread as a
+        // line-comment start, which swallowed the closing `}` that follows into the "comment" and
+        // broke brace-depth tracking for everything after it.
+        String result = CurlyBraceFormatter.beautify("a{background:url(http://example.com/x.png);color:red;}");
+
+        assertThat(result).isEqualTo(
+                "a {\n"
+                        + "  background:url(http://example.com/x.png);\n"
+                        + "  color:red;\n"
+                        + "}"
+        );
+    }
+
+    @Test
+    void minifyDoesNotDiscardEverythingAfterAnUnquotedUrlsDoubleSlash() {
+        // Same bug as above, worse in minify: a single-line declaration has no `\n` to stop the
+        // comment scan, so everything from the `//` in `http://` to the end of the input used to
+        // be silently discarded rather than just mis-formatted.
+        String result = CurlyBraceFormatter.minify("a{background:url(http://example.com/x.png);color:red;}");
+
+        assertThat(result).isEqualTo("a{background:url(http://example.com/x.png);color:red;}");
+    }
+
+    @Test
+    void stillTreatsAQuotedUrlArgumentAsAnOrdinaryStringLiteral() {
+        String result = CurlyBraceFormatter.beautify("a{background:url(\"http://example.com/x.png\");}");
+
+        assertThat(result).contains("\"http://example.com/x.png\"");
+    }
 }

@@ -794,6 +794,54 @@ section again. Full unabridged entry-by-entry history for all three lives in
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.
 
+### Fixed
+
+- **`dev-utils-service` — a code-quality analysis pass (same shape as the earlier `gui`
+  dev-utils analysis) surfaced 2 real bugs and a handful of duplication/doc-drift/Javadoc-coverage
+  issues; all implemented in one pass.**
+  - **`service.impl.support.CurlyBraceFormatter` mishandled an unquoted `url(http://...)`
+    argument** (e.g. `background: url(http://example.com/x.png);`, a very common CSS pattern) — its
+    line-comment scanner had no awareness of "inside an unquoted `url()` argument" and misread the
+    `//` after the scheme colon as a comment start. In `beautify` this broke brace-depth tracking
+    for everything after it; in `minify` — worse — a single-line declaration has no `\n` to stop the
+    scan, so everything from the `//` to the end of the input was silently **discarded**. Fixed by
+    treating an unquoted `url(...)` argument as one atomic span (new
+    `isUrlFunctionStart`/`scanUrlFunctionArg` helpers), the same way a quoted string literal already
+    was — a quoted `url("...")` is untouched, since it was already protected by the existing
+    string-literal handling. 3 new regression tests in `CurlyBraceFormatterTest`.
+  - **`service.impl.support.PhpArrayParser#parseNumber()` could throw an uncaught
+    `NumberFormatException`** for an integer literal wider than a `long` (22+ digits) or an
+    incomplete exponent (e.g. `1e`) — neither is a `PhpParseException`, so both skipped
+    `PhpToJsonOperation`'s own catch clause entirely and surfaced as a generic `500` instead of the
+    clean `400`/`INVALID_PHP` this parser exists to produce for malformed input (the same failure
+    shape this module has now hit and fixed three times — see the `BusinessException`
+    varargs-template and CSV `RuntimeJsonMappingException` fixes already documented in
+    `dev-utils-service/CLAUDE.md`). Fixed by wrapping the `Long.parseLong`/`Double.parseDouble`
+    calls in a try/catch, rethrown via the same `errorAt(...)` helper every other parse failure in
+    this class already uses. 2 new regression tests in `PhpArrayParserTest`.
+  - **New `service.impl.support.JsonNodeIo`** — two static helpers (`readTree`/`write`) factoring
+    out the "parse JSON, throw a clean `BusinessException` on failure" and "serialize pretty vs.
+    minified" blocks that had been copy-pasted near-verbatim across `JsonFormatOperation`,
+    `YamlToJsonOperation`, `JsonToYamlOperation`, `JsonToCsvOperation`, `JsonToPhpOperation`,
+    `CsvToJsonOperation`, and `PhpToJsonOperation` — roughly 8 duplicated blocks across 7 classes,
+    each caller keeping its own error code (and, for `readTree`, whatever it does with the parsed
+    tree afterward), so this doesn't force operations with genuinely different shapes through one
+    common method the way `service.DevUtilOperation`'s own Javadoc warns against for the operations
+    themselves.
+  - **Doc drift fixed in 4 files** that still described the module at its original 3-4-operation
+    size, not its current 16: `dto.MinifiableTextRequest`/`dto.TextRequest` (both claimed to be
+    shared by operations that had since grown well past the list named), `DevUtilsServiceApplication`'s
+    own class Javadoc (still listed only JSON/YAML/HTML), and `dto.DevUtilResponse` (described
+    `StringCaseResponse`'s multi-value-response case as hypothetical future work when it already
+    exists today).
+  - **Every one of the 16 operations' `execute(...)` methods (plus
+    `exception.ParsingExceptionMessages#friendlyMessage`) gained method-level Javadoc** — per this
+    project's own root `CLAUDE.md` rule ("Javadoc for every … public method"), which this module's
+    otherwise-thorough class-level Javadoc had drifted away from at the method level across all 16
+    operations.
+  - Test suite grew from 133 to 138 (5 new regression tests, 0 new failures) — verified via a real
+    `mvn -pl dev-utils-service -am test` run (JDK 21), same as every other change to this module.
+
 ## [0.0.3] — 2026-09-07
 
 Retroactive cut of everything that had accumulated under `[Unreleased]` since the `0.0.2` cut —

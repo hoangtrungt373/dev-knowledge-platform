@@ -2422,10 +2422,16 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │           ├── PhpArrayWriter.java      — write(JsonNode, boolean minify): String, the JSON→PHP
 │           │                               counterpart — renders a JsonNode tree as a <?php
 │           │                               return ...; snippet PhpArrayParser can read back in
-│           └── StringCaseConverter.java — convert(String): StringCaseResponse, shared only by
-│                                           StringCaseOperation today — splits text into words
-│                                           (delimiter- and camelCase/acronym-boundary-aware) and
-│                                           re-joins them into all 7 case variants. Never throws
+│           ├── StringCaseConverter.java — convert(String): StringCaseResponse, shared only by
+│           │                               StringCaseOperation today — splits text into words
+│           │                               (delimiter- and camelCase/acronym-boundary-aware) and
+│           │                               re-joins them into all 7 case variants. Never throws
+│           └── JsonNodeIo.java          — readTree(ObjectMapper, String, ErrorCode): JsonNode /
+│                                           write(ObjectMapper, Object, boolean minify, ErrorCode):
+│                                           String, two static helpers factoring out duplicated
+│                                           "parse JSON, clean-message on failure" / "pretty vs.
+│                                           minify serialize" blocks that used to be copy-pasted
+│                                           across 7 operation classes
 ├── dto/
 │   ├── DevUtilsLimits.java        — MAX_INPUT_LENGTH = 100_000, shared by every request DTO's
 │   │                                 @Size constraint — the one fully public, unauthenticated

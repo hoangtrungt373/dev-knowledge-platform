@@ -30,6 +30,8 @@ public final class ParsingExceptionMessages {
     private ParsingExceptionMessages() {
     }
 
+    /** Cleans up {@code e}'s own message per this class's Javadoc, and re-appends its real
+     * {@code (line N, column M)} location from {@link JsonProcessingException#getLocation()}. */
     public static String friendlyMessage(JsonProcessingException e) {
         String cleaned = e.getOriginalMessage()
                 // Jackson's own inline location clause on a structural error (an unclosed

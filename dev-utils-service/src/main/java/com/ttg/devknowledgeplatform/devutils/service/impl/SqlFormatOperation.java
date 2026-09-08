@@ -19,6 +19,8 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.support.SqlFormatter;
 @Component
 public class SqlFormatOperation implements DevUtilOperation {
 
+    /** Never throws — see this class's own Javadoc for why {@link SqlFormatter} has no
+     * invalid-input failure path. */
     public String execute(String input, boolean minify) {
         return minify ? SqlFormatter.minify(input) : SqlFormatter.beautify(input);
     }

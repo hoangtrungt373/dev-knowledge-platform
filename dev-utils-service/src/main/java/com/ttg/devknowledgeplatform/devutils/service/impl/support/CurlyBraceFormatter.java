@@ -51,6 +51,20 @@ package com.ttg.devknowledgeplatform.devutils.service.impl.support;
  * a function call or argument list ({@code rgba(0, 0, 0, .5)}, a JS array literal {@code [1,2,3]})
  * that also uses commas but isn't a selector list — telling those apart needs real grammar
  * awareness this formatter deliberately doesn't have.
+ *
+ * <p><b>An unquoted {@code url(...)} argument is treated as an atomic span, the same way a quoted
+ * string literal already is — a real bug, caught after the fact rather than by a test.</b> CSS
+ * commonly writes {@code url(http://example.com/x.png)} with no quotes at all; without this, the
+ * comment scanner's bare "any {@code //} starts a line comment" rule would misread the
+ * {@code //} in {@code http://} as a comment start. In {@code beautify} that corrupts brace-depth
+ * tracking for everything after it (a trailing {@code }} inside the "comment" span never
+ * decrements {@code depth}); in {@code minify} it's worse — a single-line, semicolon-free
+ * declaration has no {@code \n} to stop the scan, so everything from the {@code //} to the end of
+ * the input is silently discarded. {@link #isUrlFunctionStart}/{@link #scanUrlFunctionArg} guard
+ * against this by consuming the whole unquoted argument (up to its closing {@code )}) as one
+ * span before the comment scanner ever gets a chance to look inside it. A *quoted* argument
+ * ({@code url("...")}) is left to the ordinary string-literal handling instead — it's already
+ * protected there.
  */
 public final class CurlyBraceFormatter {
 
@@ -74,6 +88,16 @@ public final class CurlyBraceFormatter {
         while (i < n) {
             char c = input.charAt(i);
 
+            if ((c == 'u' || c == 'U') && isUrlFunctionStart(input, i) && !isQuoteAt(input, i + 4)) {
+                int end = scanUrlFunctionArg(input, i);
+                if (atLineStart) {
+                    appendIndent(out, depth);
+                    atLineStart = false;
+                }
+                out.append(input, i, end);
+                i = end;
+                continue;
+            }
             if (c == '/' && i + 1 < n && input.charAt(i + 1) == '*') {
                 int end = indexOfOrEnd(input, "*/", i + 2);
                 if (atLineStart) {
@@ -186,6 +210,12 @@ public final class CurlyBraceFormatter {
         while (i < n) {
             char c = input.charAt(i);
 
+            if ((c == 'u' || c == 'U') && isUrlFunctionStart(input, i) && !isQuoteAt(input, i + 4)) {
+                int end = scanUrlFunctionArg(input, i);
+                out.append(input, i, end);
+                i = end;
+                continue;
+            }
             if (c == '/' && i + 1 < n && input.charAt(i + 1) == '*') {
                 i = indexOfOrEnd(input, "*/", i + 2);
                 continue;
@@ -230,6 +260,49 @@ public final class CurlyBraceFormatter {
         }
 
         return out.toString().strip();
+    }
+
+    /** True when {@code s.charAt(i)} starts a {@code url(} function token (case-insensitive, not
+     * itself the tail of a longer identifier like {@code myurl(}). Doesn't check what follows —
+     * see {@link #scanUrlFunctionArg}'s own caller for the quoted-vs-unquoted split. */
+    private static boolean isUrlFunctionStart(String s, int i) {
+        int n = s.length();
+        if (i + 4 > n) {
+            return false;
+        }
+        if (Character.toLowerCase(s.charAt(i)) != 'u'
+                || Character.toLowerCase(s.charAt(i + 1)) != 'r'
+                || Character.toLowerCase(s.charAt(i + 2)) != 'l'
+                || s.charAt(i + 3) != '(') {
+            return false;
+        }
+        if (i > 0) {
+            char prev = s.charAt(i - 1);
+            if (Character.isLetterOrDigit(prev) || prev == '_' || prev == '-') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isQuoteAt(String s, int i) {
+        return i < s.length() && (s.charAt(i) == '\'' || s.charAt(i) == '"' || s.charAt(i) == '`');
+    }
+
+    /** Scans an unquoted {@code url(...)} argument starting at the {@code u} of {@code "url("}
+     * (already confirmed present by {@link #isUrlFunctionStart}), through and including its
+     * closing {@code )}. A real unquoted CSS {@code url()} value can't itself contain a right
+     * paren, so a plain scan to the next {@code )} is sufficient — this exists purely so the
+     * comment/string scanners never look inside an unquoted {@code url()} argument, where a bare
+     * {@code //} (e.g. {@code url(http://...)}) is not a comment. See this class's own Javadoc
+     * for the bug this fixes. */
+    private static int scanUrlFunctionArg(String s, int start) {
+        int n = s.length();
+        int i = start + 4;
+        while (i < n && s.charAt(i) != ')') {
+            i++;
+        }
+        return i < n ? i + 1 : n;
     }
 
     private static boolean isSafeBoundary(char c) {

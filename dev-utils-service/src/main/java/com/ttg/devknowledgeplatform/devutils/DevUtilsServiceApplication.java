@@ -12,9 +12,10 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
 
 /**
  * Entry point for the standalone {@code dev-utils-service} application — a stateless developer
- * utility belt (JSON format/validate, YAML&harr;JSON conversion, HTML beautify) alongside this
- * reactor's other six standalone services. See root {@code CLAUDE.md}'s module table and this
- * module's own {@code CLAUDE.md} for the full picture.
+ * utility belt (JSON format/validate, YAML&harr;JSON conversion, HTML/CSS/LESS/SCSS/JS/ERB/XML
+ * beautify+minify, JSON&harr;CSV conversion, SQL format, PHP&harr;JSON conversion, String Case
+ * Converter) alongside this reactor's other six standalone services. See root {@code CLAUDE.md}'s
+ * module table and this module's own {@code CLAUDE.md} for the full picture.
  *
  * <p>The one deployable in this reactor with genuinely nothing to persist: every operation is a
  * pure text-in/text-out transform, so unlike every other service here there is **no JPA/Postgres

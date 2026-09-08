@@ -18,6 +18,7 @@ import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.devutils.exception.DevUtilsErrorCode;
 import com.ttg.devknowledgeplatform.devutils.exception.ParsingExceptionMessages;
 import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.support.JsonNodeIo;
 
 import lombok.RequiredArgsConstructor;
 
@@ -45,18 +46,14 @@ public class CsvToJsonOperation implements DevUtilOperation {
 
     private final ObjectMapper objectMapper;
 
+    /**
+     * @throws BusinessException wrapping {@link DevUtilsErrorCode#INVALID_CSV} when
+     *                           {@code input} isn't structurally valid CSV against its own
+     *                           header row
+     */
     public String execute(String input, boolean minify) {
         List<Map<String, String>> rows = parseCsv(input);
-        try {
-            return minify
-                    ? objectMapper.writeValueAsString(rows)
-                    : objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(rows);
-        } catch (JsonProcessingException e) {
-            // Only reachable if the JSON re-serialization step itself fails — every value here is
-            // already a plain String from the CSV read above, so this is a defensive catch, not an
-            // expected path.
-            throw new BusinessException(DevUtilsErrorCode.INVALID_CSV, (Object) e.getOriginalMessage());
-        }
+        return JsonNodeIo.write(objectMapper, rows, minify, DevUtilsErrorCode.INVALID_CSV);
     }
 
     private List<Map<String, String>> parseCsv(String input) {

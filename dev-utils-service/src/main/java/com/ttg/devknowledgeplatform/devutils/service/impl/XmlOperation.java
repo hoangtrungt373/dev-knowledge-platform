@@ -60,6 +60,10 @@ import com.ttg.devknowledgeplatform.devutils.service.DevUtilOperation;
 @Component
 public class XmlOperation implements DevUtilOperation {
 
+    /**
+     * @throws BusinessException wrapping {@link DevUtilsErrorCode#INVALID_XML} when {@code input}
+     *                           isn't well-formed XML
+     */
     public String execute(String input, boolean minify) {
         try {
             Document document = parse(input);
