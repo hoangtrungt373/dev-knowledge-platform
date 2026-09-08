@@ -898,6 +898,27 @@ section again. Full unabridged entry-by-entry history for all three lives in
   surrounding whitespace unconditionally there. 5 new tests in `CurlyBraceFormatterTest`, plus 2
   existing tests and one end-to-end `DevUtilsServiceApplicationTests` assertion updated from an
   unspaced-colon expectation to a spaced one. Test suite grew from 145 to 150.
+- **`dev-utils-service` — fourth follow-up, same bug shape, reported directly against a real LESS
+  example: the blank-line-between-top-level-rules fix above was too narrow (missed the identical
+  gap one level deeper), plus a separate comma-spacing gap in the same report.**
+  `.button { background: @brand; &:hover {...} }` — a declaration followed by a nested rule
+  *inside* a block — used to render with no blank line between them. Generalized (not
+  re-implemented): `CurlyBraceFormatter` now tracks, per brace-nesting depth, whether the block
+  currently at that depth already has prior content (`hasContentAtDepth`), and a blank line goes in
+  before any line that opens a nested rule whenever its own block already had one — the old,
+  top-level-only "blank line after a `}` reaching depth 0" logic was removed outright, superseded
+  by this general rule. **A real bug caught in the same pass, by an existing test failing**: the
+  first cut used `atLineStart` alone to detect "a new statement begins here" — wrong, since an
+  already-multiline selector list (`h1,\nh2 {...}`) also sets that flag true on its second line,
+  which isn't a new statement, just a preserved line-wrap of the first; a second, narrower flag
+  (`atStatementStart`, set only by `;`/`{`/`}`) fixed it. **Separately, `beautify` now normalizes
+  same-line spacing after a `,`** (`darken(@brand,10%)` → `darken(@brand, 10%)`) — unlike the colon
+  fix, this needed no context check, since a space after `,` is unconditionally correct in a
+  function argument list, a selector list, or a JS array/object literal alike; skipped only before
+  a newline (preserves an already-multiline list) or a closing `)`/`]`/`}` (no space padding a
+  trailing comma from its closer). 3 new tests in `CurlyBraceFormatterTest`, plus a fortified
+  `preservesAlreadyMultilineSelectorLists` and an updated `indentsNestedBlocksByDefault`. Test
+  suite grew from 150 to 153.
 
 ## [0.0.3] — 2026-09-07
 

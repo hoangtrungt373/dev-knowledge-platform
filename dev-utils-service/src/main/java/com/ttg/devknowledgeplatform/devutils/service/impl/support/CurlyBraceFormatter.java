@@ -1,5 +1,8 @@
 package com.ttg.devknowledgeplatform.devutils.service.impl.support;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * A lenient, brace/semicolon-driven pretty-printer and minifier shared by {@code CssOperation},
  * {@code LessOperation}, {@code ScssOperation}, and {@code JsOperation} — CSS, LESS, SCSS, and
@@ -65,23 +68,41 @@ package com.ttg.devknowledgeplatform.devutils.service.impl.support;
  * this class's own {@link #SAFE_BOUNDARY_CHARS}, so it already strips *all* surrounding whitespace
  * unconditionally, which is correct for both contexts in minified output.
  *
- * <p><b>A blank line now separates two genuinely top-level rules, per the same real bug report
- * above</b> — {@code .a {...}} immediately followed by {@code .a:hover {...}} used to render with
- * no visual break between them. Whenever a {@code }} brings brace-nesting {@code depth} back down
- * to {@code 0} (i.e., this really was a top-level rule closing, not a nested one inside another
- * rule/at-rule), an extra blank line is appended before whatever comes next. A trailing blank line
- * at the very end of input is harmless — it's trimmed away by this method's own final
- * {@code .strip()} — so this is always safe to append unconditionally rather than needing to look
- * ahead for "is there more content after this."
+ * <p><b>A blank line now separates a nested rule from whatever content already precedes it in the
+ * same block — first added for two top-level rules, then generalized after a second report showed
+ * the same gap one level deeper.</b> {@code .a {...}} immediately followed by {@code .a:hover
+ * {...}} used to render with no visual break between them (fixed first); then a LESS example —
+ * {@code .button { background: @brand; &:hover {...} } } — showed the identical gap applies
+ * *inside* a block too, between a plain declaration and a nested rule that follows it. Both are the
+ * same underlying rule, not two separate fixes: whenever a new line is about to start (any of the
+ * branches below that check {@code atLineStart}) and {@link #selectorFollowsBeforeStatementEnd}
+ * says *this* line itself opens a nested rule, a blank line is inserted first if the block it
+ * belongs to (tracked per-depth by {@code hasContentAtDepth}, pushed/popped alongside brace
+ * {@code depth} on {@code {}/{@code }}) has already emitted a prior statement or nested rule of its
+ * own — never before the very first thing in a block, regardless of what that first thing is. See
+ * {@link #beginLine} for the actual mechanism, and its own Javadoc for a worked trace of the LESS
+ * example above. A blank line is never inserted before a plain declaration, even one that follows
+ * other content — only before a line that itself opens a nested rule.
  *
- * <p>Also known and deliberate: this formatter never invents structure the source didn't already
- * signal via whitespace — e.g. a comma-separated selector list already split across lines
- * ({@code h1,\nh2 {...}}) stays split (each original line break between ordinary characters is
- * preserved, per the ASI-safety rule above), but one written on a single line
- * ({@code h1,h2{...}}) is not proactively re-split. Blindly splitting on every comma would corrupt
- * a function call or argument list ({@code rgba(0, 0, 0, .5)}, a JS array literal {@code [1,2,3]})
- * that also uses commas but isn't a selector list — telling those apart needs real grammar
- * awareness this formatter deliberately doesn't have.
+ * <p>Also known and deliberate: this formatter never invents *line-break* structure the source
+ * didn't already signal via whitespace — e.g. a comma-separated selector list already split across
+ * lines ({@code h1,\nh2 {...}}) stays split (each original line break between ordinary characters
+ * is preserved, per the ASI-safety rule above), but one written on a single line
+ * ({@code h1,h2{...}}) is not proactively re-split onto multiple lines. Blindly splitting on every
+ * comma would corrupt a function call or argument list ({@code rgba(0, 0, 0, .5)}, a JS array
+ * literal {@code [1,2,3]}) that also uses commas but isn't a selector list — telling those apart
+ * needs real grammar awareness this formatter deliberately doesn't have.
+ *
+ * <p><b>{@code beautify} does normalize the *same-line* spacing after a {@code ,}</b> — a real bug,
+ * part of the same LESS report {@link #beginLine} documents above: {@code darken(@brand,10%)}
+ * needed a space after the comma too ({@code darken(@brand, 10%)}). This doesn't conflict with the
+ * "never invents line-break structure" rule just above — inserting a same-line space (never a
+ * newline) after a comma is safe unconditionally, unlike splitting one onto its own line, since a
+ * function argument list, a selector list, and a JS array/object literal all uniformly want a
+ * space after each comma with no ambiguity the way a colon's two contexts have. Skipped only when
+ * a newline already follows (preserves an already-multiline list's own line breaks) or when a
+ * closing {@code )}/{@code ]}/{@code }} immediately follows (a trailing comma before a closer
+ * doesn't need a space padding it away from that closer).
  *
  * <p><b>An unquoted {@code url(...)} argument is treated as an atomic span, the same way a quoted
  * string literal already is — a real bug, caught after the fact rather than by a test.</b> CSS
@@ -118,8 +139,23 @@ public final class CurlyBraceFormatter {
         // even trying the selector-vs-declaration lookahead. See this class's own Javadoc.
         int parenDepth = 0;
         boolean atLineStart = true;
+        // Distinguishes a genuine new statement/block boundary from a mid-statement resumption —
+        // both set atLineStart = true (an already-multi-line selector list like `h1,\nh2 {...}`
+        // resumes on its second line via the same atLineStart mechanism the ASI-safety rule above
+        // uses), but only the former should ever trigger beginLine's blank-line decision. Only
+        // `;`/`{`/`}` (a real statement/block ending) set this true; the whitespace branch's own
+        // mid-statement newline handling deliberately leaves it untouched. See beginLine's own
+        // Javadoc for why conflating the two was a real bug, caught by an existing test.
+        boolean atStatementStart = true;
         int n = input.length();
         int i = 0;
+        // Per-depth "has this block already emitted a statement/nested rule" flags, consulted and
+        // updated by beginLine — see this class's own Javadoc and beginLine's own doc comment for
+        // the full mechanism. Index 0 (the whole document's own top level) is pushed once, up
+        // front; every `{`/`}` below pushes/pops one more, keeping size() - 1 always equal to the
+        // current depth.
+        List<Boolean> hasContentAtDepth = new ArrayList<>();
+        hasContentAtDepth.add(false);
 
         while (i < n) {
             char c = input.charAt(i);
@@ -127,8 +163,9 @@ public final class CurlyBraceFormatter {
             if ((c == 'u' || c == 'U') && isUrlFunctionStart(input, i) && !isQuoteAt(input, i + 4)) {
                 int end = scanUrlFunctionArg(input, i);
                 if (atLineStart) {
-                    appendIndent(out, depth);
+                    beginLine(out, input, i, depth, hasContentAtDepth, atStatementStart);
                     atLineStart = false;
+                    atStatementStart = false;
                 }
                 out.append(input, i, end);
                 i = end;
@@ -137,8 +174,9 @@ public final class CurlyBraceFormatter {
             if (c == '/' && i + 1 < n && input.charAt(i + 1) == '*') {
                 int end = indexOfOrEnd(input, "*/", i + 2);
                 if (atLineStart) {
-                    appendIndent(out, depth);
+                    beginLine(out, input, i, depth, hasContentAtDepth, atStatementStart);
                     atLineStart = false;
+                    atStatementStart = false;
                 }
                 out.append(input, i, end);
                 i = end;
@@ -147,7 +185,8 @@ public final class CurlyBraceFormatter {
             if (c == '/' && i + 1 < n && input.charAt(i + 1) == '/') {
                 int end = indexOfOrEnd(input, '\n', i + 2);
                 if (atLineStart) {
-                    appendIndent(out, depth);
+                    beginLine(out, input, i, depth, hasContentAtDepth, atStatementStart);
+                    atStatementStart = false;
                 }
                 out.append(input, i, end);
                 out.append('\n');
@@ -158,8 +197,9 @@ public final class CurlyBraceFormatter {
             if (c == '\'' || c == '"' || c == '`') {
                 int end = scanStringLiteral(input, i, c);
                 if (atLineStart) {
-                    appendIndent(out, depth);
+                    beginLine(out, input, i, depth, hasContentAtDepth, atStatementStart);
                     atLineStart = false;
+                    atStatementStart = false;
                 }
                 out.append(input, i, end);
                 i = end;
@@ -167,8 +207,9 @@ public final class CurlyBraceFormatter {
             }
             if (c == '(') {
                 if (atLineStart) {
-                    appendIndent(out, depth);
+                    beginLine(out, input, i, depth, hasContentAtDepth, atStatementStart);
                     atLineStart = false;
+                    atStatementStart = false;
                 }
                 out.append(c);
                 parenDepth++;
@@ -177,18 +218,52 @@ public final class CurlyBraceFormatter {
             }
             if (c == ')') {
                 if (atLineStart) {
-                    appendIndent(out, depth);
+                    beginLine(out, input, i, depth, hasContentAtDepth, atStatementStart);
                     atLineStart = false;
+                    atStatementStart = false;
                 }
                 out.append(c);
                 parenDepth = Math.max(0, parenDepth - 1);
                 i++;
                 continue;
             }
+            if (c == ',') {
+                if (atLineStart) {
+                    beginLine(out, input, i, depth, hasContentAtDepth, atStatementStart);
+                    atLineStart = false;
+                    atStatementStart = false;
+                }
+                out.append(c);
+                i++;
+                // Same existing-whitespace-collapse-then-single-space normalization the
+                // declaration colon already gets — unlike that one, a comma needs no context
+                // check at all: a space after `,` is always correct in CSS/LESS/SCSS/JS, whether
+                // it's a function argument list (darken(@brand,10%) -> darken(@brand, 10%)) or a
+                // selector list (h1,h2 -> h1, h2) — this only adds a same-line space, it never
+                // splits onto a new line, so it doesn't touch the "never invents structure the
+                // source didn't signal via whitespace" rule this class's own Javadoc documents for
+                // comma-separated selector lists. Skipped when real content doesn't actually
+                // follow — a trailing comma right before `)`/`]`/`}` shouldn't gain a stray space,
+                // and a comma already followed by a newline (an already-multiline list) keeps that
+                // newline rather than being collapsed onto one line.
+                int j = i;
+                while (j < n && (input.charAt(j) == ' ' || input.charAt(j) == '\t')) {
+                    j++;
+                }
+                if (j < n) {
+                    char next = input.charAt(j);
+                    if (next != ')' && next != ']' && next != '}' && next != '\n' && next != '\r') {
+                        i = j;
+                        out.append(' ');
+                    }
+                }
+                continue;
+            }
             if (c == ':') {
                 if (atLineStart) {
-                    appendIndent(out, depth);
+                    beginLine(out, input, i, depth, hasContentAtDepth, atStatementStart);
                     atLineStart = false;
+                    atStatementStart = false;
                 }
                 out.append(c);
                 i++;
@@ -214,32 +289,32 @@ public final class CurlyBraceFormatter {
             }
             if (c == '{') {
                 if (atLineStart) {
-                    appendIndent(out, depth);
+                    beginLine(out, input, i, depth, hasContentAtDepth, atStatementStart);
                 } else {
                     trimTrailingSpaces(out);
                     out.append(' ');
                 }
                 out.append("{\n");
                 depth++;
+                hasContentAtDepth.add(false);
                 atLineStart = true;
+                atStatementStart = true;
                 i++;
                 continue;
             }
             if (c == '}') {
                 depth = Math.max(0, depth - 1);
+                if (hasContentAtDepth.size() > 1) {
+                    hasContentAtDepth.remove(hasContentAtDepth.size() - 1);
+                }
                 if (!atLineStart) {
                     trimTrailingSpaces(out);
                     out.append('\n');
                 }
                 appendIndent(out, depth);
                 out.append("}\n");
-                if (depth == 0) {
-                    // A blank line between top-level rules, per request — see this class's own
-                    // Javadoc. Safe to append unconditionally; a trailing one is trimmed by this
-                    // method's own final .strip() when this was the last rule in the input.
-                    out.append('\n');
-                }
                 atLineStart = true;
+                atStatementStart = true;
                 i++;
                 continue;
             }
@@ -247,6 +322,7 @@ public final class CurlyBraceFormatter {
                 trimTrailingSpaces(out);
                 out.append(";\n");
                 atLineStart = true;
+                atStatementStart = true;
                 i++;
                 continue;
             }
@@ -276,8 +352,9 @@ public final class CurlyBraceFormatter {
                 continue;
             }
             if (atLineStart) {
-                appendIndent(out, depth);
+                beginLine(out, input, i, depth, hasContentAtDepth, atStatementStart);
                 atLineStart = false;
+                atStatementStart = false;
             }
             out.append(c);
             i++;
@@ -378,16 +455,62 @@ public final class CurlyBraceFormatter {
         return i < s.length() && (s.charAt(i) == '\'' || s.charAt(i) == '"' || s.charAt(i) == '`');
     }
 
-    /** Bounded forward lookahead from just after a {@code :} (already confirmed not inside any
-     * open parens by the caller) deciding whether it opens a nested rule's own selector or ends a
-     * declaration's property name — see this class's own Javadoc for the full reasoning. Returns
-     * {@code true} when a {@code {} is the first of {@code {}/{@code ;}/{@code }} reached (a
-     * selector colon, e.g. {@code &:hover {}), {@code false} otherwise (a declaration colon, e.g.
-     * {@code color:red;}, or end of input reached with no clear terminator — the safer default,
-     * since it only ever adds a space that wasn't already there). Skips over string literals,
-     * comments, and an unquoted {@code url(...)} argument the same way the main scan does, so a
-     * {@code {}/{@code ;}/{@code }} inside any of those (e.g. {@code content: "a;b"}) never
-     * confuses the scan. */
+    /** Called from every {@code if (atLineStart) {...}} site above, exactly once per new line —
+     * decides whether this line needs a blank line inserted before it, appends its indent, and
+     * updates {@code hasContentAtDepth} for whatever line comes next. A blank line goes in when
+     * both are true: this line itself opens a nested rule (per
+     * {@link #selectorFollowsBeforeStatementEnd}), and the block at {@code depth} has already
+     * emitted a prior statement or nested rule of its own (checked via
+     * {@code hasContentAtDepth}'s own top-of-stack entry, corresponding to the current depth,
+     * pushed/popped alongside {@code {}/{@code }} — see this class's own Javadoc). Either way,
+     * that entry is then set {@code true}, since a new line is now definitely starting — this is
+     * what lets the check-then-set happen in one pass with no separate bookkeeping needed at
+     * {@code ;}/{@code }} time.
+     *
+     * <p><b>Worked trace, the LESS example this method exists for</b> — {@code .button { background:
+     * @brand; &:hover { color: blue; } }}: when {@code background: @brand;}'s own line begins
+     * (depth 1, freshly pushed {@code false}), it doesn't open a nested rule, so no blank line goes
+     * in regardless — but its entry is still set {@code true}. When {@code &:hover {}'s own line
+     * begins next (still depth 1), it *does* open a nested rule, and depth 1's entry is now
+     * {@code true} from the previous line — blank line inserted. Inside {@code &:hover}'s own block
+     * (depth 2, fresh {@code false}), {@code color: blue;} is the *first* line, so no blank line
+     * goes in there regardless of what it is. */
+    private static void beginLine(
+            StringBuilder out, String input, int i, int depth, List<Boolean> hasContentAtDepth, boolean atStatementStart) {
+        // Only a genuine new statement/block boundary (atStatementStart) is eligible for the
+        // blank-line decision — a mid-statement resumption (e.g. `h1,\nh2 {...}`'s second line)
+        // also reaches this method with atLineStart true, but must never be mistaken for a new
+        // statement in its own right: it's still part of the SAME statement that already made
+        // this decision (or explicitly chose not to) when that statement first began. A real bug,
+        // caught by an existing test (preservesAlreadyMultilineSelectorLists) failing once this
+        // method's blank-line logic first landed — without this guard, h1's own line would mark
+        // its enclosing block "has content" the instant it began, and h2's line (the *same*
+        // selector list's second line) would then wrongly see that as "prior content" and gain an
+        // unwanted blank line between them.
+        if (atStatementStart) {
+            int top = hasContentAtDepth.size() - 1;
+            boolean opensNestedBlock = selectorFollowsBeforeStatementEnd(input, i);
+            if (opensNestedBlock && hasContentAtDepth.get(top)) {
+                out.append('\n');
+            }
+            hasContentAtDepth.set(top, true);
+        }
+        appendIndent(out, depth);
+    }
+
+    /** Bounded forward lookahead from position {@code from}, used by two different callers for the
+     * same underlying question — "does a {@code {} come before the next {@code ;}/{@code }}
+     * starting here?" — {@link #beginLine} (from a new line's very first character, deciding
+     * whether that whole line opens a nested rule) and the {@code :} handling in {@link #beautify}
+     * (from just after a colon not already known to be inside parens, deciding whether *that*
+     * colon opened a nested rule's own selector or ended a declaration's property name — see this
+     * class's own Javadoc for the full reasoning there). Returns {@code true} when a {@code {} is
+     * the first of {@code {}/{@code ;}/{@code }} reached (e.g. {@code &:hover {}), {@code false}
+     * otherwise (e.g. {@code color:red;}, or end of input reached with no clear terminator — the
+     * safer default in both callers, since it only ever skips adding a blank line/space rather than
+     * adding one that wasn't warranted). Skips over string literals, comments, and an unquoted
+     * {@code url(...)} argument the same way the main scan does, so a {@code {}/{@code ;}/{@code }}
+     * inside any of those (e.g. {@code content: "a;b"}) never confuses the scan. */
     private static boolean selectorFollowsBeforeStatementEnd(String s, int from) {
         int n = s.length();
         int i = from;

@@ -13,10 +13,13 @@ class CurlyBraceFormatterTest {
 
         // A declaration's own colon gets a space inserted ("color: red") — see
         // declarationColonGetsASpaceButSelectorColonDoesNot below for the selector-colon side of
-        // this same fix.
+        // this same fix. A blank line separates "color: red;" from the nested ".b" rule that
+        // follows it — see insertsABlankLineBeforeANestedRuleThatFollowsOtherContent below for the
+        // real LESS example this generalizes from.
         assertThat(result).isEqualTo(
                 ".a {\n"
                         + "  color: red;\n"
+                        + "\n"
                         + "  .b {\n"
                         + "    color: blue;\n"
                         + "  }\n"
@@ -104,7 +107,49 @@ class CurlyBraceFormatterTest {
     void preservesAlreadyMultilineSelectorLists() {
         String result = CurlyBraceFormatter.beautify("h1,\nh2 {\n  color: red;\n}");
 
+        // Guards against a real regression the blank-line-before-nested-rule fix (below)
+        // introduced and then had to fix again: h1/h2 are the SAME selector statement's two
+        // physical lines, not two separate statements — h2's own resumption must never be
+        // mistaken for a fresh statement start and given a blank line of its own. See
+        // CurlyBraceFormatter#beginLine's own Javadoc for the root cause and fix.
         assertThat(result).isEqualTo("h1,\nh2 {\n  color: red;\n}");
+    }
+
+    @Test
+    void insertsABlankLineBeforeANestedRuleThatFollowsOtherContentInTheSameBlock() {
+        // The exact reported LESS example: a declaration ("background: @brand;") followed by a
+        // nested rule ("&:hover {...}") in the same block gets a blank line between them, the
+        // same treatment two top-level rules already get — plus a space after the comma in
+        // "darken(@brand, 10%)", a separate part of the same report.
+        String result = CurlyBraceFormatter.beautify(
+                "@brand:#14b8a6;.button{background:@brand;&:hover{background:darken(@brand,10%);}}"
+        );
+
+        assertThat(result).isEqualTo(
+                "@brand: #14b8a6;\n"
+                        + "\n"
+                        + ".button {\n"
+                        + "  background: @brand;\n"
+                        + "\n"
+                        + "  &:hover {\n"
+                        + "    background: darken(@brand, 10%);\n"
+                        + "  }\n"
+                        + "}"
+        );
+    }
+
+    @Test
+    void spacesAfterACommaInFunctionArgumentsAndSelectorLists() {
+        String result = CurlyBraceFormatter.beautify(".a,.b { color: rgba(0,0,0,.5); }");
+
+        assertThat(result).isEqualTo(".a, .b {\n  color: rgba(0, 0, 0, .5);\n}");
+    }
+
+    @Test
+    void doesNotAddASpaceAfterATrailingCommaBeforeAClosingBracket() {
+        String result = CurlyBraceFormatter.beautify("const a = [1,2,3,];");
+
+        assertThat(result).isEqualTo("const a = [1, 2, 3,];");
     }
 
     @Test

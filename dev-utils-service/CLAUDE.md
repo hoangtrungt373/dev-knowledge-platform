@@ -537,6 +537,43 @@ plus 2 existing tests (`indentsNestedBlocksByDefault`,
 `DevUtilsServiceApplicationTests` assertion updated from an unspaced-colon expectation to a spaced
 one.
 
+**Fourth follow-up bug, same shape, reported directly against a real LESS example — the
+blank-line-between-top-level-rules fix above turned out to be too narrow (missed the identical gap
+one level deeper), and a separate, previously-unhandled comma-spacing gap surfaced in the same
+report.** `.button { background: @brand; &:hover {...} }` — a plain declaration followed by a
+nested rule *inside* a block — used to render with no blank line between them, the same problem the
+earlier top-level-only fix solved but didn't generalize. Both are the same underlying rule, not two
+separate mechanisms: `beautify` now tracks, per brace-nesting depth, whether the block currently at
+that depth has already emitted a statement or nested rule of its own (`hasContentAtDepth`, pushed/
+popped alongside `{`/`}`) — a blank line goes in before any line that itself opens a nested rule,
+whenever the block it belongs to already had prior content, whether that block is the whole
+document's own top level or a rule nested many levels deep. New `service.impl.support
+.CurlyBraceFormatter#beginLine` is the actual mechanism (called from every one of the method's
+`atLineStart` branches); the old, narrower "blank line after a `}` reaching depth 0" logic was
+removed outright, superseded by this general rule (verified it produces byte-identical output for
+the original top-level-only report before removing the old code path). **A real bug caught in the
+same pass, by an existing test failing**: the first cut of `beginLine` used `atLineStart` alone to
+decide whether a "new statement" had begun — wrong, since an already-multiline selector list (`h1,
+\nh2 {...}`) also sets `atLineStart` true on its *second* line, which isn't a new statement at all,
+just a preserved line-wrap of the first. `preservesAlreadyMultilineSelectorLists` caught this
+immediately (a spurious blank line appeared between `h1,` and `h2 {`) — fixed with a second,
+narrower flag, `atStatementStart` (true only when set by `;`/`{`/`}`, left untouched by the
+whitespace branch's own mid-statement newline handling), so `beginLine`'s blank-line decision only
+ever fires once per genuine statement, never on a line-wrap resumption of one already in progress.
+**Separately, `beautify` now normalizes the same-line spacing after a `,`** — `darken(@brand,10%)`
+needed a space too (`darken(@brand, 10%)`), the other half of the same LESS report. Unlike the
+colon fix, this needed no context check at all: a space after `,` is unconditionally correct
+whether it's a function argument list, a selector list, or a JS array/object literal — skipped only
+when a newline already follows (preserves an already-multiline list's own line breaks) or a closing
+`)`/`]`/`}` immediately follows (no stray space padding a trailing comma away from its closer).
+Explicitly doesn't conflict with this class's own "never invents line-break structure" rule — that
+rule is about not *splitting* onto new lines, and this only ever inserts a same-line space, never a
+newline. 3 new tests in `CurlyBraceFormatterTest` (the exact reported LESS example, a
+comma-in-selector-list-and-function-call case, and a trailing-comma-before-a-closing-bracket case),
+plus a fortified `preservesAlreadyMultilineSelectorLists` (now documents the exact regression it
+guards) and an updated `indentsNestedBlocksByDefault` (now expects the blank line its own nested
+`.b` rule should get, per this fix).
+
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
 `HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
@@ -570,11 +607,11 @@ latter caught by `@Size` before ever reaching an operation) and confirms malform
 return `400` with `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005` respectively through the shared
 `GlobalExceptionHandler`. Plus `service/impl/support/ConventionalJsonPrettyPrinterTest` (the one
 support class in this module with its own dedicated test file rather than only being exercised
-indirectly through an operation's own tests — see that class's own note above for why). 150 tests
+indirectly through an operation's own tests — see that class's own note above for why). 153 tests
 total (133 original, plus the 5 code-quality-pass regressions, the 6 JSON-pretty-printer-fix
-tests, the 1 YAML-formatting-fix test, and the 5 new CSS-colon/blank-line-fix tests above — that
-fix's own 3 updated tests changed content but not the count), verified via a real
-`mvn -pl dev-utils-service -am test` run (JDK 21).
+tests, the 1 YAML-formatting-fix test, the 5 CSS-colon/blank-line-fix tests, and the 3 LESS
+blank-line-generalization/comma-spacing-fix tests above — both fixes' own updated tests changed
+content but not the count), verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module
 

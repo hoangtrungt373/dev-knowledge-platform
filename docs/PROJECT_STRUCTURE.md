@@ -2412,8 +2412,12 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │           │                               counter + forward lookahead that spaces a declaration's
 │           │                               `:` (`color:red` → `color: red`) while leaving a
 │           │                               selector's own `:` untouched (`.a:hover`/`&:hover`
-│           │                               stay unspaced), and a blank line inserted between two
-│           │                               genuinely top-level rules
+│           │                               stay unspaced), a same-line space normalized after `,`
+│           │                               (`darken(@brand,10%)` → `darken(@brand, 10%)`), and a
+│           │                               blank line inserted (via beginLine, tracking per-depth
+│           │                               "has this block already emitted content" — not just
+│           │                               depth 0) before any nested rule that follows other
+│           │                               content in its own block, at any nesting depth
 │           ├── SqlFormatter.java        — beautify(String)/minify(String), static utility, shared
 │           │                               only by SqlFormatOperation today — a lenient, keyword-
 │           │                               driven pretty-printer (line breaks before recognized
