@@ -3060,6 +3060,50 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
       sandbox, so the actual on-screen result (all 3 new sidebar entries, their placeholders,
       submit/copy/download, and the info-row badge colors) is unverified in a real browser.
+  - **Follow-up: wired up to `dev-utils-service`'s 3 more operations (bidirectional PHP↔JSON
+    conversion, String Case Converter), per request — the GUI half of the backend pass documented
+    in `dev-utils-service/CLAUDE.md`.** `api/devUtilsApi.ts` gained `phpToJson`/`jsonToPhp` (thin
+    pass-throughs, identical in shape to the existing methods) and `convertStringCase` — the first
+    method in this file to return something other than `DevUtilsResponse`
+    (`Promise<StringCaseResponse>`, a new type mirroring the backend's own record field-for-field).
+    `DevUtilsPage.tsx`'s `TabKey`/`TAB_KEYS` gained `php-to-json`/`json-to-php`/
+    `string-case-convert`, and its `operations` array gained one `OperationConfig` each —
+    `php-to-json`/`json-to-php` joined the existing `'Converters'` group (right after
+    `csv-to-json`), each with a genuine `PhpOutlined` icon (MUI's own PHP logo glyph, not a reused
+    generic one, per request); `string-case-convert` got its own new `'Text Tools'` category
+    (appended at the very end of the array) rather than being stretched to fit `'Formatters'`
+    (it's not a beautify/minify operation) or `'Converters'` (it's not a format-A-to-format-B
+    conversion), with a dedicated `AbcOutlined` icon.
+    - **`string-case-convert` doesn't fit `DevUtilToolPanel`'s single-string output shape at all**
+      — `StringCaseOperation`'s own response has 7 named fields, not one string, unlike every
+      other operation here. Rather than building a second, parallel result-rendering component
+      just for this one operation, its `onSubmit` (a new module-level `formatStringCaseResult`
+      helper in `DevUtilsPage.tsx`) formats the 7 variants into that same `{ output: string }`
+      shape — one `"<Label>\n<value>"` pair per variant, blank-line separated (exactly the
+      plain-text layout a case-converter tool's own output conventionally takes, and incidentally
+      the same format the original request itself was written in) — reusing the entire existing
+      Input/Output panel (copy/download/syntax-highlight-as-plain-text/etc.) for free instead of a
+      bespoke multi-value UI. `outputLanguage: 'text'` has no real Prism grammar to highlight
+      against (deliberately — there's no language here to highlight), so it renders unstyled;
+      `OUTPUT_LANGUAGE_LABELS`/`OUTPUT_LANGUAGE_COLORS` still gained a real `text` entry (neutral
+      grey) so its info-row badge doesn't fall back to showing the raw string `"text"`.
+    - **`OperationConfig.inputFormat`/`DevUtilToolPanelProps.inputFormat` widened** to add
+      `'php' | 'text'`. `json-to-php` itself stays `'json'`, not a new value — same reasoning
+      `json-to-csv` already established (its backend operation reuses `INVALID_JSON`, so it
+      correctly takes the client-side `JSON.parse` fast path). `php-to-json` is the fourth
+      operation (after `yaml`/`xml`/`csv`) with a real backend invalid-input error path
+      (`PhpToJsonOperation`'s own `PhpArrayParser`), so it takes the same `simplifyBackendMessage`
+      fallback those three already use. `string-case-convert`'s backend operation never throws at
+      all, so `'text'` is inert the same way `'css'`/`'less'`/etc. already are.
+      `errorFormatting.ts`'s own doc comment updated to describe all of this accurately.
+    - **`DevUtilToolPanel.tsx`'s `OUTPUT_LANGUAGE_LABELS`/`OUTPUT_LANGUAGE_COLORS` gained `php`/
+      `text` entries** (PHP's own brand indigo; neutral grey for `text`, since it isn't really a
+      "language") — the `php` Prism/refractor grammar confirmed present in the installed bundle
+      first, same verification step every earlier operation pass already established.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual on-screen result (all 3 new sidebar entries, their placeholders,
+      submit/copy/download, the formatted case-variant output block, and the info-row badge
+      colors) is unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

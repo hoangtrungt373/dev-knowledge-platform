@@ -1,5 +1,5 @@
 import { httpClient } from '@shared/api/httpClient';
-import { DevUtilsResponse } from '../types';
+import { DevUtilsResponse, StringCaseResponse } from '../types';
 
 type ShowError = (message: string) => void;
 
@@ -72,5 +72,26 @@ export const devUtilsApi = {
 
   formatSql(input: string, minify: boolean, showError?: ShowError): Promise<DevUtilsResponse> {
     return httpClient.post('/api/v1/dev-utils/sql/format', { input, minify }, showError);
+  },
+
+  // PHP<->JSON + String Case Converter, added alongside dev-utils-service's own
+  // PhpToJsonOperation/JsonToPhpOperation/StringCaseOperation.
+  //
+  // The 4th operation (besides yamlToJson/beautifyXml/csvToJson) with a real backend
+  // invalid-input error path — dev-utils-service's PhpToJsonOperation is backed by a genuine
+  // recursive-descent parser (PhpArrayParser).
+  phpToJson(input: string, minify: boolean, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post('/api/v1/dev-utils/php-to-json', { input, minify }, showError);
+  },
+
+  jsonToPhp(input: string, minify: boolean, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post('/api/v1/dev-utils/json-to-php', { input, minify }, showError);
+  },
+
+  // Returns StringCaseResponse, not DevUtilsResponse — the one operation whose output is
+  // genuinely richer than a single string (see that type's own comment). No `minify` field —
+  // there's no "compact form" of a case conversion.
+  convertStringCase(input: string, showError?: ShowError): Promise<StringCaseResponse> {
+    return httpClient.post('/api/v1/dev-utils/string-case/convert', { input }, showError);
   },
 };

@@ -27,8 +27,10 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeftOutlined';
 import ChevronRightIcon from '@mui/icons-material/ChevronRightOutlined';
 import TableChartIcon from '@mui/icons-material/TableChartOutlined';
 import StorageIcon from '@mui/icons-material/StorageOutlined';
+import FilterListOutlinedIcon from '@mui/icons-material/FilterListOutlined';
+import TerminalOutlinedIcon from '@mui/icons-material/TerminalOutlined';
 import {devUtilsApi} from '../api/devUtilsApi';
-import {DevUtilsResponse} from '../types';
+import {DevUtilsResponse, StringCaseResponse} from '../types';
 import {DevUtilError} from '../utils/errorFormatting';
 import DevUtilToolPanel from '../components/DevUtilToolPanel';
 
@@ -45,7 +47,10 @@ type TabKey =
   | 'xml-beautify'
   | 'json-to-csv'
   | 'csv-to-json'
-  | 'sql-format';
+  | 'sql-format'
+  | 'php-to-json'
+  | 'json-to-php'
+  | 'string-case-convert';
 
 const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -61,6 +66,9 @@ const TAB_KEYS: TabKey[] = [
   'json-to-csv',
   'csv-to-json',
   'sql-format',
+  'php-to-json',
+  'json-to-php',
+  'string-case-convert',
 ];
 const DEFAULT_TAB: TabKey = 'json-format';
 
@@ -73,6 +81,27 @@ const SIDEBAR_COLLAPSED_WIDTH = 56;
 function tabFromHash(hash: string): TabKey {
   const key = hash.replace(/^#/, '');
   return (TAB_KEYS as string[]).includes(key) ? (key as TabKey) : DEFAULT_TAB;
+}
+
+// String Case Converter is the one operation whose backend response (StringCaseResponse) isn't a
+// single string — every other operation's `onSubmit` returns `Promise<DevUtilsResponse>`
+// (`{ output: string }`), which `DevUtilToolPanel` renders as one syntax-highlighted block. Rather
+// than building a second, parallel result-rendering path just for this one operation, its own
+// `onSubmit` (below) formats the 7 case variants into that same "output" shape — one
+// "<Label>\n<value>" pair per variant, blank-line separated — reusing the entire existing
+// Input/Output panel (copy/download/etc.) for free. This is also exactly the plain-text layout a
+// case-converter tool's own output conventionally takes.
+function formatStringCaseResult(result: StringCaseResponse): string {
+  const variants: Array<[string, string]> = [
+    ['camelCase', result.camelCase],
+    ['PascalCase', result.pascalCase],
+    ['snake_case', result.snakeCase],
+    ['kebab-case', result.kebabCase],
+    ['CONSTANT_CASE', result.constantCase],
+    ['Title Case', result.titleCase],
+    ['Sentence case', result.sentenceCase],
+  ];
+  return variants.map(([label, value]) => `${label}\n${value}`).join('\n\n');
 }
 
 interface OperationConfig {
@@ -93,20 +122,36 @@ interface OperationConfig {
    * history). A realistic, mixed-type example, not a minimal one, since it now has to do both
    * jobs at once. */
   inputPlaceholder: string;
-  /** What format the *input* box holds — 'json' for json-format/json-to-yaml/json-to-csv (all
-   * three genuinely take JSON input, including json-to-csv, whose backend operation reuses
-   * INVALID_JSON for its own failures — see devUtilsApi.jsonToCsv's own comment), 'yaml' for
-   * yaml-to-json, 'html' for html-beautify, and one literal per other operation. Drives
-   * `errorFormatting.ts#buildDevUtilError`'s choice between a client-side `JSON.parse`
-   * re-derivation (for 'json' only) and a best-effort cleanup of the backend's own message
-   * (everything else) — in practice that fallback only ever actually renders anything for 'yaml'/
-   * 'xml'/'csv', the three operations with a real backend invalid-input error path; 'html'/'css'/
-   * 'less'/'scss'/'js'/'erb'/'sql' can never fail a submit at all (see each one's own backend
-   * Javadoc), so this field is otherwise inert for them, kept only so every operation still
-   * declares an honest, specific value rather than reusing an unrelated one. */
-  inputFormat: 'json' | 'yaml' | 'html' | 'css' | 'less' | 'scss' | 'js' | 'erb' | 'xml' | 'csv' | 'sql';
+  /** What format the *input* box holds — 'json' for json-format/json-to-yaml/json-to-csv/
+   * json-to-php (all four genuinely take JSON input, including json-to-csv/json-to-php, whose
+   * backend operations both reuse INVALID_JSON for their own failures — see
+   * devUtilsApi.jsonToCsv's own comment), 'yaml' for yaml-to-json, 'html' for html-beautify, and
+   * one literal per other operation. Drives `errorFormatting.ts#buildDevUtilError`'s choice
+   * between a client-side `JSON.parse` re-derivation (for 'json' only) and a best-effort cleanup
+   * of the backend's own message (everything else) — in practice that fallback only ever actually
+   * renders anything for 'yaml'/'xml'/'csv'/'php', the four operations with a real backend
+   * invalid-input error path; 'html'/'css'/'less'/'scss'/'js'/'erb'/'sql'/'text' can never fail a
+   * submit at all (see each one's own backend Javadoc), so this field is otherwise inert for them,
+   * kept only so every operation still declares an honest, specific value rather than reusing an
+   * unrelated one. */
+  inputFormat:
+    | 'json'
+    | 'yaml'
+    | 'html'
+    | 'css'
+    | 'less'
+    | 'scss'
+    | 'js'
+    | 'erb'
+    | 'xml'
+    | 'csv'
+    | 'sql'
+    | 'php'
+    | 'text';
   /** Prism language for the output syntax highlighter: 'json' | 'yaml' | 'markup' (HTML) | 'css' |
-   * 'less' | 'scss' | 'javascript' | 'erb' | 'xml' | 'csv' | 'sql'. */
+   * 'less' | 'scss' | 'javascript' | 'erb' | 'xml' | 'csv' | 'sql' | 'php' | 'text' (the last one,
+   * String Case Converter, has no real Prism grammar to highlight against — see that operation's
+   * own `outputLanguage` comment below). */
   outputLanguage: string;
   supportsMinify: boolean;
   /** Filename offered by the Output panel's Download button. */
@@ -389,6 +434,55 @@ export default function DevUtilsPage(): JSX.Element {
       supportsMinify: true,
       downloadFileName: 'formatted.sql',
       onSubmit: (input, minify) => devUtilsApi.formatSql(input, minify),
+    },
+    {
+      key: 'php-to-json',
+      category: 'Converters',
+      label: 'PHP to JSON',
+      description: 'Convert a PHP array literal into JSON',
+      icon: <TerminalOutlinedIcon fontSize="small" />,
+      actionLabel: 'Convert',
+      inputPlaceholder: "['tool' => 'JSON', 'stars' => 128, 'tags' => ['JSON', 'JWT']]",
+      inputFormat: 'php',
+      outputLanguage: 'json',
+      supportsMinify: true,
+      downloadFileName: 'converted.json',
+      onSubmit: (input, minify) => devUtilsApi.phpToJson(input, minify),
+    },
+    {
+      key: 'json-to-php',
+      category: 'Converters',
+      label: 'JSON to PHP',
+      description: 'Convert JSON into a PHP array literal',
+      icon: <TerminalOutlinedIcon fontSize="small" />,
+      actionLabel: 'Convert',
+      inputPlaceholder: '{"tool":"JSON","stars":128,"tags":["JSON","JWT"]}',
+      inputFormat: 'json',
+      outputLanguage: 'php',
+      supportsMinify: true,
+      downloadFileName: 'converted.php',
+      onSubmit: (input, minify) => devUtilsApi.jsonToPhp(input, minify),
+    },
+    {
+      key: 'string-case-convert',
+      // Neither a beautify/minify Formatter nor a format-A-to-format-B Converter — a dedicated
+      // third category for this one, rather than stretching either existing label to cover it.
+      category: 'Text Tools',
+      label: 'String Case Converter',
+      description: 'Convert text into camelCase, PascalCase, snake_case, kebab-case, and more',
+      icon: <FilterListOutlinedIcon fontSize="small" />,
+      actionLabel: 'Convert',
+      inputPlaceholder: 'Convert text into camelCase, PascalCase, snake_case, kebab-case, and more',
+      inputFormat: 'text',
+      // No real Prism grammar fits "a block of labelled plain-text lines" — 'text' just renders
+      // unstyled/no syntax coloring, which is exactly right here (see OUTPUT_LANGUAGE_LABELS/
+      // OUTPUT_LANGUAGE_COLORS in DevUtilToolPanel.tsx for the matching badge entry).
+      outputLanguage: 'text',
+      // No minify option — there's no "compact form" of a case conversion (see
+      // devUtilsApi.convertStringCase's own comment).
+      supportsMinify: false,
+      downloadFileName: 'string-case.txt',
+      onSubmit: async input => ({ output: formatStringCaseResult(await devUtilsApi.convertStringCase(input)) }),
     }
   ];
 

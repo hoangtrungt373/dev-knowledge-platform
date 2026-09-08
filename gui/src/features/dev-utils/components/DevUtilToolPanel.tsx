@@ -46,10 +46,23 @@ interface DevUtilToolPanelProps {
   /** What format the *input* box holds — feeds `buildDevUtilError`'s choice of how to re-derive a
    * friendly message from a failed submit; see that function's own doc comment. Only 'json' is
    * ever actually branched on there — every other value (including the ones that can never fail a
-   * submit at all: 'css'/'less'/'scss'/'js'/'erb'/'sql') just takes the same fallback. */
-  inputFormat: 'json' | 'yaml' | 'html' | 'css' | 'less' | 'scss' | 'js' | 'erb' | 'xml' | 'csv' | 'sql';
+   * submit at all: 'css'/'less'/'scss'/'js'/'erb'/'sql'/'text') just takes the same fallback. */
+  inputFormat:
+    | 'json'
+    | 'yaml'
+    | 'html'
+    | 'css'
+    | 'less'
+    | 'scss'
+    | 'js'
+    | 'erb'
+    | 'xml'
+    | 'csv'
+    | 'sql'
+    | 'php'
+    | 'text';
   /** Prism language for the output syntax highlighter: 'json' | 'yaml' | 'markup' (HTML) | 'css' |
-   * 'less' | 'scss' | 'javascript' | 'erb' | 'xml' | 'csv' | 'sql'. */
+   * 'less' | 'scss' | 'javascript' | 'erb' | 'xml' | 'csv' | 'sql' | 'php' | 'text'. */
   outputLanguage: string;
   /** Whether this tool exposes a minify checkbox at all — false only for JSON→YAML, which has no
    * minify concept (see devUtilsApi.jsonToYaml's own comment). */
@@ -113,12 +126,18 @@ const OUTPUT_LANGUAGE_LABELS: Record<string, string> = {
   xml: 'XML',
   csv: 'CSV',
   sql: 'SQL',
+  php: 'PHP',
+  // No real Prism grammar for "labelled plain-text lines" (String Case Converter's own output) —
+  // 'text' renders unstyled, which is exactly right here; still gets a real label/color so its
+  // info-row badge doesn't fall back to the raw language id.
+  text: 'TEXT',
 };
 
 // A distinct color per file type, per request ("each color per filetype") — common language-badge
 // hues (JSON blue, YAML purple, HTML orange, CSS blue, LESS indigo, SCSS pink/Sass brand, JS
-// yellow, ERB Ruby-red, XML teal, CSV green/spreadsheet, SQL amber), each bright enough to stay
-// readable against both OUTPUT_INFO_BG and OUTPUT_BG_DARK.
+// yellow, ERB Ruby-red, XML teal, CSV green/spreadsheet, SQL amber, PHP's own brand indigo, TEXT
+// neutral grey since it isn't really a "language"), each bright enough to stay readable against
+// both OUTPUT_INFO_BG and OUTPUT_BG_DARK.
 const OUTPUT_LANGUAGE_COLORS: Record<string, string> = {
   json: '#4fc1ff',
   yaml: '#c586c0',
@@ -131,6 +150,8 @@ const OUTPUT_LANGUAGE_COLORS: Record<string, string> = {
   xml: '#4ec9b0',
   csv: '#8bc34a',
   sql: '#dcb67a',
+  php: '#8892bf',
+  text: '#cccccc',
 };
 
 function downloadTextFile(fileName: string, content: string): void {

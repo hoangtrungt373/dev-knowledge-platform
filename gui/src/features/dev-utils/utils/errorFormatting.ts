@@ -25,25 +25,29 @@ const HEADLINE = 'Cannot be processed';
  * (`Jsoup.parseBodyFragment` is a lenient parser that never throws), so `html-beautify` never
  * reaches an "invalid input" message either way — same for `css-beautify`/`less-beautify`/
  * `scss-beautify`/`js-beautify` (all four delegate to the equally lenient `CurlyBraceFormatter` on
- * the backend), `erb-beautify` (jsoup-based, same as HTML), and `sql-format` (delegates to the
- * similarly lenient `SqlFormatter`). The operations that *can* reach this path are `xml-beautify`
- * (`XmlOperation`, a real JAXP parser) and `csv-to-json` (`CsvToJsonOperation`, a real Jackson
- * `CsvMapper` parser) — both already return a clean `"<message> (line N, column M)"`-shaped string
- * of their own (see `dev-utils-service/CLAUDE.md`'s note), so both take the same
+ * the backend), `erb-beautify` (jsoup-based, same as HTML), `sql-format` (delegates to the
+ * similarly lenient `SqlFormatter`), and `string-case-convert` (a pure text transform with no
+ * notion of "invalid" input at all). The operations that *can* reach this path are `xml-beautify`
+ * (`XmlOperation`, a real JAXP parser), `csv-to-json` (`CsvToJsonOperation`, a real Jackson
+ * `CsvMapper` parser), and `php-to-json` (`PhpToJsonOperation`, this module's own
+ * `PhpArrayParser`) — all three already return a clean `"<message> (line N, column M)"`-shaped
+ * string of their own (see `dev-utils-service/CLAUDE.md`'s note), so all three take the same
  * `simplifyBackendMessage` fallback `yaml-to-json` already did — a pass-through in practice, per
- * that function's own idempotency guard. `json-to-csv` reuses `INVALID_JSON` server-side, so it's
- * covered by the `isJsonInput` branch below like `json-format`/`json-to-yaml` are, not this one.
+ * that function's own idempotency guard. `json-to-csv`/`json-to-php` both reuse `INVALID_JSON`
+ * server-side, so they're covered by the `isJsonInput` branch below like `json-format`/
+ * `json-to-yaml` are, not this one.
  *
  * <p>This function still exists on the frontend for two reasons, not because the backend fix
- * didn't work: (1) for a JSON-input operation (`json-format`/`json-to-yaml`/`json-to-csv`), the
- * browser's own `JSON.parse` produces an even more precise, human-readable syntax error (native V8
- * message, e.g. "Expected ',' or '}' after property value in JSON at position 81 (line 1 column
- * 82)") than Jackson's own phrasing ever could — reused verbatim instead of asking the backend at
- * all, since it's strictly better and doesn't need a round trip; (2) `simplifyBackendMessage` stays
- * as a defensive fallback for `yaml-to-json`/`xml-beautify`/`csv-to-json` (no client-side parser
- * available for any of the three) — normally a pure passthrough of the now-already-clean backend
- * message, but still tolerant of the old noisy shape too, in case this ever regresses or a
- * genuinely different technical-error message (network failure, 5xx) reaches it instead.
+ * didn't work: (1) for a JSON-input operation (`json-format`/`json-to-yaml`/`json-to-csv`/
+ * `json-to-php`), the browser's own `JSON.parse` produces an even more precise, human-readable
+ * syntax error (native V8 message, e.g. "Expected ',' or '}' after property value in JSON at
+ * position 81 (line 1 column 82)") than Jackson's own phrasing ever could — reused verbatim
+ * instead of asking the backend at all, since it's strictly better and doesn't need a round trip;
+ * (2) `simplifyBackendMessage` stays as a defensive fallback for `yaml-to-json`/`xml-beautify`/
+ * `csv-to-json`/`php-to-json` (no client-side parser available for any of the four) — normally a
+ * pure passthrough of the now-already-clean backend message, but still tolerant of the old noisy
+ * shape too, in case this ever regresses or a genuinely different technical-error message (network
+ * failure, 5xx) reaches it instead.
  */
 export function buildDevUtilError(input: string, isJsonInput: boolean, backendMessage: string): DevUtilError {
   if (isJsonInput) {

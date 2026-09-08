@@ -750,8 +750,46 @@ section again. Full unabridged entry-by-entry history for all three lives in
         `DevUtilsServiceApplicationTests` cases (reachability for all 3 new endpoints, plus
         malformed PHP returning `400` with `DEVUTILS_005`). 133 tests total in this module now,
         verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
-      - Backend-only pass, per request scope — the `gui`'s `/dev-utils` page was not wired up to
-        these 3 new endpoints in this pass.
+      - Backend-only pass, per request scope, at the time — the `gui`'s `/dev-utils` page wasn't
+        wired up to these 3 new endpoints yet. **Superseded by the follow-up directly below.**
+    - **Follow-up: `gui`'s `/dev-utils` page wired up to all 3 new endpoints, per request.**
+      `api/devUtilsApi.ts` gained `phpToJson`/`jsonToPhp` (thin pass-throughs, identical in shape
+      to the existing methods) and `convertStringCase` — the first method in this file to return
+      something other than `DevUtilsResponse` (`Promise<StringCaseResponse>`, a new type mirroring
+      the backend's own record field-for-field). `DevUtilsPage.tsx`'s `TabKey`/`TAB_KEYS` gained
+      `php-to-json`/`json-to-php`/`string-case-convert`, and its `operations` array gained one
+      `OperationConfig` each — `php-to-json`/`json-to-php` joined the existing `'Converters'`
+      group (right after `csv-to-json`), each with a genuine `PhpOutlined` icon (MUI's own PHP
+      logo glyph, not a reused generic one, per request); `string-case-convert` got its own new
+      `'Text Tools'` category (appended at the end) rather than being stretched to fit
+      `'Formatters'`/`'Converters'`, with a dedicated `AbcOutlined` icon.
+      - **`string-case-convert` doesn't fit `DevUtilToolPanel`'s single-string output shape at
+        all** — `StringCaseOperation`'s own response has 7 named fields, not one string. Rather
+        than building a second, parallel result-rendering component just for this one operation,
+        its `onSubmit` (a new module-level `formatStringCaseResult` helper) formats the 7 variants
+        into that same `{ output: string }` shape — one `"<Label>\n<value>"` pair per variant,
+        blank-line separated (the same plain-text layout the original request itself was written
+        in) — reusing the entire existing Input/Output panel for free instead of a bespoke
+        multi-value UI. `outputLanguage: 'text'` has no real Prism grammar to highlight against
+        (deliberately), so it renders unstyled; `OUTPUT_LANGUAGE_LABELS`/`OUTPUT_LANGUAGE_COLORS`
+        still gained a real `text` entry (neutral grey) so its info-row badge shows something
+        meaningful rather than the raw string `"text"`.
+      - **`OperationConfig.inputFormat`/`DevUtilToolPanelProps.inputFormat` widened** to add
+        `'php' | 'text'`. `json-to-php` stays `'json'`, not a new value — same reasoning
+        `json-to-csv` already established (its backend reuses `INVALID_JSON`). `php-to-json` is
+        the fourth operation (after `yaml`/`xml`/`csv`) with a real backend invalid-input error
+        path, so it takes the same `simplifyBackendMessage` fallback those three already use.
+        `string-case-convert`'s backend operation never throws at all, so `'text'` is inert the
+        same way `'css'`/`'less'`/etc. already are. `errorFormatting.ts`'s own doc comment updated
+        to describe all of this accurately.
+      - **`DevUtilToolPanel.tsx`'s `OUTPUT_LANGUAGE_LABELS`/`OUTPUT_LANGUAGE_COLORS` gained `php`/
+        `text` entries** (PHP's own brand indigo; neutral grey for `text`) — the `php` Prism/
+        refractor grammar confirmed present in the installed bundle first, same verification step
+        every earlier operation pass already established.
+      - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+        sandbox, so the actual on-screen result (all 3 new sidebar entries, their placeholders,
+        submit/copy/download, the formatted case-variant output block, and the info-row badge
+        colors) is unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.
