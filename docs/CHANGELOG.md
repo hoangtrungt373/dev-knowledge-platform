@@ -934,6 +934,37 @@ section again. Full unabridged entry-by-entry history for all three lives in
   guess a type" rule has a concrete, still-valid reason (a ZIP code like `"007"` would lose its
   leading zero as a number) that booleans alone don't share. 4 new tests total across both
   operations. Test suite grew from 153 to 157.
+- **`dev-utils-service` — sixth follow-up, reported directly against a real SQL example — unlike
+  every prior fix in this run, this one reversed two previously *deliberate* `SqlFormatter` design
+  choices (verbatim keyword casing, never splitting a comma-separated list) rather than fixing an
+  oversight, so the scope was confirmed with the user before implementing (full expected style,
+  uppercase-only, list-splitting-only, or leave as-is — full expected style was chosen).**
+  `SqlFormatter` now classifies every recognized keyword into one of three roles: `TOP_LEVEL_CLAUSE`
+  (`SELECT`/`FROM`/`WHERE`/etc. — own fresh line, body starts on its own further-indented line);
+  `BODY_BREAK` (every `JOIN` variant, `AND`, `OR` — fresh line *within* the current clause's own
+  body indent, not a new top-level line, which is what keeps `LEFT JOIN posts p ON p.user_id =
+  u.id` together on one line; `AND`/`OR` also lost their own extra indent level in the same pass,
+  now sharing the plain body-level indent `JOIN` gets); `INLINE` (`ON`, `AS`, `ASC`, `DESC`,
+  `TRUE`, `FALSE`, `NULL`, `NOT`, `IN`, `LIKE`, `IS`, `BETWEEN`, `EXISTS`, `DISTINCT` — uppercased,
+  never breaks a line). A comma now splits a list onto one item per line, scoped to the *current*
+  clause's own base paren depth, so a comma inside a function call's own argument list
+  (`count(id, other)`) or a subquery stays correctly inline. `matchKeywordPhrase` was tightened to
+  always prefer the longest matching phrase regardless of any one list's own declaration order. A
+  function name that happens to also be a common SQL built-in (`COUNT`/`SUM`/`AVG`/...) is
+  deliberately excluded from all three keyword lists — it's an identifier, not a keyword. Known,
+  accepted imprecision (not chased further): a scalar subquery inside a `SELECT` list item leaves
+  its own opening `(` alone on its own line, since the nested `SELECT` immediately after it forces
+  its own fresh line too — an unusual-looking layout for that one nested shape, but not a
+  correctness issue. `SqlFormatterTest` grew from 10 to 14 tests (most of the original 10 also
+  rewritten to match the new behavior); one stale lowercase-keyword assertion each fixed in
+  `SqlFormatOperationTest` and `DevUtilsServiceApplicationTests`. Test suite grew from 157 to 161.
+- **`dev-utils-service` — seventh follow-up, a small one, reported directly against a real
+  payload: `PhpArrayWriter#write`'s own non-minify output was missing a blank line between
+  `<?php` and `return`** — the standard convention this snippet's own shape is meant to evoke.
+  Fixed by writing `"<?php\n\nreturn "` instead of `"<?php\nreturn "`; `minify`'s own single-line
+  output is untouched. `PhpArrayParser` needed no change, since it already tolerates arbitrary
+  whitespace between tokens. 4 existing exact-match tests updated (3 in `PhpArrayWriterTest`, 1 in
+  `JsonToPhpOperationTest` — the exact reported example); test suite count unchanged at 161.
 
 ## [0.0.3] — 2026-09-07
 

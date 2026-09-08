@@ -164,7 +164,7 @@ class DevUtilsServiceApplicationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"input\":\"select id from users\",\"minify\":false}"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("select id")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("SELECT")));
     }
 
     @Test

@@ -310,6 +310,26 @@ export const OPERATIONS: OperationConfig[] = [
     onSubmit: devUtilsApi.formatSql,
   },
   {
+    key: 'string-case-convert',
+    // Neither a beautify/minify Formatter nor a format-A-to-format-B Converter — a dedicated
+    // third category for this one, rather than stretching either existing label to cover it.
+    category: 'Text Tools',
+    label: 'String Case Converter',
+    description: 'Convert text into camelCase, PascalCase, snake_case, kebab-case, and more',
+    icon: <AbcIcon fontSize="small" />,
+    actionLabel: 'Convert',
+    // A real example to convert, not a restatement of `description` above (see that field's own
+    // doc comment for the bug this once was).
+    inputPlaceholder: 'Build ship and share with Vui Coding',
+    inputFormat: 'text',
+    outputLanguage: 'text',
+    // No minify option — there's no "compact form" of a case conversion (see
+    // devUtilsApi.convertStringCase's own comment).
+    supportsMinify: false,
+    downloadFileName: 'string-case.txt',
+    onSubmit: async input => ({ output: formatStringCaseResult(await devUtilsApi.convertStringCase(input)) }),
+  },
+  {
     key: 'php-to-json',
     category: 'Converters',
     label: 'PHP to JSON',
@@ -336,25 +356,5 @@ export const OPERATIONS: OperationConfig[] = [
     supportsMinify: true,
     downloadFileName: 'converted.php',
     onSubmit: devUtilsApi.jsonToPhp,
-  },
-  {
-    key: 'string-case-convert',
-    // Neither a beautify/minify Formatter nor a format-A-to-format-B Converter — a dedicated
-    // third category for this one, rather than stretching either existing label to cover it.
-    category: 'Text Tools',
-    label: 'String Case Converter',
-    description: 'Convert text into camelCase, PascalCase, snake_case, kebab-case, and more',
-    icon: <AbcIcon fontSize="small" />,
-    actionLabel: 'Convert',
-    // A real example to convert, not a restatement of `description` above (see that field's own
-    // doc comment for the bug this once was).
-    inputPlaceholder: 'Build ship and share with Vui Coding',
-    inputFormat: 'text',
-    outputLanguage: 'text',
-    // No minify option — there's no "compact form" of a case conversion (see
-    // devUtilsApi.convertStringCase's own comment).
-    supportsMinify: false,
-    downloadFileName: 'string-case.txt',
-    onSubmit: async input => ({ output: formatStringCaseResult(await devUtilsApi.convertStringCase(input)) }),
-  },
+  }
 ];

@@ -13,7 +13,7 @@ class SqlFormatOperationTest {
     void putsMajorClausesOnTheirOwnLineByDefault() {
         String result = operation.execute("select id from users where active = 1", false);
 
-        assertThat(result).contains("\n").contains("where active = 1");
+        assertThat(result).contains("\n").contains("WHERE").contains("active = 1");
     }
 
     @Test

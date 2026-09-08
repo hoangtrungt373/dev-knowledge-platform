@@ -2428,13 +2428,21 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │           │                               content in its own block, at any nesting depth
 │           ├── SqlFormatter.java        — beautify(String)/minify(String), static utility, shared
 │           │                               only by SqlFormatOperation today — a lenient, keyword-
-│           │                               driven pretty-printer (line breaks before recognized
-│           │                               clause keywords, indented by live paren-depth; never
-│           │                               splits a comma-separated list, same reasoning
-│           │                               CurlyBraceFormatter documents for CSS selector lists),
-│           │                               not a real SQL-grammar parser or a specific dialect.
-│           │                               Never throws. See its own Javadoc for the full
-│           │                               reasoning, including why `(` never gets a leading space
+│           │                               driven pretty-printer, not a real SQL-grammar parser or
+│           │                               a specific dialect. Every recognized keyword uppercases
+│           │                               (TOP_LEVEL_CLAUSE/BODY_BREAK/INLINE roles — see its own
+│           │                               Javadoc); TOP_LEVEL_CLAUSE keywords (SELECT/FROM/WHERE/
+│           │                               etc.) get their own fresh line with an indented body;
+│           │                               BODY_BREAK (JOIN variants, AND, OR) breaks within that
+│           │                               body's own indent, not a new top-level line; a comma
+│           │                               now splits a list one item per line, scoped to the
+│           │                               current clause's own base paren depth (so a function
+│           │                               call's own argument-list comma stays inline). A function
+│           │                               name (COUNT/SUM/AVG/...) is never uppercased — it's an
+│           │                               identifier, not a keyword. Never throws. See its own
+│           │                               Javadoc for the full reasoning, including why `(` never
+│           │                               gets a leading space and the one known, accepted
+│           │                               imprecision (a scalar subquery inside a SELECT list)
 │           ├── PhpArrayParser.java      — parse(String): Object, a real recursive-descent parser
 │           │                               (bracket `[...]` or legacy `array(...)` syntax) into a
 │           │                               plain Map/List/String/Number/Boolean/null value tree;

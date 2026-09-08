@@ -291,7 +291,10 @@ caller.** Every operation is a pure text-in/text-out transform:
     comma-separated column/value list onto one item per line** — same reasoning
     `CurlyBraceFormatter` already documents for never splitting a CSS selector list on a bare
     comma: there's no context-free way to tell a `SELECT` column list apart from a function call's
-    argument list (`COUNT(a, b)`) without real parsing. **Known, deliberate spacing trade-off: `(`
+    argument list (`COUNT(a, b)`) without real parsing. **This paragraph describes the original
+    design — both the case-preservation and no-comma-splitting claims here were later reversed, per
+    direct request; see the sixth follow-up note further down in this section for the current
+    behavior and the full reasoning for reversing each.** **Known, deliberate spacing trade-off: `(`
     never gets a leading space**, regardless of context — correct for a function call (`COUNT(*)`,
     not `COUNT (*)`), merely a different style preference for something like `VALUES(1, 2, 3)` — no
     parser-free way exists to tell "this is a function name" from "this keyword conventionally gets
@@ -608,6 +611,87 @@ default quoting rule in `JsonToCsvOperation`, plus a scoped, direct-request chan
   `everyValueComesBackAsAJsonStringNeverAnInferredNumber` test left unchanged and still passing
   (confirming numeric strings are genuinely untouched by this fix).
 
+**Sixth follow-up — reported directly against a real SQL example, and, unlike every prior fix in
+this section, this one reversed two previously *deliberate* `SqlFormatter` design choices rather
+than fixing an oversight: keyword case is no longer preserved verbatim (every recognized keyword
+now renders uppercase), and a comma-separated list now does split one item per line.** Given the
+size — reversing a previously-fixed, tested case-preservation bug and an explicitly-documented
+"never splits a list" rule, in the same request — the scope was confirmed with the user before
+implementing (four options presented: the full expected style, uppercase-only, list-splitting-only,
+or leave as-is); "full expected style" was chosen. Three keyword roles now exist, each in its own
+list, replacing the single flat `LINE_BREAK_KEYWORDS` list this section's own paragraph above still
+describes:
+- **`TOP_LEVEL_CLAUSE`** (`SELECT`/`FROM`/`WHERE`/`GROUP BY`/`ORDER BY`/`HAVING`/`LIMIT`/`OFFSET`/
+  `INSERT INTO`/`VALUES`/`UPDATE`/`SET`/`DELETE FROM`/`UNION`/`UNION ALL`) — starts its own fresh
+  line at the current paren depth, same as before, but now its own body (everything until the next
+  recognized keyword) *also* starts on a further-indented fresh line of its own, rather than staying
+  inline with the clause keyword the way it always used to.
+- **`BODY_BREAK`** (every `JOIN` variant, `AND`, `OR`) — starts a fresh line too, but *within* the
+  current clause's own body indent (one level deeper than the clause keyword), not a brand-new
+  top-level line — this is what keeps `LEFT JOIN posts p ON p.user_id = u.id` aligned with `FROM`'s
+  other body lines instead of resetting to column 0 the way it used to. **`AND`/`OR` deliberately
+  lost their own extra indent level in the same pass** — now sharing the plain body-level indent
+  `JOIN` gets, not one level deeper than that: once a clause's first condition moved onto its own
+  indented body line (rather than staying inline with the clause keyword), giving `AND`/`OR` their
+  own further indent on top of that stopped reading as "conditions under WHERE" and started reading
+  as an arbitrary extra nesting level — this wasn't explicitly requested, but was the natural,
+  consistent generalization once `JOIN`'s own alignment was pinned down by the reported example.
+- **`INLINE`** (`ON`, `AS`, `ASC`, `DESC`, `TRUE`, `FALSE`, `NULL`, `NOT`, `IN`, `LIKE`, `IS`,
+  `BETWEEN`, `EXISTS`, `DISTINCT`) — rendered uppercase but never breaks a line on its own; this is
+  what keeps `ON p.user_id = u.id` attached to its own `JOIN` line instead of wrapping onto its own
+  third line the way `ON`'s old membership in the flat `LINE_BREAK_KEYWORDS` list used to force. A
+  deliberately bounded, non-exhaustive list, not full dialect-aware reserved-word coverage — a
+  function name that happens to also be a common SQL built-in (`COUNT`/`SUM`/`AVG`/...) is
+  deliberately *not* in any of the three lists, since it's an identifier, not a keyword, and there's
+  no reliable parser-free way to tell "this word is a function name" from "this word happens to
+  also be a keyword" apart in general.
+
+**Comma-splitting is scoped to the current clause's own base paren depth, not blind** — a comma
+triggers a line break (trailing comma on the line before it) only once live paren depth has
+returned to exactly the depth the *current* clause itself started at, so a comma inside a function
+call's own argument list (`count(id, other)`) or a subquery — sitting at a *deeper* paren depth —
+stays correctly inline rather than corrupting the call/subquery. This is more tractable for SQL
+than the identically-shaped problem `CurlyBraceFormatter` still declines to solve for CSS selector
+lists (see this file's own note on that class) — `SqlFormatter` already had to track paren depth
+for indentation, and a SQL list's own commas are reliably at the clause's own base depth in a way a
+bare CSS selector list isn't. `matchKeywordPhrase` was tightened in the same pass to always prefer
+the *longest* matching phrase at a position (`LEFT OUTER JOIN` over `LEFT JOIN`, `UNION ALL` over
+`UNION`) regardless of any one list's own declaration order — the previous version relied on
+manually keeping longer phrases listed before their own shorter prefixes across one flat list,
+which happened to already be correct but wasn't actually guaranteed by anything once phrases split
+across three separate lists.
+
+**Known, accepted imprecision, not chased further**: a scalar subquery appearing *inside* a
+`SELECT` list item (e.g. `SELECT a, (SELECT COUNT(*) FROM y) AS cnt`) still has its own nested
+`SELECT`/`FROM` broken onto their own fresh lines the same as any other subquery, which leaves the
+opening `(` alone on its own line with nothing else on it (the nested `SELECT` that immediately
+follows forces its own fresh line too) — reads unusually for what's really one scalar expression,
+but doesn't corrupt the SQL text, only this one nested shape's visual layout. Solving it generally
+would mean distinguishing "a clause keyword genuinely starting a new top-level statement" from "a
+clause keyword sitting inside what's really just one scalar expression" — real parsing, past what
+this lenient formatter is meant to be.
+
+10 new/rewritten tests in `SqlFormatterTest` (the exact reported example; keyword/literal
+uppercasing that confirms `count`/function names stay untouched; `AND`/`OR`'s new shared indent
+level; the subquery case, now documenting its own known imprecision instead of asserting the old
+layout; the multi-word `JOIN`/`ON`-stays-inline case; the longest-match-wins guarantee; the
+paren-depth-scoped comma split, including the function-argument-comma exclusion; minify's own
+uppercase-but-never-split behavior) plus two stale lowercase-keyword assertions fixed in
+`SqlFormatOperationTest` and `DevUtilsServiceApplicationTests`. Test suite grew from 157 to 161.
+
+**Seventh follow-up, a small one, reported directly against a real payload — `PhpArrayWriter#write`'s
+own non-minify output was missing a blank line between `<?php` and `return`**, the
+standard convention this snippet's own shape is meant to evoke (most PHP file/snippet generators,
+and PSR-12-influenced style guides, leave a blank line after the opening tag before the first real
+statement). Fixed by writing `"<?php\n\nreturn "` instead of `"<?php\nreturn "` — `minify`'s own
+single-line output is untouched, since there's no "blank line" concept once everything collapses
+onto one line. `PhpArrayParser` needed no change — it already tolerates arbitrary whitespace between
+tokens, so the extra blank line round-trips correctly with no parser-side work. 3 existing exact-match
+tests updated in `PhpArrayWriterTest` (including the empty-array/-object case) plus the one in
+`JsonToPhpOperationTest` that is the exact reported example. Test suite count unchanged (161) — every
+affected assertion already existed and just needed its expected string updated, no new test added
+given `JsonToPhpOperationTest`'s own existing test already exercises this exact scenario precisely.
+
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
 `HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
@@ -641,12 +725,15 @@ latter caught by `@Size` before ever reaching an operation) and confirms malform
 return `400` with `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005` respectively through the shared
 `GlobalExceptionHandler`. Plus `service/impl/support/ConventionalJsonPrettyPrinterTest` (the one
 support class in this module with its own dedicated test file rather than only being exercised
-indirectly through an operation's own tests — see that class's own note above for why). 157 tests
+indirectly through an operation's own tests — see that class's own note above for why). 161 tests
 total (133 original, plus the 5 code-quality-pass regressions, the 6 JSON-pretty-printer-fix
 tests, the 1 YAML-formatting-fix test, the 5 CSS-colon/blank-line-fix tests, the 3 LESS
-blank-line-generalization/comma-spacing-fix tests, and the 4 JSON↔CSV-quoting/boolean-fix tests
-above — updated tests across these fixes changed content but not the count), verified via a real
-`mvn -pl dev-utils-service -am test` run (JDK 21).
+blank-line-generalization/comma-spacing-fix tests, the 4 JSON↔CSV-quoting/boolean-fix tests, and
+the 4 net-new SQL-formatting-style tests above (`SqlFormatterTest` grew from 10 to 14 tests, most
+of the original 10 also rewritten in place to match the new behavior; `SqlFormatOperationTest`/
+`DevUtilsServiceApplicationTests` each had one stale lowercase-keyword assertion fixed, no count
+change there) — updated tests across these fixes changed content but not always the count),
+verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module
 

@@ -17,8 +17,12 @@ class PhpArrayWriterTest {
 
         String result = PhpArrayWriter.write(node, false);
 
+        // A real bug, reported directly against this exact payload: a blank line belongs between
+        // "<?php" and "return" (the standard convention this snippet's own shape evokes) — see
+        // PhpArrayWriter#write's own comment for why.
         assertThat(result).isEqualTo(
                 "<?php\n"
+                        + "\n"
                         + "return [\n"
                         + "  'name' => 'Vui Coding',\n"
                         + "  'active' => true,\n"
@@ -36,7 +40,7 @@ class PhpArrayWriterTest {
 
         String result = PhpArrayWriter.write(node, false);
 
-        assertThat(result).isEqualTo("<?php\nreturn [\n  'JSON',\n  'JWT'\n];");
+        assertThat(result).isEqualTo("<?php\n\nreturn [\n  'JSON',\n  'JWT'\n];");
     }
 
     @Test
@@ -59,8 +63,8 @@ class PhpArrayWriterTest {
 
     @Test
     void writesAnEmptyObjectOrArrayWithoutANewline() throws Exception {
-        assertThat(PhpArrayWriter.write(objectMapper.readTree("{}"), false)).isEqualTo("<?php\nreturn [];");
-        assertThat(PhpArrayWriter.write(objectMapper.readTree("[]"), false)).isEqualTo("<?php\nreturn [];");
+        assertThat(PhpArrayWriter.write(objectMapper.readTree("{}"), false)).isEqualTo("<?php\n\nreturn [];");
+        assertThat(PhpArrayWriter.write(objectMapper.readTree("[]"), false)).isEqualTo("<?php\n\nreturn [];");
     }
 
     @Test

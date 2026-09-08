@@ -32,7 +32,13 @@ public final class PhpArrayWriter {
             writeValue(root, out, 0, true);
             out.append(';');
         } else {
-            out.append("<?php\nreturn ");
+            // A blank line between "<?php" and "return" — a real bug, reported directly against a
+            // real payload: the standard convention this snippet's own shape is meant to evoke
+            // (most PHP file/snippet generators, and PSR-12-influenced style guides, leave a blank
+            // line after the opening tag before any real statement) always has one; this was
+            // missing it entirely. minify's own single-line output is untouched — there's no
+            // "blank line" concept once everything collapses onto one line anyway.
+            out.append("<?php\n\nreturn ");
             writeValue(root, out, 0, false);
             out.append(';');
         }

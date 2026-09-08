@@ -15,10 +15,13 @@ class JsonToPhpOperationTest {
 
     @Test
     void convertsAJsonObjectToAPrettyPrintedPhpArrayLiteral() {
+        // The exact reported bug: a blank line belongs between "<?php" and "return" — see
+        // PhpArrayWriter#write's own comment for why it was missing.
         String result = operation.execute("{\"name\":\"Vui Coding\",\"active\":true,\"tools\":[\"JSON\",\"JWT\"]}", false);
 
         assertThat(result).isEqualTo(
                 "<?php\n"
+                        + "\n"
                         + "return [\n"
                         + "  'name' => 'Vui Coding',\n"
                         + "  'active' => true,\n"
