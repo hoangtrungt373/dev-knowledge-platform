@@ -543,9 +543,48 @@ section again. Full unabridged entry-by-entry history for all three lives in
       new endpoint is reachable with no `Authorization` header and that malformed XML returns `400`
       with `DEVUTILS_003` through the shared `GlobalExceptionHandler`. 66 tests total in this
       module, verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
-    - Backend-only pass, per request scope — the `gui`'s `/dev-utils` page (sidebar operation list,
-      `DevUtilsPage.tsx`'s `OperationConfig[]`) was not wired up to these 6 new endpoints; that's a
-      natural next step, not done here.
+    - Backend-only pass, per request scope, at the time — the `gui`'s `/dev-utils` page wasn't
+      wired up to these 6 new endpoints yet. **Superseded by the follow-up directly below**, done
+      in a separate request right after.
+    - **Follow-up: `gui`'s `/dev-utils` page wired up to all 6 new endpoints, per request.**
+      `api/devUtilsApi.ts` gained one method per new operation
+      (`beautifyCss`/`beautifyLess`/`beautifyScss`/`beautifyJs`/`beautifyErb`/`beautifyXml`), each
+      a thin pass-through to its own endpoint — identical shape to the existing `beautifyHtml`.
+      `pages/DevUtilsPage.tsx`'s `TabKey`/`TAB_KEYS` gained the 6 new hash-routable keys
+      (`css-beautify`/`less-beautify`/`scss-beautify`/`js-beautify`/`erb-beautify`/
+      `xml-beautify`), and its `operations` array gained one `OperationConfig` per operation — all
+      under the existing `'Formatters'` category (right after `html-beautify`, before the
+      `'Converters'` group), each with its own icon (`CssIcon`/`StyleIcon` (LESS)/`ColorLensIcon`
+      (SCSS, evoking Sass's own brand color)/`JavascriptIcon`/`IntegrationInstructionsIcon`
+      (ERB)/`AccountTreeIcon` (XML, fitting its nested-tree structure) — every icon confirmed
+      present in the installed `@mui/icons-material` version before use, per this file's own
+      standing reminder) and a themed "Vui Coding" placeholder matching the existing four
+      operations' own convention (a CSS/LESS/SCSS snippet styling a `.card`, a JS function
+      describing the project, an ERB template rendering it, an XML document describing it).
+      - **`OperationConfig.inputFormat`/`DevUtilToolPanelProps.inputFormat` both widened** from
+        `'json' | 'yaml' | 'html'` to add `'css' | 'less' | 'scss' | 'js' | 'erb' | 'xml'` — only
+        `'json'` is ever actually branched on (it picks `buildDevUtilError`'s client-side
+        `JSON.parse` fast path), so this is mostly self-documentation: `'css'`/`'less'`/`'scss'`/
+        `'js'`/`'erb'` can never actually fail a submit at all (their backend operations never
+        throw — see `dev-utils-service/CLAUDE.md`'s own note), so the fallback path they'd
+        otherwise take is dead code in practice for those five; `'xml'` is the one that can
+        genuinely reach it, taking the same `simplifyBackendMessage` fallback `'yaml'` already did.
+      - **`DevUtilToolPanel.tsx`'s `OUTPUT_LANGUAGE_LABELS`/`OUTPUT_LANGUAGE_COLORS` gained one
+        entry per new Prism language id** (`css`/`less`/`scss`/`javascript`/`erb`/`xml` — `xml` is
+        deliberately its own key, not folded into the existing `markup` one, even though Prism's
+        own `markup` grammar registers `'xml'` as an alias for highlighting purposes — keeping it
+        distinct here is what stops an XML result's info-row badge from misleadingly reading
+        "HTML"). Colors chosen per the same "common language-badge hue" convention the existing
+        three already established: CSS blue, LESS indigo, SCSS pink (Sass's own brand color), JS
+        yellow, ERB Ruby-red, XML teal.
+      - Confirmed all 6 new Prism grammars (`css`/`less`/`scss`/`javascript`/`erb`, plus `xml` via
+        `markup`'s own alias) are present in the installed `refractor`/`react-syntax-highlighter`
+        language bundle before relying on them — the existing `Prism as SyntaxHighlighter` import
+        (not the lighter `PrismLight` variant) bundles every language automatically, no manual
+        `registerLanguage` call needed, same as the four pre-existing operations already rely on.
+      - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+        sandbox, so the actual on-screen result (all 6 new sidebar entries, their placeholders,
+        submit/copy/download, and the info-row badge colors) is unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

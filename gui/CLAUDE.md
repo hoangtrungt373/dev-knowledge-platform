@@ -2992,6 +2992,41 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
     sandbox, so the actual tab-switching/hash-sync/copy/output behavior is unverified in a real
     browser.
+  - **Follow-up: wired up to `dev-utils-service`'s 6 new operations (CSS/LESS/SCSS/JS/ERB/XML
+    Beautify+Minify), per request — the GUI half of the backend pass documented in
+    `dev-utils-service/CLAUDE.md`.** `api/devUtilsApi.ts` gained one method per new operation
+    (`beautifyCss`/`beautifyLess`/`beautifyScss`/`beautifyJs`/`beautifyErb`/`beautifyXml`), each a
+    thin pass-through identical in shape to the existing `beautifyHtml`. `DevUtilsPage.tsx`'s
+    `TabKey`/`TAB_KEYS` gained the 6 new hash-routable keys, and its `operations` array gained one
+    `OperationConfig` each — all under the existing `'Formatters'` category, right after
+    `html-beautify` and before the `'Converters'` group (these are Beautify+Minify tools, not
+    conversions, the same category `html-beautify` already sits in). Each gets its own icon
+    (`CssIcon`/`StyleIcon` for LESS/`ColorLensIcon` for SCSS, evoking Sass's own brand pink/
+    `JavascriptIcon`/`IntegrationInstructionsIcon` for ERB/`AccountTreeIcon` for XML, fitting its
+    nested-element structure — every one confirmed present in the installed
+    `@mui/icons-material` version first) and a themed "Vui Coding" placeholder matching the
+    existing four operations' own established convention.
+    - **`OperationConfig.inputFormat`/`DevUtilToolPanelProps.inputFormat` widened** to add
+      `'css' | 'less' | 'scss' | 'js' | 'erb' | 'xml'` — only `'json'` is ever actually branched on
+      (picks `buildDevUtilError`'s client-side `JSON.parse` fast path), so this is mostly
+      self-documentation: the backend operations behind `'css'`/`'less'`/`'scss'`/`'js'`/`'erb'`
+      can never fail a submit at all (see `dev-utils-service/CLAUDE.md`), so the fallback path
+      they'd otherwise take is dead in practice for those five; `'xml'` is the one that can
+      genuinely reach it, taking the same `simplifyBackendMessage` fallback `'yaml'` already did
+      (`errorFormatting.ts`'s own doc comment updated to say so explicitly).
+    - **`DevUtilToolPanel.tsx`'s `OUTPUT_LANGUAGE_LABELS`/`OUTPUT_LANGUAGE_COLORS` gained one entry
+      per new Prism language id** (`css`/`less`/`scss`/`javascript`/`erb`/`xml`) — `xml` is
+      deliberately its own key, not folded into the existing `markup` one, even though Prism's own
+      `markup` grammar registers `'xml'` as one of its own aliases (so syntax highlighting still
+      works) — keeping the app-level label/color lookup keyed on the exact string each operation
+      passes is what stops an XML result's info-row badge from misleadingly reading "HTML" too.
+      Confirmed all 6 new Prism grammars are present in the installed `refractor`/
+      `react-syntax-highlighter` bundle first — the existing `Prism as SyntaxHighlighter` import
+      (not the lighter `PrismLight` variant) bundles every language automatically, no manual
+      `registerLanguage` call needed, same as the four pre-existing operations already rely on.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual on-screen result (all 6 new sidebar entries, their placeholders,
+      submit/copy/download, and the info-row badge colors) is unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

@@ -23,7 +23,14 @@ const HEADLINE = 'Cannot be processed';
  * constructor — see `dev-utils-service/CLAUDE.md`'s note and each operation's own updated catch
  * block for the full fix. `HtmlBeautifyOperation` still has no failure path at all
  * (`Jsoup.parseBodyFragment` is a lenient parser that never throws), so `html-beautify` never
- * reaches an "invalid input" message either way.
+ * reaches an "invalid input" message either way — same for the newer `css-beautify`/
+ * `less-beautify`/`scss-beautify`/`js-beautify` (all four delegate to the equally lenient
+ * `CurlyBraceFormatter` on the backend) and `erb-beautify` (jsoup-based, same as HTML). The one
+ * newer operation that *can* reach this path is `xml-beautify` — `XmlOperation` is backed by a
+ * real JAXP parser and already returns a clean `"<message> (line N, column M)"` string of its own
+ * (see `dev-utils-service/CLAUDE.md`'s note), so it takes the same `simplifyBackendMessage`
+ * fallback `yaml-to-json` already did — a pass-through in practice, per that function's own
+ * idempotency guard.
  *
  * <p>This function still exists on the frontend for two reasons, not because the backend fix
  * didn't work: (1) for a JSON-input operation (`json-format`/`json-to-yaml`), the browser's own

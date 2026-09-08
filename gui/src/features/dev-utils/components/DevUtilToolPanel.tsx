@@ -40,8 +40,10 @@ interface DevUtilToolPanelProps {
   actionLabel: string;
   inputPlaceholder: string;
   /** What format the *input* box holds — feeds `buildDevUtilError`'s choice of how to re-derive a
-   * friendly message from a failed submit; see that function's own doc comment. */
-  inputFormat: 'json' | 'yaml' | 'html';
+   * friendly message from a failed submit; see that function's own doc comment. Only 'json' is
+   * ever actually branched on there — every other value (including the 5 newer ones that can
+   * never fail a submit at all: 'css'/'less'/'scss'/'js'/'erb') just takes the same fallback. */
+  inputFormat: 'json' | 'yaml' | 'html' | 'css' | 'less' | 'scss' | 'js' | 'erb' | 'xml';
   /** Prism language for the output syntax highlighter: 'json' | 'yaml' | 'markup' (HTML). */
   outputLanguage: string;
   /** Whether this tool exposes a minify checkbox at all — false only for JSON→YAML, which has no
@@ -90,19 +92,36 @@ const OUTPUT_MAX_HEIGHT = 800;
 
 // Human-readable label for the info row's file-type value — keyed by the same Prism language id
 // each operation already passes as `outputLanguage`, so no separate per-operation field was needed.
+// 'xml' is its own key, not folded into 'markup' — Prism/refractor's `markup` grammar registers
+// 'xml' as one of its own aliases (so highlighting still works), but this app-level label/color
+// lookup is keyed on the exact string each operation passes, so XML gets its own label/color
+// distinct from HTML rather than silently reading as "HTML" too.
 const OUTPUT_LANGUAGE_LABELS: Record<string, string> = {
   json: 'JSON',
   yaml: 'YAML',
   markup: 'HTML',
+  css: 'CSS',
+  less: 'LESS',
+  scss: 'SCSS',
+  javascript: 'JS',
+  erb: 'ERB',
+  xml: 'XML',
 };
 
 // A distinct color per file type, per request ("each color per filetype") — common language-badge
-// hues (JSON blue, YAML purple, HTML orange), each bright enough to stay readable against both
+// hues (JSON blue, YAML purple, HTML orange, CSS blue, LESS indigo, SCSS pink/Sass brand, JS
+// yellow, ERB Ruby-red, XML teal), each bright enough to stay readable against both
 // OUTPUT_INFO_BG and OUTPUT_BG_DARK.
 const OUTPUT_LANGUAGE_COLORS: Record<string, string> = {
   json: '#4fc1ff',
   yaml: '#c586c0',
   markup: '#e37933',
+  css: '#42a5f5',
+  less: '#5a67d8',
+  scss: '#cf649a',
+  javascript: '#f0db4f',
+  erb: '#cc342d',
+  xml: '#4ec9b0',
 };
 
 function downloadTextFile(fileName: string, content: string): void {

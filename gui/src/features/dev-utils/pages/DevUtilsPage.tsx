@@ -26,14 +26,41 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import ClearIcon from '@mui/icons-material/Clear';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import CssIcon from '@mui/icons-material/Css';
+import StyleIcon from '@mui/icons-material/Style';
+import ColorLensIcon from '@mui/icons-material/ColorLens';
+import JavascriptIcon from '@mui/icons-material/Javascript';
+import IntegrationInstructionsIcon from '@mui/icons-material/IntegrationInstructions';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse } from '../types';
 import { DevUtilError } from '../utils/errorFormatting';
 import DevUtilToolPanel from '../components/DevUtilToolPanel';
 
-type TabKey = 'json-format' | 'yaml-to-json' | 'json-to-yaml' | 'html-beautify';
+type TabKey =
+  | 'json-format'
+  | 'yaml-to-json'
+  | 'json-to-yaml'
+  | 'html-beautify'
+  | 'css-beautify'
+  | 'less-beautify'
+  | 'scss-beautify'
+  | 'js-beautify'
+  | 'erb-beautify'
+  | 'xml-beautify';
 
-const TAB_KEYS: TabKey[] = ['json-format', 'yaml-to-json', 'json-to-yaml', 'html-beautify'];
+const TAB_KEYS: TabKey[] = [
+  'json-format',
+  'yaml-to-json',
+  'json-to-yaml',
+  'html-beautify',
+  'css-beautify',
+  'less-beautify',
+  'scss-beautify',
+  'js-beautify',
+  'erb-beautify',
+  'xml-beautify',
+];
 const DEFAULT_TAB: TabKey = 'json-format';
 
 // A standing preference (like AdminLayout's own sidebar collapse), not per-session UI state, so
@@ -66,11 +93,17 @@ interface OperationConfig {
    * jobs at once. */
   inputPlaceholder: string;
   /** What format the *input* box holds — 'json' for json-format/json-to-yaml, 'yaml' for
-   * yaml-to-json, 'html' for html-beautify. Drives `errorFormatting.ts#buildDevUtilError`'s choice
-   * between a client-side `JSON.parse` re-derivation (for 'json') and a best-effort cleanup of the
-   * backend's own message (everything else, no equivalent client-side parser available). */
-  inputFormat: 'json' | 'yaml' | 'html';
-  /** Prism language for the output syntax highlighter: 'json' | 'yaml' | 'markup' (HTML). */
+   * yaml-to-json, 'html' for html-beautify, and one literal per new operation below. Drives
+   * `errorFormatting.ts#buildDevUtilError`'s choice between a client-side `JSON.parse`
+   * re-derivation (for 'json' only) and a best-effort cleanup of the backend's own message
+   * (everything else) — in practice that fallback only ever actually renders anything for 'yaml'/
+   * 'xml', the two operations with a real backend invalid-input error path; 'html'/'css'/'less'/
+   * 'scss'/'js'/'erb' can never fail a submit at all (see each one's own backend Javadoc), so this
+   * field is otherwise inert for them, kept only so every operation still declares an honest,
+   * specific value rather than reusing an unrelated one. */
+  inputFormat: 'json' | 'yaml' | 'html' | 'css' | 'less' | 'scss' | 'js' | 'erb' | 'xml';
+  /** Prism language for the output syntax highlighter: 'json' | 'yaml' | 'markup' (HTML) | 'css' |
+   * 'less' | 'scss' | 'javascript' | 'erb' | 'xml'. */
   outputLanguage: string;
   supportsMinify: boolean;
   /** Filename offered by the Output panel's Download button. */
@@ -189,6 +222,95 @@ export default function DevUtilsPage(): JSX.Element {
       supportsMinify: true,
       downloadFileName: 'beautified.html',
       onSubmit: (input, minify) => devUtilsApi.beautifyHtml(input, minify),
+    },
+    {
+      key: 'css-beautify',
+      category: 'Formatters',
+      label: 'CSS Beautify/Minify',
+      description: 'Beautify or minify CSS stylesheets',
+      icon: <CssIcon fontSize="small" />,
+      actionLabel: 'Beautify',
+      inputPlaceholder:
+        '.card{background:#fff;padding:16px;}.card h2{color:#333;font-size:20px;}/* Vui Coding */',
+      inputFormat: 'css',
+      outputLanguage: 'css',
+      supportsMinify: true,
+      downloadFileName: 'beautified.css',
+      onSubmit: (input, minify) => devUtilsApi.beautifyCss(input, minify),
+    },
+    {
+      key: 'less-beautify',
+      category: 'Formatters',
+      label: 'LESS Beautify/Minify',
+      description: 'Beautify or minify LESS stylesheets',
+      icon: <StyleIcon fontSize="small" />,
+      actionLabel: 'Beautify',
+      inputPlaceholder:
+        '@primary: #333; // Vui Coding\n.card{background:#fff;padding:16px;h2{color:@primary;font-size:20px;}}',
+      inputFormat: 'less',
+      outputLanguage: 'less',
+      supportsMinify: true,
+      downloadFileName: 'beautified.less',
+      onSubmit: (input, minify) => devUtilsApi.beautifyLess(input, minify),
+    },
+    {
+      key: 'scss-beautify',
+      category: 'Formatters',
+      label: 'SCSS Beautify/Minify',
+      description: 'Beautify or minify SCSS stylesheets',
+      icon: <ColorLensIcon fontSize="small" />,
+      actionLabel: 'Beautify',
+      inputPlaceholder:
+        '$primary: #333; // Vui Coding\n.card{background:#fff;padding:16px;h2{color:$primary;font-size:20px;}}',
+      inputFormat: 'scss',
+      outputLanguage: 'scss',
+      supportsMinify: true,
+      downloadFileName: 'beautified.scss',
+      onSubmit: (input, minify) => devUtilsApi.beautifyScss(input, minify),
+    },
+    {
+      key: 'js-beautify',
+      category: 'Formatters',
+      label: 'JS Beautify/Minify',
+      description: 'Beautify or minify JavaScript code',
+      icon: <JavascriptIcon fontSize="small" />,
+      actionLabel: 'Beautify',
+      inputPlaceholder:
+        'function describe(project){if(project.online){return project.name+" has "+project.stars+" stars";}return null;}',
+      inputFormat: 'js',
+      outputLanguage: 'javascript',
+      supportsMinify: true,
+      downloadFileName: 'beautified.js',
+      onSubmit: (input, minify) => devUtilsApi.beautifyJs(input, minify),
+    },
+    {
+      key: 'erb-beautify',
+      category: 'Formatters',
+      label: 'ERB Beautify/Minify',
+      description: 'Beautify or minify ERB (Embedded RuBy) templates',
+      icon: <IntegrationInstructionsIcon fontSize="small" />,
+      actionLabel: 'Beautify',
+      inputPlaceholder: '<div class="card"><h2><%= project.name %></h2><% if project.online %><p>Online</p><% end %></div>',
+      inputFormat: 'erb',
+      outputLanguage: 'erb',
+      supportsMinify: true,
+      downloadFileName: 'beautified.erb',
+      onSubmit: (input, minify) => devUtilsApi.beautifyErb(input, minify),
+    },
+    {
+      key: 'xml-beautify',
+      category: 'Formatters',
+      label: 'XML Beautify/Minify',
+      description: 'Validate, beautify, or minify XML documents',
+      icon: <AccountTreeIcon fontSize="small" />,
+      actionLabel: 'Beautify',
+      inputPlaceholder:
+        '<project><name>Vui Coding</name><online>true</online><tools><tool>JSON</tool><tool>Base64</tool></tools></project>',
+      inputFormat: 'xml',
+      outputLanguage: 'xml',
+      supportsMinify: true,
+      downloadFileName: 'beautified.xml',
+      onSubmit: (input, minify) => devUtilsApi.beautifyXml(input, minify),
     },
     {
       key: 'yaml-to-json',
