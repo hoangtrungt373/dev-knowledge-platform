@@ -99,6 +99,11 @@ const OUTPUT_MAX_HEIGHT = 800;
 // icon + one line of text" box would need, so it roughly matches the Input side's own starting
 // height (`minRows={20}` below, at this panel's line-height/padding) rather than visibly
 // shrinking the whole Output card the moment there's no result yet.
+//
+// Not exported for reuse elsewhere as a stand-in for this card's own total rendered height — it
+// was tried as the sidebar's own maxHeight in DevUtilsPage.tsx and didn't actually match, because
+// it only sizes this placeholder content box, not the header row (title + Copy/Download buttons)
+// above it. See that page's own SIDEBAR_MAX_HEIGHT comment for the fix and the full reasoning.
 const OUTPUT_EMPTY_MIN_HEIGHT = 425;
 
 function downloadTextFile(fileName: string, content: string): void {

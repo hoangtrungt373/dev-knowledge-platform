@@ -32,6 +32,25 @@ class JsonFormatOperationTest {
     }
 
     @Test
+    void prettyPrintUsesConventionalJsonStyleNotJacksonsOwnDefault() throws Exception {
+        // No space before the colon, and an array's elements each get their own indented line —
+        // see ConventionalJsonPrettyPrinter's own Javadoc for the 3 ways Jackson's own
+        // writerWithDefaultPrettyPrinter() diverges from this (a real bug, not a style choice).
+        String result = operation.execute(VALID_JSON, false);
+
+        assertThat(result).isEqualTo(
+                "{\n"
+                        + "  \"name\": \"Alice\",\n"
+                        + "  \"items\": [\n"
+                        + "    1,\n"
+                        + "    2,\n"
+                        + "    3\n"
+                        + "  ]\n"
+                        + "}"
+        );
+    }
+
+    @Test
     void producesCompactSingleLineOutputWhenMinified() throws Exception {
         String result = operation.execute(VALID_JSON, true);
 

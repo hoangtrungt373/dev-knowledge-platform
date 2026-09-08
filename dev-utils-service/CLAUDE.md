@@ -437,6 +437,37 @@ direct request.**
   Each documents its real `@throws BusinessException` failure path where one exists, or states
   explicitly that it never throws (mirroring each class's own Javadoc) where one doesn't.
 
+**Follow-up bug: `JsonNodeIo.write`'s pretty-print output diverged from conventional JSON
+formatting, reported directly against a real payload (`"key" : value` — a space on both sides of
+the colon; an array's elements on one single line, space-padded, e.g. `[ "a", "b" ]`; an empty
+array rendered `[ ]` instead of `[]`) — new `service/impl/support/ConventionalJsonPrettyPrinter`
+fixes all of it, plus a 4th bug caught only while verifying the fix.** `ObjectMapper#writerWithDefaultPrettyPrinter()`
+(what `JsonNodeIo.write`'s pretty branch used before this) is Jackson's own `DefaultPrettyPrinter`
+at its stock defaults — genuinely different from what every mainstream JSON formatter (VS Code's
+own, most "JSON beautifier" sites, `JSON.stringify(value, null, 2)`) produces, not a style
+preference. `ConventionalJsonPrettyPrinter` overrides `writeObjectFieldValueSeparator` (`": "`, not
+`" : "`), sets the *array* indenter to the same multi-line `DefaultIndenter` objects already use
+(Jackson's own default only multi-line-indents objects; arrays use the single-line
+`FixedSpaceIndenter`), and overrides `writeEndArray`/`writeEndObject` to drop the one
+padding-space `DefaultPrettyPrinter` still writes for an empty container even under a multi-line
+indenter (`[ ]`/`{ }` → `[]`/`{}`). **A 4th bug, caught only by measuring the first attempt's real
+output byte-for-byte (a small standalone Java harness against the actual resolved
+`jackson-core:2.19.2` jar) rather than trusting a test-failure diff**: the first cut left the
+default `DefaultIndenter.SYSTEM_LINEFEED_INSTANCE` in place, whose line ending is
+`System.lineSeparator()` — CRLF on the Windows dev machine this was built on, LF wherever this
+service actually deploys (Linux Docker). That silently made output platform-dependent — identical
+input could produce a byte-for-byte different response depending on which OS ran the JVM — and,
+worse, the CRLF-vs-LF mismatch against the (LF-only) test literals *looked* exactly like a doubled-
+indentation bug in the AssertJ diff output (a raw `\r` right before an inserted `\n` renders as a
+carriage return in a terminal, visually shifting every subsequent line), which is what the harness
+was built to rule out before accepting a wrong diagnosis. Fixed by constructing both indenters
+explicitly as `new DefaultIndenter("  ", "\n")` — a fixed `\n`, never system-dependent. Used by
+`JsonNodeIo.write` in place of `writerWithDefaultPrettyPrinter()`, so every operation that goes
+through it (JSON Format, YAML→JSON, CSV→JSON, PHP→JSON) gets the fix at once. 5 new tests in a
+dedicated `ConventionalJsonPrettyPrinterTest` (the one support class in this module that got its
+own test file after all, once it grew real, non-delegating logic worth testing directly) plus a
+tightened assertion in `JsonFormatOperationTest` locking in the exact expected byte sequence.
+
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
 `HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
@@ -468,8 +499,11 @@ exactly the test that caught the `DataSourceAutoConfiguration` boot failure abov
 covers the `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the
 latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP all
 return `400` with `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005` respectively through the shared
-`GlobalExceptionHandler`. 138 tests total (133 plus the 5 regression tests added by the
-code-quality pass above), verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
+`GlobalExceptionHandler`. Plus `service/impl/support/ConventionalJsonPrettyPrinterTest` (the one
+support class in this module with its own dedicated test file rather than only being exercised
+indirectly through an operation's own tests — see that class's own note above for why). 144 tests
+total (133 original, plus the 5 code-quality-pass regressions and the 6 pretty-printer-fix tests
+above), verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module
 

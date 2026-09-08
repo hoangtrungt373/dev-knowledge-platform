@@ -2426,12 +2426,20 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │           │                               StringCaseOperation today — splits text into words
 │           │                               (delimiter- and camelCase/acronym-boundary-aware) and
 │           │                               re-joins them into all 7 case variants. Never throws
-│           └── JsonNodeIo.java          — readTree(ObjectMapper, String, ErrorCode): JsonNode /
-│                                           write(ObjectMapper, Object, boolean minify, ErrorCode):
-│                                           String, two static helpers factoring out duplicated
-│                                           "parse JSON, clean-message on failure" / "pretty vs.
-│                                           minify serialize" blocks that used to be copy-pasted
-│                                           across 7 operation classes
+│           ├── JsonNodeIo.java          — readTree(ObjectMapper, String, ErrorCode): JsonNode /
+│           │                               write(ObjectMapper, Object, boolean minify, ErrorCode):
+│           │                               String, two static helpers factoring out duplicated
+│           │                               "parse JSON, clean-message on failure" / "pretty vs.
+│           │                               minify serialize" blocks that used to be copy-pasted
+│           │                               across 7 operation classes
+│           └── ConventionalJsonPrettyPrinter.java — a DefaultPrettyPrinter used by JsonNodeIo.write
+│                                           in place of writerWithDefaultPrettyPrinter(), fixing 4
+│                                           ways Jackson's own default diverges from conventional
+│                                           JSON formatting (space on both sides of `:`, single-line
+│                                           space-padded arrays, `[ ]`/`{ }` for empty containers,
+│                                           and a platform-dependent CRLF/LF line ending) — the one
+│                                           support class in this module with its own dedicated test
+│                                           file, since it carries real logic worth testing directly
 ├── dto/
 │   ├── DevUtilsLimits.java        — MAX_INPUT_LENGTH = 100_000, shared by every request DTO's
 │   │                                 @Size constraint — the one fully public, unauthenticated

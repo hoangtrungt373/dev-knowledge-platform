@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -27,8 +27,15 @@ import { OPERATIONS, TabKey, tabFromHash } from '../config/operations';
 // A standing preference (like AdminLayout's own sidebar collapse), not per-session UI state, so
 // it's persisted to localStorage the same way — see AdminLayout.tsx's own COLLAPSE_STORAGE_KEY.
 const SIDEBAR_COLLAPSE_STORAGE_KEY = 'devUtilsSidebarCollapsed';
-const SIDEBAR_EXPANDED_WIDTH = 240;
+const SIDEBAR_EXPANDED_WIDTH = 300;
 const SIDEBAR_COLLAPSED_WIDTH = 56;
+// Fallback for the sidebar's own maxHeight before ResizeObserver's first measurement of the main
+// column lands (see mainColumnHeight below) — an initial render has to pick something, and a plain
+// `undefined` (no cap at all) would flash the sidebar at its own full, uncapped height for one
+// frame before snapping down. A hand-tuned guess, same "eyeballed, not measured" caveat
+// DevUtilToolPanel.tsx's own OUTPUT_EMPTY_MIN_HEIGHT already carries — but only ever visible for a
+// single frame, never the steady-state value once the observer's callback has fired.
+const SIDEBAR_MAX_HEIGHT_FALLBACK = 615;
 
 /** Each tool has its own route via the URL hash (/dev-utils#json-format, /dev-utils#yaml-to-json,
  * etc.), per request — deep-linkable/bookmarkable/shareable, and the browser back/forward buttons
@@ -56,7 +63,22 @@ const SIDEBAR_COLLAPSED_WIDTH = 56;
  * possibly showing a filtered list with no visible box to explain or clear it.
  * `alignItems: 'flex-start'` on the row keeps the sidebar sized to its own (short) content instead
  * of stretching to match whichever tool panel is taller, same reasoning `AccountLayout.tsx`
- * documents for the identical layout shape.
+ * documents for the identical layout shape — **deliberately not flexbox's own `align-items:
+ * stretch` default**, even though that's the standard "make flex siblings share a height"
+ * mechanism (it's what already makes Input/Output match each other inside
+ * `DevUtilToolPanel.tsx`, since that row never overrides it): stretch is a *symmetric*
+ * relationship (every item ends up the same height, whichever is tallest), but what's wanted here
+ * is asymmetric — the sidebar should shrink/scroll to fit the `main` column's height, but a long
+ * tool list must never inflate the `main` column (headline card + tool panel) to match *it*.
+ * Flexbox has no way to express "only this side defers," so this can't be solved with CSS alone.
+ *
+ * <p>**The sidebar's own `maxHeight` is instead a live measurement of the `main` column's real
+ * rendered height** (`mainColumnHeight`, kept in sync via a `ResizeObserver` on `mainColumnRef`),
+ * per request — not a hand-tuned pixel constant that silently goes stale the moment the headline
+ * description wraps to a second line or the Input `TextField`'s `minRows` changes.
+ * `SIDEBAR_MAX_HEIGHT_FALLBACK` only covers the single frame before the observer's first callback
+ * lands. The tool list scrolls internally (`overflowY: 'auto'`) once it's taller than that
+ * measured height, rather than being clipped or growing the whole row.
  *
  * <p>The headline card (category/title/description) also carries **Sample** (fills the input with
  * the operation's own `inputPlaceholder` value) and **Clear** buttons, per request — which is
@@ -82,6 +104,27 @@ export default function DevUtilsPage(): JSX.Element {
   // errorFormatting.ts and DevUtilToolPanel.tsx's own updated Javadoc. Mutually exclusive with
   // `output` (a submit always clears one before setting the other).
   const [error, setError] = useState<DevUtilError | null>(null);
+
+  // Live-measures the `main` column's own rendered height (headline card + gap + tool panel) so
+  // the sidebar's `maxHeight` below can track it without a hand-tuned pixel constant — see this
+  // component's own doc comment for why flexbox's `align-items: stretch` can't do this instead.
+  const mainColumnRef = useRef<HTMLDivElement | null>(null);
+  const [mainColumnHeight, setMainColumnHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    const node = mainColumnRef.current;
+    if (!node) {
+      return undefined;
+    }
+    const observer = new ResizeObserver(entries => {
+      const entry = entries[0];
+      if (entry) {
+        setMainColumnHeight(entry.contentRect.height);
+      }
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   // Syncs local state with the hash for the two cases that don't go through selectTab below: a
   // direct deep link (/dev-utils#yaml-to-json) and the browser's own back/forward navigation.
@@ -149,13 +192,15 @@ export default function DevUtilsPage(): JSX.Element {
         DevUtils
       </Typography>
 
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
         <Paper
           variant="outlined"
           sx={{
             width: sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH,
             flexShrink: 0,
-            overflow: 'hidden',
+            overflowX: 'hidden',
+            overflowY: 'auto',
+            maxHeight: mainColumnHeight ?? SIDEBAR_MAX_HEIGHT_FALLBACK,
             transition: 'width 0.2s ease',
           }}
         >
@@ -226,7 +271,7 @@ export default function DevUtilsPage(): JSX.Element {
           </List>
         </Paper>
 
-        <Box component="main" sx={{ flex: 1, minWidth: 0 }}>
+        <Box component="main" ref={mainColumnRef} sx={{ flex: 1, minWidth: 0 }}>
           <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'background.paper' }}>
             <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={2}>
               <Box>

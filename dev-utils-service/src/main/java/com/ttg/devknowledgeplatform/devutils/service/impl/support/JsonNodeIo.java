@@ -47,9 +47,12 @@ public final class JsonNodeIo {
 
     /**
      * Serializes {@code value} via {@code mapper} — compact/single-line when {@code minify} is
-     * {@code true}, pretty-printed otherwise. On the rare failure (every caller only ever passes a
-     * value tree it already built/validated itself, so this is a defensive catch, not an expected
-     * path), throws a {@link BusinessException} against {@code errorCode} carrying the raw
+     * {@code true}, pretty-printed via {@link ConventionalJsonPrettyPrinter} otherwise (not
+     * {@code ObjectMapper#writerWithDefaultPrettyPrinter()} — see that class's own Javadoc for the
+     * 3 ways Jackson's own default pretty-print style diverges from what every mainstream JSON
+     * formatter actually produces). On the rare failure (every caller only ever passes a value
+     * tree it already built/validated itself, so this is a defensive catch, not an expected path),
+     * throws a {@link BusinessException} against {@code errorCode} carrying the raw
      * {@link JsonProcessingException#getOriginalMessage()} — not run through
      * {@link ParsingExceptionMessages}, since that helper exists specifically to clean up a
      * *parse* failure's diagnostics, not a serialization one.
@@ -60,7 +63,7 @@ public final class JsonNodeIo {
         try {
             return minify
                     ? mapper.writeValueAsString(value)
-                    : mapper.writerWithDefaultPrettyPrinter().writeValueAsString(value);
+                    : mapper.writer(new ConventionalJsonPrettyPrinter()).writeValueAsString(value);
         } catch (JsonProcessingException e) {
             throw new BusinessException(errorCode, (Object) e.getOriginalMessage());
         }

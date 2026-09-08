@@ -841,6 +841,27 @@ section again. Full unabridged entry-by-entry history for all three lives in
     operations.
   - Test suite grew from 133 to 138 (5 new regression tests, 0 new failures) — verified via a real
     `mvn -pl dev-utils-service -am test` run (JDK 21), same as every other change to this module.
+- **`dev-utils-service` — follow-up bug, reported directly against a real payload: the JSON Format
+  tool's pretty-printed output diverged from conventional JSON formatting (`"key" : value`,
+  single-line space-padded arrays `[ "a", "b" ]`, `[ ]` for an empty array instead of `[]`).**
+  New `service/impl/support/ConventionalJsonPrettyPrinter` replaces
+  `ObjectMapper#writerWithDefaultPrettyPrinter()` in `JsonNodeIo.write` — Jackson's own default
+  pretty printer genuinely diverges from what every mainstream JSON formatter produces on 3 counts
+  (space on both sides of `:`, arrays rendered single-line instead of one-element-per-line, an
+  empty container padded to `[ ]`/`{ }` instead of collapsed to `[]`/`{}`), all fixed by this new
+  class. **A 4th bug was caught only by verifying the fix byte-for-byte with a standalone Java
+  harness rather than trusting a test-failure diff**: the first cut left Jackson's own
+  `DefaultIndenter.SYSTEM_LINEFEED_INSTANCE` in place, whose line ending follows
+  `System.lineSeparator()` — CRLF on the Windows dev machine, LF wherever this service actually
+  deploys (Linux Docker) — making output silently platform-dependent, and coincidentally producing
+  an AssertJ diff that *looked* like a doubled-indentation bug (a stray `\r` before an inserted
+  `\n` marker renders as a carriage return in a terminal). Fixed by constructing both indenters
+  explicitly with a literal `"\n"`. Since every operation that produces pretty JSON goes through
+  `JsonNodeIo.write` (JSON Format, YAML→JSON, CSV→JSON, PHP→JSON), the fix applies to all four at
+  once. 5 new tests in a dedicated `ConventionalJsonPrettyPrinterTest` (the one support class in
+  this module with its own test file rather than only being exercised indirectly via an
+  operation's own tests) plus a tightened `JsonFormatOperationTest` assertion. Test suite grew from
+  138 to 144.
 
 ## [0.0.3] — 2026-09-07
 
