@@ -862,6 +862,24 @@ section again. Full unabridged entry-by-entry history for all three lives in
   this module with its own test file rather than only being exercised indirectly via an
   operation's own tests) plus a tightened `JsonFormatOperationTest` assertion. Test suite grew from
   138 to 144.
+- **`dev-utils-service` — second follow-up, same bug shape, reported directly against a real
+  payload: the JSON→YAML tool's output diverged from conventional YAML formatting too** (a leading
+  `---` document marker; every string quoted regardless of need, e.g. `"Vui Coding"`; a block
+  sequence's `-` indicator rendered at the same column as its parent key instead of indented under
+  it). Root cause was `config/YamlMapperConfig`'s `YAMLMapper.builder().build()` call — Jackson's
+  own stock `YAMLGenerator.Feature` defaults, same "genuinely diverges from every mainstream
+  formatter" bug class as the JSON pretty-printer fix above. Fixed with 3 builder overrides
+  (`WRITE_DOC_START_MARKER` disabled, `MINIMIZE_QUOTES` enabled, `INDENT_ARRAYS_WITH_INDICATOR`
+  enabled — **not** the plainer-sounding `INDENT_ARRAYS`, which was tried first and rejected once
+  measured, since it only indents the `-` by 1 space instead of the conventional 2), all verified
+  against the exact reported input via a standalone Java harness before landing. Confirmed
+  `USE_PLATFORM_LINE_BREAKS` was already `false` by default, so (unlike the JSON pretty-printer's
+  own fix) this operation's YAML output was never platform-dependent to begin with.
+  `JsonToYamlOperationTest`'s `setUp()` now builds its `yamlMapper` via
+  `new YamlMapperConfig().yamlMapper()` instead of a second, bare `YAMLMapper.builder().build()`
+  call, so the test can never again silently drift from the real bean's own configuration, plus a
+  new test locking in the exact expected byte sequence. `YamlToJsonOperation` (the read direction)
+  is unaffected. Test suite grew from 144 to 145.
 
 ## [0.0.3] — 2026-09-07
 

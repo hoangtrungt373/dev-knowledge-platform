@@ -468,6 +468,36 @@ dedicated `ConventionalJsonPrettyPrinterTest` (the one support class in this mod
 own test file after all, once it grew real, non-delegating logic worth testing directly) plus a
 tightened assertion in `JsonFormatOperationTest` locking in the exact expected byte sequence.
 
+**Second follow-up bug, same shape, reported directly against a real payload — `JsonToYamlOperation`'s
+own YAML output diverged from conventional YAML formatting too** (a leading `---` document-start
+marker; every string quoted regardless of need, e.g. `"Vui Coding"`; a block sequence's `-`
+indicator rendered at the *same* column as its parent key instead of indented under it, e.g.
+`features:\n- tools`). Root cause was `config/YamlMapperConfig`'s `YAMLMapper.builder().build()`
+call — Jackson's own stock `YAMLGenerator.Feature` defaults, same "genuinely diverges from every
+mainstream formatter, not a style preference" bug class `ConventionalJsonPrettyPrinter` fixes on
+the JSON side. Fixed with 3 builder overrides on that same bean, verified against the exact
+reported input via a standalone Java harness before landing (same discipline the JSON pretty-print
+fix's own byte-for-byte verification established, after that fix's own near-miss with a misleading
+diff): `WRITE_DOC_START_MARKER` disabled (no `---` for a single, standalone document — this
+operation never emits a multi-document stream); `MINIMIZE_QUOTES` enabled (Jackson quotes every
+string scalar by default for round-trip type-fidelity safety — an unquoted `true`/`123` could
+parse back as a boolean/number instead of a string — but that safety only matters for a value that
+actually needs it; a plain string like `Vui Coding` never did); `INDENT_ARRAYS_WITH_INDICATOR`
+enabled, **not** the plainer-sounding `INDENT_ARRAYS` — tried first and rejected once actually
+measured, since it only indents the `-` indicator by 1 space (`features:\n - tools`), not the
+conventional 2-space block indent (`features:\n  - tools`) every mainstream YAML formatter
+produces; `INDENT_ARRAYS_WITH_INDICATOR` folds the indicator's own width into the indent
+calculation instead, which does match. `YAMLGenerator.Feature.USE_PLATFORM_LINE_BREAKS` was
+checked and confirmed **already** `false` by default (unlike the JSON pretty-printer's own
+`DefaultIndenter.SYSTEM_LINEFEED_INSTANCE` bug) — this operation's YAML output was never
+platform-dependent, so nothing needed fixing there. `JsonToYamlOperationTest`'s own `setUp()` now
+builds its `yamlMapper` via `new YamlMapperConfig().yamlMapper()` instead of a second, bare
+`YAMLMapper.builder().build()` call, so the test can never silently drift from the real bean's own
+configuration the way it had (undetected, since the existing round-trip assertion tolerates either
+formatting style) before this fix — plus a new test locking in the exact expected byte sequence
+against the reported input. `YamlToJsonOperation` (the read direction) is unaffected — YAML*parser*
+behavior, not generator/output behavior, and none of the 3 changed features are parser-side.
+
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
 `HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
@@ -501,9 +531,10 @@ latter caught by `@Size` before ever reaching an operation) and confirms malform
 return `400` with `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005` respectively through the shared
 `GlobalExceptionHandler`. Plus `service/impl/support/ConventionalJsonPrettyPrinterTest` (the one
 support class in this module with its own dedicated test file rather than only being exercised
-indirectly through an operation's own tests — see that class's own note above for why). 144 tests
-total (133 original, plus the 5 code-quality-pass regressions and the 6 pretty-printer-fix tests
-above), verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
+indirectly through an operation's own tests — see that class's own note above for why). 145 tests
+total (133 original, plus the 5 code-quality-pass regressions, the 6 JSON-pretty-printer-fix
+tests, and the 1 YAML-formatting-fix test above), verified via a real
+`mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module
 

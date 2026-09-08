@@ -2320,7 +2320,14 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 ├── config/
 │   └── YamlMapperConfig.java      — a YAMLMapper @Bean, the YAML-side counterpart to infra's
 │                                     shared ObjectMapper (JacksonConfig). Lives here, not infra —
-│                                     this module is the only consumer today.
+│                                     this module is the only consumer today. Builder overrides 3
+│                                     YAMLGenerator.Feature flags (WRITE_DOC_START_MARKER disabled,
+│                                     MINIMIZE_QUOTES/INDENT_ARRAYS_WITH_INDICATOR enabled) — fixes
+│                                     a real bug where YAMLMapper.builder().build()'s own stock
+│                                     defaults diverged from conventional YAML output (a leading
+│                                     "---", every string quoted regardless of need, a block
+│                                     sequence's "-" at the same column as its parent key instead
+│                                     of indented under it); see this class's own Javadoc.
 ├── service/
 │   ├── DevUtilOperation.java      — bare marker interface (no method), same "Find
 │   │                                 Implementations" role as infra's ApplicationEventHandler/
