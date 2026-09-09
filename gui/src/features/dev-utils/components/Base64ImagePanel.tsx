@@ -7,6 +7,9 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import CheckIcon from '@mui/icons-material/CheckOutlined';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import PanelHeader from './PanelHeader';
+import { useCopyFeedback } from '../hooks/useCopyFeedback';
+import { HIDDEN_TEXT_FIELD_OUTLINE_SX } from '../utils/textFieldStyles';
 
 interface Base64ImagePanelProps {
   /** Controlled — same lifted `input` state `DevUtilsPage.tsx` already threads into
@@ -129,8 +132,8 @@ export default function Base64ImagePanel({
   const { showError } = useNotification();
   const [dragActive, setDragActive] = useState(false);
   const [previewFailed, setPreviewFailed] = useState(false);
-  const [dataUrlCopied, setDataUrlCopied] = useState(false);
-  const [previewCopied, setPreviewCopied] = useState(false);
+  // Keyed 'data-url'/'preview' so the two Copy buttons show independent "Copied!" feedback.
+  const { copiedKey, copy } = useCopyFeedback();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback(
@@ -179,7 +182,11 @@ export default function Base64ImagePanel({
   // this is a no-op and the browser's own default text-paste behavior (pasting a Data URL string)
   // proceeds exactly as before.
   const handlePaste = useCallback(
-    (e: ReactClipboardEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+    // `HTMLDivElement`, not `HTMLTextAreaElement` — MUI's own `TextField`/`OutlinedInput` types
+    // `onPaste` against the root element's event type regardless of the `multiline` prop, not the
+    // rendered `<textarea>`'s; the event's `clipboardData` (the only thing read below) doesn't
+    // depend on which element type this is anyway.
+    (e: ReactClipboardEvent<HTMLDivElement>) => {
       const items = e.clipboardData?.items;
       if (!items) return;
       // Plain indexed loop, not for...of — DataTransferItemList's own TS typings don't guarantee
@@ -230,19 +237,15 @@ export default function Base64ImagePanel({
     }
   }, [handleFile, onInputChange, showError]);
 
-  const handleCopyDataUrl = useCallback(async () => {
+  const handleCopyDataUrl = useCallback(() => {
     if (!input) return;
-    await navigator.clipboard.writeText(input);
-    setDataUrlCopied(true);
-    setTimeout(() => setDataUrlCopied(false), 1500);
-  }, [input]);
+    copy(input, 'data-url');
+  }, [input, copy]);
 
-  const handleCopyPreview = useCallback(async () => {
+  const handleCopyPreview = useCallback(() => {
     if (!input) return;
-    await navigator.clipboard.writeText(input);
-    setPreviewCopied(true);
-    setTimeout(() => setPreviewCopied(false), 1500);
-  }, [input]);
+    copy(input, 'preview');
+  }, [input, copy]);
 
   const handleDownload = useCallback(() => {
     const blob = dataUrlToBlob(input);
@@ -265,11 +268,7 @@ export default function Base64ImagePanel({
     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start' }}>
       <Box sx={{ flex: '1 1 45%', minWidth: 320, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <Paper variant="outlined">
-          <Stack sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}>
-            <Typography variant="subtitle2" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              Upload Image
-            </Typography>
-          </Stack>
+          <PanelHeader title="Upload Image" />
           <Box sx={{ p: 2 }}>
             <input
               ref={fileInputRef}
@@ -312,33 +311,27 @@ export default function Base64ImagePanel({
         </Paper>
 
         <Paper variant="outlined">
-          <Stack
-            direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-            sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}
-          >
-            <Typography variant="subtitle2" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              Image Data URL
-            </Typography>
-            <Stack direction="row" spacing={1}>
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<ContentPasteIcon fontSize="small" />}
-                onClick={handlePasteButtonClick}
-              >
-                Paste
-              </Button>
-              <Tooltip title={dataUrlCopied ? 'Copied!' : 'Copy'}>
-                <span>
-                  <IconButton size="small" onClick={handleCopyDataUrl} disabled={!input}>
-                    {dataUrlCopied ? <CheckIcon fontSize="small" color="success" /> : <ContentCopyIcon fontSize="small" />}
-                  </IconButton>
-                </span>
-              </Tooltip>
-            </Stack>
-          </Stack>
+          <PanelHeader title="Image Data URL">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ContentPasteIcon fontSize="small" />}
+              onClick={handlePasteButtonClick}
+            >
+              Paste
+            </Button>
+            <Tooltip title={copiedKey === 'data-url' ? 'Copied!' : 'Copy'}>
+              <span>
+                <IconButton size="small" onClick={handleCopyDataUrl} disabled={!input}>
+                  {copiedKey === 'data-url' ? (
+                    <CheckIcon fontSize="small" color="success" />
+                  ) : (
+                    <ContentCopyIcon fontSize="small" />
+                  )}
+                </IconButton>
+              </span>
+            </Tooltip>
+          </PanelHeader>
           <Box sx={{ p: 2 }}>
             <TextField
               value={input}
@@ -354,15 +347,7 @@ export default function Base64ImagePanel({
               fullWidth
               sx={{
                 '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.75rem', wordBreak: 'break-all' },
-                // The default outlined variant draws its own bordered box — nested inside this
-                // card's own Paper border, it read as a literal "box inside a box," per request.
-                // Hidden under all three states explicitly (default/hover/focus each carry their
-                // own selector for this element, so a bare base-selector-only override loses on
-                // hover/focus) — the same fix already established for HashGeneratorPanel.tsx's
-                // own Input box.
-                '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
-                '&:hover .MuiOutlinedInput-notchedOutline': { border: 'none' },
-                '& .Mui-focused .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                ...HIDDEN_TEXT_FIELD_OUTLINE_SX,
               }}
             />
           </Box>
@@ -385,32 +370,26 @@ export default function Base64ImagePanel({
           overflow: 'hidden',
         }}
       >
-        <Stack
-          direction="row"
-          alignItems="center"
-          justifyContent="space-between"
-          sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}
-        >
-          <Typography variant="subtitle2" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            Preview
-          </Typography>
-          <Stack direction="row" spacing={0.5}>
-            <Tooltip title={previewCopied ? 'Copied!' : 'Copy Data URL'}>
-              <span>
-                <IconButton size="small" onClick={handleCopyPreview} disabled={!input}>
-                  {previewCopied ? <CheckIcon fontSize="small" color="success" /> : <ContentCopyIcon fontSize="small" />}
-                </IconButton>
-              </span>
-            </Tooltip>
-            <Tooltip title="Download image">
-              <span>
-                <IconButton size="small" onClick={handleDownload} disabled={!canDownload}>
-                  <DownloadIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-          </Stack>
-        </Stack>
+        <PanelHeader title="Preview" actionsSpacing={0.5}>
+          <Tooltip title={copiedKey === 'preview' ? 'Copied!' : 'Copy Data URL'}>
+            <span>
+              <IconButton size="small" onClick={handleCopyPreview} disabled={!input}>
+                {copiedKey === 'preview' ? (
+                  <CheckIcon fontSize="small" color="success" />
+                ) : (
+                  <ContentCopyIcon fontSize="small" />
+                )}
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Download image">
+            <span>
+              <IconButton size="small" onClick={handleDownload} disabled={!canDownload}>
+                <DownloadIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </PanelHeader>
         <Box
           sx={{
             flex: 1,

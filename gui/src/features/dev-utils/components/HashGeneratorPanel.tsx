@@ -7,6 +7,9 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrowOutlined';
 import SubmitButton from '@shared/components/SubmitButton';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { DevUtilsResponse } from '../types';
+import PanelHeader from './PanelHeader';
+import { useCopyFeedback } from '../hooks/useCopyFeedback';
+import { HIDDEN_TEXT_FIELD_OUTLINE_SX } from '../utils/textFieldStyles';
 
 interface HashGeneratorPanelProps {
   /** Controlled — same lifted `input`/`output` state `DevUtilsPage.tsx` already threads into
@@ -85,9 +88,9 @@ export default function HashGeneratorPanel({
 }: HashGeneratorPanelProps): JSX.Element {
   const { showError } = useNotification();
   const [saving, setSaving] = useState(false);
-  // Tracks *which* card's own Copy button was just clicked (by label), not a single shared
-  // boolean — each card needs its own independent "Copied!" feedback.
-  const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
+  // `useCopyFeedback`'s own `key` param is what gives each card its own independent "Copied!"
+  // feedback — keyed by label here, so copying one digest never shows "Copied!" on another card.
+  const { copiedKey, copy } = useCopyFeedback();
 
   const handleGenerate = useCallback(async () => {
     setSaving(true);
@@ -112,40 +115,26 @@ export default function HashGeneratorPanel({
     }
   }, [onInputChange, showError]);
 
-  const handleCopyValue = useCallback(async (label: string, value: string) => {
-    await navigator.clipboard.writeText(value);
-    setCopiedLabel(label);
-    setTimeout(() => setCopiedLabel(null), 1500);
-  }, []);
+  const handleCopyValue = useCallback((label: string, value: string) => copy(value, label), [copy]);
 
   const hashes = output !== null ? parseHashLines(output) : [];
 
   return (
     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start' }}>
       <Paper variant="outlined" sx={{ flex: '1 1 45%', minWidth: 320 }}>
-        <Stack
-          direction="row"
-          alignItems="center"
-          justifyContent="space-between"
-          sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}
-        >
-          <Typography variant="subtitle2" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            Input
-          </Typography>
-          <Stack direction="row" spacing={1}>
-            <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={handlePaste}>
-              Paste
-            </Button>
-            <SubmitButton
-              size="small"
-              saving={saving}
-              label={actionLabel}
-              startIcon={<PlayArrowIcon fontSize="small" />}
-              onClick={handleGenerate}
-              disabled={!input.trim()}
-            />
-          </Stack>
-        </Stack>
+        <PanelHeader title="Input">
+          <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={handlePaste}>
+            Paste
+          </Button>
+          <SubmitButton
+            size="small"
+            saving={saving}
+            label={actionLabel}
+            startIcon={<PlayArrowIcon fontSize="small" />}
+            onClick={handleGenerate}
+            disabled={!input.trim()}
+          />
+        </PanelHeader>
         <Box sx={{ p: 2 }}>
           <TextField
             value={input}
@@ -157,13 +146,7 @@ export default function HashGeneratorPanel({
             fullWidth
             sx={{
               '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85rem' },
-              // The default outlined variant draws its own bordered box — nested inside this
-              // card's own Paper border, it read as a literal "box inside a box." Hidden under
-              // all three states explicitly (default/hover/focus each carry their own selector
-              // for this element, so a bare base-selector-only override loses on hover/focus).
-              '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
-              '&:hover .MuiOutlinedInput-notchedOutline': { border: 'none' },
-              '& .Mui-focused .MuiOutlinedInput-notchedOutline': { border: 'none' },
+              ...HIDDEN_TEXT_FIELD_OUTLINE_SX,
             }}
           />
         </Box>
@@ -192,9 +175,9 @@ export default function HashGeneratorPanel({
                 <Typography variant="subtitle2" fontWeight={700} sx={{ color: HASH_LABEL_COLORS[label] ?? 'grey.900' }}>
                   {label}
                 </Typography>
-                <Tooltip title={copiedLabel === label ? 'Copied!' : 'Copy'}>
+                <Tooltip title={copiedKey === label ? 'Copied!' : 'Copy'}>
                   <IconButton size="small" onClick={() => handleCopyValue(label, value)}>
-                    {copiedLabel === label ? (
+                    {copiedKey === label ? (
                       <CheckIcon fontSize="small" color="success" />
                     ) : (
                       <ContentCopyIcon fontSize="small" />

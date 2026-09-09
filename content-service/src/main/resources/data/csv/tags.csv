@@ -1,0 +1,19 @@
+id,name,status
+tag-spring-boot,Spring Boot,ACTIVE
+tag-java,Java,ACTIVE
+tag-python,Python,ACTIVE
+tag-react,React,ACTIVE
+tag-typescript,TypeScript,ACTIVE
+tag-docker,Docker,ACTIVE
+tag-postgresql,PostgreSQL,ACTIVE
+tag-rest-api,REST API,ACTIVE
+tag-microservices,Microservices,ACTIVE
+tag-security,Security,ACTIVE
+tag-performance,Performance,ACTIVE
+tag-beginner,Beginner,ACTIVE
+tag-advanced,Advanced,ACTIVE
+tag-interview-prep,Interview Prep,ACTIVE
+tag-algorithms,Algorithms,ACTIVE
+tag-design-patterns,Design Patterns,ACTIVE
+tag-testing,Testing,ACTIVE
+tag-kubernetes,Kubernetes,ACTIVE

@@ -29,6 +29,8 @@ import { DevUtilsResponse } from '../types';
 import { buildDevUtilError, DevUtilError } from '../utils/errorFormatting';
 import { OUTPUT_LANGUAGE_INFO, OutputLanguage } from '../config/outputLanguages';
 import { editorChromeTheme, getCodeMirrorExtensions } from '../config/codeMirrorConfig';
+import PanelHeader from './PanelHeader';
+import { useCopyFeedback } from '../hooks/useCopyFeedback';
 
 interface DevUtilToolPanelProps {
   /** Controlled — lifted up to `DevUtilsPage.tsx` so its own headline row's Sample/Clear buttons
@@ -327,7 +329,7 @@ export default function DevUtilToolPanel({
   // this rather than a per-button state pair, so the two can never independently claim "saving" at
   // the same time (submitting one disables the other, preventing an overlapping double-submit).
   const [savingAction, setSavingAction] = useState<'primary' | 'secondary' | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copiedKey, copy } = useCopyFeedback();
 
   // Memoized so a re-render (e.g. every keystroke while typing in Input) doesn't hand CodeMirror a
   // brand-new extensions array reference each time — `inputFormat`/`outputLanguage` are constant
@@ -470,12 +472,10 @@ export default function DevUtilToolPanel({
     }
   }, [onInputChange, showError]);
 
-  const handleCopy = useCallback(async () => {
+  const handleCopy = useCallback(() => {
     if (output === null) return;
-    await navigator.clipboard.writeText(output);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, [output]);
+    copy(output, 'output');
+  }, [output, copy]);
 
   const handleDownload = useCallback(() => {
     if (output === null) return;
@@ -520,57 +520,43 @@ export default function DevUtilToolPanel({
           overflow: 'hidden',
         }}
       >
-        <Stack
-          direction="row"
-          alignItems="center"
-          justifyContent="space-between"
-          sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}
-        >
-          <Typography variant="subtitle2" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            Input
-          </Typography>
-          <Stack direction="row" spacing={1}>
-            <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={handlePaste}>
-              Paste
-            </Button>
+        <PanelHeader title="Input">
+          <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={handlePaste}>
+            Paste
+          </Button>
+          <SubmitButton
+            saving={savingAction === 'primary'}
+            label={actionLabel}
+            startIcon={<PlayArrowIcon fontSize="small" />}
+            onClick={handleSubmit}
+            disabled={!input.trim() || savingAction === 'secondary'}
+          />
+          {secondaryAction && (
             <SubmitButton
-              saving={savingAction === 'primary'}
-              label={actionLabel}
+              saving={savingAction === 'secondary'}
+              label={secondaryAction.label}
               startIcon={<PlayArrowIcon fontSize="small" />}
-              onClick={handleSubmit}
-              disabled={!input.trim() || savingAction === 'secondary'}
+              onClick={handleSecondarySubmit}
+              disabled={!input.trim() || savingAction === 'primary'}
             />
-            {secondaryAction && (
-              <SubmitButton
-                saving={savingAction === 'secondary'}
-                label={secondaryAction.label}
-                startIcon={<PlayArrowIcon fontSize="small" />}
-                onClick={handleSecondarySubmit}
-                disabled={!input.trim() || savingAction === 'primary'}
-              />
-            )}
-            {supportsMinify && (
-              <Button
-                size="small"
-                variant={minify ? 'contained' : 'outlined'}
-                startIcon={<UnfoldLessIcon fontSize="small" />}
-                onClick={() => setMinify(m => !m)}
-                aria-pressed={minify}
-              >
-                Minify
-              </Button>
-            )}
-            <Tooltip title={maximizedPanel === 'input' ? 'Restore split view' : 'Maximize Input'}>
-              <IconButton size="small" onClick={toggleMaximizeInput}>
-                {maximizedPanel === 'input' ? (
-                  <CloseFullscreenIcon fontSize="small" />
-                ) : (
-                  <OpenInFullIcon fontSize="small" />
-                )}
-              </IconButton>
-            </Tooltip>
-          </Stack>
-        </Stack>
+          )}
+          {supportsMinify && (
+            <Button
+              size="small"
+              variant={minify ? 'contained' : 'outlined'}
+              startIcon={<UnfoldLessIcon fontSize="small" />}
+              onClick={() => setMinify(m => !m)}
+              aria-pressed={minify}
+            >
+              Minify
+            </Button>
+          )}
+          <Tooltip title={maximizedPanel === 'input' ? 'Restore split view' : 'Maximize Input'}>
+            <IconButton size="small" onClick={toggleMaximizeInput}>
+              {maximizedPanel === 'input' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
+        </PanelHeader>
 
         {/* `position: 'relative'` + the CodeMirror instance's own `position: 'absolute', inset: 0`
             (via `style`) is deliberately *not* the same "flex: 1, minHeight: 0, height: '100%'"
@@ -628,45 +614,31 @@ export default function DevUtilToolPanel({
         }}
       >
         <Box ref={outputChromeRef}>
-          <Stack
-            direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-            sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}
-          >
-            <Typography variant="subtitle2" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              Output
-            </Typography>
-            <Stack direction="row" spacing={1}>
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<ContentCopyIcon fontSize="small" />}
-                onClick={handleCopy}
-                disabled={output === null}
-              >
-                {copied ? 'Copied!' : 'Copy'}
-              </Button>
-              <Tooltip title="Download">
-                {/* span wrapper — MUI requires one around a disabled button for the Tooltip to
-                    still attach its listeners */}
-                <span>
-                  <IconButton size="small" onClick={handleDownload} disabled={output === null}>
-                    <DownloadIcon fontSize="small" />
-                  </IconButton>
-                </span>
-              </Tooltip>
-              <Tooltip title={maximizedPanel === 'output' ? 'Restore split view' : 'Maximize Output'}>
-                <IconButton size="small" onClick={toggleMaximizeOutput}>
-                  {maximizedPanel === 'output' ? (
-                    <CloseFullscreenIcon fontSize="small" />
-                  ) : (
-                    <OpenInFullIcon fontSize="small" />
-                  )}
+          <PanelHeader title="Output">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ContentCopyIcon fontSize="small" />}
+              onClick={handleCopy}
+              disabled={output === null}
+            >
+              {copiedKey === 'output' ? 'Copied!' : 'Copy'}
+            </Button>
+            <Tooltip title="Download">
+              {/* span wrapper — MUI requires one around a disabled button for the Tooltip to
+                  still attach its listeners */}
+              <span>
+                <IconButton size="small" onClick={handleDownload} disabled={output === null}>
+                  <DownloadIcon fontSize="small" />
                 </IconButton>
-              </Tooltip>
-            </Stack>
-          </Stack>
+              </span>
+            </Tooltip>
+            <Tooltip title={maximizedPanel === 'output' ? 'Restore split view' : 'Maximize Output'}>
+              <IconButton size="small" onClick={toggleMaximizeOutput}>
+                {maximizedPanel === 'output' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          </PanelHeader>
 
           {output !== null && (
             <Stack

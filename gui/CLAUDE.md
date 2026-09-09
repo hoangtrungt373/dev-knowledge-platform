@@ -3829,6 +3829,52 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       about which one wins. Verified via a clean `tsc --noEmit`/successful `vite build` only — no
       Docker in this sandbox, so both changes (and the Paste button's own clipboard-permission
       prompt) are unverified in a real browser.
+  - **Follow-up: a full code-quality audit of the whole `features/dev-utils` folder (all 11 files
+    at the time), per direct request — 3 duplication patterns extracted, plus one pre-existing
+    real type error fixed along the way.**
+    - **New `hooks/useCopyFeedback.ts`** — the `navigator.clipboard.writeText` + timed
+      "Copied!"-feedback `setTimeout` pattern `DevUtilToolPanel.tsx`/`HashGeneratorPanel.tsx`/
+      `Base64ImagePanel.tsx` each hand-rolled independently (`copied`/`copiedLabel`/
+      `dataUrlCopied`+`previewCopied` as separate local booleans). One hook, `{ copiedKey, copy }`
+      — `copy(text, key)` copies and tags which key just finished; `key` (default `'default'`)
+      is what lets one hook instance serve several independent copy targets in the same component
+      (`HashGeneratorPanel`'s 4 per-algorithm cards keyed by label; `Base64ImagePanel`'s
+      `'data-url'`/`'preview'` buttons) without a separate hook call per button. A stale timeout
+      only clears its own key (`prev === key ? null : prev`), so a newer copy's feedback can never
+      be stomped by an older one's timer.
+    - **New `utils/textFieldStyles.ts` (`HIDDEN_TEXT_FIELD_OUTLINE_SX`)** — the "hide a
+      `TextField`'s own default outlined border when it's nested inside an already-bordered card"
+      3-line override, byte-identical in `HashGeneratorPanel.tsx`'s Input box and
+      `Base64ImagePanel.tsx`'s Image Data URL box (`DevUtilToolPanel.tsx` no longer has this
+      duplication at all — its Input/Output moved to CodeMirror editors in an earlier follow-up,
+      with no `TextField` left to fix). One shared constant, spread into each `TextField`'s own
+      `sx` object alongside its other overrides.
+    - **New `components/PanelHeader.tsx`** — the bordered "uppercase bold title + right-aligned
+      action buttons" header row repeated 6 times across `DevUtilToolPanel.tsx` (Input, Output),
+      `HashGeneratorPanel.tsx` (Input), and `Base64ImagePanel.tsx` (Upload Image, Image Data URL,
+      Preview). Takes `title` + optional `children` (the action buttons) + an `actionsSpacing` prop
+      (default `1`, overridden to `0.5` for `Base64ImagePanel`'s Preview card's two icon-only
+      buttons) — a card with no actions at all (Upload Image) just omits `children`. Every call
+      site's own surrounding chrome (which `Paper`, refs for height measurement, `Box` wrappers)
+      was left untouched; only the header markup itself moved into this component.
+    - **Real bug fixed, found while auditing `Base64ImagePanel.tsx`'s `handlePaste`**: its
+      parameter was typed `ReactClipboardEvent<HTMLTextAreaElement | HTMLInputElement>`, but
+      MUI's own `TextField`/`OutlinedInput` types `onPaste` against the *root* element
+      (`ClipboardEventHandler<HTMLDivElement>`) regardless of the `multiline` prop, not the
+      rendered `<textarea>` — a real `tsc --noEmit` error (confirmed pre-existing via `git stash`
+      against the already-committed code, not introduced by this pass), despite this file's own
+      history repeatedly claiming a clean type-check after later follow-ups. Retyped to
+      `ReactClipboardEvent<HTMLDivElement>` — harmless, since the handler only ever reads
+      `e.clipboardData`, which doesn't depend on the element type.
+    - **Deliberately not extracted**: `devUtilsApi.ts`'s repeated `httpClient.post(...)` calls
+      (that file's own top comment already documents the decision not to build a shared generic
+      `post` helper, since operations have genuinely different signatures) and `operations.tsx`'s
+      repeated per-operation inline comments (contextual documentation, not logic duplication).
+    - Verified via a clean `tsc --noEmit` (confirmed the pre-existing `Base64ImagePanel.tsx` error
+      above was the *only* new-to-this-pass finding; `App.test.tsx`/`reportWebVitals.ts`/two
+      unrelated `@chat` warnings are the same pre-existing, already-documented ones) and a
+      successful `vite build` only — no Docker in this sandbox, so the actual on-screen result
+      (all three panels' headers/copy-feedback/hidden borders) is unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

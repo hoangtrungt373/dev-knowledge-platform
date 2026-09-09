@@ -1,0 +1,18 @@
+id,name,parentId
+cat-programming-languages,Programming Languages,
+cat-web-development,Web Development,
+cat-databases,Databases,
+cat-devops-cloud,DevOps & Cloud,
+cat-software-architecture,Software Architecture,
+cat-java,Java,cat-programming-languages
+cat-python,Python,cat-programming-languages
+cat-javascript,JavaScript,cat-programming-languages
+cat-frontend,Frontend,cat-web-development
+cat-backend,Backend,cat-web-development
+cat-apis-rest,APIs & REST,cat-web-development
+cat-relational-sql,Relational (SQL),cat-databases
+cat-nosql,NoSQL,cat-databases
+cat-docker-containers,Docker & Containers,cat-devops-cloud
+cat-ci-cd,CI/CD,cat-devops-cloud
+cat-design-patterns,Design Patterns,cat-software-architecture
+cat-microservices,Microservices,cat-software-architecture

@@ -1163,6 +1163,28 @@ section again. Full unabridged entry-by-entry history for all three lives in
 
 ### Fixed
 
+- **`gui` — a code-quality analysis pass over the whole `features/dev-utils` folder (11 files),
+  per direct request, extracted 3 duplication patterns and fixed 1 real, pre-existing type error.**
+  - New `hooks/useCopyFeedback.ts` — the `navigator.clipboard.writeText` + timed
+    "Copied!"-feedback pattern `DevUtilToolPanel.tsx`/`HashGeneratorPanel.tsx`/
+    `Base64ImagePanel.tsx` each hand-rolled independently as separate local booleans. One hook
+    (`{ copiedKey, copy }`), keyed so several independent copy buttons in one component (e.g.
+    `HashGeneratorPanel`'s 4 per-algorithm cards) can share a single instance.
+  - New `utils/textFieldStyles.ts` (`HIDDEN_TEXT_FIELD_OUTLINE_SX`) — the "hide a `TextField`'s
+    own default outlined border inside an already-bordered card" 3-line override, byte-identical
+    in `HashGeneratorPanel.tsx` and `Base64ImagePanel.tsx`.
+  - New `components/PanelHeader.tsx` — the bordered "uppercase title + right-aligned action
+    buttons" header row, repeated 6 times across `DevUtilToolPanel.tsx` (Input, Output),
+    `HashGeneratorPanel.tsx` (Input), and `Base64ImagePanel.tsx` (Upload Image, Image Data URL,
+    Preview).
+  - **Real bug fixed**: `Base64ImagePanel.tsx`'s `handlePaste` was typed against
+    `HTMLTextAreaElement | HTMLInputElement`, but MUI's `TextField`/`OutlinedInput` types
+    `onPaste` against the root element (`HTMLDivElement`) regardless of the `multiline` prop — a
+    genuine `tsc --noEmit` failure, confirmed pre-existing (via `git stash`) rather than introduced
+    by this pass. Retyped to `HTMLDivElement`; no behavior change, since the handler only reads
+    `e.clipboardData`.
+  - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+    sandbox, so the on-screen result across all three panels is unverified in a real browser.
 - **`dev-utils-service` — a code-quality analysis pass (same shape as the earlier `gui`
   dev-utils analysis) surfaced 2 real bugs and a handful of duplication/doc-drift/Javadoc-coverage
   issues; all implemented in one pass.**
