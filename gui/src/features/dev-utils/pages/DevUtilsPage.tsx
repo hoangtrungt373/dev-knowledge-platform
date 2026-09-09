@@ -29,13 +29,24 @@ import { OPERATION_GROUP_ORDER, OPERATIONS, TabKey, tabFromHash } from '../confi
 const SIDEBAR_COLLAPSE_STORAGE_KEY = 'devUtilsSidebarCollapsed';
 const SIDEBAR_EXPANDED_WIDTH = 300;
 const SIDEBAR_COLLAPSED_WIDTH = 56;
-// Fallback for the sidebar's own maxHeight before ResizeObserver's first measurement of the main
-// column lands (see mainColumnHeight below) — an initial render has to pick something, and a plain
-// `undefined` (no cap at all) would flash the sidebar at its own full, uncapped height for one
-// frame before snapping down. A hand-tuned guess, same "eyeballed, not measured" caveat
-// DevUtilToolPanel.tsx's own OUTPUT_EMPTY_MIN_HEIGHT already carries — but only ever visible for a
-// single frame, never the steady-state value once the observer's callback has fired.
-const SIDEBAR_MAX_HEIGHT_FALLBACK = 615;
+// Fallback for the sidebar's own fixed height before its first real measurement lands (see
+// sidebarHeight below) — an initial render has to pick something, and a plain `undefined` (no
+// height at all) would flash the sidebar at its own natural, shrink-to-fit height for one frame
+// before snapping to the real measured one. A hand-tuned guess, same "eyeballed, not measured"
+// caveat PANEL_MIN_HEIGHT/PANEL_BOTTOM_GUTTER below carry too — but only ever visible for a single
+// frame, never the steady-state value once the first measurement lands.
+const SIDEBAR_HEIGHT_FALLBACK = 615;
+// The Input/Output panels' own height is viewport-relative, not a fixed pixel constant — see
+// panelHeight below. PANEL_MIN_HEIGHT is a floor for a short viewport (a laptop with dev tools
+// open, a small window) so the panels never shrink to something unusably small; PANEL_BOTTOM_GUTTER
+// is breathing room between the panel's own bottom edge and the viewport's, so it doesn't render
+// flush against the window edge. Both are eyeballed, not measured — same caveat
+// SIDEBAR_HEIGHT_FALLBACK carries elsewhere in this feature.
+const PANEL_MIN_HEIGHT = 360;
+const PANEL_BOTTOM_GUTTER = 24;
+// Fallback for the single frame before panelHeight's own first real measurement lands — same role
+// SIDEBAR_HEIGHT_FALLBACK plays for the sidebar.
+const PANEL_HEIGHT_FALLBACK = 500;
 
 /** Each tool has its own route via the URL hash (/dev-utils#json-format, /dev-utils#yaml-to-json,
  * etc.), per request — deep-linkable/bookmarkable/shareable, and the browser back/forward buttons
@@ -72,13 +83,25 @@ const SIDEBAR_MAX_HEIGHT_FALLBACK = 615;
  * tool list must never inflate the `main` column (headline card + tool panel) to match *it*.
  * Flexbox has no way to express "only this side defers," so this can't be solved with CSS alone.
  *
- * <p>**The sidebar's own `maxHeight` is instead a live measurement of the `main` column's real
- * rendered height** (`mainColumnHeight`, kept in sync via a `ResizeObserver` on `mainColumnRef`),
- * per request — not a hand-tuned pixel constant that silently goes stale the moment the headline
- * description wraps to a second line or the Input `TextField`'s `minRows` changes.
- * `SIDEBAR_MAX_HEIGHT_FALLBACK` only covers the single frame before the observer's first callback
- * lands. The tool list scrolls internally (`overflowY: 'auto'`) once it's taller than that
- * measured height, rather than being clipped or growing the whole row.
+ * <p>**The sidebar's own `height` is a live measurement, not a hand-tuned pixel constant** that
+ * would silently go stale the moment the headline description wraps to a second line — but it's
+ * computed directly from the viewport (`sidebarHeight`, alongside `panelHeight` below, in the same
+ * effect), **not** by measuring the main column's own actual rendered DOM height via a
+ * `ResizeObserver` the way an earlier version of this did. This is a fixed `height`, **not** a
+ * `maxHeight` — a `maxHeight` alone only clamps the upper bound, so whenever the tool list's own
+ * natural content is shorter than that height, the sidebar would render at its own shrink-to-fit
+ * height instead of actually matching Input (one real, reported bug this went through). The second,
+ * separate real bug a DOM-measurement approach ran into: once Output was allowed to grow past
+ * `panelHeight` for a long response (see the paragraph below), a `ResizeObserver` watching the whole
+ * main column picked that growth up and inflated the sidebar right along with it — the sidebar must
+ * stay pinned to the viewport regardless of how tall Output's own content happens to make it, the
+ * same as Input. Deriving `sidebarHeight` from the identical top-position measurements
+ * `panelHeight` already uses (see that paragraph) sidesteps this entirely, since neither number
+ * depends on Output's own rendered size at all. `SIDEBAR_HEIGHT_FALLBACK` only covers the single
+ * frame before the first real measurement lands. The tool list scrolls internally
+ * (`overflowY: 'auto'`) once it's taller than that height, rather than being clipped or growing the
+ * whole row; any extra room below a short list is just blank space inside the card, not a shrink
+ * back down to content size.
  *
  * <p>The headline card (category/title/description) also carries **Sample** (fills the input with
  * the operation's own `inputPlaceholder` value) and **Clear** buttons, per request — which is
@@ -87,6 +110,29 @@ const SIDEBAR_MAX_HEIGHT_FALLBACK = 615;
  * component: this headline row needs to read/write it directly, and it's a sibling of the panel,
  * not an ancestor, so the state had to move up to their common parent (this component) — the
  * standard "lift state up" fix for two components that both need the same piece of state.
+ *
+ * <p>**The Input panel's own height is viewport-relative, not a fixed pixel constant**, per
+ * request — a payload large enough to matter should get to use whatever vertical room the actual
+ * screen has (a 1440p monitor has far more to give than a fixed height would ever use), not a
+ * hand-tuned number that's either too short on a big screen or overflowing on a small one.
+ * `panelHeight` is computed from `toolPanelRef`'s `getBoundingClientRect().top` (its distance from
+ * the viewport's own top — this shifts with the headline card's own height, e.g. a longer
+ * description wrapping to a second line) subtracted from `window.innerHeight`, floored at
+ * `PANEL_MIN_HEIGHT` and padded by `PANEL_BOTTOM_GUTTER`. Recomputed on a window `resize` (which
+ * also fires on a pure reflow-driven width change, e.g. the headline description rewrapping at a
+ * narrower width) and whenever `tab`/`sidebarCollapsed` changes (each can shift `toolPanelRef`'s
+ * own top position: a different operation's headline is a different height, and collapsing the
+ * sidebar widens the main column, which can itself change how many lines the description wraps
+ * to). Passed down to `DevUtilToolPanel` as `availableHeight`, which pins the Input `Paper` to
+ * exactly that height — see that component's own updated Javadoc.
+ *
+ * <p>**The Output panel deliberately does *not* use `panelHeight`/`availableHeight` at all,
+ * per a follow-up request reverting that part of this design** — it grows with its own content
+ * instead, up to a much larger, line-count-based cap (see `DevUtilToolPanel.tsx`'s own
+ * `OUTPUT_MAX_HEIGHT`), so a long response can genuinely make Output taller than Input/the
+ * sidebar. That's why `sidebarHeight` above is computed directly from the viewport rather than
+ * measured off the main column's own rendered height — it must stay pinned to `panelHeight`
+ * regardless of how tall Output's own content happens to grow it.
  */
 export default function DevUtilsPage(): JSX.Element {
   const location = useLocation();
@@ -105,26 +151,41 @@ export default function DevUtilsPage(): JSX.Element {
   // `output` (a submit always clears one before setting the other).
   const [error, setError] = useState<DevUtilError | null>(null);
 
-  // Live-measures the `main` column's own rendered height (headline card + gap + tool panel) so
-  // the sidebar's `maxHeight` below can track it without a hand-tuned pixel constant — see this
-  // component's own doc comment for why flexbox's `align-items: stretch` can't do this instead.
+  // mainColumnRef anchors the sidebarHeight calc below (its own top === the headline card's top,
+  // since the Box it's attached to carries no margin/padding of its own). toolPanelRef wraps just
+  // <DevUtilToolPanel/> — its distance from the viewport's own top is what panelHeight needs (the
+  // headline card sits above it and shifts this distance whenever its own height changes).
   const mainColumnRef = useRef<HTMLDivElement | null>(null);
-  const [mainColumnHeight, setMainColumnHeight] = useState<number | null>(null);
+  const toolPanelRef = useRef<HTMLDivElement | null>(null);
+  const [panelHeight, setPanelHeight] = useState<number>(PANEL_HEIGHT_FALLBACK);
+  const [sidebarHeight, setSidebarHeight] = useState<number>(SIDEBAR_HEIGHT_FALLBACK);
 
+  // Viewport-relative height for the Input panel (and, through it, the sidebar) — see this
+  // component's own doc comment for the full reasoning. Both panelHeight and sidebarHeight are
+  // computed together, from the *same* pair of measurements, on purpose: sidebarHeight must track
+  // "headline card height + gap + panelHeight" directly, not the main column's own actual rendered
+  // DOM height (a real, reported regression when it did — Output is now allowed to grow past
+  // panelHeight for a long response, per a separate follow-up, and a `ResizeObserver` on the whole
+  // main column would pick that growth up and inflate the sidebar right along with it, which is
+  // exactly the bug being fixed here: the sidebar must stay pinned to the *viewport*, the same as
+  // Input, regardless of how tall Output's own content makes it grow).
   useEffect(() => {
-    const node = mainColumnRef.current;
-    if (!node) {
-      return undefined;
-    }
-    const observer = new ResizeObserver(entries => {
-      const entry = entries[0];
-      if (entry) {
-        setMainColumnHeight(entry.contentRect.height);
+    const recompute = () => {
+      const mainNode = mainColumnRef.current;
+      const panelNode = toolPanelRef.current;
+      if (!mainNode || !panelNode) {
+        return;
       }
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
+      const mainTop = mainNode.getBoundingClientRect().top;
+      const panelTop = panelNode.getBoundingClientRect().top;
+      const nextPanelHeight = Math.max(PANEL_MIN_HEIGHT, window.innerHeight - panelTop - PANEL_BOTTOM_GUTTER);
+      setPanelHeight(nextPanelHeight);
+      setSidebarHeight(panelTop - mainTop + nextPanelHeight);
+    };
+    recompute();
+    window.addEventListener('resize', recompute);
+    return () => window.removeEventListener('resize', recompute);
+  }, [tab, sidebarCollapsed]);
 
   // Syncs local state with the hash for the two cases that don't go through selectTab below: a
   // direct deep link (/dev-utils#yaml-to-json) and the browser's own back/forward navigation.
@@ -211,7 +272,18 @@ export default function DevUtilsPage(): JSX.Element {
             flexShrink: 0,
             overflowX: 'hidden',
             overflowY: 'auto',
-            maxHeight: mainColumnHeight ?? SIDEBAR_MAX_HEIGHT_FALLBACK,
+            // A fixed `height`, not a `maxHeight` — a `maxHeight` alone only clamps the *upper*
+            // bound, so whenever the tool list's own natural content (today, one "Formatters"
+            // headline + 16 short rows) is shorter than this, the sidebar would render at its own
+            // shrink-to-fit height instead of matching Input. `height` forces the Paper to that
+            // exact size regardless — any extra room below a short list is just blank space inside
+            // the card, and `overflowY: 'auto'` still covers the list ever growing taller than it
+            // (more groups/operations, a long search result). `sidebarHeight` is computed directly
+            // from the viewport (see the effect above), **not** measured off the main column's own
+            // rendered DOM height — Output is allowed to grow past `panelHeight` for a long
+            // response (see DevUtilToolPanel.tsx), and a DOM measurement would have picked that
+            // growth up and inflated the sidebar right along with it (a real, reported regression).
+            height: sidebarHeight,
             transition: 'width 0.2s ease',
           }}
         >
@@ -274,7 +346,7 @@ export default function DevUtilsPage(): JSX.Element {
                   {!sidebarCollapsed && (
                     <Typography
                       variant="caption"
-                      fontWeight={700}
+                      fontWeight={400}
                       color="text.secondary"
                       sx={{
                         display: 'block',
@@ -344,26 +416,31 @@ export default function DevUtilsPage(): JSX.Element {
             </Stack>
           </Paper>
 
-          {/* Keying by operation forces a remount on switch, resetting the panel's own local
-              minify/saving/copied state — the same reset a tool switch already caused under the
-              old {tab === 'x' && <Panel/>} conditional-rendering shape, just made explicit now
-              that one shared JSX call site renders every tool. */}
-          <DevUtilToolPanel
-            key={activeOperation.key}
-            input={input}
-            onInputChange={setInput}
-            output={output}
-            onOutputChange={setOutput}
-            error={error}
-            onErrorChange={setError}
-            actionLabel={activeOperation.actionLabel}
-            inputPlaceholder={activeOperation.inputPlaceholder}
-            inputFormat={activeOperation.inputFormat}
-            outputLanguage={activeOperation.outputLanguage}
-            supportsMinify={activeOperation.supportsMinify}
-            downloadFileName={activeOperation.downloadFileName}
-            onSubmit={activeOperation.onSubmit}
-          />
+          {/* toolPanelRef is only for the panelHeight measurement above — it adds no styling of
+              its own, so it stays transparent to the layout. Keying the panel itself by operation
+              still forces a remount on switch, resetting its own local minify/saving/copied state
+              — the same reset a tool switch already caused under the old
+              {tab === 'x' && <Panel/>} conditional-rendering shape, just made explicit now that
+              one shared JSX call site renders every tool. */}
+          <Box ref={toolPanelRef}>
+            <DevUtilToolPanel
+              key={activeOperation.key}
+              input={input}
+              onInputChange={setInput}
+              output={output}
+              onOutputChange={setOutput}
+              error={error}
+              onErrorChange={setError}
+              actionLabel={activeOperation.actionLabel}
+              inputPlaceholder={activeOperation.inputPlaceholder}
+              inputFormat={activeOperation.inputFormat}
+              outputLanguage={activeOperation.outputLanguage}
+              supportsMinify={activeOperation.supportsMinify}
+              downloadFileName={activeOperation.downloadFileName}
+              onSubmit={activeOperation.onSubmit}
+              availableHeight={panelHeight}
+            />
+          </Box>
         </Box>
       </Box>
     </Box>

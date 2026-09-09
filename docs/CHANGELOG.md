@@ -826,6 +826,31 @@ section again. Full unabridged entry-by-entry history for all three lives in
         change needed. Verified via a clean `tsc --noEmit` and a successful `vite build` only — no
         Docker in this sandbox, so the actual on-screen section headline is unverified in a real
         browser.
+    - **Follow-up: the Input/Output panels made viewport-relative, then partially reverted for
+      Output, then two real regressions found and fixed — summarized here as the current end
+      state (see `gui/CLAUDE.md`'s own dev-utils section for the full per-step detail).**
+      `pages/DevUtilsPage.tsx` computes a live `panelHeight` (viewport height minus the tool
+      panel's own top position, floored at `PANEL_MIN_HEIGHT`) and a live `sidebarHeight`
+      ("headline card height + gap + panelHeight," derived from the same measurements, **not**
+      measured off the main column's own rendered DOM height). Input pins to `panelHeight`
+      exactly (`height: availableHeight`); the sidebar pins to `sidebarHeight` exactly
+      (`height`, not `maxHeight`). **Output deliberately does not pin to it** — per a follow-up
+      request ("Allow the Output height grow to maximum 1000 line number. Above that -> user have
+      to scroll"), it grows with its own content instead, floored (not capped) at `availableHeight`
+      via `minHeight`, and capped by a new line-count-based `OUTPUT_MAX_HEIGHT` (1000 lines ×
+      20px/line) before scrolling internally.
+      - **Regression #1** (reported: "the height of the Sidebar now not equals to the height of
+        the Input/Output"): the sidebar used `maxHeight`, which only clamps the upper bound — a
+        short tool list rendered shorter than the main column instead of matching it. Fixed by
+        switching to a fixed `height`.
+      - **Regression #2** (reported: "when the height of the Output grow based on the content, the
+        Height of the Sidebar is growing too which is not correct"): `sidebarHeight` used to be a
+        `ResizeObserver` measurement of the whole main column's real DOM height, which picked up
+        Output's own content-driven growth and inflated the sidebar along with it. Fixed by
+        computing `sidebarHeight` directly from viewport measurements instead (alongside
+        `panelHeight`, in the same effect), independent of Output's own rendered size entirely.
+      - Verified via a clean `tsc --noEmit` and a successful `vite build` only, at every step — no
+        Docker in this sandbox, so none of this is exercised in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

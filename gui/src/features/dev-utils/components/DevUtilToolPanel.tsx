@@ -58,6 +58,11 @@ interface DevUtilToolPanelProps {
   /** Filename offered by the Output panel's Download button, e.g. "formatted.json". */
   downloadFileName: string;
   onSubmit: (input: string, minify: boolean) => Promise<DevUtilsResponse>;
+  /** Height (px) computed by `DevUtilsPage.tsx` from the actual viewport — see that component's
+   * own doc comment for how. The Input card renders at exactly this height (`height:
+   * availableHeight`); the Output card instead uses it only as a **floor** (`minHeight:
+   * availableHeight`) — see this component's own doc comment for why the two differ. */
+  availableHeight: number;
 }
 
 // The Output panel's background is state-driven, per request — white by default (no result yet,
@@ -91,20 +96,16 @@ const OUTPUT_LINE_NUMBER_COLOR = '#6e7681';
 // states too.
 const OUTPUT_LINE_COLOR = '#3c3c3c';
 
-// Shared cap for the Output panel's content area (error box / placeholder / syntax-highlighted
-// result alike) — keeps it growing with content up to a reasonable height, then scrolling
-// internally, roughly matching the Input TextField's own minRows/maxRows auto-grow range.
-const OUTPUT_MAX_HEIGHT = 800;
-// The empty placeholder's own starting height — deliberately taller than a "just enough for the
-// icon + one line of text" box would need, so it roughly matches the Input side's own starting
-// height (`minRows={20}` below, at this panel's line-height/padding) rather than visibly
-// shrinking the whole Output card the moment there's no result yet.
-//
-// Not exported for reuse elsewhere as a stand-in for this card's own total rendered height — it
-// was tried as the sidebar's own maxHeight in DevUtilsPage.tsx and didn't actually match, because
-// it only sizes this placeholder content box, not the header row (title + Copy/Download buttons)
-// above it. See that page's own SIDEBAR_MAX_HEIGHT comment for the fix and the full reasoning.
-const OUTPUT_EMPTY_MIN_HEIGHT = 425;
+// The Output panel grows with its own content instead of being pinned to `availableHeight`, per a
+// direct follow-up request reverting that part of the earlier viewport-relative change — capped by
+// *lines*, not an arbitrary pixel number, so content at or under the cap just grows the box (and
+// lets the page scroll for it) while content over the cap scrolls internally instead of growing
+// forever. OUTPUT_LINE_HEIGHT_PX is an eyeballed estimate of the syntax highlighter's own rendered
+// line height at its `0.8rem` font size — not measured in a real browser, same caveat every other
+// hand-tuned constant in this feature carries.
+const OUTPUT_MAX_LINES = 1000;
+const OUTPUT_LINE_HEIGHT_PX = 20;
+const OUTPUT_MAX_HEIGHT = OUTPUT_MAX_LINES * OUTPUT_LINE_HEIGHT_PX;
 
 function downloadTextFile(fileName: string, content: string): void {
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
@@ -195,6 +196,7 @@ export default function DevUtilToolPanel({
   supportsMinify,
   downloadFileName,
   onSubmit,
+  availableHeight,
 }: DevUtilToolPanelProps): JSX.Element {
   const { showError, showSuccess } = useNotification();
   const [minify, setMinify] = useState(false);
@@ -239,13 +241,23 @@ export default function DevUtilToolPanel({
   }, [output, downloadFileName, showSuccess]);
 
   return (
-    // Deliberately default align-items ('stretch') here, not 'flex-start' — it makes both Paper
-    // cards match the height of whichever one has more content (taller natural height), so Input
-    // and Output always end up the same overall height, driven by whichever has more lines. Each
-    // side's own content-area child below carries `flex: 1` so it's the *visible* content box
-    // (not just the Paper's own blank background) that actually fills the extra stretched height.
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-      <Paper variant="outlined" sx={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column' }}>
+    // `alignItems: 'flex-start'`, not the flexbox default `'stretch'` — Input carries its own
+    // explicit `height: availableHeight`; Output instead carries `minHeight: availableHeight` (a
+    // floor, not a fixed size — see this component's own doc comment for why Output needs its own
+    // floor at all: it must never look shorter than Input for a short response, but still needs to
+    // grow taller than that for a long one, up to OUTPUT_MAX_HEIGHT). `flex-start` keeps each
+    // card's own sizing fully self-contained — under the default `stretch`, cross-item resizing
+    // would *probably* land on the same end result here (the row's cross size ends up the max of
+    // both items' hypothetical sizes either way), but only by relying on a genuinely more subtle
+    // mechanism (stretch's own per-flex-line cross-size computation, which gets more to reason
+    // about once this row can wrap to two lines on a narrow viewport) — `flex-start` plus each
+    // Paper's own explicit `height`/`minHeight` gets the identical result without depending on
+    // that, so each card's rendered height is a direct function of its own sx alone.
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2 }}>
+      <Paper
+        variant="outlined"
+        sx={{ flex: 1, minWidth: 320, height: availableHeight, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      >
         <Stack
           direction="row"
           alignItems="center"
@@ -280,23 +292,43 @@ export default function DevUtilToolPanel({
           </Stack>
         </Stack>
 
-        <Box sx={{ p: 2, flex: 1, minHeight: 0 }}>
+        <Box sx={{ p: 2, flex: 1, minHeight: 0, display: 'flex' }}>
           <TextField
             placeholder={inputPlaceholder}
             multiline
-            minRows={20}
-            maxRows={32}
+            // A fixed `rows` (the value itself is irrelevant — see the height override below)
+            // keeps MUI on the plain, non-autosizing <textarea rows="1"> rendering path; without
+            // it, `multiline` alone hands sizing to MUI's own `react-textarea-autosize`-based
+            // wrapper, which sets its own inline `height` via JS on every keystroke — fighting the
+            // fixed-height, internally-scrolling box this panel wants instead of the auto-grow one
+            // `minRows`/`maxRows` used to give it.
+            rows={1}
             fullWidth
             value={input}
             onChange={e => onInputChange(e.target.value)}
-            // Hides the outlined variant's own border — without this, the TextField's box sits
-            // visibly nested inside this Input card's own Paper border, reading as "a box inside
-            // a box." All three states are targeted explicitly (default/hover/focused), not just
-            // the base `.MuiOutlinedInput-notchedOutline` selector alone — MUI's own hover/focus
-            // rules for that same element are more specific (extra pseudo-class), so an override
-            // scoped to only the base selector would silently lose on hover/focus, the identical
-            // specificity gotcha just fixed on the sidebar's selected-item background.
             sx={{
+              flex: 1,
+              display: 'flex',
+              // Stretches the TextField's own root and the actual <textarea> to fill this fixed-
+              // height Box, with its own internal scrollbar once content overflows it — replacing
+              // the old minRows/maxRows auto-grow range now that the panel's height comes from
+              // `availableHeight` (a real viewport measurement) instead of a row count.
+              // `!important` is load-bearing on the textarea rule: react-textarea-autosize would
+              // otherwise still set its own inline `height` first, and a plain (non-`!important`)
+              // class rule can't outrank an inline style — only an `!important` declaration can,
+              // regardless of origin.
+              '& .MuiInputBase-root': { height: '100%' },
+              '& .MuiInputBase-inputMultiline': {
+                height: '100% !important',
+                overflow: 'auto !important',
+              },
+              // Hides the outlined variant's own border — without this, the TextField's box sits
+              // visibly nested inside this Input card's own Paper border, reading as "a box inside
+              // a box." All three states are targeted explicitly (default/hover/focused), not just
+              // the base `.MuiOutlinedInput-notchedOutline` selector alone — MUI's own hover/focus
+              // rules for that same element are more specific (extra pseudo-class), so an override
+              // scoped to only the base selector would silently lose on hover/focus, the identical
+              // specificity gotcha just fixed on the sidebar's selected-item background.
               '& .MuiOutlinedInput-root': {
                 '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
                 '&:hover .MuiOutlinedInput-notchedOutline': { border: 'none' },
@@ -307,7 +339,17 @@ export default function DevUtilToolPanel({
         </Box>
       </Paper>
 
-      <Paper variant="outlined" sx={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column' }}>
+      <Paper
+        variant="outlined"
+        // `minHeight`, not `height` — Output must never look shorter than Input/the sidebar for a
+        // short response (a real, reported regression), but still needs to grow taller than that
+        // for a long one (the whole point of the earlier partial revert). A floor, not a fixed
+        // size, gives both: short content fills up to availableHeight via the content area's own
+        // `flex: 1` below (the usual "min-height on an auto-sized flex column, flex:1 child fills
+        // the resulting free space" pattern); long content just grows the Paper past it instead
+        // (min-height puts no ceiling on that), scrolling internally only past OUTPUT_MAX_HEIGHT.
+        sx={{ flex: 1, minWidth: 320, minHeight: availableHeight, display: 'flex', flexDirection: 'column' }}
+      >
         <Stack
           direction="row"
           alignItems="center"
@@ -412,6 +454,7 @@ export default function DevUtilToolPanel({
               maxHeight: OUTPUT_MAX_HEIGHT,
               display: 'flex',
               flexDirection: 'column',
+              overflow: 'auto',
               '& .react-syntax-highlighter-line-number': { color: `${OUTPUT_LINE_NUMBER_COLOR} !important` },
             }}
           >
@@ -427,7 +470,6 @@ export default function DevUtilToolPanel({
                 padding: '16px',
                 flex: 1,
                 minHeight: 0,
-                overflow: 'auto',
                 background: OUTPUT_BG_DARK,
               }}
             >
@@ -439,7 +481,7 @@ export default function DevUtilToolPanel({
             spacing={1.5}
             alignItems="center"
             justifyContent="center"
-            sx={{ p: 2, flex: 1, minHeight: OUTPUT_EMPTY_MIN_HEIGHT, maxHeight: OUTPUT_MAX_HEIGHT, bgcolor: OUTPUT_BG_LIGHT }}
+            sx={{ p: 2, flex: 1, minHeight: 0, bgcolor: OUTPUT_BG_LIGHT }}
           >
             <DownloadIcon sx={{ fontSize: 40, color: 'grey.400' }} />
             <Typography variant="body2" sx={{ color: 'grey.600' }}>

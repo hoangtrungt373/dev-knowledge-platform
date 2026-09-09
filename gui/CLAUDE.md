@@ -3135,6 +3135,80 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       below the search bar, per the request's own explicit placement.
     - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
       sandbox, so the actual on-screen section headline is unverified in a real browser.
+  - **Follow-up: the Input/Output panels made viewport-relative, then partially reverted for
+    Output, then two real regressions found and fixed — a design conversation and iteration
+    covering several requests, summarized here as the current end state.** Started from a design
+    question about a large input/output payload; the sidebar's own collapsibility (already built)
+    was the point of comparison. Several ideas were discussed (a resizable divider via the
+    already-present `react-resizable-panels` dependency, a "maximize this panel" toggle, a
+    Monaco/CodeMirror editor swap) — none of the three built yet; only the first idea ("make panel
+    height viewport-relative, not a fixed pixel constant") was picked and built, then partly walked
+    back for Output specifically once tested against real behavior.
+    - **`pages/DevUtilsPage.tsx` computes two live viewport measurements, `panelHeight` and
+      `sidebarHeight`, in one effect** — `toolPanelRef`'s `getBoundingClientRect().top` (its
+      distance from the viewport's own top, which shifts with the headline card's own height, e.g.
+      a longer description wrapping to a second line) subtracted from `window.innerHeight`, floored
+      at `PANEL_MIN_HEIGHT` (360, a short-viewport floor) and padded by `PANEL_BOTTOM_GUTTER` (24)
+      gives `panelHeight`; `sidebarHeight` is `(toolPanelRef's top − mainColumnRef's top) +
+      panelHeight` — i.e. "headline card height + gap + panelHeight," computed directly rather
+      than measured off the main column's own rendered DOM height (see the regression below for
+      why that distinction matters). Both recompute on window `resize` and on `tab`/
+      `sidebarCollapsed` change. `panelHeight` is passed to `DevUtilToolPanel` as `availableHeight`;
+      `sidebarHeight` sizes the sidebar `Paper` directly (`height: sidebarHeight`, **not**
+      `maxHeight` — a `maxHeight` alone only clamps the upper bound, so a short tool list would
+      render at its own shrink-to-fit height instead of actually matching Input).
+    - **`DevUtilToolPanel.tsx`'s Input `Paper` is pinned to `availableHeight` exactly**
+      (`height: availableHeight`), replacing the old fixed `minRows={20}`/`maxRows={32}` auto-grow
+      range on the `TextField` — which needed its own fix once row-based auto-grow was dropped: a
+      fixed `rows={1}` (the value is irrelevant, it only forces MUI off its JS-driven
+      `react-textarea-autosize` path) plus a `'& .MuiInputBase-inputMultiline': { height: '100%
+      !important', overflow: 'auto !important' }` override (the `!important` is load-bearing — an
+      inline style set by JS can only be beaten by an `!important` rule, never a plain
+      same-specificity class rule) so the textarea fills the fixed height with its own internal
+      scrollbar.
+    - **Output does *not* pin to `availableHeight` — per a direct follow-up request ("Allow the
+      Output height grow to maximum 1000 line number. Above that -> user have to scroll"), it grows
+      with its own content instead, floored (not capped) at `availableHeight`.** New constants
+      `OUTPUT_MAX_LINES` (1000) × `OUTPUT_LINE_HEIGHT_PX` (20, an eyeballed estimate of the syntax
+      highlighter's own rendered line height — not measured in a real browser, same caveat every
+      other hand-tuned constant here carries) produce `OUTPUT_MAX_HEIGHT` (20,000px) — large enough
+      that in practice Output just grows with content (letting the *page* scroll, not a small
+      internal scrollbox) for any realistic response, only scrolling internally once genuinely near
+      that many lines. The Output `Paper` carries `minHeight: availableHeight` (a floor, not a
+      fixed size — **the regression fix**, see below) instead of no explicit height at all; its 3
+      content branches (error/output/placeholder) all carry `flex: 1, minHeight: 0` again (restored
+      after having been dropped for one turn) plus `maxHeight: OUTPUT_MAX_HEIGHT, overflow: 'auto'`
+      — the standard "`min-height` on an auto-sized flex column, a `flex: 1` child fills the
+      resulting free space" pattern: short content fills up to `availableHeight` (matching Input),
+      long content just grows the `Paper` past that floor (a `min-height` puts no ceiling on
+      growth), capped only by each content branch's own `maxHeight`/`overflow: 'auto'`. The row's
+      own `alignItems: 'flex-start'` (not the default `stretch`) keeps this fully self-contained —
+      under `stretch`, Output's own sizing would depend on a more subtle per-flex-line cross-size
+      computation (which gets harder to reason about once the row can wrap to two lines on a narrow
+      viewport) rather than being a direct function of each `Paper`'s own `sx`.
+    - **Regression #1, reported directly ("the height of the Sidebar now not equals to the height
+      of the Input/Output"): the sidebar's `Paper` used `maxHeight`, not `height`.** A `maxHeight`
+      only clamps the upper bound, so whenever the tool list's own natural content (one group
+      headline + 16 short rows) was shorter than the main column's real height, the sidebar
+      rendered at its own shrink-to-fit height instead of matching — invisible before `panelHeight`
+      existed (the main column's own height was itself content-driven and similarly short), but an
+      obvious mismatch once Input/Output started tracking the viewport instead (usually taller).
+      Fixed by switching to a fixed `height` (the constant renamed `SIDEBAR_MAX_HEIGHT_FALLBACK` →
+      `SIDEBAR_HEIGHT_FALLBACK`, since it's no longer a max).
+    - **Regression #2, reported directly ("when the height of the Output grow based on the content,
+      the Height of the Sidebar is growing too which is not correct"): `sidebarHeight` used to be
+      measured via a `ResizeObserver` on the whole main column's own rendered DOM height.** That
+      worked fine while Input and Output always shared the same fixed height, but once Output was
+      allowed to grow past `availableHeight` for a long response (the partial revert above), the
+      `ResizeObserver` picked that growth up and inflated the sidebar right along with it — the
+      sidebar must stay pinned to the viewport regardless of how tall Output's own content makes
+      it. Fixed by dropping the `ResizeObserver`/`mainColumnHeight` state entirely and computing
+      `sidebarHeight` directly alongside `panelHeight` (see above) from the same pair of
+      `getBoundingClientRect()` measurements — neither number depends on Output's own rendered size
+      at all anymore.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only, at every step of this
+      whole sequence — no Docker in this sandbox, so none of it (the grow/scroll behavior, the
+      sidebar-height match, either regression's actual fix) has been exercised in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's
