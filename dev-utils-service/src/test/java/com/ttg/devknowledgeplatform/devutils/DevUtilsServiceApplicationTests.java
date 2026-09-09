@@ -18,7 +18,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
  * {@link MockMvc} — verifies, end to end rather than by static reasoning alone, that this app
  * actually starts (the {@code GlobalExceptionHandler}/{@code spring-boot-starter-security}
  * classpath dependency reasoning in {@code security.SecurityConfig}'s own Javadoc holds up) and
- * that every one of the 20 operation endpoints is genuinely reachable with no
+ * that every one of the 22 operation endpoints is genuinely reachable with no
  * {@code Authorization} header at all.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -255,6 +255,24 @@ class DevUtilsServiceApplicationTests {
                         .content("{\"input\":\"100%\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_007")));
+    }
+
+    @Test
+    void encodeHtmlEntityIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/html-entity/encode")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"<b>Vui</b> & \\\"Coding\\\"\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("&lt;b&gt;Vui&lt;/b&gt; &amp; &quot;Coding&quot;")));
+    }
+
+    @Test
+    void decodeHtmlEntityIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/html-entity/decode")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"&lt;b&gt;Vui&lt;/b&gt; &amp; &quot;Coding&quot;\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<b>Vui</b> & \\\"Coding\\\"")));
     }
 
     @Test

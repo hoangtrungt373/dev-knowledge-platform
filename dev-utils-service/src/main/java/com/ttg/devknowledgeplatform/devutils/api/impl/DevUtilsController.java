@@ -14,6 +14,8 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.CssOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CsvToJsonOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.ErbOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlBeautifyOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlEntityDecodeOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlEntityEncodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonFormatOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToCsvOperation;
@@ -61,6 +63,8 @@ public class DevUtilsController implements DevUtilsApi {
     private final Base64DecodeOperation base64DecodeOperation;
     private final UrlEncodeOperation urlEncodeOperation;
     private final UrlDecodeOperation urlDecodeOperation;
+    private final HtmlEntityEncodeOperation htmlEntityEncodeOperation;
+    private final HtmlEntityDecodeOperation htmlEntityDecodeOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -160,5 +164,15 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<DevUtilResponse> decodeUrl(TextRequest request) {
         return ResponseEntity.ok(new DevUtilResponse(urlDecodeOperation.execute(request.input())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> encodeHtmlEntity(TextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(htmlEntityEncodeOperation.execute(request.input())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> decodeHtmlEntity(TextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(htmlEntityDecodeOperation.execute(request.input())));
     }
 }

@@ -127,4 +127,16 @@ export const devUtilsApi = {
   decodeUrl(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
     return httpClient.post(`${BASE}/url/decode`, { input }, showError);
   },
+
+  // The third ENCODERS_DECODERS-group operation, added alongside dev-utils-service's own
+  // HtmlEntityEncodeOperation/HtmlEntityDecodeOperation. No `minify` field on either — same
+  // reasoning `encodeBase64`/`encodeUrl` already establish; an escaped form has no distinct
+  // "compact form" to toggle.
+  encodeHtmlEntity(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/html-entity/encode`, { input }, showError);
+  },
+
+  decodeHtmlEntity(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/html-entity/decode`, { input }, showError);
+  },
 };

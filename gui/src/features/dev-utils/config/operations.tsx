@@ -7,6 +7,7 @@ import PhpIcon from '@mui/icons-material/PhpOutlined';
 import AbcIcon from '@mui/icons-material/AbcOutlined';
 import CodeIcon from '@mui/icons-material/CodeOutlined';
 import LinkIcon from '@mui/icons-material/LinkOutlined';
+import HtmlEntityIcon from '@mui/icons-material/HtmlOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, StringCaseResponse } from '../types';
@@ -30,7 +31,8 @@ export type TabKey =
   | 'json-to-php'
   | 'string-case-convert'
   | 'base64-string'
-  | 'url-string';
+  | 'url-string'
+  | 'html-entity-string';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -51,6 +53,7 @@ export const TAB_KEYS: TabKey[] = [
   'string-case-convert',
   'base64-string',
   'url-string',
+  'html-entity-string',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -461,6 +464,30 @@ export const OPERATIONS: OperationConfig[] = [
     secondaryAction: {
       label: 'Decode',
       onSubmit: input => devUtilsApi.decodeUrl(input),
+    },
+  },
+  {
+    key: 'html-entity-string',
+    // The third ENCODERS_DECODERS-group operation, added alongside dev-utils-service's own
+    // HtmlEntityEncodeOperation/HtmlEntityDecodeOperation — same Encode/Decode pairing shape
+    // base64-string/url-string already established.
+    group: 'Encoders/Decoders',
+    category: 'Encoders/Decoders',
+    label: 'HTML Entity',
+    description: 'Encode and decode HTML entities',
+    icon: <HtmlEntityIcon fontSize="small" />,
+    actionLabel: 'Encode',
+    inputPlaceholder: '<main class="hero">Dev Knowledge Platform © 2026</main>',
+    inputFormat: 'text',
+    outputLanguage: 'text',
+    // No minify option — an escaped form has no distinct "compact form" to toggle, same reasoning
+    // `base64-string`/`url-string` already establish.
+    supportsMinify: false,
+    downloadFileName: 'html-entity.txt',
+    onSubmit: input => devUtilsApi.encodeHtmlEntity(input),
+    secondaryAction: {
+      label: 'Decode',
+      onSubmit: input => devUtilsApi.decodeHtmlEntity(input),
     },
   },
 ];

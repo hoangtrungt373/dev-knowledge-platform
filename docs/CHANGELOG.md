@@ -1001,6 +1001,25 @@ section again. Full unabridged entry-by-entry history for all three lives in
       `DevUtilsServiceApplicationTests` cases), plus a clean `tsc --noEmit`/successful `vite build`
       on the GUI side — no Docker in this sandbox, so the actual two-button GUI flow is unverified
       in a real browser.
+    - **Follow-up: 2 more operations, `HtmlEntityEncodeOperation`/`HtmlEntityDecodeOperation`, per
+      request ("HTML Entity - HTML entity encoding and decoding") — the third pair to declare
+      `OperationGroup.ENCODERS_DECODERS`.** Backs `POST /api/v1/dev-utils/html-entity/{encode,
+      decode}`. Encode escapes only the five structurally-significant markup characters (`& < >
+      " '`) into `&amp; &lt; &gt; &quot; &#39;`, character by character — deliberately not a full
+      ISO-8859-1/HTML4 named-entity table (which would also rewrite `©` to `&copy;`, contradicting
+      the reported example where `©` survives untouched); never throws. Decode is the inverse of
+      that same fixed set (plus `&apos;`/`&#x27;` tolerated as alternate apostrophe spellings) via
+      one single-pass regex replace — never throws either, and leaves any unrecognized `&...;`
+      sequence (`&copy;`, `&nbsp;`) completely untouched rather than guessing, the same "no
+      invalid-input concept" shape as encode. This is the one operation pair in the module where
+      *neither* direction has a matching `DevUtilsErrorCode`. `gui`'s `config/operations.tsx`
+      gained the `html-entity-string` entry (reusing the existing `secondaryAction`/`savingAction`
+      mechanism, no new GUI capability needed); `api/devUtilsApi.ts` gained
+      `encodeHtmlEntity`/`decodeHtmlEntity`. 11 new backend tests (182→193 —
+      `HtmlEntityEncodeOperationTest`/`HtmlEntityDecodeOperationTest` plus 2 new
+      `DevUtilsServiceApplicationTests` cases), plus a clean `tsc --noEmit`/successful `vite build`
+      on the GUI side — no Docker in this sandbox, so the actual two-button GUI flow is unverified
+      in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

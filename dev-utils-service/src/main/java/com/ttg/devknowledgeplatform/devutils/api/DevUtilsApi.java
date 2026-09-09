@@ -232,4 +232,23 @@ public interface DevUtilsApi {
      */
     @PostMapping("/url/decode")
     ResponseEntity<DevUtilResponse> decodeUrl(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Escapes {@code & < > " '} into their named HTML character references. No minify option —
+     * see {@link TextRequest}'s own Javadoc for why; an escaped form has no distinct "compact
+     * form" to toggle. Never fails — every string has a valid escaped form.
+     *
+     * @return {@code 200} with the HTML-entity-encoded text
+     */
+    @PostMapping("/html-entity/encode")
+    ResponseEntity<DevUtilResponse> encodeHtmlEntity(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Decodes HTML character references back into their literal characters. Never fails — an
+     * unrecognized {@code &...;} sequence is left untouched rather than rejected.
+     *
+     * @return {@code 200} with the decoded text
+     */
+    @PostMapping("/html-entity/decode")
+    ResponseEntity<DevUtilResponse> decodeHtmlEntity(@Valid @RequestBody TextRequest request);
 }

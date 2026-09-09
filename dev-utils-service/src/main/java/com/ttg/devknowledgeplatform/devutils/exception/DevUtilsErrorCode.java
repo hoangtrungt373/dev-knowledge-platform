@@ -37,6 +37,12 @@ import lombok.Getter;
  * {@code INVALID_URL_ENCODING} is the same shape once more, for {@code UrlDecodeOperation} —
  * backed by the JDK's own {@link java.net.URLDecoder}, unlike {@code UrlEncodeOperation}, which —
  * like {@code Base64EncodeOperation} — has no invalid-input concept at all.
+ * {@code HtmlEntityEncodeOperation}/{@code HtmlEntityDecodeOperation} are the one pair in this
+ * whole enum where *neither* direction has a code: encode has no invalid-input concept (same as
+ * {@code Base64EncodeOperation}/{@code UrlEncodeOperation}), and decode is lenient by design — an
+ * unrecognized {@code &...;} sequence is left untouched rather than rejected, the same "no notion
+ * of invalid input" shape {@code StringCaseOperation} already establishes, just applied to a
+ * decode direction instead of an encode one.
  */
 @Getter
 public enum DevUtilsErrorCode implements ErrorCode {

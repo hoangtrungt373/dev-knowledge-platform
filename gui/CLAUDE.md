@@ -3527,6 +3527,29 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       side verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in
       this sandbox, so the actual two-button Encode/Decode flow for this operation is unverified in
       a real browser.
+  - **Follow-up: the third `ENCODERS_DECODERS`-group operation, "HTML Entity," per request — the
+    third Encode/Decode pair, again reusing the existing `secondaryAction`/`savingAction`
+    mechanism as-is (no new GUI capability needed a third time).** `config/operations.tsx` gained
+    the `html-entity-string` entry, right after `url-string`, with a new `HtmlOutlined` sidebar
+    icon (confirmed present in the installed `@mui/icons-material` version first, same
+    verification step every icon addition in this feature already establishes) and the exact
+    reported `<main class="hero">...</main>` snippet as its placeholder. `api/devUtilsApi.ts`
+    gained `encodeHtmlEntity`/`decodeHtmlEntity` — same two-separate-methods, no-`minify`-field
+    shape `encodeBase64`/`encodeUrl` already establish.
+    - **`inputFormat`/`outputLanguage` both stay `'text'`**, same as `base64-string`/`url-string`
+      — an HTML-entity-escaped string isn't really a "language" with syntax to highlight. Neither
+      backend operation ever throws (see `dev-utils-service/CLAUDE.md`'s own tenth-follow-up
+      note), so this is the first Encoders/Decoders pair where a failed submit is genuinely
+      impossible on either action — `errorFormatting.ts`'s generic fallback path exists for
+      consistency with every other operation, but there is no real invalid-input scenario to
+      trigger it here.
+    - Backend verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21) — see
+      `dev-utils-service/CLAUDE.md`'s own tenth-follow-up note for the operation classes
+      themselves, including why `©` deliberately survives Encode untouched (this operation escapes
+      only the five structurally-significant markup characters, not a full named-entity table).
+      GUI side verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker
+      in this sandbox, so the actual two-button Encode/Decode flow for this operation is unverified
+      in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

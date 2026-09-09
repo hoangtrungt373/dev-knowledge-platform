@@ -6,8 +6,8 @@ Module-local guidance for `dev-utils-service`. Read alongside the root `CLAUDE.m
 
 A stateless developer-utility API: JSON format/validate, YAML↔JSON conversion, HTML/CSS/LESS/SCSS/
 JS/ERB beautify+minify, XML validate/beautify+minify, JSON↔CSV conversion, SQL format+minify,
-PHP↔JSON conversion, String Case Converter, Base64 encode/decode, URL encode/decode. Package root:
-`com.ttg.devknowledgeplatform.devutils.*`.
+PHP↔JSON conversion, String Case Converter, Base64 encode/decode, URL encode/decode, HTML entity
+encode/decode. Package root: `com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike
 `ecommerce-service`/`identity-service`/`task-service`/`social-service`/`content-service`/
@@ -413,7 +413,8 @@ caller.** Every operation is a pure text-in/text-out transform:
   `/yaml-to-json`, `/json-to-yaml`, `/html/beautify`, `/css/beautify`, `/less/beautify`,
   `/scss/beautify`, `/js/beautify`, `/erb/beautify`, `/xml/beautify`, `/json-to-csv`,
   `/csv-to-json`, `/sql/format`, `/php-to-json`, `/json-to-php`, `/string-case/convert`,
-  `/base64/encode`, `/base64/decode`, `/url/encode`, `/url/decode`. The
+  `/base64/encode`, `/base64/decode`, `/url/encode`, `/url/decode`, `/html-entity/encode`,
+  `/html-entity/decode`. The
   controller injects each operation by its concrete type rather than dispatching through an
   enum-keyed registry — with one fixed REST endpoint per operation, there's no runtime "which
   operation" decision left to make (see `DevUtilOperation`'s own Javadoc).
@@ -822,13 +823,61 @@ mechanism is reused as-is).
   `400` with `DEVUTILS_007` through the shared `GlobalExceptionHandler`). Test suite grew from 172
   to 182, verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
 
+**Tenth follow-up — 2 more operations (`HtmlEntityEncodeOperation`/`HtmlEntityDecodeOperation`),
+the third pair to declare `OperationGroup.ENCODERS_DECODERS`**, per direct request: "HTML Entity -
+HTML entity encoding and decoding." Backs `POST /api/v1/dev-utils/html-entity/encode` and
+`POST /api/v1/dev-utils/html-entity/decode` — same Encode/Decode two-button shape
+`Base64EncodeOperation`/`UrlEncodeOperation` already established, so no new `gui`-side capability
+was needed again.
+- **`HtmlEntityEncodeOperation` escapes only the five structurally-significant markup characters
+  — `& < > " '` — into `&amp; &lt; &gt; &quot; &#39;`, character by character (not a sequence of
+  `String#replace` calls, which would risk re-escaping a literal `&` a later replacement just
+  produced).** Deliberately does **not** escape anything else, confirmed against the exact
+  reported example: `©` (U+00A9) survives the round trip untouched. This was a real, deliberate
+  design decision, not an oversight — Spring's own `infra`-adjacent `HtmlUtils.htmlEscape` (and
+  Apache Commons Text's `escapeHtml4`) both escape the *full* ISO-8859-1/HTML4 named-entity table,
+  which would have rewritten `©` to `&copy;` and contradicted the reported example outright; this
+  operation is a narrower "make this text safe to embed literally inside HTML markup" transform
+  instead, the same fixed five-character set XML 1.0/1.1's own predefined entities cover (matching
+  what `org.apache.commons.text.StringEscapeUtils#escapeXml11` would produce, had that dependency
+  already been on this module's classpath — it isn't, and wasn't added just for this, since the
+  five-character-switch is a five-line hand-roll with no library needed). Never throws — every
+  string has a valid escaped form — so, like `Base64EncodeOperation`/`UrlEncodeOperation`, it has
+  no matching `DevUtilsErrorCode`.
+- **`HtmlEntityDecodeOperation` decodes exactly the inverse set, plus two extra apostrophe
+  spellings (`&apos;`, `&#x27;`) tolerated on decode even though encode only ever emits `&#39;`** —
+  via one `Pattern#matcher(...).replaceAll(Function<MatchResult, String>)` pass (Java 9+'s
+  function-based overload; the returned string is inserted verbatim, no backslash/`$`
+  reinterpretation to guard against), not a sequence of `String#replace` calls — this is what
+  makes decoding exactly single-level: `"&amp;lt;"` decodes to `"&lt;"`, never all the way back to
+  `"<"`, since the one matched `&amp;` token is consumed and the scan continues *after* it, never
+  re-examining the `lt;` that followed. **Deliberately lenient, no broader named-entity table
+  recognized** (`&copy;`, `&nbsp;`, etc. all pass through completely untouched) — the same
+  "encode/decode are exact inverses of one fixed set, not a general HTML-entity table" scoping
+  choice the encode side already makes, mirrored onto decode; an unrecognized `&...;` sequence is
+  left alone rather than rejected, matching how a browser's own entity decoder behaves. Never
+  throws either — this module's one pair where *neither* direction has a matching
+  `DevUtilsErrorCode` (see `DevUtilsErrorCode`'s own updated Javadoc).
+- `gui`'s `config/operations.tsx` gained the new `html-entity-string` entry (group/category
+  `'Encoders/Decoders'`, right after `url-string`, with a new `HtmlOutlined` sidebar icon);
+  `api/devUtilsApi.ts` gained `encodeHtmlEntity`/`decodeHtmlEntity`.
+- 11 new tests: `HtmlEntityEncodeOperationTest` (4 — the exact reported example, a non-ASCII-stays-
+  untouched case, the exactly-once-ampersand-escaping case, empty string),
+  `HtmlEntityDecodeOperationTest` (5 — the exact reported example, both apostrophe spellings plus
+  `&amp;`, the single-level-decode case, the unrecognized-entity-passes-through case, empty
+  string), plus 2 new `DevUtilsServiceApplicationTests` cases (both new endpoints' reachability
+  with no `Authorization` header — neither has a malformed-input case to test, since neither
+  direction throws). Test suite grew from 182 to 193, verified via a real
+  `mvn -pl dev-utils-service -am test` run (JDK 21).
+
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
 `HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
 `JsOperationTest`, `ErbOperationTest`, `XmlOperationTest`, `JsonToCsvOperationTest`,
 `CsvToJsonOperationTest`, `SqlFormatOperationTest`, `PhpToJsonOperationTest`,
 `JsonToPhpOperationTest`, `StringCaseOperationTest`, `Base64EncodeOperationTest`,
-`Base64DecodeOperationTest`, `UrlEncodeOperationTest`, `UrlDecodeOperationTest`), plus `service/impl/support/
+`Base64DecodeOperationTest`, `UrlEncodeOperationTest`, `UrlDecodeOperationTest`,
+`HtmlEntityEncodeOperationTest`, `HtmlEntityDecodeOperationTest`), plus `service/impl/support/
 CurlyBraceFormatterTest` (the shared CSS/LESS/SCSS/JS reformatter — brace nesting, already-
 multiline selector lists, comment/string-literal protection, the JS ASI-safety guarantee,
 never-throws-on-unterminated-input), `service/impl/support/SqlFormatterTest` (clause-keyword line
@@ -847,7 +896,7 @@ real parse/serialize behavior (pretty vs. minified output, malformed-input rejec
 structural equality via `readTree`, jsoup's lenient-parsing/indent behavior, and — for
 `XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation` — real JAXP/CSV/PHP parsing and rejection
 behavior). Plus `DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)`
-+ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all twenty endpoints with
++ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all twenty-two endpoints with
 **no** `Authorization` header through the real filter chain, confirming end to end (not just by
 static reasoning) that the app actually starts and every endpoint is genuinely public. This is
 exactly the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also
@@ -855,12 +904,15 @@ covers the `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected on
 latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP/
 Base64/URL-encoding all return `400` with
 `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005`/`DEVUTILS_006`/`DEVUTILS_007` respectively through the
-shared `GlobalExceptionHandler`. Plus `service/impl/support/
+shared `GlobalExceptionHandler` — `html-entity/encode`/`decode` have no matching case here, since
+neither direction ever throws (see `DevUtilsErrorCode`'s own updated Javadoc). Plus
+`service/impl/support/
 ConventionalJsonPrettyPrinterTest` (the one support class in this module with its own dedicated
 test file rather than only being exercised indirectly through an operation's own tests — see that
-class's own note above for why). 182 tests total (161 as of the seventh follow-up above, plus 8 new
-Base64 unit tests and 3 new `DevUtilsServiceApplicationTests` cases from the eighth follow-up, plus
-7 new URL unit tests and 3 more `DevUtilsServiceApplicationTests` cases from the ninth — see each
+class's own note above for why). 193 tests total (161 as of the seventh follow-up above, plus 8 new
+Base64 unit tests and 3 new `DevUtilsServiceApplicationTests` cases from the eighth follow-up, 7 new
+URL unit tests and 3 more `DevUtilsServiceApplicationTests` cases from the ninth, and 9 new HTML
+entity unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the tenth — see each
 follow-up's own note for the full breakdown), verified via a real
 `mvn -pl dev-utils-service -am test` run (JDK 21).
 

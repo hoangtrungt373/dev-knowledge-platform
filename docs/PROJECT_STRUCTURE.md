@@ -2347,10 +2347,11 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 each with a Title-Case getLabel() (the GUI applies CSS
 │   │                                 text-transform, matching the existing "Tools" sidebar caption
 │   │                                 convention). 16 operations declare FORMATTERS; Base64Encode/
-│   │                                 DecodeOperation and UrlEncode/DecodeOperation declare
-│   │                                 ENCODERS_DECODERS instead — the concrete example that group's
-│   │                                 own Javadoc named ahead of use ("a Base64/URL encoder")
-│   │                                 landing for real, both halves.
+│   │                                 DecodeOperation, UrlEncode/DecodeOperation, and
+│   │                                 HtmlEntityEncode/DecodeOperation declare ENCODERS_DECODERS
+│   │                                 instead — the concrete example that group's own Javadoc named
+│   │                                 ahead of use ("a Base64/URL encoder") landing for real, all
+│   │                                 three pairs.
 │   │                                 INSPECTORS/WEB/GENERATORS remain declared-ahead-of-use, still
 │   │                                 with no operation of their own yet.
 │   └── impl/
@@ -2442,6 +2443,19 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   throws BusinessException wrapping
 │       │                                   INVALID_URL_ENCODING (DEVUTILS_007) on malformed
 │       │                                   percent-encoding
+│       ├── HtmlEntityEncodeOperation.java — execute(String input); escapes only & < > " ' into
+│       │                                   &amp; &lt; &gt; &quot; &#39; (char-by-char, not
+│       │                                   sequential String#replace calls); deliberately leaves
+│       │                                   every other character (incl. non-ASCII, e.g. ©)
+│       │                                   untouched — not a full named-entity table encoder;
+│       │                                   never throws
+│       ├── HtmlEntityDecodeOperation.java — execute(String input); one regex replaceAll pass
+│       │                                   decoding the inverse set (plus &apos;/&#x27; as
+│       │                                   alternate apostrophe spellings) exactly one level deep;
+│       │                                   an unrecognized &...; sequence passes through
+│       │                                   untouched; never throws — the one pair in this module
+│       │                                   where neither direction has a matching
+│       │                                   DevUtilsErrorCode
 │       └── support/
 │           ├── CurlyBraceFormatter.java — beautify(String)/minify(String), static utility (not a
 │           │                               DevUtilOperation itself). Shared by Css/Less/Scss/
@@ -2532,8 +2546,9 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
     │                                 scss/beautify,js/beautify,erb/beautify,xml/beautify,
     │                                 json-to-csv,csv-to-json,sql/format,php-to-json,json-to-php,
     │                                 string-case/convert,base64/encode,base64/decode,url/encode,
-    │                                 url/decode}. Every endpoint is public — no @CurrentUserId, no
-    │                                 authenticated principal at all.
+    │                                 url/decode,html-entity/encode,html-entity/decode}. Every
+    │                                 endpoint is public — no @CurrentUserId, no authenticated
+    │                                 principal at all.
     └── impl/DevUtilsController.java — implements DevUtilsApi; injects each operation by its
                                         concrete type (no enum-keyed registry — one fixed endpoint
                                         per operation leaves no runtime dispatch decision to make)
