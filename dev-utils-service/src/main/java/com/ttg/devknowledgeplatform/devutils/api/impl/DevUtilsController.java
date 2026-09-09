@@ -24,7 +24,9 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToCsvOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToPhpOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToYamlOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.LessOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.PhpSerializeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.PhpToJsonOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.PhpUnserializeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.ScssOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.SqlFormatOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.StringCaseOperation;
@@ -68,6 +70,8 @@ public class DevUtilsController implements DevUtilsApi {
     private final HtmlEntityEncodeOperation htmlEntityEncodeOperation;
     private final HtmlEntityDecodeOperation htmlEntityDecodeOperation;
     private final HashGeneratorOperation hashGeneratorOperation;
+    private final PhpSerializeOperation phpSerializeOperation;
+    private final PhpUnserializeOperation phpUnserializeOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -182,5 +186,15 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<HashResponse> generateHash(TextRequest request) {
         return ResponseEntity.ok(hashGeneratorOperation.execute(request.input()));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> serializePhp(TextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(phpSerializeOperation.execute(request.input())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> unserializePhp(TextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(phpUnserializeOperation.execute(request.input())));
     }
 }

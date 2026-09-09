@@ -47,7 +47,11 @@ const HEADLINE = 'Cannot be processed';
  * `csv-to-json`/`php-to-json` (no client-side parser available for any of the four) — normally a
  * pure passthrough of the now-already-clean backend message, but still tolerant of the old noisy
  * shape too, in case this ever regresses or a genuinely different technical-error message (network
- * failure, 5xx) reaches it instead.
+ * failure, 5xx) reaches it instead. `url-string`/`base64-string`/`html-entity-string`'s own decode
+ * actions, and `php-serializer`'s own Unserialize action, take this same fallback path too — each
+ * uses `inputFormat: 'text'` (not `'json'`) since the shared input box's actual content isn't JSON
+ * for at least one of the operation's two directions, so `isJsonInput` is always `false` for them
+ * regardless of which action just ran.
  */
 export function buildDevUtilError(input: string, isJsonInput: boolean, backendMessage: string): DevUtilError {
   if (isJsonInput) {

@@ -34,7 +34,8 @@ export type TabKey =
   | 'base64-string'
   | 'url-string'
   | 'html-entity-string'
-  | 'hash-generator';
+  | 'hash-generator'
+  | 'php-serializer';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -57,6 +58,7 @@ export const TAB_KEYS: TabKey[] = [
   'url-string',
   'html-entity-string',
   'hash-generator',
+  'php-serializer',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -529,5 +531,42 @@ export const OPERATIONS: OperationConfig[] = [
     // `string-case-convert`'s own onSubmit already establishes above — see
     // formatHashResult's own comment.
     onSubmit: async input => ({ output: formatHashResult(await devUtilsApi.generateHash(input)) }),
+  },
+  {
+    key: 'php-serializer',
+    // The fourth ENCODERS_DECODERS-group operation, added alongside dev-utils-service's own
+    // PhpSerializeOperation/PhpUnserializeOperation — same Encode/Decode pairing shape
+    // base64-string/url-string/html-entity-string already established. Genuinely different from
+    // `php-to-json`/`json-to-php` above (both Formatters-group "Converters") — those convert
+    // between JSON and PHP *array-literal source code* (`['key' => 'value']`); this one converts
+    // between JSON and PHP's own serialize()/unserialize() wire format (`a:N:{...}`).
+    group: 'Encoders/Decoders',
+    category: 'Encoders/Decoders',
+    label: 'PHP Serializer',
+    description: "Serialize JSON into PHP's serialize() format, and back",
+    icon: <PhpIcon fontSize="small" />,
+    actionLabel: 'Serialize',
+    inputPlaceholder: '{"name":"DevKnowledge","active":true,"count":47}',
+    // 'text', not 'json' — this input box is shared by both directions, and Unserialize's own
+    // input is a PHP serialize() string, not JSON; picking 'json' here would make a failed
+    // Unserialize incorrectly try the browser's own JSON.parse fast path first (see
+    // errorFormatting.ts#buildDevUtilError), producing a misleading "not valid JSON" message for
+    // input that was never meant to be JSON in the first place.
+    inputFormat: 'text',
+    // Same reasoning in reverse for the output side — Serialize's own output is PHP's serialize
+    // format, not JSON, so 'json' would be wrong there too; 'text' is the one shared choice that's
+    // never actively misleading for either direction.
+    outputLanguage: 'text',
+    // No minify option — see `base64-string`/`url-string`/`html-entity-string`'s own comments;
+    // PHP's serialize format has no distinct "compact form," and Unserialize's own JSON output is
+    // always pretty-printed (see PhpUnserializeOperation's own Javadoc for why that asymmetry
+    // with `json-to-php`'s minify support was deliberate).
+    supportsMinify: false,
+    downloadFileName: 'php-serialized.txt',
+    onSubmit: input => devUtilsApi.serializePhp(input),
+    secondaryAction: {
+      label: 'Unserialize',
+      onSubmit: input => devUtilsApi.unserializePhp(input),
+    },
   },
 ];

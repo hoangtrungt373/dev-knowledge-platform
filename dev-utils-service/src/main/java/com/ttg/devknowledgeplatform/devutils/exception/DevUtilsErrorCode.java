@@ -44,7 +44,13 @@ import lombok.Getter;
  * of invalid input" shape {@code StringCaseOperation} already establishes, just applied to a
  * decode direction instead of an encode one. {@code HashGeneratorOperation} is the same "no
  * invalid-input concept at all" story once more — every string has a valid SHA-1/256/384/512
- * digest — so it has no matching code either.
+ * digest — so it has no matching code either. {@code INVALID_PHP_SERIALIZED} is the same shape
+ * as {@code INVALID_PHP} once more, for {@code PhpUnserializeOperation} — backed by this
+ * module's own {@code service.impl.support.PhpSerializeParser}, a real validating parser for
+ * PHP's {@code serialize()} textual format (genuinely distinct from the array-literal syntax
+ * {@code PhpArrayParser}/{@code INVALID_PHP} cover) — unlike {@code PhpSerializeOperation}, which
+ * — like {@code JsonToPhpOperation} — reuses {@code INVALID_JSON} instead of getting its own code,
+ * since its input is JSON either way.
  */
 @Getter
 public enum DevUtilsErrorCode implements ErrorCode {
@@ -55,7 +61,8 @@ public enum DevUtilsErrorCode implements ErrorCode {
     INVALID_CSV("DEVUTILS_004", "Invalid CSV: {0}", HttpStatus.BAD_REQUEST),
     INVALID_PHP("DEVUTILS_005", "Invalid PHP: {0}", HttpStatus.BAD_REQUEST),
     INVALID_BASE64("DEVUTILS_006", "Invalid Base64: {0}", HttpStatus.BAD_REQUEST),
-    INVALID_URL_ENCODING("DEVUTILS_007", "Invalid URL encoding: {0}", HttpStatus.BAD_REQUEST);
+    INVALID_URL_ENCODING("DEVUTILS_007", "Invalid URL encoding: {0}", HttpStatus.BAD_REQUEST),
+    INVALID_PHP_SERIALIZED("DEVUTILS_008", "Invalid PHP serialized data: {0}", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

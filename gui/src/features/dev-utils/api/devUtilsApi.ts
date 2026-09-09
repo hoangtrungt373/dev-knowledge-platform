@@ -147,4 +147,18 @@ export const devUtilsApi = {
   generateHash(input: string, showError?: ShowError): Promise<HashResponse> {
     return httpClient.post(`${BASE}/hash/generate`, { input }, showError);
   },
+
+  // The fourth ENCODERS_DECODERS-group operation, added alongside dev-utils-service's own
+  // PhpSerializeOperation/PhpUnserializeOperation. No `minify` field on either — same reasoning
+  // `encodeBase64`/`encodeUrl`/`encodeHtmlEntity` already establish; PHP's serialize() format has
+  // no distinct "compact form" to toggle, and unserializePhp's own JSON output is always
+  // pretty-printed (see that backend operation's own Javadoc for why it deliberately doesn't
+  // support minify the way `phpToJson` does).
+  serializePhp(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/php-serialize/serialize`, { input }, showError);
+  },
+
+  unserializePhp(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/php-serialize/unserialize`, { input }, showError);
+  },
 };

@@ -263,4 +263,24 @@ public interface DevUtilsApi {
      */
     @PostMapping("/hash/generate")
     ResponseEntity<HashResponse> generateHash(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Converts a raw JSON value into PHP's own {@code serialize()} textual format. No minify
+     * option — see {@link TextRequest}'s own Javadoc for why; PHP's serialize format is already a
+     * single compact string with no distinct "pretty" form to toggle.
+     *
+     * @return {@code 200} with the serialized PHP data, or {@code 400} if {@code request.input()}
+     *         isn't valid JSON
+     */
+    @PostMapping("/php-serialize/serialize")
+    ResponseEntity<DevUtilResponse> serializePhp(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Converts a raw PHP {@code serialize()}-format string back into JSON, always pretty-printed.
+     *
+     * @return {@code 200} with the converted JSON, or {@code 400} if {@code request.input()} isn't
+     *         a valid PHP {@code serialize()}-format string
+     */
+    @PostMapping("/php-serialize/unserialize")
+    ResponseEntity<DevUtilResponse> unserializePhp(@Valid @RequestBody TextRequest request);
 }

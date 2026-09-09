@@ -7,8 +7,8 @@ Module-local guidance for `dev-utils-service`. Read alongside the root `CLAUDE.m
 A stateless developer-utility API: JSON format/validate, YAML↔JSON conversion, HTML/CSS/LESS/SCSS/
 JS/ERB beautify+minify, XML validate/beautify+minify, JSON↔CSV conversion, SQL format+minify,
 PHP↔JSON conversion, String Case Converter, Base64 encode/decode, URL encode/decode, HTML entity
-encode/decode, Hash Generator (SHA-1/256/384/512). Package root:
-`com.ttg.devknowledgeplatform.devutils.*`.
+encode/decode, Hash Generator (SHA-1/256/384/512), PHP Serializer (JSON ↔ PHP's own serialize()
+format). Package root: `com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike
 `ecommerce-service`/`identity-service`/`task-service`/`social-service`/`content-service`/
@@ -415,7 +415,8 @@ caller.** Every operation is a pure text-in/text-out transform:
   `/scss/beautify`, `/js/beautify`, `/erb/beautify`, `/xml/beautify`, `/json-to-csv`,
   `/csv-to-json`, `/sql/format`, `/php-to-json`, `/json-to-php`, `/string-case/convert`,
   `/base64/encode`, `/base64/decode`, `/url/encode`, `/url/decode`, `/html-entity/encode`,
-  `/html-entity/decode`, `/hash/generate`. The
+  `/html-entity/decode`, `/hash/generate`, `/php-serialize/serialize`,
+  `/php-serialize/unserialize`. The
   controller injects each operation by its concrete type rather than dispatching through an
   enum-keyed registry — with one fixed REST endpoint per operation, there's no runtime "which
   operation" decision left to make (see `DevUtilOperation`'s own Javadoc).
@@ -917,6 +918,71 @@ half of that same example, a JWT decoder, is still unbuilt).
   throws). Test suite grew from 193 to 198, verified via a real `mvn -pl dev-utils-service -am
   test` run (JDK 21).
 
+**Twelfth follow-up — 2 more operations (`PhpSerializeOperation`/`PhpUnserializeOperation`), the
+fourth pair to declare `OperationGroup.ENCODERS_DECODERS`**, per direct request: "PHP Serializer -
+Serialize JSON in PHP format." Backs `POST /api/v1/dev-utils/php-serialize/serialize` and
+`POST /api/v1/dev-utils/php-serialize/unserialize` — same Encode/Decode two-button shape
+`Base64EncodeOperation`/`UrlEncodeOperation`/`HtmlEntityEncodeOperation` already established.
+**Genuinely different from this module's existing `PhpToJsonOperation`/`JsonToPhpOperation`** —
+those two convert between JSON and PHP *array-literal source code* (`['key' => 'value']`, see
+`service.impl.support.PhpArrayWriter`/`PhpArrayParser`); this pair converts between JSON and PHP's
+own `serialize()`/`unserialize()` *wire format* (`a:N:{...}`) — the textual shape PHP's own
+`serialize()` function produces (and `unserialize()` reads back), e.g. what WordPress options or
+PHP session data are stored as. Two new support classes, mirroring the existing
+`PhpArrayWriter`/`PhpArrayParser` split:
+- **`service/impl/support/PhpSerializeWriter`** (`write(JsonNode): String`) — recursively renders
+  a JSON object/array as PHP's `a:N:{...}` (an object's own field names become string keys; an
+  array's own position becomes a sequential integer key — PHP has no separate list type, so both
+  become the same `a:N:{...}` shape, matching how `json_decode($json, true)` represents both), a
+  JSON string as `s:L:"...";`, a number as `i:N;`/`d:N;` (integral vs. floating-point), a boolean
+  as `b:0;`/`b:1;`, and null as `N;`. **`s:L:"..."`'s own length `L` is counted in UTF-8 bytes, not
+  Java `char`s** — required for correctness on any non-ASCII string, matching the same discipline
+  `Base64EncodeOperation`'s own multi-byte handling already established; verified against a real
+  standalone Java harness first (`"café"` → 5 bytes despite 4 Java `char`s; `"Hi👋"` → 6 bytes
+  despite 4 Java `char`s, the emoji being a surrogate pair) before writing the matching test
+  assertions. Double formatting uses Java's own `Double#toString`, not a byte-for-byte replica of
+  PHP's own `serialize_precision` rules — a documented, accepted "reasonable effort" gap, the same
+  trade-off `SqlFormatter`/`CurlyBraceFormatter` already make elsewhere in this module for a format
+  with no single Java-library equivalent to delegate to.
+- **`service/impl/support/PhpSerializeParser`** (`parse(String): Object`, throwing the new nested
+  `PhpSerializeParseException` on malformed input — the same "real, validating parser" shape
+  `PhpArrayParser` already establishes, not a lenient reformatter) — the exact inverse. Its own
+  `consumeStringBytes` walks the input **one Unicode code point at a time, not one `char`**, since
+  a code point outside the Basic Multilingual Plane is one 4-byte UTF-8 sequence but *two* Java
+  `char`s (a surrogate pair); advancing by raw `char` count there would split a surrogate pair and
+  silently corrupt the decoded string — verified against the same harness, reversing both the
+  `"café"` and `"Hi👋"` cases above byte-for-byte. An `a:N:{...}` array becomes a JSON array only
+  when its own keys are exactly `0, 1, 2, ..., N-1` in that order (PHP's own default auto-increment
+  keys — what `serialize()` itself always produces for a plain indexed array), the same rule
+  `PhpArrayParser` already applies for its own array-literal syntax; any other array (genuinely
+  associative, or gapped/re-ordered integer keys) becomes a JSON object with every key stringified.
+- `PhpSerializeOperation` reuses `DevUtilsErrorCode.INVALID_JSON` rather than its own code — same
+  choice `JsonToPhpOperation` already makes, since its input is JSON either way and any valid JSON
+  value can always become PHP's serialize format. `PhpUnserializeOperation` gets a real new code,
+  `DevUtilsErrorCode.INVALID_PHP_SERIALIZED` (`DEVUTILS_008`), the same "real parse, real
+  invalid-input error" shape `INVALID_PHP` already establishes for the array-literal side.
+  **`PhpUnserializeOperation`'s own JSON output has no minify option, unlike `PhpToJsonOperation`'s**
+  — a deliberate asymmetry: this pair shares one Minify-toggle-less request shape
+  (`dto.TextRequest`) across both directions, the same as every other `ENCODERS_DECODERS` pair, so
+  a Minify control that only ever affected one of the two actions was avoided rather than
+  introduced.
+- `gui`'s `config/operations.tsx` gained the new `php-serializer` entry (group/category
+  `'Encoders/Decoders'`, reusing the existing `PhpOutlined` sidebar icon `php-to-json`/
+  `json-to-php` already use — a genuinely PHP-flavored operation, not a new icon for its own sake).
+  **`inputFormat`/`outputLanguage` are both `'text'`, deliberately not `'json'`** even though
+  Serialize's own input (and Unserialize's own output) really is JSON — the shared input box is
+  fed to *both* directions, and Unserialize's own input is a PHP serialize string, not JSON;
+  picking `'json'` would make a failed Unserialize incorrectly try the browser's own `JSON.parse`
+  fast path first (see `errorFormatting.ts#buildDevUtilError`), producing a misleading "not valid
+  JSON" message for input that was never meant to be JSON. `api/devUtilsApi.ts` gained
+  `serializePhp`/`unserializePhp`.
+- 24 new tests: `PhpSerializeWriterTest` (6), `PhpSerializeParserTest` (9, including a full
+  round-trip through `PhpSerializeWriter` and the exact reported example), `PhpSerializeOperationTest`
+  (3) and `PhpUnserializeOperationTest` (3), plus 3 new `DevUtilsServiceApplicationTests` cases
+  (both new endpoints' reachability with no `Authorization` header, and malformed serialized PHP
+  data returning `400` with `DEVUTILS_008` through the shared `GlobalExceptionHandler`). Test suite
+  grew from 198 to 222, verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
+
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
 `HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
@@ -924,8 +990,8 @@ half of that same example, a JWT decoder, is still unbuilt).
 `CsvToJsonOperationTest`, `SqlFormatOperationTest`, `PhpToJsonOperationTest`,
 `JsonToPhpOperationTest`, `StringCaseOperationTest`, `Base64EncodeOperationTest`,
 `Base64DecodeOperationTest`, `UrlEncodeOperationTest`, `UrlDecodeOperationTest`,
-`HtmlEntityEncodeOperationTest`, `HtmlEntityDecodeOperationTest`, `HashGeneratorOperationTest`),
-plus `service/impl/support/
+`HtmlEntityEncodeOperationTest`, `HtmlEntityDecodeOperationTest`, `HashGeneratorOperationTest`,
+`PhpSerializeOperationTest`, `PhpUnserializeOperationTest`), plus `service/impl/support/
 CurlyBraceFormatterTest` (the shared CSS/LESS/SCSS/JS reformatter — brace nesting, already-
 multiline selector lists, comment/string-literal protection, the JS ASI-safety guarantee,
 never-throws-on-unterminated-input), `service/impl/support/SqlFormatterTest` (clause-keyword line
@@ -936,7 +1002,11 @@ splitting on a bare comma, minify's comment-stripping/single-line collapse, neve
 sequential-explicit-keys case, legacy `array(...)` syntax, single- vs. double-quoted escape rules,
 comment skipping, trailing commas, `PhpParseException` with a real line/column on malformed
 input), `service/impl/support/PhpArrayWriterTest` (pretty vs. minified output, string escaping, a
-real round-trip through `PhpArrayParser`), and `service/impl/support/StringCaseConverterTest`
+real round-trip through `PhpArrayParser`), `service/impl/support/PhpSerializeWriterTest`/
+`PhpSerializeParserTest` (the exact reported example each direction, nested objects/arrays, the
+UTF-8-byte-vs-Java-char string-length case for both writer and parser, a full round-trip, and
+`PhpSerializeParseException` with a real line/column on malformed input), and
+`service/impl/support/StringCaseConverterTest`
 (every case variant, camelCase/acronym/delimiter word-splitting, a round-trip confirming every
 variant re-splits into the same words), no Mockito anywhere — each constructs real `ObjectMapper`/
 `YAMLMapper`/`CsvMapper` instances rather than mocking Jackson, since the whole point is verifying
@@ -944,25 +1014,26 @@ real parse/serialize behavior (pretty vs. minified output, malformed-input rejec
 structural equality via `readTree`, jsoup's lenient-parsing/indent behavior, and — for
 `XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation` — real JAXP/CSV/PHP parsing and rejection
 behavior). Plus `DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)`
-+ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all twenty-three endpoints
++ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all twenty-five endpoints
 with **no** `Authorization` header through the real filter chain, confirming end to end (not just
 by static reasoning) that the app actually starts and every endpoint is genuinely public. This is
 exactly the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also
 covers the `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the
 latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP/
-Base64/URL-encoding all return `400` with
-`DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005`/`DEVUTILS_006`/`DEVUTILS_007` respectively through the
-shared `GlobalExceptionHandler` — `html-entity/encode`/`decode` and `hash/generate` have no
-matching case here, since none of those three ever throws (see `DevUtilsErrorCode`'s own updated
-Javadoc). Plus `service/impl/support/
+Base64/URL-encoding/PHP-serialized-data all return `400` with
+`DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005`/`DEVUTILS_006`/`DEVUTILS_007`/`DEVUTILS_008`
+respectively through the shared `GlobalExceptionHandler` — `html-entity/encode`/`decode`,
+`hash/generate`, and `php-serialize/serialize` have no matching case here, since none of those four
+ever throws (see `DevUtilsErrorCode`'s own updated Javadoc). Plus `service/impl/support/
 ConventionalJsonPrettyPrinterTest` (the one support class in this module with its own dedicated
 test file rather than only being exercised indirectly through an operation's own tests — see that
-class's own note above for why). 198 tests total (161 as of the seventh follow-up above, plus 8 new
+class's own note above for why). 222 tests total (161 as of the seventh follow-up above, plus 8 new
 Base64 unit tests and 3 new `DevUtilsServiceApplicationTests` cases from the eighth follow-up, 7 new
 URL unit tests and 3 more `DevUtilsServiceApplicationTests` cases from the ninth, 9 new HTML entity
-unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the tenth, and 4 new Hash
-Generator unit tests plus 1 more `DevUtilsServiceApplicationTests` case from the eleventh — see
-each follow-up's own note for the full breakdown), verified via a real
+unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the tenth, 4 new Hash
+Generator unit tests plus 1 more `DevUtilsServiceApplicationTests` case from the eleventh, and 21
+new PHP Serializer unit tests plus 3 more `DevUtilsServiceApplicationTests` cases from the
+twelfth — see each follow-up's own note for the full breakdown), verified via a real
 `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module

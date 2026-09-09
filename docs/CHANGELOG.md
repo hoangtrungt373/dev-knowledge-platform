@@ -1062,6 +1062,28 @@ section again. Full unabridged entry-by-entry history for all three lives in
       color, the same per-type badge convention `outputLanguages.ts#OUTPUT_LANGUAGE_INFO` already
       establishes elsewhere in this feature. Verified via a clean `tsc --noEmit`/successful
       `vite build` only — no Docker in this sandbox, so both fixes are unverified in a real browser.
+    - **Follow-up: 2 more operations, `PhpSerializeOperation`/`PhpUnserializeOperation`, per
+      request ("PHP Serializer - Serialize JSON in PHP format") — the fourth pair to declare
+      `OperationGroup.ENCODERS_DECODERS`.** Backs `POST /api/v1/dev-utils/php-serialize/
+      {serialize,unserialize}`. Genuinely different from this module's existing
+      `PhpToJsonOperation`/`JsonToPhpOperation` (which convert between JSON and PHP array-literal
+      *source code*, `['key' => 'value']`) — this pair converts between JSON and PHP's own
+      `serialize()`/`unserialize()` *wire format* (`a:N:{...}`), via two new support classes
+      (`PhpSerializeWriter`/`PhpSerializeParser`) mirroring the existing `PhpArrayWriter`/
+      `PhpArrayParser` split. String lengths (`s:L:"...";`) are counted in UTF-8 bytes, not Java
+      chars — verified against a real standalone Java harness for a genuinely multi-byte example
+      (`"Hi👋"`, a surrogate pair in Java) before writing the matching tests, on both the writer and
+      parser sides. `PhpSerializeOperation` reuses `INVALID_JSON` (same choice `JsonToPhpOperation`
+      already makes); new `DevUtilsErrorCode.INVALID_PHP_SERIALIZED` (`DEVUTILS_008`) backs
+      `PhpUnserializeOperation`'s own real failure path. `gui`'s `config/operations.tsx` gained the
+      `php-serializer` entry (reusing the existing `PhpOutlined` icon, no new GUI capability
+      needed); `api/devUtilsApi.ts` gained `serializePhp`/`unserializePhp` — both use
+      `inputFormat: 'text'` (not `'json'`) since the shared input box also serves Unserialize's own
+      non-JSON input. 24 new backend tests (198→222 — `PhpSerializeWriterTest`/
+      `PhpSerializeParserTest`/`PhpSerializeOperationTest`/`PhpUnserializeOperationTest` plus 3 new
+      `DevUtilsServiceApplicationTests` cases), plus a clean `tsc --noEmit`/successful `vite build`
+      on the GUI side — no Docker in this sandbox, so the actual two-button GUI flow is unverified
+      in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

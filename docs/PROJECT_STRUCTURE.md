@@ -2347,11 +2347,12 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 each with a Title-Case getLabel() (the GUI applies CSS
 │   │                                 text-transform, matching the existing "Tools" sidebar caption
 │   │                                 convention). 16 operations declare FORMATTERS; Base64Encode/
-│   │                                 DecodeOperation, UrlEncode/DecodeOperation, and
-│   │                                 HtmlEntityEncode/DecodeOperation declare ENCODERS_DECODERS
+│   │                                 DecodeOperation, UrlEncode/DecodeOperation,
+│   │                                 HtmlEntityEncode/DecodeOperation, and PhpSerialize/
+│   │                                 UnserializeOperation declare ENCODERS_DECODERS
 │   │                                 instead — the concrete example that group's own Javadoc named
 │   │                                 ahead of use ("a Base64/URL encoder") landing for real, all
-│   │                                 three pairs. HashGeneratorOperation is the first to declare
+│   │                                 four pairs. HashGeneratorOperation is the first to declare
 │   │                                 INSPECTORS — that group's own "a JWT decoder/hash
 │   │                                 calculator" example, half landed for real (a JWT decoder is
 │   │                                 still unbuilt). WEB/GENERATORS remain declared-ahead-of-use,
@@ -2463,6 +2464,18 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   HexFormat.of() lowercase hex); the first operation to
 │       │                                   declare OperationGroup.INSPECTORS; never throws (all
 │       │                                   four algorithms are guaranteed on every JDK)
+│       ├── PhpSerializeOperation.java   — execute(String input); JSON → PHP's own serialize()
+│       │                                   wire format (a:N:{...}) via support/PhpSerializeWriter;
+│       │                                   reuses INVALID_JSON (same choice JsonToPhpOperation
+│       │                                   makes) — genuinely distinct from PhpToJsonOperation/
+│       │                                   JsonToPhpOperation's own array-literal-source-code
+│       │                                   converters
+│       ├── PhpUnserializeOperation.java — execute(String input); the inverse via
+│       │                                   support/PhpSerializeParser; throws BusinessException
+│       │                                   wrapping INVALID_PHP_SERIALIZED (DEVUTILS_008) on
+│       │                                   malformed input; JSON output always pretty-printed, no
+│       │                                   minify (deliberately, so a shared Minify control
+│       │                                   wouldn't affect only one of the pair's two actions)
 │       └── support/
 │           ├── CurlyBraceFormatter.java — beautify(String)/minify(String), static utility (not a
 │           │                               DevUtilOperation itself). Shared by Css/Less/Scss/
@@ -2510,6 +2523,15 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │           ├── PhpArrayWriter.java      — write(JsonNode, boolean minify): String, the JSON→PHP
 │           │                               counterpart — renders a JsonNode tree as a <?php
 │           │                               return ...; snippet PhpArrayParser can read back in
+│           ├── PhpSerializeWriter.java  — write(JsonNode): String — JSON → PHP's serialize()
+│           │                               wire format (a:N:{...}/s:L:"..."/i:N;/d:N;/b:0-1;/N;),
+│           │                               not PHP source code (unlike PhpArrayWriter); string
+│           │                               lengths counted in UTF-8 bytes, not Java chars
+│           ├── PhpSerializeParser.java  — parse(String): Object, the exact inverse; walks a
+│           │                               string's own declared byte length one Unicode code
+│           │                               point at a time (not one char) so a surrogate pair
+│           │                               isn't split; throws PhpSerializeParseException (a real
+│           │                               line/column location) on malformed input
 │           ├── StringCaseConverter.java — convert(String): StringCaseResponse, shared only by
 │           │                               StringCaseOperation today — splits text into words
 │           │                               (delimiter- and camelCase/acronym-boundary-aware) and
@@ -2556,7 +2578,8 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
     │                                 json-to-csv,csv-to-json,sql/format,php-to-json,json-to-php,
     │                                 string-case/convert,base64/encode,base64/decode,url/encode,
     │                                 url/decode,html-entity/encode,html-entity/decode,
-    │                                 hash/generate}. Every endpoint is public — no
+    │                                 hash/generate,php-serialize/serialize,
+    │                                 php-serialize/unserialize}. Every endpoint is public — no
     │                                 @CurrentUserId, no authenticated principal at all.
     └── impl/DevUtilsController.java — implements DevUtilsApi; injects each operation by its
                                         concrete type (no enum-keyed registry — one fixed endpoint

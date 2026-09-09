@@ -3633,6 +3633,36 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       white background, rather than reusing that map's dark-background-tuned hues directly.
       Verified via a clean `tsc --noEmit`/successful `vite build` only — no Docker in this sandbox,
       so the actual border removal and per-algorithm colors are unverified in a real browser.
+  - **Follow-up: the fourth `ENCODERS_DECODERS`-group operation, "PHP Serializer," per request
+    ("PHP Serializer - Serialize JSON in PHP format") — the fourth Encode/Decode pair, reusing
+    the same `secondaryAction`/`savingAction` mechanism Base64/URL/HTML Entity already
+    established (no new `DevUtilToolPanel.tsx` capability needed this time either).**
+    `config/operations.tsx` gained the `php-serializer` entry (`group`/`category`
+    `'Encoders/Decoders'`), reusing the existing `PhpOutlined` sidebar icon `php-to-json`/
+    `json-to-php` already use rather than adding a new one — a genuinely PHP-flavored operation,
+    just a different PHP format than those two. `api/devUtilsApi.ts` gained
+    `serializePhp`/`unserializePhp`.
+    - **Genuinely different from this feature's existing `php-to-json`/`json-to-php` entries** —
+      those two convert between JSON and PHP *array-literal source code* (`['key' => 'value']`);
+      this one converts between JSON and PHP's own `serialize()`/`unserialize()` wire format
+      (`a:N:{...}`) — see `dev-utils-service/CLAUDE.md`'s own twelfth-follow-up note for the full
+      backend format detail (UTF-8-byte string lengths, the array-vs-object decision rule, etc.).
+    - **`inputFormat`/`outputLanguage` both stay `'text'`, deliberately not `'json'`** even though
+      Serialize's own input (and Unserialize's own output) really is JSON — this shared input box
+      feeds *both* directions, and Unserialize's own input is a PHP serialize string, not JSON;
+      picking `'json'` would make a failed Unserialize incorrectly try the browser's own
+      `JSON.parse` fast path first (see `errorFormatting.ts#buildDevUtilError`), producing a
+      misleading "not valid JSON" message for input that was never meant to be JSON in the first
+      place. `errorFormatting.ts`'s own doc comment was updated to note this alongside the
+      existing decode-action cases that take the same generic fallback path.
+    - Backend verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21) — see
+      `dev-utils-service/CLAUDE.md`'s own twelfth-follow-up note for the operation/support classes
+      themselves, including the real standalone-Java-harness verification of the UTF-8-byte vs.
+      Java-char string-length handling on both the writer and parser sides (a genuinely multi-byte
+      example, `"Hi👋"`, verified byte-for-byte before writing the corresponding test assertions).
+      GUI side verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker
+      in this sandbox, so the actual two-button Serialize/Unserialize flow is unverified in a real
+      browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's
