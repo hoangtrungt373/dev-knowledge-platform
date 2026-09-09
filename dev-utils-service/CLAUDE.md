@@ -8,7 +8,7 @@ A stateless developer-utility API: JSON format/validate, YAML↔JSON conversion,
 JS/ERB beautify+minify, XML validate/beautify+minify, JSON↔CSV conversion, SQL format+minify,
 PHP↔JSON conversion, String Case Converter, Base64 encode/decode, URL encode/decode, HTML entity
 encode/decode, Hash Generator (SHA-1/256/384/512), PHP Serializer (JSON ↔ PHP's own serialize()
-format). Package root: `com.ttg.devknowledgeplatform.devutils.*`.
+format), ASCII↔Hex conversion. Package root: `com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike
 `ecommerce-service`/`identity-service`/`task-service`/`social-service`/`content-service`/
@@ -416,7 +416,7 @@ caller.** Every operation is a pure text-in/text-out transform:
   `/csv-to-json`, `/sql/format`, `/php-to-json`, `/json-to-php`, `/string-case/convert`,
   `/base64/encode`, `/base64/decode`, `/url/encode`, `/url/decode`, `/html-entity/encode`,
   `/html-entity/decode`, `/hash/generate`, `/php-serialize/serialize`,
-  `/php-serialize/unserialize`. The
+  `/php-serialize/unserialize`, `/hex/encode`, `/hex/decode`. The
   controller injects each operation by its concrete type rather than dispatching through an
   enum-keyed registry — with one fixed REST endpoint per operation, there's no runtime "which
   operation" decision left to make (see `DevUtilOperation`'s own Javadoc).
@@ -1003,6 +1003,54 @@ changes needed — nothing in the test suite asserted this operation's group. Ve
 `tsc --noEmit`/successful `vite build` on the GUI side and by re-reading the changed Java files —
 no `mvn test`/real browser run in this session for a change with no behavior to exercise.
 
+**Fourteenth follow-up — 2 new operations (`AsciiToHexOperation`/`HexToAsciiOperation`), the fifth
+pair to declare `OperationGroup.ENCODERS_DECODERS`**, per direct request: "Hex to ASCII, ASCII to
+Hex." Backs `POST /api/v1/dev-utils/hex/encode` and `POST /api/v1/dev-utils/hex/decode` — same
+Encode/Decode two-button shape `Base64EncodeOperation`/`UrlEncodeOperation`/
+`HtmlEntityEncodeOperation`/`PhpSerializeOperation` already established, so this landed as one
+`hex-ascii` GUI entry (matching that precedent) rather than two separate sidebar tools, even though
+the request named them as two operations.
+- **`AsciiToHexOperation`** converts the input's own UTF-8 bytes into lowercase, space-separated
+  hex pairs via `HexFormat.ofDelimiter(" ")` (Java 17+) — e.g. `"Hi"` → `"48 69"` — confirmed
+  byte-for-byte against the exact reported example via a real standalone Java harness first (not
+  assumed). Operates on UTF-8 bytes, not raw Java `char`s, the same discipline
+  `Base64EncodeOperation`/`UrlEncodeOperation` already establish — despite this operation's own
+  "ASCII" name, a plain byte-to-hex converter has no real reason to reject a non-ASCII character,
+  and it still round-trips correctly through `HexToAsciiOperation` as a result (verified with the
+  same harness, for a genuinely multi-byte input). Never throws — every string has a valid hex
+  form — so, like `Base64EncodeOperation`/`UrlEncodeOperation`/`PhpSerializeOperation` (via
+  `INVALID_JSON`, not its own code), it has no matching `DevUtilsErrorCode` of its own.
+- **`HexToAsciiOperation`** strips all whitespace from the input first (so it tolerates
+  `AsciiToHexOperation`'s own space-separated output, a continuous run of hex digits with no
+  separator at all, or any other whitespace shape — tabs/newlines), then parses the remainder as
+  one continuous hex string via `HexFormat.of().parseHex(...)`. Real failure path, the same "real
+  parse, real invalid-input error" shape `Base64DecodeOperation` already establishes — new
+  `DevUtilsErrorCode.INVALID_HEX` (`DEVUTILS_009`), backed directly by `HexFormat.parseHex`'s own
+  `IllegalArgumentException` message (confirmed via the same harness: `"string length not even:
+  3"` for an odd digit count, `"not a hexadecimal digit: \"z\" = 122"` for a non-hex character —
+  `NumberFormatException`, the exception thrown for the latter case, is itself an
+  `IllegalArgumentException` subtype, so one catch clause covers both). Decoded bytes that aren't
+  themselves valid UTF-8 are **not** a separate failure case, the same reasoning
+  `Base64DecodeOperation`'s own Javadoc gives for itself.
+- `gui`'s `config/operations.tsx` gained the `hex-ascii` entry (group/category
+  `'Encoders/Decoders'`, a new `HexagonOutlined` sidebar icon) — its own `label`/`description`
+  name both directions explicitly (`'ASCII/Hex Converter'`, action labels `'ASCII to Hex'`/`'Hex
+  to ASCII'`) rather than a bare "Encode"/"Decode" pair, since neither direction's name is
+  self-evident the way Base64/URL's own "Encode always means toward the encoded form" convention
+  is — matching the same naming care `url-string`/`php-serializer` already went through once their
+  own two-button shape made a one-directional-sounding label ambiguous. `api/devUtilsApi.ts`
+  gained `encodeHex`/`decodeHex`; `errorFormatting.ts`'s own doc comment updated to note this
+  operation's Hex to ASCII action also takes the generic fallback path (`inputFormat: 'text'`, the
+  same reasoning `url-string`/`php-serializer` already established).
+- 13 new tests: `AsciiToHexOperationTest` (3 — the exact reported example, a multi-byte UTF-8
+  case, empty string), `HexToAsciiOperationTest` (7 — the exact reported example reversed, a
+  no-separator input, an arbitrary-whitespace-separated input, the multi-byte case, empty string,
+  and both `INVALID_HEX` failure cases — odd digit count and a non-hex character), plus 3 new
+  `DevUtilsServiceApplicationTests` cases (both new endpoints' reachability with no
+  `Authorization` header, and malformed hex returning `400` with `DEVUTILS_009` through the shared
+  `GlobalExceptionHandler`). Test suite grew from 222 to 235, verified via a real
+  `mvn -pl dev-utils-service -am test` run (JDK 21).
+
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
 `HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
@@ -1011,7 +1059,8 @@ no `mvn test`/real browser run in this session for a change with no behavior to 
 `JsonToPhpOperationTest`, `StringCaseOperationTest`, `Base64EncodeOperationTest`,
 `Base64DecodeOperationTest`, `UrlEncodeOperationTest`, `UrlDecodeOperationTest`,
 `HtmlEntityEncodeOperationTest`, `HtmlEntityDecodeOperationTest`, `HashGeneratorOperationTest`,
-`PhpSerializeOperationTest`, `PhpUnserializeOperationTest`), plus `service/impl/support/
+`PhpSerializeOperationTest`, `PhpUnserializeOperationTest`, `AsciiToHexOperationTest`,
+`HexToAsciiOperationTest`), plus `service/impl/support/
 CurlyBraceFormatterTest` (the shared CSS/LESS/SCSS/JS reformatter — brace nesting, already-
 multiline selector lists, comment/string-literal protection, the JS ASI-safety guarantee,
 never-throws-on-unterminated-input), `service/impl/support/SqlFormatterTest` (clause-keyword line
@@ -1034,26 +1083,29 @@ real parse/serialize behavior (pretty vs. minified output, malformed-input rejec
 structural equality via `readTree`, jsoup's lenient-parsing/indent behavior, and — for
 `XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation` — real JAXP/CSV/PHP parsing and rejection
 behavior). Plus `DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)`
-+ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all twenty-five endpoints
++ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all twenty-seven endpoints
 with **no** `Authorization` header through the real filter chain, confirming end to end (not just
 by static reasoning) that the app actually starts and every endpoint is genuinely public. This is
 exactly the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also
 covers the `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the
 latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP/
-Base64/URL-encoding/PHP-serialized-data all return `400` with
-`DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005`/`DEVUTILS_006`/`DEVUTILS_007`/`DEVUTILS_008`
-respectively through the shared `GlobalExceptionHandler` — `html-entity/encode`/`decode`,
-`hash/generate`, and `php-serialize/serialize` have no matching case here, since none of those four
-ever throws (see `DevUtilsErrorCode`'s own updated Javadoc). Plus `service/impl/support/
+Base64/URL-encoding/PHP-serialized-data/hex all return `400` with
+`DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005`/`DEVUTILS_006`/`DEVUTILS_007`/`DEVUTILS_008`/
+`DEVUTILS_009` respectively through the shared `GlobalExceptionHandler` — `html-entity/encode`/
+`decode`, `hash/generate`, `php-serialize/serialize`, and `hex/encode` have no matching case here,
+since none of those five ever throws (see `DevUtilsErrorCode`'s own updated Javadoc). Plus
+`service/impl/support/
 ConventionalJsonPrettyPrinterTest` (the one support class in this module with its own dedicated
 test file rather than only being exercised indirectly through an operation's own tests — see that
-class's own note above for why). 222 tests total (161 as of the seventh follow-up above, plus 8 new
+class's own note above for why). 235 tests total (161 as of the seventh follow-up above, plus 8 new
 Base64 unit tests and 3 new `DevUtilsServiceApplicationTests` cases from the eighth follow-up, 7 new
 URL unit tests and 3 more `DevUtilsServiceApplicationTests` cases from the ninth, 9 new HTML entity
 unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the tenth, 4 new Hash
-Generator unit tests plus 1 more `DevUtilsServiceApplicationTests` case from the eleventh, and 21
+Generator unit tests plus 1 more `DevUtilsServiceApplicationTests` case from the eleventh, 21
 new PHP Serializer unit tests plus 3 more `DevUtilsServiceApplicationTests` cases from the
-twelfth — see each follow-up's own note for the full breakdown), verified via a real
+twelfth (the thirteenth follow-up added no tests, a pure group reclassification), and 10 new
+ASCII/Hex unit tests plus 3 more `DevUtilsServiceApplicationTests` cases from the fourteenth — see
+each follow-up's own note for the full breakdown), verified via a real
 `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module

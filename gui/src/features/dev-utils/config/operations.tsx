@@ -9,6 +9,7 @@ import CodeIcon from '@mui/icons-material/CodeOutlined';
 import LinkIcon from '@mui/icons-material/LinkOutlined';
 import HtmlEntityIcon from '@mui/icons-material/HtmlOutlined';
 import FingerprintIcon from '@mui/icons-material/FingerprintOutlined';
+import HexIcon from '@mui/icons-material/HexagonOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
@@ -35,7 +36,8 @@ export type TabKey =
   | 'url-string'
   | 'html-entity-string'
   | 'hash-generator'
-  | 'php-serializer';
+  | 'php-serializer'
+  | 'hex-ascii';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -59,6 +61,7 @@ export const TAB_KEYS: TabKey[] = [
   'html-entity-string',
   'hash-generator',
   'php-serializer',
+  'hex-ascii',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -573,6 +576,35 @@ export const OPERATIONS: OperationConfig[] = [
     secondaryAction: {
       label: 'Unserialize',
       onSubmit: input => devUtilsApi.unserializePhp(input),
+    },
+  },
+  {
+    key: 'hex-ascii',
+    // The fifth ENCODERS_DECODERS-group operation, added alongside dev-utils-service's own
+    // AsciiToHexOperation/HexToAsciiOperation — same Encode/Decode pairing shape
+    // base64-string/url-string/html-entity-string/php-serializer already established.
+    group: 'Encoders/Decoders',
+    category: 'Encoders/Decoders',
+    // Both directions named explicitly in the label/description, matching `url-string`'s/
+    // `php-serializer`'s own naming convention — see those entries' own comments for why a bare
+    // one-directional-sounding name was avoided once this operation gained a real secondary
+    // action.
+    label: 'ASCII/Hex Converter',
+    description: 'Convert text to space-separated hex bytes, or hex bytes back to text',
+    icon: <HexIcon fontSize="small" />,
+    actionLabel: 'ASCII to Hex',
+    inputPlaceholder: 'Serialize JSON',
+    inputFormat: 'text',
+    outputLanguage: 'text',
+    // No minify option — a hex representation has no distinct "compact form" to toggle, same
+    // reasoning `base64-string`/`url-string`/`html-entity-string`/`php-serializer` already
+    // establish.
+    supportsMinify: false,
+    downloadFileName: 'hex.txt',
+    onSubmit: input => devUtilsApi.encodeHex(input),
+    secondaryAction: {
+      label: 'Hex to ASCII',
+      onSubmit: input => devUtilsApi.decodeHex(input),
     },
   },
 ];

@@ -283,4 +283,24 @@ public interface DevUtilsApi {
      */
     @PostMapping("/php-serialize/unserialize")
     ResponseEntity<DevUtilResponse> unserializePhp(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Converts raw text into its own UTF-8 bytes' hex representation, space-separated (e.g.
+     * {@code "Hi"} → {@code "48 69"}). No minify option — see {@link TextRequest}'s own Javadoc for
+     * why; a hex representation has no distinct "compact form" to toggle. Never fails — every
+     * string has a valid hex form.
+     *
+     * @return {@code 200} with the hex-encoded text
+     */
+    @PostMapping("/hex/encode")
+    ResponseEntity<DevUtilResponse> encodeHex(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Decodes a hex string (space-separated or not) back into text.
+     *
+     * @return {@code 200} with the decoded text, or {@code 400} if {@code request.input()} isn't a
+     *         valid hex string
+     */
+    @PostMapping("/hex/decode")
+    ResponseEntity<DevUtilResponse> decodeHex(@Valid @RequestBody TextRequest request);
 }

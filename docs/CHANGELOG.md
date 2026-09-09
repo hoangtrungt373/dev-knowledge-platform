@@ -1096,6 +1096,23 @@ section again. Full unabridged entry-by-entry history for all three lives in
       explicitly, per direct request** — `'PHP Serializer'` → `'PHP Serializer/Unserializer'`
       (matching `url-string`'s own `'URL Encode/Decode'` naming), description updated to mention
       both Serialize and Unserialize. Display-only, no behavior change.
+    - **Follow-up: 2 new operations, `AsciiToHexOperation`/`HexToAsciiOperation`, per request
+      ("Hex to ASCII, ASCII to Hex") — the fifth pair to declare
+      `OperationGroup.ENCODERS_DECODERS`.** Backs `POST /api/v1/dev-utils/hex/{encode,decode}`.
+      Encode converts the input's own UTF-8 bytes into lowercase, space-separated hex pairs via
+      `HexFormat.ofDelimiter(" ")` — confirmed byte-for-byte against the exact reported example via
+      a real standalone Java harness first; never throws. Decode strips all whitespace then parses
+      the remainder via `HexFormat.of().parseHex(...)`, tolerant of space-separated, unseparated, or
+      arbitrarily-whitespace-separated hex; new `DevUtilsErrorCode.INVALID_HEX` (`DEVUTILS_009`)
+      backs its real failure path (an odd digit count or a non-hex character). `gui`'s
+      `config/operations.tsx` gained one `hex-ascii` entry (not two separate tools, matching every
+      prior Encode/Decode pair in this group) with `label`/`description`/action labels all naming
+      both directions explicitly (`'ASCII/Hex Converter'`, `'ASCII to Hex'`/`'Hex to ASCII'`); new
+      `HexagonOutlined` icon; `api/devUtilsApi.ts` gained `encodeHex`/`decodeHex`. 13 new backend
+      tests (222→235 — `AsciiToHexOperationTest`/`HexToAsciiOperationTest` plus 3 new
+      `DevUtilsServiceApplicationTests` cases), plus a clean `tsc --noEmit`/successful `vite build`
+      on the GUI side — no Docker in this sandbox, so the actual two-button GUI flow is unverified
+      in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

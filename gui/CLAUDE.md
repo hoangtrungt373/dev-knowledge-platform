@@ -3688,6 +3688,34 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     unserialize it back into JSON"`. Display-only — no change to `key`, routing, icon, or either
     action's own behavior. Verified via a clean `tsc --noEmit`/successful `vite build` only — no
     Docker in this sandbox, so the actual sidebar/headline text is unverified in a real browser.
+  - **Follow-up: the fifth `ENCODERS_DECODERS`-group operation, "ASCII/Hex Converter" (Hex to
+    ASCII, ASCII to Hex), per request — the fifth Encode/Decode pair, reusing the existing
+    `secondaryAction`/`savingAction` mechanism as-is (no new `DevUtilToolPanel.tsx` capability
+    needed).** Landed as one `hex-ascii` entry, not two separate sidebar tools, matching every
+    prior Encode/Decode pair in this group — even though the request itself named "Hex to ASCII"
+    and "ASCII to Hex" as two operations. `config/operations.tsx` gained the entry
+    (`group`/`category` `'Encoders/Decoders'`), with a new `HexagonOutlined` sidebar icon and the
+    exact reported `"Serialize JSON"` placeholder. `api/devUtilsApi.ts` gained
+    `encodeHex`/`decodeHex`.
+    - **`label`/`description`/action labels all name both directions explicitly** (`'ASCII/Hex
+      Converter'`, `'ASCII to Hex'`/`'Hex to ASCII'` instead of a bare "Encode"/"Decode" pair) —
+      neither direction's name is self-evident the way Base64/URL's own "Encode always means
+      toward the encoded form" convention is, the same naming care `url-string`/`php-serializer`
+      already went through once their own two-button shape made a one-directional-sounding label
+      ambiguous (see this section's own earlier follow-up notes on both).
+    - **`inputFormat`/`outputLanguage` both stay `'text'`**, same as every other Encoders/Decoders
+      pair — a hex representation isn't really a "language" with syntax to highlight. A failed Hex
+      to ASCII action (the backend's own real `INVALID_HEX` failure path) takes the same generic
+      `simplifyBackendMessage` fallback every non-`'json'` `inputFormat` already does;
+      `errorFormatting.ts`'s own doc comment was updated to note it alongside `url-string`'s/
+      `php-serializer`'s own decode-side cases.
+    - Backend verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21) — see
+      `dev-utils-service/CLAUDE.md`'s own fourteenth-follow-up note for the operation classes
+      themselves, including the real standalone-Java-harness verification of the exact reported
+      example and a genuinely multi-byte UTF-8 round trip (`"café"`) before writing the matching
+      tests. GUI side verified via a clean `tsc --noEmit` and a successful `vite build` only — no
+      Docker in this sandbox, so the actual two-button ASCII-to-Hex/Hex-to-ASCII flow is unverified
+      in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

@@ -2348,13 +2348,14 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 text-transform, matching the existing "Tools" sidebar caption
 │   │                                 convention). 16 operations declare FORMATTERS; Base64Encode/
 │   │                                 DecodeOperation, UrlEncode/DecodeOperation,
-│   │                                 HtmlEntityEncode/DecodeOperation, and PhpSerialize/
-│   │                                 UnserializeOperation declare ENCODERS_DECODERS
-│   │                                 instead — the concrete example that group's own Javadoc named
-│   │                                 ahead of use ("a Base64/URL encoder") landing for real, all
-│   │                                 four pairs, plus HashGeneratorOperation (moved here from
-│   │                                 INSPECTORS per direct request — a hash digest reads as a
-│   │                                 one-way encoding of a value more than an "inspection" of one).
+│   │                                 HtmlEntityEncode/DecodeOperation, PhpSerialize/
+│   │                                 UnserializeOperation, and AsciiToHex/HexToAsciiOperation
+│   │                                 declare ENCODERS_DECODERS instead — the concrete example
+│   │                                 that group's own Javadoc named ahead of use ("a Base64/URL
+│   │                                 encoder") landing for real, all five pairs, plus
+│   │                                 HashGeneratorOperation (moved here from INSPECTORS per direct
+│   │                                 request — a hash digest reads as a one-way encoding of a
+│   │                                 value more than an "inspection" of one).
 │   │                                 INSPECTORS/WEB/GENERATORS remain fully declared-ahead-of-use,
 │   │                                 still with no operation of their own (INSPECTORS' own
 │   │                                 "a JWT decoder" example is still unbuilt).
@@ -2478,6 +2479,14 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   malformed input; JSON output always pretty-printed, no
 │       │                                   minify (deliberately, so a shared Minify control
 │       │                                   wouldn't affect only one of the pair's two actions)
+│       ├── AsciiToHexOperation.java     — execute(String input); the input's own UTF-8 bytes as
+│       │                                   lowercase, space-separated hex pairs via
+│       │                                   HexFormat.ofDelimiter(" "); never throws
+│       ├── HexToAsciiOperation.java     — execute(String input); the inverse — strips whitespace,
+│       │                                   parses via HexFormat.of().parseHex(...) (tolerant of
+│       │                                   space-separated or unseparated hex); throws
+│       │                                   BusinessException wrapping INVALID_HEX (DEVUTILS_009)
+│       │                                   on an odd digit count or a non-hex character
 │       └── support/
 │           ├── CurlyBraceFormatter.java — beautify(String)/minify(String), static utility (not a
 │           │                               DevUtilOperation itself). Shared by Css/Less/Scss/
@@ -2581,8 +2590,9 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
     │                                 string-case/convert,base64/encode,base64/decode,url/encode,
     │                                 url/decode,html-entity/encode,html-entity/decode,
     │                                 hash/generate,php-serialize/serialize,
-    │                                 php-serialize/unserialize}. Every endpoint is public — no
-    │                                 @CurrentUserId, no authenticated principal at all.
+    │                                 php-serialize/unserialize,hex/encode,hex/decode}. Every
+    │                                 endpoint is public — no @CurrentUserId, no authenticated
+    │                                 principal at all.
     └── impl/DevUtilsController.java — implements DevUtilsApi; injects each operation by its
                                         concrete type (no enum-keyed registry — one fixed endpoint
                                         per operation leaves no runtime dispatch decision to make)

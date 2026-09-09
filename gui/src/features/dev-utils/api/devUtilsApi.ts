@@ -140,10 +140,11 @@ export const devUtilsApi = {
     return httpClient.post(`${BASE}/html-entity/decode`, { input }, showError);
   },
 
-  // The first INSPECTORS-group operation, added alongside dev-utils-service's own
-  // HashGeneratorOperation. Returns HashResponse, not DevUtilsResponse — the second operation
-  // (after convertStringCase) whose output is genuinely richer than a single string. No `minify`
-  // field — a hash digest has no distinct "compact form" to toggle.
+  // Added alongside dev-utils-service's own HashGeneratorOperation (originally the first
+  // INSPECTORS-group operation, later moved to ENCODERS_DECODERS — see that class's own Javadoc).
+  // Returns HashResponse, not DevUtilsResponse — the second operation (after convertStringCase)
+  // whose output is genuinely richer than a single string. No `minify` field — a hash digest has
+  // no distinct "compact form" to toggle.
   generateHash(input: string, showError?: ShowError): Promise<HashResponse> {
     return httpClient.post(`${BASE}/hash/generate`, { input }, showError);
   },
@@ -160,5 +161,17 @@ export const devUtilsApi = {
 
   unserializePhp(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
     return httpClient.post(`${BASE}/php-serialize/unserialize`, { input }, showError);
+  },
+
+  // The fifth ENCODERS_DECODERS-group operation, added alongside dev-utils-service's own
+  // AsciiToHexOperation/HexToAsciiOperation. No `minify` field on either — same reasoning
+  // `encodeBase64`/`encodeUrl`/`encodeHtmlEntity`/`serializePhp` already establish; a hex
+  // representation has no distinct "compact form" to toggle.
+  encodeHex(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/hex/encode`, { input }, showError);
+  },
+
+  decodeHex(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/hex/decode`, { input }, showError);
   },
 };

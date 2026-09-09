@@ -18,7 +18,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
  * {@link MockMvc} — verifies, end to end rather than by static reasoning alone, that this app
  * actually starts (the {@code GlobalExceptionHandler}/{@code spring-boot-starter-security}
  * classpath dependency reasoning in {@code security.SecurityConfig}'s own Javadoc holds up) and
- * that every one of the 25 operation endpoints is genuinely reachable with no
+ * that every one of the 27 operation endpoints is genuinely reachable with no
  * {@code Authorization} header at all.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -313,6 +313,33 @@ class DevUtilsServiceApplicationTests {
                         .content("{\"input\":\"a:1:{\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_008")));
+    }
+
+    @Test
+    void encodeHexIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/hex/encode")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"Hi\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("48 69")));
+    }
+
+    @Test
+    void decodeHexIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/hex/decode")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"48 69\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Hi")));
+    }
+
+    @Test
+    void malformedHexReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/hex/decode")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"zz\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_009")));
     }
 
     @Test

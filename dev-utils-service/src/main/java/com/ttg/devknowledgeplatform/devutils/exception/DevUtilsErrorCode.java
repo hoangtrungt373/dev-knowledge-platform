@@ -50,7 +50,11 @@ import lombok.Getter;
  * PHP's {@code serialize()} textual format (genuinely distinct from the array-literal syntax
  * {@code PhpArrayParser}/{@code INVALID_PHP} cover) — unlike {@code PhpSerializeOperation}, which
  * — like {@code JsonToPhpOperation} — reuses {@code INVALID_JSON} instead of getting its own code,
- * since its input is JSON either way.
+ * since its input is JSON either way. {@code INVALID_HEX} is the same shape once more, for
+ * {@code HexToAsciiOperation} — backed by the JDK's own {@link java.util.HexFormat#parseHex}
+ * (an odd digit count or a non-hex character), unlike {@code AsciiToHexOperation}, which — like
+ * {@code Base64EncodeOperation} — has no invalid-input concept at all (every string has a valid
+ * hex representation).
  */
 @Getter
 public enum DevUtilsErrorCode implements ErrorCode {
@@ -62,7 +66,8 @@ public enum DevUtilsErrorCode implements ErrorCode {
     INVALID_PHP("DEVUTILS_005", "Invalid PHP: {0}", HttpStatus.BAD_REQUEST),
     INVALID_BASE64("DEVUTILS_006", "Invalid Base64: {0}", HttpStatus.BAD_REQUEST),
     INVALID_URL_ENCODING("DEVUTILS_007", "Invalid URL encoding: {0}", HttpStatus.BAD_REQUEST),
-    INVALID_PHP_SERIALIZED("DEVUTILS_008", "Invalid PHP serialized data: {0}", HttpStatus.BAD_REQUEST);
+    INVALID_PHP_SERIALIZED("DEVUTILS_008", "Invalid PHP serialized data: {0}", HttpStatus.BAD_REQUEST),
+    INVALID_HEX("DEVUTILS_009", "Invalid hex data: {0}", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

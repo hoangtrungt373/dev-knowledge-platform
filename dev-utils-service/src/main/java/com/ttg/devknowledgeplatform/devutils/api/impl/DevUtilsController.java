@@ -9,12 +9,14 @@ import com.ttg.devknowledgeplatform.devutils.dto.HashResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.TextRequest;
+import com.ttg.devknowledgeplatform.devutils.service.impl.AsciiToHexOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.Base64DecodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.Base64EncodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CssOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CsvToJsonOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.ErbOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HashGeneratorOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.HexToAsciiOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlBeautifyOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlEntityDecodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlEntityEncodeOperation;
@@ -72,6 +74,8 @@ public class DevUtilsController implements DevUtilsApi {
     private final HashGeneratorOperation hashGeneratorOperation;
     private final PhpSerializeOperation phpSerializeOperation;
     private final PhpUnserializeOperation phpUnserializeOperation;
+    private final AsciiToHexOperation asciiToHexOperation;
+    private final HexToAsciiOperation hexToAsciiOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -196,5 +200,15 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<DevUtilResponse> unserializePhp(TextRequest request) {
         return ResponseEntity.ok(new DevUtilResponse(phpUnserializeOperation.execute(request.input())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> encodeHex(TextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(asciiToHexOperation.execute(request.input())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> decodeHex(TextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(hexToAsciiOperation.execute(request.input())));
     }
 }
