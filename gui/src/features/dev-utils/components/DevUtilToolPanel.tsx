@@ -63,6 +63,18 @@ interface DevUtilToolPanelProps {
   /** Filename offered by the Output panel's Download button, e.g. "formatted.json". */
   downloadFileName: string;
   onSubmit: (input: string, minify: boolean) => Promise<DevUtilsResponse>;
+  /** A second, independent action button next to the primary one — e.g. Base64's own "Encode"/
+   * "Decode" pair, run against the same `input`. Omitted entirely (not just disabled) for every
+   * operation that only ever has one action, the same "absent, not a disabled/hidden state" rule
+   * `supportsMinify: false` already follows for the Minify toggle. Shares the primary action's own
+   * `(input, minify)` signature purely for consistency, even though an operation that needs a
+   * second action in the first place is unlikely to also support `minify` (Base64 doesn't) — see
+   * this component's own doc comment for the full reasoning and why this isn't instead generalized
+   * into an arbitrary-length actions array. */
+  secondaryAction?: {
+    label: string;
+    onSubmit: (input: string, minify: boolean) => Promise<DevUtilsResponse>;
+  };
   /** Height (px) computed by `DevUtilsPage.tsx` from the actual viewport — see that component's
    * own doc comment for how. The Input card renders at exactly this height (`height:
    * availableHeight`); the Output card instead uses it only as a **floor** (`minHeight:
@@ -276,7 +288,19 @@ function downloadTextFile(fileName: string, content: string): void {
  * `availableHeight`, capped at `OUTPUT_MAX_HEIGHT`, both already documented above), so maximizing
  * doesn't need its own separate height story on top of that; it only ever changes which Paper gets
  * the row's full width via `flex-basis`. The resize handle hides too while either panel is
- * maximized — nothing to drag when one side isn't rendered. */
+ * maximized — nothing to drag when one side isn't rendered.
+ *
+ * <p>**A second, independent action button** (`secondaryAction`) is how an operation with two
+ * genuinely different actions over the same input — Base64's own "Encode"/"Decode" pair is the
+ * first one — renders both, rather than picking one as primary and stretching the other into a
+ * `Minify`-style toggle (the two aren't a base/compact-form pair the way `minify` is elsewhere in
+ * this panel; each produces a fully independent result). `savingAction` (`'primary' | 'secondary'
+ * | null`), not two separate booleans, tracks which one is in flight — submitting either disables
+ * *both* buttons until it resolves, preventing an overlapping double-submit against the same
+ * `input`/`onOutputChange`/`onErrorChange` state this component only has one copy of. Deliberately
+ * not generalized into an arbitrary-length actions array — every operation today needs either one
+ * action or exactly two, and YAGNI applies the same way it does elsewhere in this codebase: build
+ * for two concrete buttons, not a hypothetical N. */
 export default function DevUtilToolPanel({
   input,
   onInputChange,
@@ -291,11 +315,18 @@ export default function DevUtilToolPanel({
   supportsMinify,
   downloadFileName,
   onSubmit,
+  secondaryAction,
   availableHeight,
 }: DevUtilToolPanelProps): JSX.Element {
   const { showError, showSuccess } = useNotification();
   const [minify, setMinify] = useState(false);
-  const [saving, setSaving] = useState(false);
+  // Tracks *which* action is in flight, not just whether one is — with two independent action
+  // buttons (the primary one plus an optional `secondaryAction`), a single boolean `saving` would
+  // either spin both buttons at once for a single click or need a second boolean anyway. `null`
+  // means neither; each button's own `saving`/`disabled` props below derive from comparing against
+  // this rather than a per-button state pair, so the two can never independently claim "saving" at
+  // the same time (submitting one disables the other, preventing an overlapping double-submit).
+  const [savingAction, setSavingAction] = useState<'primary' | 'secondary' | null>(null);
   const [copied, setCopied] = useState(false);
 
   // Memoized so a re-render (e.g. every keystroke while typing in Input) doesn't hand CodeMirror a
@@ -403,20 +434,32 @@ export default function DevUtilToolPanel({
     setOutputChromeHeight(node.getBoundingClientRect().height);
   }, [output !== null]);
 
-  const handleSubmit = useCallback(async () => {
-    setSaving(true);
-    try {
-      const result = await onSubmit(input, minify);
-      onErrorChange(null);
-      onOutputChange(result.output);
-    } catch (submitError) {
-      onOutputChange(null);
-      const message = submitError instanceof Error ? submitError.message : String(submitError);
-      onErrorChange(buildDevUtilError(input, inputFormat === 'json', message));
-    } finally {
-      setSaving(false);
+  const runAction = useCallback(
+    async (which: 'primary' | 'secondary', runSubmit: (input: string, minify: boolean) => Promise<DevUtilsResponse>) => {
+      setSavingAction(which);
+      try {
+        const result = await runSubmit(input, minify);
+        onErrorChange(null);
+        onOutputChange(result.output);
+      } catch (submitError) {
+        onOutputChange(null);
+        const message = submitError instanceof Error ? submitError.message : String(submitError);
+        onErrorChange(buildDevUtilError(input, inputFormat === 'json', message));
+      } finally {
+        setSavingAction(null);
+      }
+    },
+    [input, minify, onOutputChange, onErrorChange, inputFormat]
+  );
+
+  const handleSubmit = useCallback(() => runAction('primary', onSubmit), [runAction, onSubmit]);
+
+  const handleSecondarySubmit = useCallback(() => {
+    if (!secondaryAction) {
+      return;
     }
-  }, [input, minify, onSubmit, onOutputChange, onErrorChange, inputFormat]);
+    runAction('secondary', secondaryAction.onSubmit);
+  }, [runAction, secondaryAction]);
 
   const handlePaste = useCallback(async () => {
     try {
@@ -491,12 +534,21 @@ export default function DevUtilToolPanel({
               Paste
             </Button>
             <SubmitButton
-              saving={saving}
+              saving={savingAction === 'primary'}
               label={actionLabel}
               startIcon={<PlayArrowIcon fontSize="small" />}
               onClick={handleSubmit}
-              disabled={!input.trim()}
+              disabled={!input.trim() || savingAction === 'secondary'}
             />
+            {secondaryAction && (
+              <SubmitButton
+                saving={savingAction === 'secondary'}
+                label={secondaryAction.label}
+                startIcon={<PlayArrowIcon fontSize="small" />}
+                onClick={handleSecondarySubmit}
+                disabled={!input.trim() || savingAction === 'primary'}
+              />
+            )}
             {supportsMinify && (
               <Button
                 size="small"

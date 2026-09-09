@@ -194,4 +194,23 @@ public interface DevUtilsApi {
      */
     @PostMapping("/string-case/convert")
     ResponseEntity<StringCaseResponse> convertStringCase(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Encodes raw text as a standard Base64 string. No minify option — see {@link TextRequest}'s
+     * own Javadoc for why; a Base64 encoding has no distinct "compact form" to toggle. Never fails
+     * — every string has a valid encoding.
+     *
+     * @return {@code 200} with the Base64-encoded text
+     */
+    @PostMapping("/base64/encode")
+    ResponseEntity<DevUtilResponse> encodeBase64(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Decodes a standard Base64 string back into text.
+     *
+     * @return {@code 200} with the decoded text, or {@code 400} if {@code request.input()} isn't
+     *         valid Base64
+     */
+    @PostMapping("/base64/decode")
+    ResponseEntity<DevUtilResponse> decodeBase64(@Valid @RequestBody TextRequest request);
 }

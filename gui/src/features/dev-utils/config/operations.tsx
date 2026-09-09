@@ -5,6 +5,7 @@ import TableChartIcon from '@mui/icons-material/TableChartOutlined';
 import StorageIcon from '@mui/icons-material/StorageOutlined';
 import PhpIcon from '@mui/icons-material/PhpOutlined';
 import AbcIcon from '@mui/icons-material/AbcOutlined';
+import CodeIcon from '@mui/icons-material/CodeOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, StringCaseResponse } from '../types';
@@ -26,7 +27,8 @@ export type TabKey =
   | 'sql-format'
   | 'php-to-json'
   | 'json-to-php'
-  | 'string-case-convert';
+  | 'string-case-convert'
+  | 'base64-string';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -45,6 +47,7 @@ export const TAB_KEYS: TabKey[] = [
   'php-to-json',
   'json-to-php',
   'string-case-convert',
+  'base64-string',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -115,6 +118,14 @@ export interface OperationConfig {
   /** Filename offered by the Output panel's Download button. */
   downloadFileName: string;
   onSubmit: (input: string, minify: boolean) => Promise<DevUtilsResponse>;
+  /** A second, independent action button next to the primary one — e.g. Base64's own "Encode"/
+   * "Decode" pair. Omitted entirely for every operation with only one action. See
+   * `DevUtilToolPanel.tsx`'s own doc comment for the full reasoning (including why this isn't a
+   * generalized N-action array). */
+  secondaryAction?: {
+    label: string;
+    onSubmit: (input: string, minify: boolean) => Promise<DevUtilsResponse>;
+  };
 }
 
 // String Case Converter is the one operation whose backend response (StringCaseResponse) isn't a
@@ -397,5 +408,32 @@ export const OPERATIONS: OperationConfig[] = [
     supportsMinify: true,
     downloadFileName: 'converted.php',
     onSubmit: devUtilsApi.jsonToPhp,
-  }
+  },
+  {
+    key: 'base64-string',
+    // The first operation outside the Formatters group — see OperationGroup.java's own Javadoc,
+    // which named exactly this ("a Base64/URL encoder for ENCODERS_DECODERS") as the concrete
+    // example that group was declared ahead of use for.
+    group: 'Encoders/Decoders',
+    category: 'Encoders/Decoders',
+    label: 'Base64 String',
+    description: 'Encode and decode Base64 strings',
+    icon: <CodeIcon fontSize="small" />,
+    actionLabel: 'Encode',
+    inputPlaceholder: 'Vui Coding',
+    inputFormat: 'text',
+    outputLanguage: 'text',
+    // No minify option — a Base64 encoding has no distinct "compact form" to toggle, same
+    // reasoning `json-to-yaml`/`json-to-csv` already establish.
+    supportsMinify: false,
+    downloadFileName: 'base64.txt',
+    onSubmit: input => devUtilsApi.encodeBase64(input),
+    // Encode/Decode are two fully independent actions over the same input, not a base/compact-form
+    // pair — see DevUtilToolPanel.tsx's own `secondaryAction` doc comment for why this needs a
+    // second real action button rather than being squeezed into the Minify toggle's shape.
+    secondaryAction: {
+      label: 'Decode',
+      onSubmit: input => devUtilsApi.decodeBase64(input),
+    },
+  },
 ];

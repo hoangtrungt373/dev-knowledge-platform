@@ -3451,6 +3451,55 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       sandbox, so the actual maximize/restore toggle (button click, CodeMirror state preservation
       across a hide/show cycle, the resize handle's own hide/reappear) is unverified in a real
       browser.
+  - **Follow-up: the first `ENCODERS_DECODERS`-group operation, "Base64 String" (Encode/Decode),
+    per request — the concrete example `dev-utils-service`'s own `OperationGroup` enum had named
+    ahead of use finally landing.** This needed a genuinely new capability in
+    `DevUtilToolPanel.tsx`, not just a new `OPERATIONS` entry — every prior operation has exactly
+    one action button, but Base64 needs two (Encode, Decode) run independently over the same
+    input.
+    - **`OperationConfig`/`DevUtilToolPanelProps` both gained an optional `secondaryAction: {
+      label, onSubmit }`** — rendered as a second `SubmitButton` right next to the primary one when
+      present, omitted entirely (not disabled/hidden) for every one of the other 17 operations that
+      only ever needs one action, the same "absent, not a disabled state" convention
+      `supportsMinify: false` already establishes for the Minify toggle. Shares the primary
+      action's own `(input, minify)` `onSubmit` signature purely for consistency, even though an
+      operation that needs a second action in the first place is unlikely to also need `minify`
+      (Base64 doesn't — `supportsMinify: false`, same as `json-to-yaml`/`string-case-convert`).
+      **Deliberately not generalized into an arbitrary-length actions array** — every operation
+      today needs either one action or exactly two, so this was built for two concrete buttons, not
+      a hypothetical N, the same YAGNI reasoning this codebase already applies elsewhere.
+    - **`savingAction: 'primary' | 'secondary' | null` replaced the old plain `saving` boolean** —
+      tracking *which* action is in flight, not just whether one is, since a single shared boolean
+      would either spin both buttons at once for a single click or need a second boolean anyway.
+      Submitting either action disables *both* buttons until it resolves (`disabled={!input.trim()
+      || savingAction === 'secondary'}` on the primary, mirrored on the secondary) — this component
+      only has one copy of `input`/`onOutputChange`/`onErrorChange` shared between both actions, so
+      preventing an overlapping double-submit against that shared state matters here in a way it
+      never did with only one button.
+    - **`config/operations.tsx`'s new `base64-string` entry** — `group`/`category` both
+      `'Encoders/Decoders'` (the sidebar's first section besides "Formatters," rendering for real
+      now rather than just being a declared-ahead-of-use placeholder in `OPERATION_GROUP_ORDER`),
+      `inputFormat`/`outputLanguage` both `'text'` (Base64 output, and whatever Decode produces,
+      aren't really "languages" with syntax to highlight, the same reasoning `string-case-convert`
+      already established for its own output), a new `CodeOutlined` sidebar icon (`</>`, read as a
+      generic "encoding" glyph — confirmed present in the installed `@mui/icons-material` version
+      first, same verification step every icon addition in this feature already establishes).
+      `actionLabel: 'Encode'` (primary) + `secondaryAction: { label: 'Decode', ... }`.
+    - **`api/devUtilsApi.ts` gained `encodeBase64`/`decodeBase64`** — two separate methods, not one
+      "base64" method with a direction flag, matching how every other bidirectional pair in this
+      file (`phpToJson`/`jsonToPhp`, `yamlToJson`/`jsonToYaml`) already gets one method per
+      direction. Neither takes a `minify` parameter, same reasoning those pairs' own no-minify
+      members already establish.
+    - Backend verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21) — see
+      `dev-utils-service/CLAUDE.md`'s own eighth-follow-up note for the operation classes
+      themselves, including the real standalone-Java-harness verification against a genuinely
+      multi-byte UTF-8 example (English text plus an emoji, per a direct follow-up request
+      switching this module's own test data off the originally reported Vietnamese-diacritics
+      example) and the Windows `javac`-default-charset pitfall that verification caught in the
+      harness itself, not the operation code. GUI side verified via a clean `tsc --noEmit` and a
+      successful `vite build` only — no Docker in this sandbox, so the actual two-button
+      Encode/Decode flow (including the shared-disable-while-submitting behavior) is unverified in
+      a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

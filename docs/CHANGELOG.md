@@ -957,6 +957,34 @@ section again. Full unabridged entry-by-entry history for all three lives in
       need a separate height mechanism on top of that. Verified via a clean `tsc --noEmit` and a
       successful `vite build` only — no Docker in this sandbox, so the actual maximize/restore
       toggle is unverified in a real browser.
+    - **Follow-up: 2 new operations, `Base64EncodeOperation`/`Base64DecodeOperation`, per request
+      ("add new operation in group ENCODERS_DECODERS: Base64 String - Encode and decode Base64
+      strings") — the first operations to declare `OperationGroup.ENCODERS_DECODERS` instead of
+      `FORMATTERS`.** Backs `POST /api/v1/dev-utils/base64/{encode,decode}`; both use
+      `java.util.Base64`'s standard (not URL-safe) alphabet and UTF-8 byte encoding explicitly.
+      `Base64EncodeOperation` never throws (every string has a valid encoding); new
+      `DevUtilsErrorCode.INVALID_BASE64` (`DEVUTILS_006`) backs `Base64DecodeOperation`'s own real
+      failure path (`java.util.Base64.Decoder`, not the lenient MIME decoder — see
+      `dev-utils-service/CLAUDE.md`'s own note for the full reasoning), input `String#strip()`ped
+      first to tolerate a pasted string's leading/trailing newline. Both verified via a real
+      standalone Java harness first (originally against a Vietnamese-diacritics example, later
+      switched to an English sentence plus an emoji per a direct follow-up request — still
+      genuinely multi-byte UTF-8 via the emoji alone), which caught the harness itself mis-encoding
+      on Windows due to `javac`'s own platform-default charset (not a bug in the operation code —
+      fixed by compiling/running with explicit UTF-8 encoding).
+      - **`gui`**: the first operation needing two independent action buttons over the same input
+        (Encode/Decode) instead of one — `OperationConfig`/`DevUtilToolPanelProps` both gained an
+        optional `secondaryAction: { label, onSubmit }`, rendered as a second `SubmitButton`; a new
+        `savingAction: 'primary' | 'secondary' | null` (replacing the old plain `saving` boolean)
+        disables both buttons while either is submitting, preventing an overlapping double-submit.
+        `config/operations.tsx` gained the new `base64-string` entry (group/category
+        `'Encoders/Decoders'`, the sidebar's first section besides "Formatters").
+      - 11 new backend tests (161→172): `Base64EncodeOperationTest`/`Base64DecodeOperationTest`
+        (plain ASCII, the exact reported multi-byte example each direction, edge cases, and the
+        malformed-input `INVALID_BASE64` case) plus 3 new `DevUtilsServiceApplicationTests` cases.
+        Verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21) and a clean
+        `tsc --noEmit`/successful `vite build` on the GUI side — no Docker in this sandbox, so the
+        actual two-button GUI flow is unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

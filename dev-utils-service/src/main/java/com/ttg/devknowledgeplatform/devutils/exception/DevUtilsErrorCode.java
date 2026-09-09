@@ -30,6 +30,10 @@ import lombok.Getter;
  * {@code INVALID_JSON} rather than getting their own code — their input is JSON either way, so a
  * failure there (a genuine JSON syntax error, or — for {@code JsonToCsvOperation} only — valid
  * JSON in a shape that can't become rows) is still honestly described as "Invalid JSON."
+ * {@code INVALID_BASE64} is the same shape again, for {@code Base64DecodeOperation} — backed by
+ * the JDK's own {@link java.util.Base64.Decoder}, a real (if strict) validator, unlike
+ * {@code Base64EncodeOperation}, which — like {@code StringCaseOperation} — has no invalid-input
+ * concept at all (every string has a valid encoding) and so needs no code of its own here.
  */
 @Getter
 public enum DevUtilsErrorCode implements ErrorCode {
@@ -38,7 +42,8 @@ public enum DevUtilsErrorCode implements ErrorCode {
     INVALID_YAML("DEVUTILS_002", "Invalid YAML: {0}", HttpStatus.BAD_REQUEST),
     INVALID_XML("DEVUTILS_003", "Invalid XML: {0}", HttpStatus.BAD_REQUEST),
     INVALID_CSV("DEVUTILS_004", "Invalid CSV: {0}", HttpStatus.BAD_REQUEST),
-    INVALID_PHP("DEVUTILS_005", "Invalid PHP: {0}", HttpStatus.BAD_REQUEST);
+    INVALID_PHP("DEVUTILS_005", "Invalid PHP: {0}", HttpStatus.BAD_REQUEST),
+    INVALID_BASE64("DEVUTILS_006", "Invalid Base64: {0}", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

@@ -204,6 +204,33 @@ class DevUtilsServiceApplicationTests {
     }
 
     @Test
+    void encodeBase64IsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/base64/encode")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"Vui Coding\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("VnVpIENvZGluZw==")));
+    }
+
+    @Test
+    void decodeBase64IsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/base64/decode")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"VnVpIENvZGluZw==\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Vui Coding")));
+    }
+
+    @Test
+    void malformedBase64Returns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/base64/decode")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"not valid base64!!\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_006")));
+    }
+
+    @Test
     void malformedJsonReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
         mockMvc.perform(post("/api/v1/dev-utils/json/format")
                         .contentType(MediaType.APPLICATION_JSON)

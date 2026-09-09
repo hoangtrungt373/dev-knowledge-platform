@@ -101,4 +101,18 @@ export const devUtilsApi = {
   convertStringCase(input: string, showError?: ShowError): Promise<StringCaseResponse> {
     return httpClient.post(`${BASE}/string-case/convert`, { input }, showError);
   },
+
+  // The first ENCODERS_DECODERS-group operation, added alongside dev-utils-service's own
+  // Base64EncodeOperation/Base64DecodeOperation. No `minify` field on either — a Base64 encoding
+  // has no distinct "compact form" to toggle, same reasoning `jsonToYaml`/`jsonToCsv` already
+  // establish. Two separate methods (not one "base64" method with a direction flag), matching how
+  // every other bidirectional pair in this file (`phpToJson`/`jsonToPhp`, `yamlToJson`/
+  // `jsonToYaml`) already gets one method per direction.
+  encodeBase64(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/base64/encode`, { input }, showError);
+  },
+
+  decodeBase64(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/base64/decode`, { input }, showError);
+  },
 };

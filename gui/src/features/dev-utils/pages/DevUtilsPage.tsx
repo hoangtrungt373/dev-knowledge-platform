@@ -438,6 +438,7 @@ export default function DevUtilsPage(): JSX.Element {
               supportsMinify={activeOperation.supportsMinify}
               downloadFileName={activeOperation.downloadFileName}
               onSubmit={activeOperation.onSubmit}
+              secondaryAction={activeOperation.secondaryAction}
               availableHeight={panelHeight}
             />
           </Box>

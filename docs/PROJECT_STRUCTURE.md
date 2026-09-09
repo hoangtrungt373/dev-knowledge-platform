@@ -2346,11 +2346,12 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   ├── OperationGroup.java        — enum (FORMATTERS/ENCODERS_DECODERS/INSPECTORS/WEB/GENERATORS),
 │   │                                 each with a Title-Case getLabel() (the GUI applies CSS
 │   │                                 text-transform, matching the existing "Tools" sidebar caption
-│   │                                 convention). All 16 current operations declare FORMATTERS; the
-│   │                                 other 4 are declared ahead of use so the GUI's group-by-label
-│   │                                 sidebar rendering already has a stable, complete section order
-│   │                                 from day one — see the enum's own Javadoc for a concrete future
-│   │                                 example operation per group.
+│   │                                 convention). 16 operations declare FORMATTERS; Base64Encode/
+│   │                                 DecodeOperation are the first to declare ENCODERS_DECODERS
+│   │                                 instead — the concrete example that group's own Javadoc named
+│   │                                 ahead of use ("a Base64/URL encoder") landing for real.
+│   │                                 INSPECTORS/WEB/GENERATORS remain declared-ahead-of-use, still
+│   │                                 with no operation of their own yet.
 │   └── impl/
 │       ├── JsonFormatOperation.java     — execute(String input, boolean minify); validates +
 │       │                                   pretty-prints (or, minified, compact-serializes) in one
@@ -2420,6 +2421,17 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   operation in this batch whose return type isn't a
 │       │                                   plain String; delegates entirely to
 │       │                                   support/StringCaseConverter
+│       ├── Base64EncodeOperation.java   — execute(String input); java.util.Base64's standard
+│       │                                   (not URL-safe) encoder, UTF-8 bytes; the first operation
+│       │                                   to declare OperationGroup.ENCODERS_DECODERS instead of
+│       │                                   FORMATTERS; never throws (every string has a valid
+│       │                                   encoding)
+│       ├── Base64DecodeOperation.java   — execute(String input); java.util.Base64's standard
+│       │                                   decoder (deliberately not the lenient MIME decoder —
+│       │                                   never silently drops invalid characters), input
+│       │                                   String#strip()ped first; throws BusinessException
+│       │                                   wrapping INVALID_BASE64 (DEVUTILS_006) on malformed
+│       │                                   input
 │       └── support/
 │           ├── CurlyBraceFormatter.java — beautify(String)/minify(String), static utility (not a
 │           │                               DevUtilOperation itself). Shared by Css/Less/Scss/
@@ -2509,8 +2521,9 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
     │                                 json-to-yaml,html/beautify,css/beautify,less/beautify,
     │                                 scss/beautify,js/beautify,erb/beautify,xml/beautify,
     │                                 json-to-csv,csv-to-json,sql/format,php-to-json,json-to-php,
-    │                                 string-case/convert}. Every endpoint is
-    │                                 public — no @CurrentUserId, no authenticated principal at all.
+    │                                 string-case/convert,base64/encode,base64/decode}. Every
+    │                                 endpoint is public — no @CurrentUserId, no authenticated
+    │                                 principal at all.
     └── impl/DevUtilsController.java — implements DevUtilsApi; injects each operation by its
                                         concrete type (no enum-keyed registry — one fixed endpoint
                                         per operation leaves no runtime dispatch decision to make)

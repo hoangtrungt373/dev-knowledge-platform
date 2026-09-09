@@ -6,7 +6,7 @@ Module-local guidance for `dev-utils-service`. Read alongside the root `CLAUDE.m
 
 A stateless developer-utility API: JSON format/validate, YAML↔JSON conversion, HTML/CSS/LESS/SCSS/
 JS/ERB beautify+minify, XML validate/beautify+minify, JSON↔CSV conversion, SQL format+minify,
-PHP↔JSON conversion, String Case Converter. Package root:
+PHP↔JSON conversion, String Case Converter, Base64 encode/decode. Package root:
 `com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike
@@ -62,17 +62,20 @@ caller.** Every operation is a pure text-in/text-out transform:
   import, no `CurrentUserIdArgumentResolver`.
 - `security/SecurityConfig` — see above.
 - `exception/DevUtilsErrorCode` — `INVALID_JSON`/`INVALID_YAML`/`INVALID_XML`/`INVALID_CSV`/
-  `INVALID_PHP`. No `INVALID_HTML`/`INVALID_CSS`/`INVALID_LESS`/`INVALID_SCSS`/`INVALID_JS`/
-  `INVALID_SQL` — jsoup's parser (HTML, and `ErbOperation`'s own jsoup-based approach) is
+  `INVALID_PHP`/`INVALID_BASE64`. No `INVALID_HTML`/`INVALID_CSS`/`INVALID_LESS`/`INVALID_SCSS`/
+  `INVALID_JS`/`INVALID_SQL` — jsoup's parser (HTML, and `ErbOperation`'s own jsoup-based approach) is
   deliberately lenient and never throws on malformed markup, `CssOperation`/`LessOperation`/
   `ScssOperation`/`JsOperation` all delegate to the equally lenient `service/impl/support/
   CurlyBraceFormatter` (see below), and `SqlFormatOperation` delegates to the similarly lenient
   `service/impl/support/SqlFormatter` (see below) — none of these six have an invalid-input
-  failure path to name. `StringCaseOperation` is the same story for a different reason: it's a
-  pure text transform (split into words, re-case/re-join) with no notion of "invalid" input at
-  all. `INVALID_XML`/`INVALID_CSV`/`INVALID_PHP` are the exceptions among the newer operations:
-  `XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation` are backed by real parsers (JAXP,
-  Jackson's `CsvMapper`, and this module's own `service/impl/support/PhpArrayParser`,
+  failure path to name. `StringCaseOperation`/`Base64EncodeOperation` are the same story for a
+  different reason each: the former is a pure text transform (split into words, re-case/re-join)
+  with no notion of "invalid" input at all; the latter is that every string has *some* valid
+  Base64 encoding, so there's nothing to reject either. `INVALID_XML`/`INVALID_CSV`/`INVALID_PHP`/
+  `INVALID_BASE64` are the exceptions among the newer operations:
+  `XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation`/`Base64DecodeOperation` are backed by
+  real parsers/validators (JAXP, Jackson's `CsvMapper`, this module's own
+  `service/impl/support/PhpArrayParser`, and the JDK's own `java.util.Base64.Decoder`
   respectively), the same "real parse, real invalid-input error" shape `INVALID_JSON`/
   `INVALID_YAML` already establish. `JsonToCsvOperation`/`JsonToPhpOperation` both reuse
   `INVALID_JSON` rather than getting their own code — their input is JSON either way, so a
@@ -725,12 +728,73 @@ tests updated in `PhpArrayWriterTest` (including the empty-array/-object case) p
 affected assertion already existed and just needed its expected string updated, no new test added
 given `JsonToPhpOperationTest`'s own existing test already exercises this exact scenario precisely.
 
+**Eighth follow-up — 2 new operations (`Base64EncodeOperation`/`Base64DecodeOperation`), the first
+to declare `OperationGroup.ENCODERS_DECODERS` instead of `FORMATTERS`**, per direct request:
+"Base64 String - Encode and decode Base64 strings." Backs `POST /api/v1/dev-utils/base64/encode`
+and `POST /api/v1/dev-utils/base64/decode`. Both use the JDK's own `java.util.Base64` with the
+standard (`+`/`/`) alphabet, not URL-safe (`-`/`_`) — matching what "Base64 string" conventionally
+means, and what most general-purpose Base64 tools default to — and both read/write text as UTF-8
+(`StandardCharsets.UTF_8`) explicitly rather than relying on the JVM's platform-default charset, a
+real trap this module has now hit and worked around twice: verifying `Base64EncodeOperation`
+against a genuinely multi-byte UTF-8 input via a real standalone Java harness first caught the
+harness itself silently mis-encoding the *source file's own literal characters* on Windows, since
+`javac` defaults to the platform charset rather than UTF-8 unless told otherwise (`-encoding UTF-8`
+on the compiler, `-Dfile.encoding=UTF-8` at runtime) — nothing to do with the actual
+`Base64EncodeOperation` code, which was correct the whole time, but a reminder that a harness
+itself can be the thing lying to you rather than the code under test (the same "misleading artifact
+vs. real bug" distinction this module's own CRLF-vs-LF pretty-printer fix ran into earlier). The
+original reported/verified example used Vietnamese diacritics; the module's own test data was
+later switched to an English sentence plus an emoji (still genuinely multi-byte UTF-8 via the
+emoji's own 4-byte encoding, without reaching for non-English script) per a direct follow-up
+request — `encode("Hello from Vui Coding 👋")` equals `"SGVsbG8gZnJvbSBWdWkgQ29kaW5nIPCfkYs="`,
+re-verified against the same harness (this time also checking the source file's own
+`String#codePoints()` explicitly, to rule out a silent character substitution rather than just
+trusting a round-trip check, which would pass trivially for *any* correctly round-tripped string
+regardless of whether it's the intended one).
+- `Base64EncodeOperation` never throws — every string, however unusual, has a valid Base64
+  encoding — so, like `StringCaseOperation`, it has no matching `DevUtilsErrorCode`.
+- `Base64DecodeOperation` is a real "parse, real invalid-input error" operation, the same shape
+  `XmlOperation`/`PhpToJsonOperation` already establish — new `DevUtilsErrorCode.INVALID_BASE64`
+  (`DEVUTILS_006`), backed directly by `Base64.getDecoder()`'s own `IllegalArgumentException`
+  message (terse but already specific enough not to need rewording, e.g. "Illegal base64
+  character 20"). `input` is `String#strip()`ped before decoding (a leading/trailing newline is a
+  common artifact of pasting a Base64 string from elsewhere, and shouldn't fail an otherwise-valid
+  decode) but the decoder itself stays the strict `Base64.getDecoder()`, not the lenient
+  `Base64.getMimeDecoder()` — deliberately: the MIME decoder silently ignores any character
+  outside the Base64 alphabet anywhere in the input, which risks quietly "fixing" genuinely
+  malformed input instead of reporting it, the same "never guess, report real errors" posture this
+  module's other real-parser-backed operations already follow. A successfully decoded byte
+  sequence that isn't itself valid UTF-8 text is *not* a separate failure case — `new String(bytes,
+  UTF_8)`'s own standard Java behavior (replace invalid sequences with U+FFFD) applies as-is; this
+  operation doesn't add stricter validation on top of it, since a Base64 payload isn't guaranteed
+  to be UTF-8 text in the first place (arbitrary binary data, or text in another encoding, are both
+  legitimate things to have Base64-encoded).
+- **`gui`'s own `/dev-utils` page needed a real, if small, new capability to support this
+  one** — every prior operation has exactly one action button; Base64 needed two (Encode, Decode)
+  over the same input, run independently. `DevUtilToolPanel.tsx`'s `OperationConfig` gained an
+  optional `secondaryAction: { label, onSubmit }`, rendered as a second `SubmitButton` next to the
+  primary one when present; a new `savingAction: 'primary' | 'secondary' | null` (replacing the old
+  plain `saving` boolean) tracks which one is in flight, disabling both while either is submitting
+  rather than allowing an overlapping double-submit against the same shared `input`/`output` state.
+  Deliberately not generalized into an arbitrary-length actions array — every operation today needs
+  either one action or exactly two, so this was built for two concrete buttons, not a hypothetical
+  N. See `gui/CLAUDE.md`'s own dev-utils section for the full GUI-side detail.
+- 11 new tests: `Base64EncodeOperationTest` (3 — plain ASCII, the exact reported multi-byte
+  example, empty string), `Base64DecodeOperationTest` (5 — plain ASCII, the exact reported example
+  the other direction, a leading/trailing-newline tolerance case, empty string, and the
+  malformed-input `BusinessException`/`INVALID_BASE64` case), plus 3 new
+  `DevUtilsServiceApplicationTests` cases (both new endpoints' reachability with no
+  `Authorization` header, and malformed Base64 returning `400` with `DEVUTILS_006` through the
+  shared `GlobalExceptionHandler`). Test suite grew from 161 to 172, verified via a real
+  `mvn -pl dev-utils-service -am test` run (JDK 21).
+
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
 `HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
 `JsOperationTest`, `ErbOperationTest`, `XmlOperationTest`, `JsonToCsvOperationTest`,
 `CsvToJsonOperationTest`, `SqlFormatOperationTest`, `PhpToJsonOperationTest`,
-`JsonToPhpOperationTest`, `StringCaseOperationTest`), plus `service/impl/support/
+`JsonToPhpOperationTest`, `StringCaseOperationTest`, `Base64EncodeOperationTest`,
+`Base64DecodeOperationTest`), plus `service/impl/support/
 CurlyBraceFormatterTest` (the shared CSS/LESS/SCSS/JS reformatter — brace nesting, already-
 multiline selector lists, comment/string-literal protection, the JS ASI-safety guarantee,
 never-throws-on-unterminated-input), `service/impl/support/SqlFormatterTest` (clause-keyword line
@@ -749,24 +813,19 @@ real parse/serialize behavior (pretty vs. minified output, malformed-input rejec
 structural equality via `readTree`, jsoup's lenient-parsing/indent behavior, and — for
 `XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation` — real JAXP/CSV/PHP parsing and rejection
 behavior). Plus `DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)`
-+ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all sixteen endpoints with
++ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all eighteen endpoints with
 **no** `Authorization` header through the real filter chain, confirming end to end (not just by
 static reasoning) that the app actually starts and every endpoint is genuinely public. This is
 exactly the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also
 covers the `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the
-latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP all
-return `400` with `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005` respectively through the shared
-`GlobalExceptionHandler`. Plus `service/impl/support/ConventionalJsonPrettyPrinterTest` (the one
-support class in this module with its own dedicated test file rather than only being exercised
-indirectly through an operation's own tests — see that class's own note above for why). 161 tests
-total (133 original, plus the 5 code-quality-pass regressions, the 6 JSON-pretty-printer-fix
-tests, the 1 YAML-formatting-fix test, the 5 CSS-colon/blank-line-fix tests, the 3 LESS
-blank-line-generalization/comma-spacing-fix tests, the 4 JSON↔CSV-quoting/boolean-fix tests, and
-the 4 net-new SQL-formatting-style tests above (`SqlFormatterTest` grew from 10 to 14 tests, most
-of the original 10 also rewritten in place to match the new behavior; `SqlFormatOperationTest`/
-`DevUtilsServiceApplicationTests` each had one stale lowercase-keyword assertion fixed, no count
-change there) — updated tests across these fixes changed content but not always the count),
-verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
+latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP/
+Base64 all return `400` with `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005`/`DEVUTILS_006`
+respectively through the shared `GlobalExceptionHandler`. Plus `service/impl/support/
+ConventionalJsonPrettyPrinterTest` (the one support class in this module with its own dedicated
+test file rather than only being exercised indirectly through an operation's own tests — see that
+class's own note above for why). 172 tests total (161 as of the seventh follow-up above, plus 8 new
+Base64 unit tests and 3 new `DevUtilsServiceApplicationTests` cases — see the eighth follow-up's own
+note for the full breakdown), verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module
 

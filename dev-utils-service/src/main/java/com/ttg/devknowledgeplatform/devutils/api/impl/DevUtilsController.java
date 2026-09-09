@@ -8,6 +8,8 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.TextRequest;
+import com.ttg.devknowledgeplatform.devutils.service.impl.Base64DecodeOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.Base64EncodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CssOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CsvToJsonOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.ErbOperation;
@@ -53,6 +55,8 @@ public class DevUtilsController implements DevUtilsApi {
     private final PhpToJsonOperation phpToJsonOperation;
     private final JsonToPhpOperation jsonToPhpOperation;
     private final StringCaseOperation stringCaseOperation;
+    private final Base64EncodeOperation base64EncodeOperation;
+    private final Base64DecodeOperation base64DecodeOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -132,5 +136,15 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<StringCaseResponse> convertStringCase(TextRequest request) {
         return ResponseEntity.ok(stringCaseOperation.execute(request.input()));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> encodeBase64(TextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(base64EncodeOperation.execute(request.input())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> decodeBase64(TextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(base64DecodeOperation.execute(request.input())));
     }
 }
