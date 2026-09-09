@@ -944,6 +944,19 @@ section again. Full unabridged entry-by-entry history for all three lives in
       from flex-grow distribution. Verified via a clean `tsc --noEmit` and a successful
       `vite build` only — no Docker in this sandbox, so none of the three actual fixes is verified
       in a real browser.
+    - **Follow-up: a "maximize this panel" toggle, per request** — the last of the original design
+      discussion's ideas still unbuilt. A header `IconButton` on each panel (`OpenInFullIcon`/
+      `CloseFullscreenIcon`) toggles a new `maximizedPanel: 'input' | 'output' | null` state: the
+      maximized side's `Paper` takes the full row width (`flex-basis: 100%`, ignoring
+      `splitPercent`), the other side hides via `display: 'none'` (kept mounted, not conditionally
+      rendered, so its CodeMirror instance doesn't lose cursor/scroll/undo state), and the resize
+      handle hides too (nothing to drag with one side gone). Deliberately plain component state,
+      not persisted to `localStorage` like `splitPercent` — a momentary focus mode, resetting to
+      the normal split view on every tool switch. Width-only, not height too — Output's own height
+      already grows independently of Input via its existing floor/cap design, so maximizing didn't
+      need a separate height mechanism on top of that. Verified via a clean `tsc --noEmit` and a
+      successful `vite build` only — no Docker in this sandbox, so the actual maximize/restore
+      toggle is unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

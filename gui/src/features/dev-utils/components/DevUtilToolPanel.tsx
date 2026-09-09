@@ -14,6 +14,8 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import PlayArrowIcon from '@mui/icons-material/PlayArrowOutlined';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLessOutlined';
+import OpenInFullIcon from '@mui/icons-material/OpenInFullOutlined';
+import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreenOutlined';
 // Already an outline-style glyph under its own distinct name (not the "Outlined" suffix
 // convention every other icon above uses) — MUI ships "Error" (filled) and "ErrorOutline" as two
 // separately named icons, not a base/Outlined pair, so there's no further outlined variant to
@@ -263,7 +265,18 @@ function downloadTextFile(fileName: string, content: string): void {
  * <p>The info row's own border-bottom uses a fixed `OUTPUT_LINE_COLOR` rather than the theme's
  * `divider` token — `divider` is a translucent black/white overlay tuned for the app's own
  * background, which barely shows (or vanishes, depending on light/dark app mode) against this
- * panel's hardcoded dark background. */
+ * panel's hardcoded dark background.
+ *
+ * <p>**Either panel can be "maximized"** (a header `IconButton`, `OpenInFullIcon`/
+ * `CloseFullscreenIcon`), per request — for reading/scrolling a large result without the other
+ * side sharing the row's width. See `maximizedPanel`'s own comment for why it's plain component
+ * state (resets on tool switch, not a standing `localStorage` preference like `splitPercent`) and
+ * why the un-maximized side is hidden via `display: 'none'` rather than unmounted. Width-only,
+ * deliberately — Output's own height already grows independently of Input (floor at
+ * `availableHeight`, capped at `OUTPUT_MAX_HEIGHT`, both already documented above), so maximizing
+ * doesn't need its own separate height story on top of that; it only ever changes which Paper gets
+ * the row's full width via `flex-basis`. The resize handle hides too while either panel is
+ * maximized — nothing to drag when one side isn't rendered. */
 export default function DevUtilToolPanel({
   input,
   onInputChange,
@@ -291,6 +304,26 @@ export default function DevUtilToolPanel({
   // in DevUtilsPage.tsx), so this only ever actually recomputes once per mount regardless.
   const inputExtensions = useMemo(() => getCodeMirrorExtensions(inputFormat), [inputFormat]);
   const outputExtensions = useMemo(() => getCodeMirrorExtensions(outputLanguage), [outputLanguage]);
+
+  // "Maximize this panel" — per request, for the case where someone just wants to read/scroll a
+  // large result without Input sharing the row's width. Deliberately plain component state, not
+  // persisted to `localStorage` the way `splitPercent`/the sidebar's own collapse state are — this
+  // reads as a momentary focus mode (like a video call's "pin this speaker"), not a standing
+  // layout preference, so it resets to the normal split view on every tool switch (this component
+  // remounts via `key={...}` in DevUtilsPage.tsx) rather than following the admin from tool to
+  // tool. The other panel is hidden via `display: 'none'`, not left unmounted — a conditional
+  // `{!hidden && <Paper>...}` would tear down and rebuild its CodeMirror instance on every
+  // maximize/restore, losing that editor's own cursor position/scroll offset/undo history for no
+  // reason; `display: 'none'` keeps it mounted and simply invisible.
+  const [maximizedPanel, setMaximizedPanel] = useState<'input' | 'output' | null>(null);
+
+  const toggleMaximizeInput = useCallback(() => {
+    setMaximizedPanel(prev => (prev === 'input' ? null : 'input'));
+  }, []);
+
+  const toggleMaximizeOutput = useCallback(() => {
+    setMaximizedPanel(prev => (prev === 'output' ? null : 'output'));
+  }, []);
 
   // The resizable Input/Output split — see SPLIT_STORAGE_KEY's own comment for why this is
   // hand-rolled rather than built on react-resizable-panels. `rowRef` anchors the drag math (the
@@ -430,11 +463,16 @@ export default function DevUtilToolPanel({
           // A user-draggable split, not a fixed 1:1 flex share. `flexShrink`/`flexGrow` stay
           // enabled (not `0 0 ...`) so a narrow viewport that wraps this card onto its own line
           // still grows it to fill that line's full width, same as the original plain `flex: 1`
-          // did — only the *side-by-side* case is actually governed by `splitPercent`.
-          flex: `1 1 ${splitPercent}%`,
+          // did — only the *side-by-side* case is actually governed by `splitPercent`. Maximized
+          // (either panel), this Paper instead takes the full row width regardless of
+          // `splitPercent` — see `maximizedPanel`'s own comment. `display: 'none'`, not
+          // conditional rendering, when *Output* is the maximized one — keeps this Paper's own
+          // CodeMirror instance mounted (preserving its cursor/scroll/undo state) rather than
+          // tearing it down every time the admin maximizes/restores the other side.
+          flex: maximizedPanel === 'input' ? '1 1 100%' : `1 1 ${splitPercent}%`,
           minWidth: 320,
           height: availableHeight,
-          display: 'flex',
+          display: maximizedPanel === 'output' ? 'none' : 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
         }}
@@ -470,6 +508,15 @@ export default function DevUtilToolPanel({
                 Minify
               </Button>
             )}
+            <Tooltip title={maximizedPanel === 'input' ? 'Restore split view' : 'Maximize Input'}>
+              <IconButton size="small" onClick={toggleMaximizeInput}>
+                {maximizedPanel === 'input' ? (
+                  <CloseFullscreenIcon fontSize="small" />
+                ) : (
+                  <OpenInFullIcon fontSize="small" />
+                )}
+              </IconButton>
+            </Tooltip>
           </Stack>
         </Stack>
 
@@ -515,12 +562,16 @@ export default function DevUtilToolPanel({
         // measured value — see `outputChromeHeight`'s own comment for why this Paper's own
         // `minHeight` alone wasn't a reliable enough mechanism on its own); long content just grows
         // the Paper past it instead (min-height puts no ceiling on that), scrolling internally only
-        // past OUTPUT_MAX_HEIGHT (via the Output editor's own `maxHeight` prop).
+        // past OUTPUT_MAX_HEIGHT (via the Output editor's own `maxHeight` prop). Maximized (either
+        // panel), this Paper takes the full row width regardless of `splitPercent` — see
+        // `maximizedPanel`'s own comment; `display: 'none'`, not conditional rendering, when
+        // *Input* is the maximized one, for the same "keep CodeMirror mounted" reason Input's own
+        // Paper documents.
         sx={{
-          flex: `1 1 ${100 - splitPercent}%`,
+          flex: maximizedPanel === 'output' ? '1 1 100%' : `1 1 ${100 - splitPercent}%`,
           minWidth: 320,
           minHeight: availableHeight,
-          display: 'flex',
+          display: maximizedPanel === 'input' ? 'none' : 'flex',
           flexDirection: 'column',
         }}
       >
@@ -552,6 +603,15 @@ export default function DevUtilToolPanel({
                     <DownloadIcon fontSize="small" />
                   </IconButton>
                 </span>
+              </Tooltip>
+              <Tooltip title={maximizedPanel === 'output' ? 'Restore split view' : 'Maximize Output'}>
+                <IconButton size="small" onClick={toggleMaximizeOutput}>
+                  {maximizedPanel === 'output' ? (
+                    <CloseFullscreenIcon fontSize="small" />
+                  ) : (
+                    <OpenInFullIcon fontSize="small" />
+                  )}
+                </IconButton>
               </Tooltip>
             </Stack>
           </Stack>
@@ -661,11 +721,12 @@ export default function DevUtilToolPanel({
           ${splitPercent}%` against the row's own `position: 'relative'` lands exactly on that
           border, since both Papers' own flex-basis percentages (above) sum to 100% with no gap to
           throw the math off. Hidden below `md` — on a narrow viewport this row wraps Input/Output
-          onto separate full-width lines, where a horizontal drag handle wouldn't mean anything.
-          `top: 0, bottom: 0` (not a percentage `height`) stretches it across the row's own already-
-          resolved height (whichever of Input/Output ends up taller) regardless of that height
-          itself being auto-sized — the standard way an absolutely positioned child fills an
-          auto-height positioned ancestor. */}
+          onto separate full-width lines, where a horizontal drag handle wouldn't mean anything —
+          and hidden whenever either panel is maximized, for the same reason: there's nothing to
+          resize when one side is `display: 'none'`. `top: 0, bottom: 0` (not a percentage
+          `height`) stretches it across the row's own already-resolved height (whichever of Input/
+          Output ends up taller) regardless of that height itself being auto-sized — the standard
+          way an absolutely positioned child fills an auto-height positioned ancestor. */}
       <Box
         role="separator"
         aria-orientation="vertical"
@@ -680,7 +741,7 @@ export default function DevUtilToolPanel({
         onDoubleClick={handleResizeDoubleClick}
         onKeyDown={handleResizeKeyDown}
         sx={{
-          display: { xs: 'none', md: 'block' },
+          display: maximizedPanel !== null ? 'none' : { xs: 'none', md: 'block' },
           position: 'absolute',
           top: 0,
           bottom: 0,

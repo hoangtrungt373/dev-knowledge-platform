@@ -3419,6 +3419,38 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
         sandbox, so none of the three actual fixes (the outline's removal, Input's scroll-on-
         overflow, Output's exact floor match) is verified in a real browser.
+  - **Follow-up: a "maximize this panel" toggle, per request — the last of the three ideas from
+    the original design discussion still unbuilt (viewport-relative height and the resizable
+    divider had both landed already; this one had actually been dropped from a later recap message
+    in that same discussion and only got picked back up once the user quoted the original
+    suggestion directly).** A header `IconButton` on each panel (`OpenInFullOutlined`/
+    `CloseFullscreenOutlined` — both confirmed present in the installed `@mui/icons-material`
+    version first, same verification step every icon addition in this feature already establishes)
+    toggles a new `maximizedPanel: 'input' | 'output' | null` state.
+    - **The maximized side's `Paper` takes the full row width** (`flex: '1 1 100%'`, ignoring
+      `splitPercent` entirely while maximized); **the other side hides via `display: 'none'`, not
+      conditional rendering** — `{!hidden && <Paper>...}` would tear down and rebuild that side's
+      CodeMirror instance on every maximize/restore, discarding its own cursor position/scroll
+      offset/undo history for no reason, the same "keep it mounted" reasoning this feature's own
+      resize-handle/absolute-positioning fixes already lean on elsewhere. The resize handle hides
+      too whenever either panel is maximized (`display: maximizedPanel !== null ? 'none' :
+      {xs:'none', md:'block'}`) — nothing to drag when one side isn't rendered.
+    - **Deliberately plain component state, not persisted to `localStorage`** the way
+      `splitPercent`/the sidebar's own collapse state are — maximizing reads as a momentary focus
+      mode (closer to a video call's "pin this speaker" than a standing layout choice), so it
+      resets to the normal split view on every tool switch (this component already remounts via
+      `key={...}` in `DevUtilsPage.tsx`) rather than following the admin from tool to tool.
+    - **Width-only, not height too** — the original idea's own phrasing ("full-width/full-height")
+      predates this feature's later floor/cap height design for Output, which already lets it grow
+      independently of Input (`minHeight: availableHeight` floor, `OUTPUT_MAX_HEIGHT` cap) with no
+      dependency on Input's own height at all; maximizing doesn't need a second, separate height
+      mechanism layered on top of a design that already solves the "let a large result use more
+      room" problem for height. Maximizing only ever changes which `Paper` gets the row's full
+      width via `flex-basis`.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual maximize/restore toggle (button click, CodeMirror state preservation
+      across a hide/show cycle, the resize handle's own hide/reappear) is unverified in a real
+      browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's
