@@ -2553,7 +2553,7 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │           │                               "parse JSON, clean-message on failure" / "pretty vs.
 │           │                               minify serialize" blocks that used to be copy-pasted
 │           │                               across 7 operation classes
-│           └── ConventionalJsonPrettyPrinter.java — a DefaultPrettyPrinter used by JsonNodeIo.write
+│           ├── ConventionalJsonPrettyPrinter.java — a DefaultPrettyPrinter used by JsonNodeIo.write
 │                                           in place of writerWithDefaultPrettyPrinter(), fixing 4
 │                                           ways Jackson's own default diverges from conventional
 │                                           JSON formatting (space on both sides of `:`, single-line
@@ -2561,6 +2561,17 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │                                           and a platform-dependent CRLF/LF line ending) — the one
 │                                           support class in this module with its own dedicated test
 │                                           file, since it carries real logic worth testing directly
+│           ├── TextScanning.java        — indexOfOrEnd(String, String, int)/indexOfOrEnd(String,
+│           │                               char, int), package-private (used only within this same
+│           │                               support package) — the "find needle, or the end of the
+│           │                               string if it's never found" pair CurlyBraceFormatter/
+│           │                               SqlFormatter/PhpArrayParser had each defined
+│           │                               independently before this extraction
+│           └── ParserLocations.java     — locationSuffix(String, int): String, package-private —
+│                                           the "(line N, column M)" line/column-counting loop
+│                                           PhpArrayParser/PhpSerializeParser had each defined
+│                                           independently in their own errorAt before this
+│                                           extraction
 ├── dto/
 │   ├── DevUtilsLimits.java        — MAX_INPUT_LENGTH = 100_000, shared by every request DTO's
 │   │                                 @Size constraint — the one fully public, unauthenticated

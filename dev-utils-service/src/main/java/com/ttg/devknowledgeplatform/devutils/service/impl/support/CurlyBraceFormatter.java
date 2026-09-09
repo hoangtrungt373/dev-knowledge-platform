@@ -172,7 +172,7 @@ public final class CurlyBraceFormatter {
                 continue;
             }
             if (c == '/' && i + 1 < n && input.charAt(i + 1) == '*') {
-                int end = indexOfOrEnd(input, "*/", i + 2);
+                int end = TextScanning.indexOfOrEnd(input, "*/", i + 2);
                 if (atLineStart) {
                     beginLine(out, input, i, depth, hasContentAtDepth, atStatementStart);
                     atLineStart = false;
@@ -183,7 +183,7 @@ public final class CurlyBraceFormatter {
                 continue;
             }
             if (c == '/' && i + 1 < n && input.charAt(i + 1) == '/') {
-                int end = indexOfOrEnd(input, '\n', i + 2);
+                int end = TextScanning.indexOfOrEnd(input, '\n', i + 2);
                 if (atLineStart) {
                     beginLine(out, input, i, depth, hasContentAtDepth, atStatementStart);
                     atStatementStart = false;
@@ -383,11 +383,11 @@ public final class CurlyBraceFormatter {
                 continue;
             }
             if (c == '/' && i + 1 < n && input.charAt(i + 1) == '*') {
-                i = indexOfOrEnd(input, "*/", i + 2);
+                i = TextScanning.indexOfOrEnd(input, "*/", i + 2);
                 continue;
             }
             if (c == '/' && i + 1 < n && input.charAt(i + 1) == '/') {
-                i = indexOfOrEnd(input, '\n', i + 2);
+                i = TextScanning.indexOfOrEnd(input, '\n', i + 2);
                 continue;
             }
             if (c == '\'' || c == '"' || c == '`') {
@@ -527,11 +527,11 @@ public final class CurlyBraceFormatter {
                 continue;
             }
             if (c == '/' && i + 1 < n && s.charAt(i + 1) == '*') {
-                i = indexOfOrEnd(s, "*/", i + 2);
+                i = TextScanning.indexOfOrEnd(s, "*/", i + 2);
                 continue;
             }
             if (c == '/' && i + 1 < n && s.charAt(i + 1) == '/') {
-                i = indexOfOrEnd(s, '\n', i + 2);
+                i = TextScanning.indexOfOrEnd(s, '\n', i + 2);
                 continue;
             }
             if ((c == 'u' || c == 'U') && isUrlFunctionStart(s, i) && !isQuoteAt(s, i + 4)) {
@@ -561,16 +561,6 @@ public final class CurlyBraceFormatter {
 
     private static boolean isSafeBoundary(char c) {
         return c == '\0' || SAFE_BOUNDARY_CHARS.indexOf(c) >= 0;
-    }
-
-    private static int indexOfOrEnd(String s, String needle, int from) {
-        int idx = s.indexOf(needle, from);
-        return idx < 0 ? s.length() : idx + needle.length();
-    }
-
-    private static int indexOfOrEnd(String s, char needle, int from) {
-        int idx = s.indexOf(needle, from);
-        return idx < 0 ? s.length() : idx;
     }
 
     /** Scans a quoted string literal starting at {@code start} (the opening quote), honoring

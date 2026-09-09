@@ -11,12 +11,13 @@ import org.junit.jupiter.api.Test;
 class PhpSerializeParserTest {
 
     @Test
+    @SuppressWarnings("unchecked")
     void parsesTheExactReportedExampleIntoAnOrderedMap() {
         Object result = PhpSerializeParser.parse(
                 "a:3:{s:4:\"name\";s:12:\"DevKnowledge\";s:6:\"active\";b:1;s:5:\"count\";i:47;}");
 
         assertThat(result).isInstanceOf(Map.class);
-        Map<?, ?> map = (Map<?, ?>) result;
+        Map<String, Object> map = (Map<String, Object>) result;
         assertThat(map.keySet()).containsExactly("name", "active", "count");
         assertThat(map.get("name")).isEqualTo("DevKnowledge");
         assertThat(map.get("active")).isEqualTo(Boolean.TRUE);

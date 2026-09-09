@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.devutils.service.impl.support;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.UnaryOperator;
 
 import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
 
@@ -74,7 +75,7 @@ public final class StringCaseConverter {
         return out.toString();
     }
 
-    private static String joinWithSeparator(List<String> words, String separator, java.util.function.UnaryOperator<String> transform) {
+    private static String joinWithSeparator(List<String> words, String separator, UnaryOperator<String> transform) {
         StringBuilder out = new StringBuilder();
         for (int i = 0; i < words.size(); i++) {
             if (i > 0) {

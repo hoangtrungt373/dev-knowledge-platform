@@ -1185,6 +1185,21 @@ section again. Full unabridged entry-by-entry history for all three lives in
     `e.clipboardData`.
   - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
     sandbox, so the on-screen result across all three panels is unverified in a real browser.
+- **`dev-utils-service` — a second code-quality analysis pass, covering everything added since the
+  first one below (Base64/URL/HTML-entity/Hash/PHP-serialize/ASCII-Hex operations and their
+  support classes) — a real test-compile bug plus 2 exact-duplication extractions.**
+  `PhpSerializeParserTest#parsesTheExactReportedExampleIntoAnOrderedMap` failed to compile
+  (`AbstractIterableAssert#containsExactly` can't resolve its element type against a `Map<?, ?>`'s
+  captured-wildcard `keySet()`) — fixed by declaring `Map<String, Object>` instead, matching the
+  already-correct pattern `PhpArrayParserTest`'s own near-identical test already used. New
+  `service/impl/support/TextScanning` (`indexOfOrEnd`, two overloads) de-duplicates an identical
+  pair of static helpers independently defined in `CurlyBraceFormatter`, `SqlFormatter`, and
+  `PhpArrayParser`; new `service/impl/support/ParserLocations` (`locationSuffix`) de-duplicates an
+  identical line/column-counting `errorAt` loop independently defined in `PhpArrayParser` and
+  `PhpSerializeParser`. Both new classes are package-private, since every caller lives in the same
+  `service.impl.support` package. Verified via a real `mvn -pl dev-utils-service -am test` run
+  (JDK 21) — 235/235 passing (no behavior change; the fix above corrected an existing test's own
+  compile error, not a new test).
 - **`dev-utils-service` — a code-quality analysis pass (same shape as the earlier `gui`
   dev-utils analysis) surfaced 2 real bugs and a handful of duplication/doc-drift/Javadoc-coverage
   issues; all implemented in one pass.**

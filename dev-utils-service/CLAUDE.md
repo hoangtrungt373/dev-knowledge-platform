@@ -1108,6 +1108,58 @@ ASCII/Hex unit tests plus 3 more `DevUtilsServiceApplicationTests` cases from th
 each follow-up's own note for the full breakdown), verified via a real
 `mvn -pl dev-utils-service -am test` run (JDK 21).
 
+**Fifteenth follow-up — a second code-quality analysis pass (mirroring the first one above and the
+matching `gui` dev-utils pass), covering everything added since the first pass: a real, pre-existing
+test-compile bug fixed, plus 2 exact duplication patterns extracted across the operations added in
+follow-ups 8–14.**
+
+- **Real bug: `PhpSerializeParserTest#parsesTheExactReportedExampleIntoAnOrderedMap` didn't
+  compile** — `Map<?, ?> map = (Map<?, ?>) result;` followed by `assertThat(map.keySet())
+  .containsExactly("name", "active", "count")` fails to compile: AssertJ's `containsExactly`
+  infers its element type from `Set<?>`'s own captured wildcard, which a plain `String` varargs
+  argument can never satisfy. `PhpArrayParserTest`'s own near-identical test (same assertion shape,
+  written earlier) already avoids this by declaring `Map<String, Object> map = (Map<String,
+  Object>) result;` instead — `PhpSerializeParserTest`'s version had simply diverged from that
+  established, already-correct pattern. Fixed by matching it exactly (plus the matching
+  `@SuppressWarnings("unchecked")` `PhpArrayParserTest`'s own version also carries on that method).
+  Confirmed via a real `mvn -pl dev-utils-service -am test` run (JDK 21) — this was a genuine build
+  break (`mvn test` failed at `testCompile` before this fix), not just a lint nit.
+- **New `service/impl/support/TextScanning`** (package-private — used only within this same
+  `support` package, unlike `JsonNodeIo`/`ParsingExceptionMessages`, which are `public` for their
+  cross-package callers in `service.impl`) — the tiny `indexOfOrEnd(String, String, int)`/
+  `indexOfOrEnd(String, char, int)` pair ("find `needle`, or the end of the string if it's never
+  found" — the mechanism every one of this module's lenient scanners uses to consume an
+  unterminated comment/string/literal instead of erroring on it) had been defined identically,
+  down to the parameter names, in three separate classes: `CurlyBraceFormatter` (added in the
+  original CSS/LESS/SCSS/JS batch), `SqlFormatter` (added in a later follow-up), and
+  `PhpArrayParser` (added in yet another). None of the three ever noticed the other two already had
+  it. All three now call the one shared pair instead of their own private copy.
+- **New `service/impl/support/ParserLocations`** (also package-private, same reasoning) — the
+  `errorAt` line/column-counting loop (walk every character up to a failure position, counting
+  `\n`s, to build a `"(line N, column M)"` suffix) had been defined identically in both of this
+  module's hand-rolled recursive-descent parsers, `PhpArrayParser` (original) and
+  `PhpSerializeParser` (added in the twelfth follow-up, without ever noticing `PhpArrayParser`
+  already had the exact same loop). Both classes' own `errorAt` now just call
+  `ParserLocations.locationSuffix(input, position)` and wrap the result in their own exception
+  type — deliberately **not** merged with `exception.ParsingExceptionMessages`'s own location
+  handling, which reads a *structured* location Jackson/JAXP already computed rather than counting
+  newlines by hand; there's nothing to share between the two approaches.
+- **Also fixed, same pass, purely a readability nit**: `StringCaseConverter#joinWithSeparator`
+  declared its functional-interface parameter as the fully-qualified
+  `java.util.function.UnaryOperator<String>` instead of importing `UnaryOperator` like every other
+  JDK type this module imports — added the missing import.
+- **Deliberately not touched, everything else read and found clean**: every operation's own
+  `(Object)`-cast `BusinessException` construction (the historical bug class this module has hit
+  three times before — see the second pass's own notes above), every operation's `group()`
+  assignment against `OperationGroup`, and every operation-to-test-class 1:1 mapping (27 operation
+  classes, 27 matching test classes, confirmed by listing both directories) were all already
+  correct — no further instance of any of those three historical bug classes was found in the 8
+  operations/2 parsers added since the first pass. Test suite unchanged at 235 (this pass fixed a
+  test-compile bug and refactored two already-tested support classes' internals — no new behavior,
+  so no new test needed; the fixed `PhpSerializeParserTest` method itself is one of the existing
+  235, not a 236th). Verified via a real `mvn -pl dev-utils-service -am compile`/`test` run (JDK
+  21), same as every other change to this module.
+
 ## Rules specific to this module
 
 - **Don't force a new operation's request/response shape (or its `execute(...)` signature) to

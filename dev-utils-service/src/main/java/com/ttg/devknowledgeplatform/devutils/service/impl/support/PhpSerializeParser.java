@@ -215,17 +215,7 @@ public final class PhpSerializeParser {
     }
 
     private PhpSerializeParseException errorAt(int position, String message) {
-        int line = 1;
-        int column = 1;
-        for (int i = 0; i < position && i < input.length(); i++) {
-            if (input.charAt(i) == '\n') {
-                line++;
-                column = 1;
-            } else {
-                column++;
-            }
-        }
-        return new PhpSerializeParseException(message + " (line " + line + ", column " + column + ")");
+        return new PhpSerializeParseException(message + ParserLocations.locationSuffix(input, position));
     }
 
     /** Thrown by {@link #parse} on malformed input — the message already carries a

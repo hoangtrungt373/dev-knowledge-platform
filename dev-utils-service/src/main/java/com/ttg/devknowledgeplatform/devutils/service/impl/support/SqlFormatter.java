@@ -364,19 +364,19 @@ public final class SqlFormatter {
                 continue;
             }
             if (c == '-' && i + 1 < n && input.charAt(i + 1) == '-') {
-                int end = indexOfOrEnd(input, '\n', i + 2);
+                int end = TextScanning.indexOfOrEnd(input, '\n', i + 2);
                 tokens.add(input.substring(i, end));
                 i = end;
                 continue;
             }
             if (c == '#') {
-                int end = indexOfOrEnd(input, '\n', i + 1);
+                int end = TextScanning.indexOfOrEnd(input, '\n', i + 1);
                 tokens.add(input.substring(i, end));
                 i = end;
                 continue;
             }
             if (c == '/' && i + 1 < n && input.charAt(i + 1) == '*') {
-                int end = indexOfOrEnd(input, "*/", i + 2);
+                int end = TextScanning.indexOfOrEnd(input, "*/", i + 2);
                 tokens.add(input.substring(i, end));
                 i = end;
                 continue;
@@ -415,16 +415,6 @@ public final class SqlFormatter {
             i++;
         }
         return tokens;
-    }
-
-    private static int indexOfOrEnd(String s, String needle, int from) {
-        int idx = s.indexOf(needle, from);
-        return idx < 0 ? s.length() : idx + needle.length();
-    }
-
-    private static int indexOfOrEnd(String s, char needle, int from) {
-        int idx = s.indexOf(needle, from);
-        return idx < 0 ? s.length() : idx;
     }
 
     /** Scans a quoted literal/identifier starting at {@code start} (the opening quote), tolerating

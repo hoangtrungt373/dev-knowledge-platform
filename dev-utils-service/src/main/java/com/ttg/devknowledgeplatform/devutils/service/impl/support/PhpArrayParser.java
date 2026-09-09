@@ -338,43 +338,23 @@ public final class PhpArrayParser {
                 continue;
             }
             if (c == '/' && pos + 1 < input.length() && input.charAt(pos + 1) == '/') {
-                pos = indexOfOrEnd(input, '\n', pos + 2);
+                pos = TextScanning.indexOfOrEnd(input, '\n', pos + 2);
                 continue;
             }
             if (c == '#') {
-                pos = indexOfOrEnd(input, '\n', pos + 1);
+                pos = TextScanning.indexOfOrEnd(input, '\n', pos + 1);
                 continue;
             }
             if (c == '/' && pos + 1 < input.length() && input.charAt(pos + 1) == '*') {
-                pos = indexOfOrEnd(input, "*/", pos + 2);
+                pos = TextScanning.indexOfOrEnd(input, "*/", pos + 2);
                 continue;
             }
             break;
         }
     }
 
-    private static int indexOfOrEnd(String s, String needle, int from) {
-        int idx = s.indexOf(needle, from);
-        return idx < 0 ? s.length() : idx + needle.length();
-    }
-
-    private static int indexOfOrEnd(String s, char needle, int from) {
-        int idx = s.indexOf(needle, from);
-        return idx < 0 ? s.length() : idx;
-    }
-
     private PhpParseException errorAt(int position, String message) {
-        int line = 1;
-        int column = 1;
-        for (int i = 0; i < position && i < input.length(); i++) {
-            if (input.charAt(i) == '\n') {
-                line++;
-                column = 1;
-            } else {
-                column++;
-            }
-        }
-        return new PhpParseException(message + " (line " + line + ", column " + column + ")");
+        return new PhpParseException(message + ParserLocations.locationSuffix(input, position));
     }
 
     /** Thrown by {@link #parse} on malformed input — the message already carries a
