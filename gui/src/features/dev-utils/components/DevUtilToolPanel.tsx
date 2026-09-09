@@ -131,13 +131,20 @@ const DEFAULT_SPLIT_PERCENT = 50;
 const MIN_SPLIT_PERCENT = 25;
 const MAX_SPLIT_PERCENT = 75;
 const SPLIT_KEYBOARD_STEP = 5;
-// The handle's own width plus the row's two `gap: 2` (16px each) gaps either side of it —
-// subtracted (half each) from both Papers' own `flex-basis` so the two basis values, the handle,
-// and both gaps sum to exactly 100% of the row's width — the same calc()-gap-compensation
-// technique this codebase already establishes elsewhere for a percentage split sharing a row with
-// a `gap` (see `gui/CLAUDE.md`'s `ProductDetailPage.tsx` note).
-const SPLIT_HANDLE_WIDTH_PX = 4;
-const SPLIT_HANDLE_OVERHEAD_PX = SPLIT_HANDLE_WIDTH_PX + 2 * 16;
+// The two Papers touch directly — no `gap` between them at all, per a follow-up request ("remove
+// the gap... so the user can directly hold the Input border right/Output border left") — so their
+// own `flex-basis` percentages need no calc()/overhead subtraction, unlike an earlier version of
+// this feature that reserved a visible, always-present handle column between them. The resize
+// handle instead **overlays** the shared border as an absolutely positioned strip (`position:
+// 'absolute'`, `left: ${splitPercent}%` against the row's own `position: 'relative'`), wide enough
+// to be a comfortable hit target/`cursor: 'col-resize'` zone, but rendering no visible line at all
+// at rest — only on hover/focus/drag (an `opacity` fade on its own `::after`, not a width change,
+// since there's nothing to widen from at rest). This is deliberately a wider *hit target* than the
+// *visible* line it reveals: a bare 1-2px seam is a poor target to land a mouse on precisely (the
+// same reasoning `react-resizable-panels`' own `resizeTargetMinimumSize` docs and Apple's HIG make
+// for a real handle), so SPLIT_HANDLE_HIT_WIDTH_PX stays generous even though nothing that wide is
+// ever actually drawn.
+const SPLIT_HANDLE_HIT_WIDTH_PX = 16;
 
 function clampSplitPercent(value: number): number {
   return Math.min(MAX_SPLIT_PERCENT, Math.max(MIN_SPLIT_PERCENT, value));
@@ -372,16 +379,18 @@ export default function DevUtilToolPanel({
     // about once this row can wrap to two lines on a narrow viewport) — `flex-start` plus each
     // Paper's own explicit `height`/`minHeight` gets the identical result without depending on
     // that, so each card's rendered height is a direct function of its own sx alone.
-    <Box ref={rowRef} sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2 }}>
+    // `position: 'relative'` anchors the resize handle below, which overlays the shared border
+    // between the two Papers rather than sitting between them as its own flex item — see
+    // SPLIT_HANDLE_HIT_WIDTH_PX's own comment. No `gap` at all: the two Papers touch directly.
+    <Box ref={rowRef} sx={{ position: 'relative', display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start' }}>
       <Paper
         variant="outlined"
         sx={{
-          // A user-draggable split, not a fixed 1:1 flex share — see SPLIT_HANDLE_OVERHEAD_PX's
-          // own comment for why the subtracted term isn't just half the row's `gap`. `flexShrink`/
-          // `flexGrow` stay enabled (not `0 0 ...`) so a narrow viewport that wraps this card onto
-          // its own line still grows it to fill that line's full width, same as the original plain
-          // `flex: 1` did — only the *side-by-side* case is actually governed by `splitPercent`.
-          flex: `1 1 calc(${splitPercent}% - ${SPLIT_HANDLE_OVERHEAD_PX / 2}px)`,
+          // A user-draggable split, not a fixed 1:1 flex share. `flexShrink`/`flexGrow` stay
+          // enabled (not `0 0 ...`) so a narrow viewport that wraps this card onto its own line
+          // still grows it to fill that line's full width, same as the original plain `flex: 1`
+          // did — only the *side-by-side* case is actually governed by `splitPercent`.
+          flex: `1 1 ${splitPercent}%`,
           minWidth: 320,
           height: availableHeight,
           display: 'flex',
@@ -470,54 +479,6 @@ export default function DevUtilToolPanel({
         </Box>
       </Paper>
 
-      {/* Hidden below `md` — on a narrow viewport this row wraps Input/Output onto separate full-
-          width lines (see each Paper's own `minWidth: 320` + `flexShrink`), where a horizontal
-          drag handle between them wouldn't mean anything. `alignSelf: 'stretch'` (overriding the
-          row's own `alignItems: 'flex-start'` just for this one item) makes the visible divider
-          line span the full height of whichever card is currently taller, a nicer look than a
-          short bar pinned to the row's own top edge. */}
-      <Box
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize Input/Output panels"
-        aria-valuenow={Math.round(splitPercent)}
-        aria-valuemin={MIN_SPLIT_PERCENT}
-        aria-valuemax={MAX_SPLIT_PERCENT}
-        tabIndex={0}
-        onPointerDown={handleResizePointerDown}
-        onPointerMove={handleResizePointerMove}
-        onPointerUp={handleResizePointerUp}
-        onDoubleClick={handleResizeDoubleClick}
-        onKeyDown={handleResizeKeyDown}
-        sx={{
-          display: { xs: 'none', md: 'block' },
-          alignSelf: 'stretch',
-          width: SPLIT_HANDLE_WIDTH_PX,
-          flexShrink: 0,
-          cursor: 'col-resize',
-          position: 'relative',
-          outline: 'none',
-          '&::after': {
-            content: '""',
-            position: 'absolute',
-            top: 0,
-            bottom: 0,
-            left: '50%',
-            width: 1,
-            transform: 'translateX(-50%)',
-            bgcolor: 'divider',
-            transition: 'background-color 0.1s, width 0.1s',
-          },
-          '&:hover::after, &:focus-visible::after': {
-            width: 2,
-            bgcolor: 'primary.main',
-          },
-          ...(resizing && {
-            '&::after': { width: 2, bgcolor: 'primary.main' },
-          }),
-        }}
-      />
-
       <Paper
         variant="outlined"
         // `minHeight`, not `height` — Output must never look shorter than Input/the sidebar for a
@@ -528,7 +489,7 @@ export default function DevUtilToolPanel({
         // the resulting free space" pattern); long content just grows the Paper past it instead
         // (min-height puts no ceiling on that), scrolling internally only past OUTPUT_MAX_HEIGHT.
         sx={{
-          flex: `1 1 calc(${100 - splitPercent}% - ${SPLIT_HANDLE_OVERHEAD_PX / 2}px)`,
+          flex: `1 1 ${100 - splitPercent}%`,
           minWidth: 320,
           minHeight: availableHeight,
           display: 'flex',
@@ -675,6 +636,63 @@ export default function DevUtilToolPanel({
           </Stack>
         )}
       </Paper>
+
+      {/* Overlays the shared border between the two Papers above (position: 'absolute', not a
+          flex item of its own) rather than reserving a visible column between them — the two
+          Papers touch directly, with this only becoming visible on hover/focus/drag. `left:
+          ${splitPercent}%` against the row's own `position: 'relative'` lands exactly on that
+          border, since both Papers' own flex-basis percentages (above) sum to 100% with no gap to
+          throw the math off. Hidden below `md` — on a narrow viewport this row wraps Input/Output
+          onto separate full-width lines, where a horizontal drag handle wouldn't mean anything.
+          `top: 0, bottom: 0` (not a percentage `height`) stretches it across the row's own already-
+          resolved height (whichever of Input/Output ends up taller) regardless of that height
+          itself being auto-sized — the standard way an absolutely positioned child fills an
+          auto-height positioned ancestor. */}
+      <Box
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize Input/Output panels"
+        aria-valuenow={Math.round(splitPercent)}
+        aria-valuemin={MIN_SPLIT_PERCENT}
+        aria-valuemax={MAX_SPLIT_PERCENT}
+        tabIndex={0}
+        onPointerDown={handleResizePointerDown}
+        onPointerMove={handleResizePointerMove}
+        onPointerUp={handleResizePointerUp}
+        onDoubleClick={handleResizeDoubleClick}
+        onKeyDown={handleResizeKeyDown}
+        sx={{
+          display: { xs: 'none', md: 'block' },
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: `${splitPercent}%`,
+          transform: 'translateX(-50%)',
+          width: SPLIT_HANDLE_HIT_WIDTH_PX,
+          zIndex: 1,
+          cursor: 'col-resize',
+          outline: 'none',
+          // No visible line at rest at all — the two Papers' own adjacent borders already read as
+          // a single seam where they touch. A fade-in `opacity`, not a width change from 0 (there's
+          // nothing to widen from), reveals a highlighted line only on hover/focus/drag.
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: '50%',
+            width: 2,
+            transform: 'translateX(-50%)',
+            bgcolor: 'primary.main',
+            opacity: 0,
+            transition: 'opacity 0.1s',
+          },
+          '&:hover::after, &:focus-visible::after': { opacity: 1 },
+          ...(resizing && {
+            '&::after': { opacity: 1 },
+          }),
+        }}
+      />
     </Box>
   );
 }

@@ -3265,6 +3265,40 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
       sandbox, so the actual drag/keyboard/double-click/persistence behavior, and the mobile
       hidden-handle/full-width-stacking case, are unverified in a real browser.
+  - **Follow-up: the always-visible handle-with-a-gap above replaced with a zero-gap, hover-only
+    reveal, per request** — "remove the gap between Input and Output so that user can directly
+    hold the Input border right/Output border left ... resize the width of those 2 Box (instead of
+    holding an addition[al] vertical line between them)." Discussed as a design tradeoff first: a
+    bare 1px shared border is a poor drag target on its own (no visual cue it's draggable, easy to
+    miss with the mouse — the same reasoning `react-resizable-panels`' own
+    `resizeTargetMinimumSize` docs and Apple's HIG cite for a real handle needing real width), so
+    the accepted middle ground keeps a generous hit target but makes it **invisible until the user
+    actually needs it**, rather than either extreme (always-visible line, or a razor-thin border
+    with zero affordance).
+    - **The row's own `gap` is gone entirely** — both `Paper`s' `flex-basis` percentages
+      (`splitPercent`%/`(100-splitPercent)`%) now sum to exactly 100% with no calc()-overhead
+      subtraction, since there's no longer a handle column or gap consuming any row width; the two
+      cards' own adjacent borders (each `variant="outlined"`) sit directly next to each other,
+      reading as one seam where they touch — exactly the "boxes touching" look asked for.
+    - **The handle became a `position: 'absolute'` overlay, not a flex item of its own** —
+      `left: ${splitPercent}%` against a new `position: 'relative'` on the row itself lands it
+      exactly on the shared border (this only works because the math above sums cleanly to 100%
+      with no gap to throw it off); `top: 0, bottom: 0` (not a percentage `height`) stretches it
+      across the row's own already-resolved height (whichever of Input/Output ends up taller)
+      regardless of that height itself coming from auto-sized flex content — the standard way an
+      absolutely positioned child fills an auto-height positioned ancestor, confirmed correct by
+      reasoning through the CSS spec rather than assumed (this couldn't be measured in a real
+      browser either way). Still a comfortable `SPLIT_HANDLE_HIT_WIDTH_PX` (16px) hit target/
+      `cursor: 'col-resize'` zone — deliberately much wider than the *visible* line it reveals,
+      since the whole point is a hit target generous enough to actually land the mouse on, even
+      though nothing that wide is ever drawn.
+    - **Renders no visible line at rest at all** — the `::after` highlight now fades in via
+      `opacity` (0 → 1 on hover/`:focus-visible`/`resizing`), not a width change from 0 the way the
+      previous always-on-line-with-gap version worked (there was nothing to widen from at rest
+      here, since nothing renders at rest in the first place).
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual zero-gap look, the hover/focus/drag reveal, and the absolutely-
+      positioned handle's height-stretch are all unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

@@ -874,6 +874,21 @@ section again. Full unabridged entry-by-entry history for all three lives in
       Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
       sandbox, so the actual drag/keyboard/double-click/persistence behavior is unverified in a
       real browser.
+    - **Follow-up: the always-visible handle/gap above replaced with a zero-gap, hover-only reveal,
+      per request** — "remove the gap between Input and Output so that user can directly hold the
+      Input border right/Output border left," after discussing the tradeoff (a bare 1px border is
+      a poor drag target on its own, the same reasoning `react-resizable-panels`' own
+      `resizeTargetMinimumSize` docs make) and landing on a hybrid: the row's own `gap` is gone
+      entirely (the two `Paper`s' `flex-basis` percentages now sum to 100% directly, no
+      calc()-overhead subtraction needed), and the handle is now a `position: 'absolute'` overlay
+      (`left: ${splitPercent}%` against the row's own `position: 'relative'`, `top: 0, bottom: 0`
+      to stretch across the row's own resolved height regardless of it being auto-sized) rather
+      than a flex item of its own — a comfortable 16px hit target/`cursor: 'col-resize'` zone that
+      renders **no visible line at rest at all** (the two Papers' own adjacent borders already read
+      as one seam), fading a highlighted line in only on hover/focus/drag via `opacity`, not a
+      width change (there's nothing to widen from at rest). Verified via a clean `tsc --noEmit` and
+      a successful `vite build` only — no Docker in this sandbox, so the actual zero-gap look and
+      the hover-reveal are unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.
