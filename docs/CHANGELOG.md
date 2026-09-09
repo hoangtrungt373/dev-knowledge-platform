@@ -851,6 +851,29 @@ section again. Full unabridged entry-by-entry history for all three lives in
         `panelHeight`, in the same effect), independent of Output's own rendered size entirely.
       - Verified via a clean `tsc --noEmit` and a successful `vite build` only, at every step — no
         Docker in this sandbox, so none of this is exercised in a real browser.
+    - **Follow-up: a resizable divider between Input/Output, per request ("Move to #2" — the
+      second of the ideas discussed for a large payload; #1, the viewport-relative height work
+      above, was accepted first).** `DevUtilToolPanel.tsx` gained a hand-rolled drag handle rather
+      than reusing `@tasks/components/ResizeHandle.tsx`'s `react-resizable-panels`-based one — that
+      library's own `Group` container defaults to `height: '100%'`/`overflow: 'hidden'` (confirmed
+      by reading the installed package's own compiled source, not assumed), which assumes a
+      bounded, already-known-height parent — fundamentally incompatible with Output's own "can grow
+      past the viewport for a long response, lets the page scroll" design from the two regressions
+      just fixed above; wrapping this row in a `Group` risked reopening one of them. Instead: a new
+      `splitPercent` state (persisted to `localStorage`, same standing-preference treatment the
+      sidebar's own collapse state gets) drives each `Paper`'s own `flex-basis` (`calc(P% -
+      20px)`/`calc((100-P)% - 20px)`, the 20px compensating for the handle's own 8px width plus the
+      row's two 16px `gap`s either side of it — the same `calc()`-gap-compensation technique this
+      codebase already establishes for a percentage split sharing a row with a `gap`); a small
+      styled `Box` between the two Papers (`role="separator"`, drag via Pointer Events with
+      `setPointerCapture` so `onPointerMove`/`onPointerUp` stay plain props with no window-level
+      listener to clean up, double-click to reset to 50/50, arrow-key nudging for keyboard
+      accessibility) drives it. Hidden below the `md` breakpoint, where this row wraps Input/Output
+      onto separate full-width lines and a horizontal drag handle wouldn't mean anything. Neither
+      side's own `height`/`minHeight` is affected by dragging — only the width split changes.
+      Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual drag/keyboard/double-click/persistence behavior is unverified in a
+      real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

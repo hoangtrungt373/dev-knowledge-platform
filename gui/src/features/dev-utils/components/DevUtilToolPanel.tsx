@@ -1,4 +1,10 @@
-import { useCallback, useState } from 'react';
+import {
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  useCallback,
+  useRef,
+  useState,
+} from 'react';
 import {
   Box,
   Button,
@@ -107,6 +113,58 @@ const OUTPUT_MAX_LINES = 1000;
 const OUTPUT_LINE_HEIGHT_PX = 20;
 const OUTPUT_MAX_HEIGHT = OUTPUT_MAX_LINES * OUTPUT_LINE_HEIGHT_PX;
 
+// A resizable divider between Input/Output, per a follow-up request — hand-rolled with plain
+// Pointer Events rather than reusing @tasks/components/ResizeHandle.tsx's react-resizable-panels-
+// based one. That library's own `Group` container defaults to `height: '100%'`/`overflow: 'hidden'`
+// (confirmed by reading node_modules/react-resizable-panels/dist/react-resizable-panels.js
+// directly, not assumed from its own docs) — it assumes it fills a bounded, already-known-height
+// parent, which is fundamentally incompatible with Output's own "can grow past the viewport for a
+// long response, lets the *page* scroll instead" design (the whole point of the partial revert two
+// turns of this same feature already went through — see this component's own doc comment). Forcing
+// this row into a `Group` would very likely reintroduce one of the two regressions just fixed, in a
+// library-internal way that's much harder to reason about than this row's own plain flexbox. A
+// fixed-basis split driven by a small styled divider needs no such assumption — only the two
+// Papers' own `flex-basis` percentages change; each side's `height`/`minHeight` (set elsewhere)
+// is completely unaffected by dragging this handle.
+const SPLIT_STORAGE_KEY = 'devUtilsPanelSplitPercent';
+const DEFAULT_SPLIT_PERCENT = 50;
+const MIN_SPLIT_PERCENT = 25;
+const MAX_SPLIT_PERCENT = 75;
+const SPLIT_KEYBOARD_STEP = 5;
+// The handle's own width plus the row's two `gap: 2` (16px each) gaps either side of it —
+// subtracted (half each) from both Papers' own `flex-basis` so the two basis values, the handle,
+// and both gaps sum to exactly 100% of the row's width — the same calc()-gap-compensation
+// technique this codebase already establishes elsewhere for a percentage split sharing a row with
+// a `gap` (see `gui/CLAUDE.md`'s `ProductDetailPage.tsx` note).
+const SPLIT_HANDLE_WIDTH_PX = 4;
+const SPLIT_HANDLE_OVERHEAD_PX = SPLIT_HANDLE_WIDTH_PX + 2 * 16;
+
+function clampSplitPercent(value: number): number {
+  return Math.min(MAX_SPLIT_PERCENT, Math.max(MIN_SPLIT_PERCENT, value));
+}
+
+// A standing preference (like the sidebar's own collapse state), not per-session UI state, so it's
+// persisted to localStorage the same way. Wrapped in try/catch — a private window or blocked
+// storage should degrade to the default split, never throw.
+function readStoredSplitPercent(): number {
+  try {
+    const stored = window.localStorage.getItem(SPLIT_STORAGE_KEY);
+    const parsed = stored === null ? NaN : Number(stored);
+    return Number.isFinite(parsed) ? clampSplitPercent(parsed) : DEFAULT_SPLIT_PERCENT;
+  } catch {
+    return DEFAULT_SPLIT_PERCENT;
+  }
+}
+
+function persistSplitPercent(value: number): void {
+  try {
+    window.localStorage.setItem(SPLIT_STORAGE_KEY, String(value));
+  } catch {
+    // Best-effort only — a private window or blocked storage just means the split isn't
+    // remembered next time, not a real failure worth surfacing.
+  }
+}
+
 function downloadTextFile(fileName: string, content: string): void {
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -132,7 +190,10 @@ function downloadTextFile(fileName: string, content: string): void {
  * on success or `onErrorChange` on failure instead of local setters). Every other piece of state
  * here (`minify`/`saving`/`copied`) stays local — `DevUtilsPage.tsx` still remounts this component
  * on tool switch (`key={...}`) to reset those, independently of the parent's own `input`/`output`/
- * `error` reset.
+ * `error` reset. `splitPercent` (the resizable divider's own share of the row, below) is
+ * deliberately **not** reset on tool switch — a standing per-viewer layout preference (persisted
+ * to `localStorage`, see `SPLIT_STORAGE_KEY`), not something specific to whichever tool happens to
+ * be selected right now.
  *
  * <p>A submit failure is **not** surfaced via the header notification (`showNotification`/
  * `showError`) at all anymore, per a direct request — `onSubmit`'s own `devUtilsApi.*` calls are
@@ -203,6 +264,64 @@ export default function DevUtilToolPanel({
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // The resizable Input/Output split — see SPLIT_STORAGE_KEY's own comment for why this is
+  // hand-rolled rather than built on react-resizable-panels. `rowRef` anchors the drag math (the
+  // handle's own pointer position is only meaningful relative to the row's own bounding box).
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const [splitPercent, setSplitPercent] = useState<number>(readStoredSplitPercent);
+  const [resizing, setResizing] = useState(false);
+
+  // `setPointerCapture` routes every subsequent pointer event to this same element regardless of
+  // where the cursor actually moves (even outside the handle's own bounds) until pointerup/cancel
+  // — this is what lets onPointerMove/onPointerUp below stay plain React props on the handle
+  // itself, with no window-level listener to attach/clean up by hand.
+  const handleResizePointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setResizing(true);
+  }, []);
+
+  const handleResizePointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (!resizing || !rowRef.current) {
+        return;
+      }
+      const rect = rowRef.current.getBoundingClientRect();
+      const rawPercent = ((e.clientX - rect.left) / rect.width) * 100;
+      setSplitPercent(clampSplitPercent(rawPercent));
+    },
+    [resizing]
+  );
+
+  const handleResizePointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    setResizing(false);
+    // Persisted only on release (mirroring react-resizable-panels' own onLayoutChanged, "not
+    // called until the pointer has been released" — the recommended point to save to storage),
+    // not on every pointermove, so a mid-drag position never gets written dozens of times.
+    setSplitPercent(current => {
+      persistSplitPercent(current);
+      return current;
+    });
+  }, []);
+
+  const handleResizeDoubleClick = useCallback(() => {
+    setSplitPercent(DEFAULT_SPLIT_PERCENT);
+    persistSplitPercent(DEFAULT_SPLIT_PERCENT);
+  }, []);
+
+  const handleResizeKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') {
+      return;
+    }
+    e.preventDefault();
+    const delta = e.key === 'ArrowLeft' ? -SPLIT_KEYBOARD_STEP : SPLIT_KEYBOARD_STEP;
+    setSplitPercent(prev => {
+      const next = clampSplitPercent(prev + delta);
+      persistSplitPercent(next);
+      return next;
+    });
+  }, []);
+
   const handleSubmit = useCallback(async () => {
     setSaving(true);
     try {
@@ -253,10 +372,22 @@ export default function DevUtilToolPanel({
     // about once this row can wrap to two lines on a narrow viewport) — `flex-start` plus each
     // Paper's own explicit `height`/`minHeight` gets the identical result without depending on
     // that, so each card's rendered height is a direct function of its own sx alone.
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2 }}>
+    <Box ref={rowRef} sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2 }}>
       <Paper
         variant="outlined"
-        sx={{ flex: 1, minWidth: 320, height: availableHeight, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+        sx={{
+          // A user-draggable split, not a fixed 1:1 flex share — see SPLIT_HANDLE_OVERHEAD_PX's
+          // own comment for why the subtracted term isn't just half the row's `gap`. `flexShrink`/
+          // `flexGrow` stay enabled (not `0 0 ...`) so a narrow viewport that wraps this card onto
+          // its own line still grows it to fill that line's full width, same as the original plain
+          // `flex: 1` did — only the *side-by-side* case is actually governed by `splitPercent`.
+          flex: `1 1 calc(${splitPercent}% - ${SPLIT_HANDLE_OVERHEAD_PX / 2}px)`,
+          minWidth: 320,
+          height: availableHeight,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
       >
         <Stack
           direction="row"
@@ -339,6 +470,54 @@ export default function DevUtilToolPanel({
         </Box>
       </Paper>
 
+      {/* Hidden below `md` — on a narrow viewport this row wraps Input/Output onto separate full-
+          width lines (see each Paper's own `minWidth: 320` + `flexShrink`), where a horizontal
+          drag handle between them wouldn't mean anything. `alignSelf: 'stretch'` (overriding the
+          row's own `alignItems: 'flex-start'` just for this one item) makes the visible divider
+          line span the full height of whichever card is currently taller, a nicer look than a
+          short bar pinned to the row's own top edge. */}
+      <Box
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize Input/Output panels"
+        aria-valuenow={Math.round(splitPercent)}
+        aria-valuemin={MIN_SPLIT_PERCENT}
+        aria-valuemax={MAX_SPLIT_PERCENT}
+        tabIndex={0}
+        onPointerDown={handleResizePointerDown}
+        onPointerMove={handleResizePointerMove}
+        onPointerUp={handleResizePointerUp}
+        onDoubleClick={handleResizeDoubleClick}
+        onKeyDown={handleResizeKeyDown}
+        sx={{
+          display: { xs: 'none', md: 'block' },
+          alignSelf: 'stretch',
+          width: SPLIT_HANDLE_WIDTH_PX,
+          flexShrink: 0,
+          cursor: 'col-resize',
+          position: 'relative',
+          outline: 'none',
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: '50%',
+            width: 1,
+            transform: 'translateX(-50%)',
+            bgcolor: 'divider',
+            transition: 'background-color 0.1s, width 0.1s',
+          },
+          '&:hover::after, &:focus-visible::after': {
+            width: 2,
+            bgcolor: 'primary.main',
+          },
+          ...(resizing && {
+            '&::after': { width: 2, bgcolor: 'primary.main' },
+          }),
+        }}
+      />
+
       <Paper
         variant="outlined"
         // `minHeight`, not `height` — Output must never look shorter than Input/the sidebar for a
@@ -348,7 +527,13 @@ export default function DevUtilToolPanel({
         // `flex: 1` below (the usual "min-height on an auto-sized flex column, flex:1 child fills
         // the resulting free space" pattern); long content just grows the Paper past it instead
         // (min-height puts no ceiling on that), scrolling internally only past OUTPUT_MAX_HEIGHT.
-        sx={{ flex: 1, minWidth: 320, minHeight: availableHeight, display: 'flex', flexDirection: 'column' }}
+        sx={{
+          flex: `1 1 calc(${100 - splitPercent}% - ${SPLIT_HANDLE_OVERHEAD_PX / 2}px)`,
+          minWidth: 320,
+          minHeight: availableHeight,
+          display: 'flex',
+          flexDirection: 'column',
+        }}
       >
         <Stack
           direction="row"

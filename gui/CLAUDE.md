@@ -3209,6 +3209,62 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     - Verified via a clean `tsc --noEmit` and a successful `vite build` only, at every step of this
       whole sequence — no Docker in this sandbox, so none of it (the grow/scroll behavior, the
       sidebar-height match, either regression's actual fix) has been exercised in a real browser.
+  - **Follow-up: a resizable divider between Input/Output, per request ("Move to #2" — picking up
+    the second idea from the original design discussion; #1, the viewport-relative height work
+    above, was accepted and built first; #3, a Monaco/CodeMirror editor swap, is still unbuilt).**
+    - **Deliberately hand-rolled with plain Pointer Events, not built on
+      `@tasks/components/ResizeHandle.tsx`'s `react-resizable-panels`-based one, despite that
+      dependency already being installed.** Read the installed package's own compiled source
+      (`node_modules/react-resizable-panels/dist/react-resizable-panels.js`) rather than assuming
+      from its docs: its `Group` container's own default style is `height: '100%', width: '100%',
+      overflow: 'hidden'` (before the caller's own `style` prop can override the first two — the
+      JSDoc's claim that `overflow` "cannot be overridden" turned out to be stale/inaccurate too,
+      by the same direct read) — it assumes it fills a bounded, already-known-height parent, which
+      is fundamentally incompatible with Output's own "can grow past the viewport for a long
+      response, lets the *page* scroll instead" design from the two regressions the entry above
+      this one just fixed. Wrapping this row in a `Group` risked reopening one of them in a way
+      that would be much harder to reason about (the library's own internal Panel/Group flex
+      machinery) than this row's own plain flexbox — so a fixed-basis split driven by a small
+      styled `<Box role="separator">` was built instead, with no dependency on the library at all.
+    - **New `splitPercent` state** (persisted to `localStorage` via `SPLIT_STORAGE_KEY` — the same
+      "standing per-viewer preference, not per-session state" treatment the sidebar's own collapse
+      state gets) drives each `Paper`'s own `flex-basis`: `flex: \`1 1 calc(${splitPercent}% -
+      ${SPLIT_HANDLE_OVERHEAD_PX / 2}px)\`` for Input, the complementary `100 - splitPercent` for
+      Output. `SPLIT_HANDLE_OVERHEAD_PX` (40 = the handle's own 8px width + the row's two 16px
+      `gap`s either side of it) is what's actually subtracted (half each) — not just half the
+      `gap`, since the row now has 3 flex children (Input/handle/Output), not 2, once the handle is
+      visible — the same `calc()`-gap-compensation technique this codebase already establishes
+      elsewhere for a percentage split sharing a row with a `gap` (see
+      `@ecommerce/pages/ProductDetailPage.tsx`'s own note). `flexGrow`/`flexShrink` stay enabled
+      (not pinned to `0`), so a narrow viewport that wraps a card onto its own line still grows it
+      to fill that line's full width, exactly like the original plain `flex: 1` did — only the
+      side-by-side case is actually governed by `splitPercent`.
+    - **The handle itself**: `role="separator" aria-orientation="vertical"
+      aria-valuenow={Math.round(splitPercent)}`, drag via Pointer Events —
+      `e.currentTarget.setPointerCapture(e.pointerId)` on `pointerdown` routes every subsequent
+      pointer event to the same element regardless of where the cursor actually moves (even outside
+      the handle's own narrow hit area) until `pointerup`, which is what lets
+      `onPointerMove`/`onPointerUp` stay plain React props on the handle itself with no
+      window-level listener to attach/clean up by hand. `onDoubleClick` resets to `DEFAULT_SPLIT_
+      PERCENT` (50); `onKeyDown` nudges by `SPLIT_KEYBOARD_STEP` (5) on ArrowLeft/ArrowRight, for
+      keyboard accessibility without the library's own built-in keyboard support. Persisted to
+      `localStorage` only on `pointerup`/double-click/keypress — never on every `pointermove` tick
+      — the same "save on release, not on every intermediate drag position" convention
+      `react-resizable-panels`' own `onLayoutChanged` callback documents as the recommended point
+      to persist a layout. Visually mirrors `@tasks/components/ResizeHandle.tsx`'s own look (a 4–8px
+      hit target, a thin 1px centered line widening/recoloring to `primary.main` on hover/drag/
+      focus) without being the same component, since it isn't wired to the same library.
+    - **Hidden below the `md` breakpoint** (`display: { xs: 'none', md: 'block' }`) — below that
+      width this row wraps Input/Output onto separate full-width lines (per each `Paper`'s own
+      `minWidth: 320` forcing a wrap once both can't fit), where a horizontal drag handle wouldn't
+      mean anything; a plain breakpoint heuristic, not a real per-render width measurement of
+      whether the row has actually wrapped. `alignSelf: 'stretch'` on the handle (overriding the
+      row's own `alignItems: 'flex-start'` just for this one item) makes the visible divider line
+      span the full height of whichever card is currently taller, rather than a short bar pinned to
+      the row's own top edge.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual drag/keyboard/double-click/persistence behavior, and the mobile
+      hidden-handle/full-width-stacking case, are unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's
