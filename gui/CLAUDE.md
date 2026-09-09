@@ -3716,6 +3716,88 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       tests. GUI side verified via a clean `tsc --noEmit` and a successful `vite build` only — no
       Docker in this sandbox, so the actual two-button ASCII-to-Hex/Hex-to-ASCII flow is unverified
       in a real browser.
+  - **Follow-up: "Base64 Image" (convert images to Data URLs and back, with a live preview), per
+    direct request — the second custom-layout operation (after Hash Generator), and the first
+    with **no backend counterpart of any kind**.** New `components/Base64ImagePanel.tsx`, rendered
+    by `DevUtilsPage.tsx` in place of `DevUtilToolPanel` for this one operation (the same
+    direct-key-check pattern `hash-generator` already established, now a 3-way branch:
+    `hash-generator` → `HashGeneratorPanel`, `base64-image` → `Base64ImagePanel`, else →
+    `DevUtilToolPanel`).
+    - **Entirely client-side — no `dev-utils-service` endpoint exists for this operation and none
+      was added.** Converting an uploaded file to a Data URL is exactly what the browser's own
+      `FileReader#readAsDataURL` already does natively; round-tripping raw image bytes through a
+      backend just to base64-encode them (something JS already does, instantly, for free) would
+      only add latency and payload size for zero benefit. This is the first operation in this
+      feature with no 1:1 backend operation class — `dev-utils-service/CLAUDE.md`'s own module
+      description deliberately does **not** list "Base64 Image," since it isn't part of that
+      module at all.
+    - **Two Input boxes, per request**, both writing to the same lifted `input` string (so either
+      path feeds one single source of truth, and the existing headline row's Sample/Clear buttons
+      keep working unchanged): **Upload** (a drag-and-drop zone plus a hidden
+      `<input type="file" accept="image/*">`, the same hidden-input-plus-ref-click pattern
+      `ProfilePage.tsx`'s own avatar upload already establishes) converts the chosen file via
+      `FileReader`; **Image Data URL** is a plain multiline `TextField` a Data URL can also be
+      pasted into directly. A 5 MB client-side size cap (`MAX_FILE_SIZE_BYTES`) is a UX safeguard
+      only — unlike every other operation's backend-enforced `MAX_INPUT_LENGTH`, there's no
+      request to reject here, just a very large Data URL string that would make the browser itself
+      sluggish well before that limit.
+    - **The Preview box (Output) is just `<img src={input}>`** — it re-renders automatically
+      whenever `input` changes, whether that change came from a fresh upload or a manual paste,
+      with no separate "which path produced this" state to track. An `onError`/`onLoad` pair on
+      that `<img>` is what tells a malformed/incomplete pasted Data URL apart from a genuinely
+      loadable image, since there's no server-side validation step to catch that instead.
+    - **`config/operations.tsx`'s `OperationConfig.onSubmit` is now optional**, per this
+      operation's own genuine need — the first operation with no backend call to make at all.
+      `DevUtilsPage.tsx`'s own `DevUtilToolPanel`/`HashGeneratorPanel` branches both assert it
+      non-null (`activeOperation.onSubmit!`) with a comment explaining why that's safe — every
+      operation reaching either of those two branches does supply one; only `base64-image` omits
+      it, and that key routes to `Base64ImagePanel` instead, which never reads the field at all.
+      `base64-image`'s own `actionLabel`/`inputFormat`/`outputLanguage`/`supportsMinify`/
+      `downloadFileName` are all present-but-inert, the same "unused but required by the shared
+      type" treatment `hash-generator`'s own equivalent fields already get.
+    - **`inputPlaceholder` is a real, verified 1×1 transparent PNG's Data URL** — confirmed
+      decodable via a standalone Java harness (`ImageIO.read`) first, not assumed, before using it
+      as the Sample value; short enough to be a reasonable placeholder despite a Data URL's usual
+      length, and immediately shows a real (if tiny) preview when used.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual drag-and-drop, file-picker, paste-to-preview, and copy flows are all
+      unverified in a real browser.
+    - **Follow-up, 5 fixes reported together after real use.**
+      1. **Copy/Download added to the Preview box itself** (previously only the "Image Data URL"
+         box had a Copy button) — `handleCopyPreview` copies the same Data URL text;
+         `handleDownload` decodes it back into a real image file via a new `dataUrlToBlob`/
+         `parseDataUrl` pair (a plain regex match on `data:<mime>;base64,<data>`, then `atob` +
+         `Uint8Array`) and triggers a browser download through the same `<a download>` + `Blob
+         URL` pattern `DevUtilToolPanel.tsx`'s own `downloadTextFile` already establishes for
+         text — `disabled` whenever `input` isn't parseable as a real Data URL (a plain pasted
+         `https://` URL, say) or the preview itself already failed to load, so Download never
+         attempts a doomed decode.
+      2. **Pasting an image (not just a Data URL string) now works too** — a new `onPaste` on the
+         Data URL `TextField` inspects `e.clipboardData.items` for an actual image (e.g. a
+         screenshot copied to the clipboard) and, if found, routes it through the exact same
+         `handleFile`/`FileReader` path the Upload box already uses instead of letting the
+         browser's default text-paste insert whatever binary garbage a raw image clipboard entry
+         would otherwise paste as text; when the clipboard holds no image, this is a no-op and
+         pasting a Data URL *string* keeps working exactly as it already did (a plain controlled
+         `TextField`, no special-casing needed for that path — it was never broken).
+      3. **File type restricted to a fixed allow-list** (`PNG, JPG, GIF, WebP, SVG`, per request)
+         — new `ALLOWED_IMAGE_TYPES` (a `Record<mime, extension>`) replaces the previous, more
+         permissive `file.type.startsWith('image/')` check (which would also have accepted e.g.
+         BMP/TIFF/AVIF/ICO); doubles as the file input's own `accept` attribute value and the
+         Download button's extension lookup, so validation/the picker's filter/the downloaded
+         file's name can never drift out of sync with each other.
+      4. **`fontWeight={600}` added to "Drop or select an image"** — was plain `body2` with no
+         weight override, reading as visually flat next to the bold section headers above it.
+      5. **The visible "box inside a box" borders removed from both Input boxes, per request** —
+         the Upload box's own dashed drop-zone `Box` no longer draws a persistent border at rest
+         (a `bgcolor` shift on hover/drag, plus the icon/text/cursor themselves, is enough
+         affordance without one); the Data URL box's `TextField` has its own default outlined
+         border hidden via `.MuiOutlinedInput-notchedOutline` across all three states
+         (default/hover/focus — a bare base-selector override alone loses to MUI's own hover/
+         focus rules), the identical fix already established for `HashGeneratorPanel.tsx`'s own
+         Input box.
+      - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+        sandbox, so all five fixes are unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

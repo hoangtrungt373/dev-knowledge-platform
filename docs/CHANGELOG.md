@@ -1113,6 +1113,36 @@ section again. Full unabridged entry-by-entry history for all three lives in
       `DevUtilsServiceApplicationTests` cases), plus a clean `tsc --noEmit`/successful `vite build`
       on the GUI side — no Docker in this sandbox, so the actual two-button GUI flow is unverified
       in a real browser.
+    - **Follow-up: "Base64 Image" (convert images to Data URLs and back, with a live preview), per
+      direct request — `gui`-only, no backend endpoint or operation class at all.** Converting a
+      file to a Data URL is a pure browser `FileReader#readAsDataURL` operation, so round-tripping
+      raw image bytes through `dev-utils-service` just to base64-encode them would only add
+      latency/payload size for zero benefit — the first operation in this feature with no 1:1
+      backend counterpart. New `gui` `components/Base64ImagePanel.tsx` (the second custom-layout
+      operation after Hash Generator): two Input boxes (drag-and-drop/file-picker upload, and a
+      plain "Image Data URL" text box either can be pasted into), both writing to the same lifted
+      `input` string, and an Output "Preview" box that's just `<img src={input}>`.
+      `config/operations.tsx`'s `OperationConfig.onSubmit` is now optional to accommodate this
+      operation's genuine lack of a backend call — the two branches that do require it
+      (`DevUtilToolPanel`/`HashGeneratorPanel`) assert it non-null, safely, since every operation
+      routed to either always supplies one. Verified via a clean `tsc --noEmit`/successful
+      `vite build` only — no Docker in this sandbox, so the actual upload/drag-drop/paste/preview
+      flow is unverified in a real browser.
+    - **Follow-up, 5 fixes reported together after real use**: (1) Copy/Download added to the
+      Preview box itself (Download decodes the Data URL back into a real image file via new
+      `dataUrlToBlob`/`parseDataUrl` helpers and the same `<a download>`/Blob-URL pattern
+      `DevUtilToolPanel.tsx` already uses for text). (2) Pasting an actual image (e.g. a
+      screenshot) into the Data URL box now works too, via a new `onPaste` handler routing a
+      clipboard image through the same `FileReader` path the Upload box uses — pasting a Data URL
+      *string* already worked and needed no change. (3) File type restricted to a fixed allow-list
+      (PNG/JPG/GIF/WebP/SVG, replacing the previous, more permissive `image/*` check) via a new
+      `ALLOWED_IMAGE_TYPES` map, also driving the file input's own `accept` attribute and the
+      Download button's extension. (4) `fontWeight={600}` added to "Drop or select an image".
+      (5) The visible "box inside a box" borders removed from both Input boxes — the Upload box's
+      drop-zone border only via hover/drag `bgcolor` now, and the Data URL `TextField`'s own
+      default outline hidden, the same fix already established for `HashGeneratorPanel.tsx`'s
+      Input box. Verified via a clean `tsc --noEmit`/successful `vite build` only — no Docker in
+      this sandbox, so all five fixes are unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

@@ -10,6 +10,7 @@ import LinkIcon from '@mui/icons-material/LinkOutlined';
 import HtmlEntityIcon from '@mui/icons-material/HtmlOutlined';
 import FingerprintIcon from '@mui/icons-material/FingerprintOutlined';
 import HexIcon from '@mui/icons-material/HexagonOutlined';
+import ImageIcon from '@mui/icons-material/ImageOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
@@ -37,7 +38,8 @@ export type TabKey =
   | 'html-entity-string'
   | 'hash-generator'
   | 'php-serializer'
-  | 'hex-ascii';
+  | 'hex-ascii'
+  | 'base64-image';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -62,6 +64,7 @@ export const TAB_KEYS: TabKey[] = [
   'hash-generator',
   'php-serializer',
   'hex-ascii',
+  'base64-image',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -131,7 +134,12 @@ export interface OperationConfig {
   supportsMinify: boolean;
   /** Filename offered by the Output panel's Download button. */
   downloadFileName: string;
-  onSubmit: (input: string, minify: boolean) => Promise<DevUtilsResponse>;
+  /** Optional — every operation that renders through the shared `DevUtilToolPanel` always
+   * provides one (that component's own `onSubmit` prop is required, not optional); a custom-panel
+   * operation with no backend round trip at all (`base64-image` — converting an uploaded file to
+   * a Data URL is a pure browser `FileReader` operation, nothing for a REST endpoint to do) simply
+   * omits it rather than supplying a dead placeholder function nothing would ever call. */
+  onSubmit?: (input: string, minify: boolean) => Promise<DevUtilsResponse>;
   /** A second, independent action button next to the primary one — e.g. Base64's own "Encode"/
    * "Decode" pair. Omitted entirely for every operation with only one action. See
    * `DevUtilToolPanel.tsx`'s own doc comment for the full reasoning (including why this isn't a
@@ -606,5 +614,35 @@ export const OPERATIONS: OperationConfig[] = [
       label: 'Hex to ASCII',
       onSubmit: input => devUtilsApi.decodeHex(input),
     },
+  },
+  {
+    key: 'base64-image',
+    // The sixth ENCODERS_DECODERS-group operation, per direct request — but the first to render
+    // through its own bespoke component (components/Base64ImagePanel.tsx, the same "some
+    // operations need a genuinely different layout" precedent hash-generator already established)
+    // instead of the shared DevUtilToolPanel: the input is a *file* (or a pasted Data URL), and
+    // the output is a rendered image preview, neither of which fits a plain-text editor pair.
+    group: 'Encoders/Decoders',
+    category: 'Encoders/Decoders',
+    label: 'Base64 Image',
+    description: 'Convert images to Data URLs and back, with a live preview',
+    icon: <ImageIcon fontSize="small" />,
+    // `actionLabel`/`inputFormat`/`outputLanguage`/`supportsMinify`/`downloadFileName`/`onSubmit`
+    // below are all unused by Base64ImagePanel (it renders no action button, no code editor, and
+    // makes no backend call at all — converting a file to a Data URL is a pure browser
+    // `FileReader` operation) but still filled in with reasonable values to satisfy
+    // `OperationConfig`'s shared shape, the same "present but inert for this operation" treatment
+    // `hash-generator`'s own inputFormat/outputLanguage/supportsMinify/downloadFileName already
+    // get (that operation's own custom panel doesn't read them either).
+    actionLabel: 'Convert',
+    // A real, verified 1x1 transparent PNG's Data URL (confirmed decodable via a standalone Java
+    // harness first, not assumed) — short enough to be a reasonable Sample value despite a Data
+    // URL's usual length, and immediately shows a real (if tiny) preview when used.
+    inputPlaceholder:
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    inputFormat: 'text',
+    outputLanguage: 'text',
+    supportsMinify: false,
+    downloadFileName: 'image.txt',
   },
 ];

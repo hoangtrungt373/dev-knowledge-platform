@@ -22,6 +22,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRightOutlined';
 import { DevUtilError } from '../utils/errorFormatting';
 import DevUtilToolPanel from '../components/DevUtilToolPanel';
 import HashGeneratorPanel from '../components/HashGeneratorPanel';
+import Base64ImagePanel from '../components/Base64ImagePanel';
 import DevUtilSidebarItem from '../components/DevUtilSidebarItem';
 import { OPERATION_GROUP_ORDER, OPERATIONS, TabKey, tabFromHash } from '../config/operations';
 
@@ -424,13 +425,13 @@ export default function DevUtilsPage(): JSX.Element {
               {tab === 'x' && <Panel/>} conditional-rendering shape, just made explicit now that
               one shared JSX call site renders every tool. */}
           <Box ref={toolPanelRef}>
-            {/* Hash Generator renders its own bespoke layout (components/HashGeneratorPanel.tsx)
-                instead of the shared DevUtilToolPanel — its result (four independent digests)
-                doesn't fit that component's single-code-editor Output design. A direct key check,
-                not a lookup table/registry — there's exactly one custom-layout operation today;
-                extend this the same way (an `||`/small switch) if a second one ever needs its own
-                layout too, rather than building plugin infrastructure for a hypothetical N ahead
-                of time. */}
+            {/* Some operations render their own bespoke layout instead of the shared
+                DevUtilToolPanel — Hash Generator's result (four independent digests) and Base64
+                Image's own file-upload/live-preview shape both don't fit that component's plain
+                Input/Output editor pair at all. A direct key check per operation, not a lookup
+                table/registry — there are only two custom-layout operations today; extend this
+                the same way (one more `else if`) if a third one ever needs its own layout too,
+                rather than building plugin infrastructure for a hypothetical N ahead of time. */}
             {activeOperation.key === 'hash-generator' ? (
               <HashGeneratorPanel
                 key={activeOperation.key}
@@ -440,7 +441,16 @@ export default function DevUtilsPage(): JSX.Element {
                 onOutputChange={setOutput}
                 actionLabel={activeOperation.actionLabel}
                 inputPlaceholder={activeOperation.inputPlaceholder}
-                onSubmit={activeOperation.onSubmit}
+                // Non-null: every operation except `base64-image` (which never reaches this
+                // branch) supplies `onSubmit` — see `OperationConfig.onSubmit`'s own doc comment.
+                onSubmit={activeOperation.onSubmit!}
+              />
+            ) : activeOperation.key === 'base64-image' ? (
+              <Base64ImagePanel
+                key={activeOperation.key}
+                input={input}
+                onInputChange={setInput}
+                inputPlaceholder={activeOperation.inputPlaceholder}
               />
             ) : (
               <DevUtilToolPanel
@@ -457,7 +467,9 @@ export default function DevUtilsPage(): JSX.Element {
                 outputLanguage={activeOperation.outputLanguage}
                 supportsMinify={activeOperation.supportsMinify}
                 downloadFileName={activeOperation.downloadFileName}
-                onSubmit={activeOperation.onSubmit}
+                // Non-null: every operation rendered through this branch supplies `onSubmit` —
+                // see `OperationConfig.onSubmit`'s own doc comment.
+                onSubmit={activeOperation.onSubmit!}
                 secondaryAction={activeOperation.secondaryAction}
                 availableHeight={panelHeight}
               />
