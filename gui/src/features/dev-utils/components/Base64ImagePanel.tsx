@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, DragEvent as ReactDragEvent, ChangeEvent, ClipboardEvent as ReactClipboardEvent } from 'react';
-import { Box, IconButton, Paper, Stack, TextField, Tooltip, Typography } from '@mui/material';
+import { Box, Button, IconButton, Paper, Stack, TextField, Tooltip, Typography } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUploadOutlined';
+import ContentPasteIcon from '@mui/icons-material/ContentPasteOutlined';
 import BrokenImageIcon from '@mui/icons-material/BrokenImageOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
@@ -15,7 +16,30 @@ interface Base64ImagePanelProps {
   input: string;
   onInputChange: (value: string) => void;
   inputPlaceholder: string;
+  /** Height (px) computed by `DevUtilsPage.tsx` from the actual viewport — the same value the
+   * shared `DevUtilToolPanel`'s Input card and the sidebar both size themselves to (see that
+   * component's own doc comment for how). Applied only to the Preview card, per request, matching
+   * Input's own "fixed `height`, not `minHeight`" treatment (Preview's own content — one bounded
+   * image — never needs to grow past it the way Output's free-form text can, so there's no floor-
+   * vs-fixed distinction to make here). The Upload/Image Data URL column keeps its own natural,
+   * content-driven height, unaffected by this. */
+  availableHeight: number;
 }
+
+// The classic 2-gradient checkerboard trick (a fixed light/dark grey pair, not a theme token —
+// the same "independent of the app's own light/dark toggle" reasoning DevUtilToolPanel.tsx's own
+// OUTPUT_BG_LIGHT/OUTPUT_INFO_BG constants already establish for this panel's sibling) — the
+// standard way image tools (Photoshop, GIMP, browser DevTools' own image preview, etc.) render a
+// preview surface that might have transparency, so a PNG/WebP/SVG's own alpha channel is visible
+// as "you can see the pattern through it" rather than blending invisibly into a flat background.
+const CHECKERBOARD_LIGHT = '#ffffff';
+const CHECKERBOARD_DARK = '#e0e0e0';
+const CHECKERBOARD_TILE_PX = 16;
+const CHECKERBOARD_BACKGROUND = {
+  backgroundColor: CHECKERBOARD_LIGHT,
+  backgroundImage: `repeating-conic-gradient(${CHECKERBOARD_DARK} 0% 25%, ${CHECKERBOARD_LIGHT} 0% 50%)`,
+  backgroundSize: `${CHECKERBOARD_TILE_PX * 2}px ${CHECKERBOARD_TILE_PX * 2}px`,
+};
 
 // A generous but finite cap, purely a client-side UX safeguard (unlike every other operation's
 // own MAX_INPUT_LENGTH, there is no backend round trip here at all to enforce one) — a very large
@@ -96,7 +120,12 @@ function dataUrlToBlob(value: string): Blob | null {
  * apart from a genuinely loadable image, since there's no server-side validation step to catch
  * that instead.
  */
-export default function Base64ImagePanel({ input, onInputChange, inputPlaceholder }: Base64ImagePanelProps): JSX.Element {
+export default function Base64ImagePanel({
+  input,
+  onInputChange,
+  inputPlaceholder,
+  availableHeight,
+}: Base64ImagePanelProps): JSX.Element {
   const { showError } = useNotification();
   const [dragActive, setDragActive] = useState(false);
   const [previewFailed, setPreviewFailed] = useState(false);
@@ -170,6 +199,36 @@ export default function Base64ImagePanel({ input, onInputChange, inputPlaceholde
     },
     [handleFile]
   );
+
+  // The explicit "Paste" button's own click handler — a real click is a user gesture, so
+  // `navigator.clipboard.read()` (image-capable, unlike `readText()`) is available here the same
+  // way it would be from a keyboard Ctrl+V; tries that first (an actual image on the clipboard
+  // takes the same `handleFile` path a real upload does) and falls back to `readText()` for a
+  // plain Data URL string, mirroring `handlePaste`'s own image-first-then-text priority above so
+  // the button and native paste never disagree about which one wins when both are present.
+  const handlePasteButtonClick = useCallback(async () => {
+    try {
+      if (navigator.clipboard.read) {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          const imageType = item.types.find(type => type.startsWith('image/'));
+          if (imageType) {
+            const blob = await item.getType(imageType);
+            const extension = ALLOWED_IMAGE_TYPES[imageType] ?? 'png';
+            handleFile(new File([blob], `pasted.${extension}`, { type: imageType }));
+            return;
+          }
+        }
+      }
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setPreviewFailed(false);
+        onInputChange(text);
+      }
+    } catch {
+      showError('Could not read from the clipboard — check your browser permissions.');
+    }
+  }, [handleFile, onInputChange, showError]);
 
   const handleCopyDataUrl = useCallback(async () => {
     if (!input) return;
@@ -262,13 +321,23 @@ export default function Base64ImagePanel({ input, onInputChange, inputPlaceholde
             <Typography variant="subtitle2" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
               Image Data URL
             </Typography>
-            <Tooltip title={dataUrlCopied ? 'Copied!' : 'Copy'}>
-              <span>
-                <IconButton size="small" onClick={handleCopyDataUrl} disabled={!input}>
-                  {dataUrlCopied ? <CheckIcon fontSize="small" color="success" /> : <ContentCopyIcon fontSize="small" />}
-                </IconButton>
-              </span>
-            </Tooltip>
+            <Stack direction="row" spacing={1}>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<ContentPasteIcon fontSize="small" />}
+                onClick={handlePasteButtonClick}
+              >
+                Paste
+              </Button>
+              <Tooltip title={dataUrlCopied ? 'Copied!' : 'Copy'}>
+                <span>
+                  <IconButton size="small" onClick={handleCopyDataUrl} disabled={!input}>
+                    {dataUrlCopied ? <CheckIcon fontSize="small" color="success" /> : <ContentCopyIcon fontSize="small" />}
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </Stack>
           </Stack>
           <Box sx={{ p: 2 }}>
             <TextField
@@ -300,7 +369,22 @@ export default function Base64ImagePanel({ input, onInputChange, inputPlaceholde
         </Paper>
       </Box>
 
-      <Paper variant="outlined" sx={{ flex: '1 1 45%', minWidth: 320, display: 'flex', flexDirection: 'column' }}>
+      <Paper
+        variant="outlined"
+        sx={{
+          flex: '1 1 45%',
+          minWidth: 320,
+          // Fixed `height`, not `minHeight` — matches the Input card's own convention (Output's
+          // own "floor only, grows for long content" shape doesn't apply here: Preview's content
+          // is one bounded image, never open-ended text). Per request, this matches the same
+          // viewport-relative height the shared DevUtilToolPanel's Input card and the sidebar
+          // both already size themselves to.
+          height: availableHeight,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
         <Stack
           direction="row"
           alignItems="center"
@@ -330,12 +414,17 @@ export default function Base64ImagePanel({ input, onInputChange, inputPlaceholde
         <Box
           sx={{
             flex: 1,
-            minHeight: 320,
+            minHeight: 0,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             p: 2,
-            bgcolor: '#ffffff',
+            overflow: 'auto',
+            // Checkerboard only while an actual image is showing (it exists to reveal that
+            // image's own transparency) — plain white, per request, whenever there's nothing to
+            // preview or the Data URL failed to load, rather than the pattern implying content
+            // that isn't there.
+            ...(input && !previewFailed ? CHECKERBOARD_BACKGROUND : { bgcolor: CHECKERBOARD_LIGHT }),
           }}
         >
           {!input ? (

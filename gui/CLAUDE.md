@@ -3798,6 +3798,37 @@ slice" benefit without that cost — revisit only if a genuine second deployable
          Input box.
       - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
         sandbox, so all five fixes are unverified in a real browser.
+    - **Follow-up, 2 more changes, per request.** (1) **A checkerboard transparency pattern**
+      replaces the Preview box's own flat `#ffffff` background — new `CHECKERBOARD_BACKGROUND`
+      (a `repeating-conic-gradient` of fixed `#ffffff`/`#e0e0e0` squares, 16px tiles), the standard
+      way image tools (Photoshop, GIMP, browser DevTools' own image preview) render a surface that
+      might have transparency, so a PNG/WebP/SVG's own alpha channel shows through the pattern
+      instead of blending invisibly into a flat background. (2) **The Preview card's own height now
+      matches the shared `availableHeight`** the sidebar and `DevUtilToolPanel`'s Input card
+      already size themselves to — a new `availableHeight` prop, threaded through from
+      `DevUtilsPage.tsx` (`panelHeight`), applied as a *fixed* `height` (not `minHeight`, matching
+      Input's own convention — Preview's content is one bounded image, never open-ended text the
+      way Output's own `minHeight`-as-floor shape exists for) on the Preview `Paper` only; the
+      Upload/Image Data URL column keeps its own natural, content-driven height, unaffected.
+      Verified via a clean `tsc --noEmit`/successful `vite build` only — no Docker in this sandbox,
+      so the actual checkerboard rendering and the matched height are both unverified in a real
+      browser.
+    - **Follow-up, 2 more changes, per request.** (1) **The Preview box's checkerboard now only
+      renders while an actual image is showing** (`input && !previewFailed`) — plain white
+      (`CHECKERBOARD_LIGHT`, reused rather than a second literal) for both the empty-placeholder
+      and the failed-to-load states, since the checkerboard exists specifically to reveal a real
+      image's own transparency and would otherwise misleadingly imply content that isn't there.
+      (2) **A "Paste" button added to the Image Data URL box's own header**, mirroring
+      `DevUtilToolPanel.tsx`'s own Paste button shape (a `Button` with a `ContentPasteOutlined`
+      icon, not just another `IconButton`) — its own `handlePasteButtonClick` tries
+      `navigator.clipboard.read()` first (available here since a button click is itself a user
+      gesture, the same as a keyboard Ctrl+V) so an actual image on the clipboard takes the same
+      `handleFile` path a real upload does, falling back to `readText()` for a plain Data URL
+      string when the clipboard holds no image — mirroring `handlePaste`'s own image-first
+      priority (added in the previous follow-up) so the button and native paste never disagree
+      about which one wins. Verified via a clean `tsc --noEmit`/successful `vite build` only — no
+      Docker in this sandbox, so both changes (and the Paste button's own clipboard-permission
+      prompt) are unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

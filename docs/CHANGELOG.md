@@ -1143,6 +1143,20 @@ section again. Full unabridged entry-by-entry history for all three lives in
       default outline hidden, the same fix already established for `HashGeneratorPanel.tsx`'s
       Input box. Verified via a clean `tsc --noEmit`/successful `vite build` only — no Docker in
       this sandbox, so all five fixes are unverified in a real browser.
+    - **Follow-up, per request: a checkerboard transparency pattern replaces the Preview box's
+      flat white background** (new `CHECKERBOARD_BACKGROUND`, a `repeating-conic-gradient`), the
+      standard way image tools show a surface that might have an alpha channel; **and the Preview
+      card's own height now matches the shared `availableHeight`** the sidebar/`DevUtilToolPanel`
+      Input card already use, via a new `availableHeight` prop threaded from `DevUtilsPage.tsx`
+      (fixed `height`, not `minHeight` — Preview's content is one bounded image, not open-ended
+      text). Verified via a clean `tsc --noEmit`/successful `vite build` only — no Docker in this
+      sandbox, so both changes are unverified in a real browser.
+    - **Follow-up, per request: the checkerboard now shows only while a real image is loaded**
+      (plain white for the empty/failed states instead), **and a "Paste" button was added to the
+      Image Data URL box** — tries `navigator.clipboard.read()` first (an actual clipboard image
+      takes the same upload path a real file does) and falls back to `readText()` for a plain
+      Data URL string. Verified via a clean `tsc --noEmit`/successful `vite build` only — no
+      Docker in this sandbox, so neither change is verified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

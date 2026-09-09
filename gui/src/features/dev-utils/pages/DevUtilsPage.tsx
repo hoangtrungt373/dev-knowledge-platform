@@ -451,6 +451,7 @@ export default function DevUtilsPage(): JSX.Element {
                 input={input}
                 onInputChange={setInput}
                 inputPlaceholder={activeOperation.inputPlaceholder}
+                availableHeight={panelHeight}
               />
             ) : (
               <DevUtilToolPanel
