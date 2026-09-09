@@ -21,6 +21,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRightOutlined';
 
 import { DevUtilError } from '../utils/errorFormatting';
 import DevUtilToolPanel from '../components/DevUtilToolPanel';
+import HashGeneratorPanel from '../components/HashGeneratorPanel';
 import DevUtilSidebarItem from '../components/DevUtilSidebarItem';
 import { OPERATION_GROUP_ORDER, OPERATIONS, TabKey, tabFromHash } from '../config/operations';
 
@@ -423,24 +424,44 @@ export default function DevUtilsPage(): JSX.Element {
               {tab === 'x' && <Panel/>} conditional-rendering shape, just made explicit now that
               one shared JSX call site renders every tool. */}
           <Box ref={toolPanelRef}>
-            <DevUtilToolPanel
-              key={activeOperation.key}
-              input={input}
-              onInputChange={setInput}
-              output={output}
-              onOutputChange={setOutput}
-              error={error}
-              onErrorChange={setError}
-              actionLabel={activeOperation.actionLabel}
-              inputPlaceholder={activeOperation.inputPlaceholder}
-              inputFormat={activeOperation.inputFormat}
-              outputLanguage={activeOperation.outputLanguage}
-              supportsMinify={activeOperation.supportsMinify}
-              downloadFileName={activeOperation.downloadFileName}
-              onSubmit={activeOperation.onSubmit}
-              secondaryAction={activeOperation.secondaryAction}
-              availableHeight={panelHeight}
-            />
+            {/* Hash Generator renders its own bespoke layout (components/HashGeneratorPanel.tsx)
+                instead of the shared DevUtilToolPanel — its result (four independent digests)
+                doesn't fit that component's single-code-editor Output design. A direct key check,
+                not a lookup table/registry — there's exactly one custom-layout operation today;
+                extend this the same way (an `||`/small switch) if a second one ever needs its own
+                layout too, rather than building plugin infrastructure for a hypothetical N ahead
+                of time. */}
+            {activeOperation.key === 'hash-generator' ? (
+              <HashGeneratorPanel
+                key={activeOperation.key}
+                input={input}
+                onInputChange={setInput}
+                output={output}
+                onOutputChange={setOutput}
+                actionLabel={activeOperation.actionLabel}
+                inputPlaceholder={activeOperation.inputPlaceholder}
+                onSubmit={activeOperation.onSubmit}
+              />
+            ) : (
+              <DevUtilToolPanel
+                key={activeOperation.key}
+                input={input}
+                onInputChange={setInput}
+                output={output}
+                onOutputChange={setOutput}
+                error={error}
+                onErrorChange={setError}
+                actionLabel={activeOperation.actionLabel}
+                inputPlaceholder={activeOperation.inputPlaceholder}
+                inputFormat={activeOperation.inputFormat}
+                outputLanguage={activeOperation.outputLanguage}
+                supportsMinify={activeOperation.supportsMinify}
+                downloadFileName={activeOperation.downloadFileName}
+                onSubmit={activeOperation.onSubmit}
+                secondaryAction={activeOperation.secondaryAction}
+                availableHeight={panelHeight}
+              />
+            )}
           </Box>
         </Box>
       </Box>

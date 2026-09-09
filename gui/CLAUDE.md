@@ -3577,6 +3577,62 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
       sandbox, so the actual Generate flow and the new "Inspectors" sidebar headline are
       unverified in a real browser.
+  - **Follow-up: a genuinely bespoke Input/Output layout for this one operation, per direct
+    request — reverted once already (a first attempt added an opt-in `multiValueOutput` flag
+    directly to `DevUtilToolPanel.tsx`; rejected specifically for touching that shared component
+    at all) and rebuilt as a wholly separate file instead.** New
+    `components/HashGeneratorPanel.tsx` — not a mode inside `DevUtilToolPanel.tsx`, which stays
+    completely untouched by this feature. `DevUtilsPage.tsx` picks between the two with a direct
+    `activeOperation.key === 'hash-generator'` check (a plain conditional, not a lookup table/
+    registry — there's exactly one custom-layout operation today; extend the same way if a second
+    one ever needs its own layout, rather than building plugin infrastructure ahead of a real
+    second case).
+    - **Reuses `DevUtilsPage.tsx`'s lifted `input`/`output` state exactly the way
+      `DevUtilToolPanel` does** (same props, same setters) — so the headline row's Sample/Clear
+      buttons keep working for this operation with zero change to that page's own state model;
+      only *which component renders* differs. `error`/`availableHeight` are **not** passed to this
+      new component — this operation never fails per its own backend Javadoc, so there's no inline
+      error state to render, and this panel doesn't attempt `DevUtilToolPanel`'s viewport-relative
+      height math at all (see below).
+    - **Deliberately much simpler than the shared panel**: a plain multiline `TextField` for Input
+      (no CodeMirror — this operation's input is plain text with nothing to syntax-highlight), no
+      resizable split, no maximize, no minify toggle. `onSubmit`'s resolved `output` is still the
+      same already-formatted string every operation returns
+      (`formatHashResult`'s "`<Label>\n<value>` pairs, blank-line separated" convention, unchanged)
+      — a local `parseHashLines` (this file only, not shared with `DevUtilToolPanel.tsx`) reverses
+      that same format back into 4 pairs to render, rather than threading a second, richer
+      response type down from `DevUtilsPage.tsx`.
+    - **Each digest renders as its own bordered card with a fixed `#ffffff` background, per
+      request** ("bgColor white... different from the default Output") — a headline (the
+      algorithm name) and a monospace body (the digest), each with its own Copy `IconButton` and
+      independent "Copied!" feedback (`copiedLabel`, tracking *which* card was just clicked, not
+      one shared boolean). **The label/value text inside each card uses fixed `grey.900`/`grey.800`
+      literals, not the semantic `text.primary` token** — a real thing to get right, not a style
+      nicety: `text.primary` flips to a light color in dark mode, which would go nearly invisible
+      against this card's own background that's pinned to white regardless of theme; `grey.*`
+      shades are fixed literals in MUI's own palette (unlike `text.primary`/`background.paper`), so
+      they stay legible either way. A network failure (this operation's own backend never
+      throws, but the HTTP call itself still can) surfaces via a plain `showError` toast — no
+      inline error UI, since this component doesn't inherit `DevUtilToolPanel`'s elaborate
+      error-rendering machinery and doesn't need it for a failure mode this rare.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual 4-card layout, the per-card copy buttons, and the white-background-in-
+      dark-mode legibility fix are all unverified in a real browser.
+    - **Two follow-up fixes, both reported directly.** (1) The Input `TextField` used MUI's default
+      outlined variant, which draws its own bordered box — nested inside this card's own `Paper`
+      border, it read as a literal "box inside a box." Fixed by targeting
+      `.MuiOutlinedInput-notchedOutline` under all three states explicitly
+      (default/`&:hover`/`.Mui-focused`, matching the identical specificity gotcha this codebase
+      has already hit before for the same fix elsewhere in this feature — a bare base-selector
+      override alone loses to MUI's own hover/focus rules). (2) Each card's headline was plain
+      `grey.900` regardless of algorithm, reading as four identical grey labels — new
+      `HASH_LABEL_COLORS` (`SHA-1`/`SHA-256`/`SHA-384`/`SHA-512`, one fixed hex literal each) gives
+      each its own color, the same "badge per type" convention
+      `config/outputLanguages.ts#OUTPUT_LANGUAGE_INFO` already establishes for the shared panel —
+      just picked in a darker 700/800-weight range for contrast against this card's own fixed
+      white background, rather than reusing that map's dark-background-tuned hues directly.
+      Verified via a clean `tsc --noEmit`/successful `vite build` only — no Docker in this sandbox,
+      so the actual border removal and per-algorithm colors are unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

@@ -1037,6 +1037,31 @@ section again. Full unabridged entry-by-entry history for all three lives in
       genuinely multi-byte UTF-8 input, via the em dash) before writing the test assertion, plus a
       clean `tsc --noEmit`/successful `vite build` on the GUI side — no Docker in this sandbox, so
       the actual GUI flow is unverified in a real browser.
+    - **Follow-up: a genuinely bespoke Input/Output layout for this one operation, per direct
+      request — reverted once (a first attempt added an opt-in `multiValueOutput` flag directly
+      to the shared `DevUtilToolPanel.tsx`; rejected specifically for touching that shared
+      component) and rebuilt as a wholly separate file instead.** New `gui`
+      `components/HashGeneratorPanel.tsx` — `DevUtilToolPanel.tsx` itself is untouched;
+      `DevUtilsPage.tsx` picks between the two components with a direct
+      `activeOperation.key === 'hash-generator'` check, reusing the page's existing lifted
+      `input`/`output` state (so Sample/Clear keep working) but rendering a much simpler,
+      dedicated layout: a plain multiline `TextField` (no CodeMirror), and each of the four
+      digests as its own bordered card with a fixed **white** (`#ffffff`) background, a headline
+      (algorithm name), and its own Copy button with independent "Copied!" feedback — the actual
+      problem a single concatenated block made hard to copy from. A local `parseHashLines` helper
+      reverses `formatHashResult`'s own formatting convention back into the four pairs; card text
+      uses fixed `grey.900`/`grey.800` literals rather than the theme's `text.primary` token, since
+      that token would go nearly invisible against a background pinned to white regardless of the
+      app's dark mode. Verified via a clean `tsc --noEmit`/successful `vite build` only — no
+      Docker in this sandbox, so the actual layout is unverified in a real browser.
+    - **Two follow-up fixes to `HashGeneratorPanel.tsx`, both reported directly**: (1) the Input
+      `TextField`'s own default outlined border, nested inside the card's `Paper` border, read as
+      a "box inside a box" — hidden via a `.MuiOutlinedInput-notchedOutline` override across all
+      three states (default/hover/focus). (2) each card's headline was a uniform `grey.900`
+      regardless of algorithm — new `HASH_LABEL_COLORS` gives each of the four a distinct fixed
+      color, the same per-type badge convention `outputLanguages.ts#OUTPUT_LANGUAGE_INFO` already
+      establishes elsewhere in this feature. Verified via a clean `tsc --noEmit`/successful
+      `vite build` only — no Docker in this sandbox, so both fixes are unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.
