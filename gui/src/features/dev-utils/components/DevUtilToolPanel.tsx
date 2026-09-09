@@ -2,19 +2,12 @@ import {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
   useCallback,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
-import {
-  Box,
-  Button,
-  IconButton,
-  Paper,
-  Stack,
-  TextField,
-  Tooltip,
-  Typography,
-} from '@mui/material';
+import { Box, Button, IconButton, Paper, Stack, Tooltip, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import ContentPasteIcon from '@mui/icons-material/ContentPasteOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
@@ -26,13 +19,14 @@ import UnfoldLessIcon from '@mui/icons-material/UnfoldLessOutlined';
 // separately named icons, not a base/Outlined pair, so there's no further outlined variant to
 // switch to here.
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import CodeMirror from '@uiw/react-codemirror';
+import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import SubmitButton from '@shared/components/SubmitButton';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { DevUtilsResponse } from '../types';
 import { buildDevUtilError, DevUtilError } from '../utils/errorFormatting';
 import { OUTPUT_LANGUAGE_INFO, OutputLanguage } from '../config/outputLanguages';
+import { editorChromeTheme, getCodeMirrorExtensions } from '../config/codeMirrorConfig';
 
 interface DevUtilToolPanelProps {
   /** Controlled — lifted up to `DevUtilsPage.tsx` so its own headline row's Sample/Clear buttons
@@ -50,13 +44,16 @@ interface DevUtilToolPanelProps {
   onErrorChange: (error: DevUtilError | null) => void;
   actionLabel: string;
   inputPlaceholder: string;
-  /** What format the *input* box holds. Only ever actually branched on for the literal `'json'`
-   * (picks `buildDevUtilError`'s client-side `JSON.parse` fast path); every other value just takes
-   * that function's own doc comment for exactly which operations' backend can genuinely reject
-   * their input (and therefore ever actually populate its fallback path). */
+  /** What format the *input* box holds. Branched on for the literal `'json'` (picks
+   * `buildDevUtilError`'s client-side `JSON.parse` fast path) and to pick the Input editor's own
+   * CodeMirror language extension (`config/codeMirrorConfig.ts#getCodeMirrorExtensions`); every
+   * other value otherwise just takes `buildDevUtilError`'s own doc comment for exactly which
+   * operations' backend can genuinely reject their input (and therefore ever actually populate its
+   * fallback path). */
   inputFormat: 'json' | 'yaml' | 'html' | 'css' | 'less' | 'scss' | 'js' | 'erb' | 'xml' | 'csv' | 'sql' | 'php' | 'text';
-  /** Prism language for the output syntax highlighter — also the key into
-   * `config/outputLanguages.ts#OUTPUT_LANGUAGE_INFO` for this panel's own info-row badge. */
+  /** Language id for the Output editor's own syntax highlighting — also the key into
+   * `config/outputLanguages.ts#OUTPUT_LANGUAGE_INFO` for this panel's own info-row badge, and into
+   * `config/codeMirrorConfig.ts#getCodeMirrorExtensions` for its CodeMirror language extension. */
   outputLanguage: OutputLanguage;
   /** Whether this tool exposes a minify checkbox at all — false only for JSON→YAML, which has no
    * minify concept (see devUtilsApi.jsonToYaml's own comment). */
@@ -72,28 +69,29 @@ interface DevUtilToolPanelProps {
 }
 
 // The Output panel's background is state-driven, per request — white by default (no result yet,
-// or a failed submit), switching to vscDarkPlus's own dark background
-// (react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus.js) only once a real result is
-// showing. Both are fixed literals, not theme tokens (`background.paper` etc.) — this box's own
-// color scheme is deliberately independent of the app's light/dark mode toggle, the same way a
-// code editor's own theme doesn't follow the surrounding app's chrome.
-const OUTPUT_BG_DARK = '#1e1e1e';
+// or a failed submit), switching to the Output editor's own dark theme
+// (`@uiw/codemirror-theme-vscode`'s `vscodeDark` — a real VS Code Dark+ port, not a hand-tuned
+// approximation) only once a real result is showing. `OUTPUT_BG_LIGHT` is a fixed literal, not a
+// theme token (`background.paper` etc.) — this box's own color scheme is deliberately independent
+// of the app's light/dark mode toggle, the same way a code editor's own theme doesn't follow the
+// surrounding app's chrome; `vscodeDark` carries the matching dark background internally, so
+// there's no equivalent `OUTPUT_BG_DARK` constant needed on this side anymore.
 const OUTPUT_BG_LIGHT = '#ffffff';
 // The light theme's own error red (`shared/constants/colors.ts`'s BRAND_COLORS.light.error) — used
 // literally rather than the theme's own `error.main` token, since that token swaps to a brighter
 // red tuned for a dark surface once the app is in dark mode, which would look wrong against this
 // panel's always-white error background.
 const OUTPUT_ERROR_COLOR = '#cf222e';
-// A shade lighter than OUTPUT_BG_DARK, per request ("use bgColor black also, less black than the
-// content") — VS Code Dark+'s own toolbar/sidebar tone, distinguishing the info row from the code
-// content below it without breaking from the dark, theme-independent look this panel already has.
+// A shade lighter than vscodeDark's own background, per request ("use bgColor black also, less
+// black than the content") — VS Code Dark+'s own toolbar/sidebar tone, distinguishing the info row
+// from the code content below it without breaking from the dark, theme-independent look this panel
+// already has.
 const OUTPUT_INFO_BG = '#252526';
-// A muted, de-emphasized grey for the file-name value and the line-number gutter, per request —
-// neither is the focused content (the response itself is), so both stay visually secondary rather
-// than reading as bright/prominent text. Still light enough to stay legible against the dark
-// backgrounds, just clearly dimmer than the response text itself or the file-type badge colors.
+// A muted, de-emphasized grey for the file-name value, per request — it isn't the focused content
+// (the response itself is), so it stays visually secondary rather than reading as bright/prominent
+// text. Still light enough to stay legible against the dark backgrounds, just clearly dimmer than
+// the response text itself or the file-type badge colors.
 const OUTPUT_FILENAME_COLOR = '#6e7681';
-const OUTPUT_LINE_NUMBER_COLOR = '#6e7681';
 // A fixed mid-dark grey (VS Code's own default border/separator tone) used for the info row's own
 // border-bottom — deliberately not the theme's `divider` token, which is a translucent black/white
 // that barely shows up against a hardcoded dark background (or, in one case, disappears into it
@@ -106,8 +104,8 @@ const OUTPUT_LINE_COLOR = '#3c3c3c';
 // direct follow-up request reverting that part of the earlier viewport-relative change — capped by
 // *lines*, not an arbitrary pixel number, so content at or under the cap just grows the box (and
 // lets the page scroll for it) while content over the cap scrolls internally instead of growing
-// forever. OUTPUT_LINE_HEIGHT_PX is an eyeballed estimate of the syntax highlighter's own rendered
-// line height at its `0.8rem` font size — not measured in a real browser, same caveat every other
+// forever. OUTPUT_LINE_HEIGHT_PX is an eyeballed estimate of the Output editor's own rendered line
+// height at its configured font size — not measured in a real browser, same caveat every other
 // hand-tuned constant in this feature carries.
 const OUTPUT_MAX_LINES = 1000;
 const OUTPUT_LINE_HEIGHT_PX = 20;
@@ -190,9 +188,25 @@ function downloadTextFile(fileName: string, content: string): void {
  * entirely (not just disabled) when the operation doesn't support it. Each tab configures this
  * for its own operation rather than this component knowing about any specific one.
  *
+ * <p>**Both Input and Output are real CodeMirror 6 editors** (`@uiw/react-codemirror`), not a plain
+ * `TextField`/read-only `react-syntax-highlighter` block — a follow-up request to replace the
+ * original plain pairing for a large payload, after discussing CodeMirror vs. Monaco (CodeMirror
+ * chosen: far lighter — this app's bundle is already flagged for size — with no web worker/CDN
+ * story to manage, at the cost of Monaco's more IDE-like feel) and "both panels" vs. "Output only"
+ * (both chosen, so Input gets real syntax highlighting for whatever it's typing/pasting too,
+ * matching its own `inputFormat`). `react-syntax-highlighter` itself is **not** removed as a
+ * dependency — `@chat/components/MarkdownRenderer.tsx` and `@content/components/MarkdownField.tsx`
+ * both still use it; only this file stopped. `config/codeMirrorConfig.ts#getCodeMirrorExtensions`
+ * maps every `inputFormat`/`outputLanguage` id this feature's operations pass to the matching
+ * CodeMirror language extension (`erb`/`csv`/`text` fall back to plain, unhighlighted text — see
+ * that file's own comment for why). `config/codeMirrorConfig.ts#editorChromeTheme` is a small
+ * shared `EditorView.theme()` extension (font size, content padding) applied to both editors, so
+ * the code area keeps the same `16px` inset every other surface in this panel already uses instead
+ * of CodeMirror's own, noticeably tighter default.
+ *
  * <p>`input`, `output`, and `error` are all controlled props, not local state — lifted up to
  * `DevUtilsPage.tsx` once that page's own headline row needed Sample/Clear buttons able to
- * set/reset them directly (this panel's own Paste button and the `TextField`'s typing both just
+ * set/reset them directly (this panel's own Paste button and the editor's own typing both just
  * call `onInputChange` now, the same as that page's own callers; a submit calls `onOutputChange`
  * on success or `onErrorChange` on failure instead of local setters). Every other piece of state
  * here (`minify`/`saving`/`copied`) stays local — `DevUtilsPage.tsx` still remounts this component
@@ -212,11 +226,11 @@ function downloadTextFile(fileName: string, content: string): void {
  * `JSON.parse`).
  *
  * <p>The Output panel's own background is state-driven, per request — white (`OUTPUT_BG_LIGHT`)
- * for both the empty placeholder and an `error`, switching to black (`OUTPUT_BG_DARK`, the syntax
- * highlighter's own dark theme) only once `output` actually holds a real result. This deliberately
- * reintroduces the white → black transition an earlier fix had removed (see git history/
- * `docs/CHANGELOG.md` around that fix if picking through this box's own color history) — that
- * transition is the explicit ask here, not an oversight.
+ * for both the empty placeholder and an `error`, switching to `vscodeDark`'s own dark background
+ * only once `output` actually holds a real result. This deliberately reintroduces the white →
+ * black transition an earlier fix had removed (see git history/`docs/CHANGELOG.md` around that fix
+ * if picking through this box's own color history) — that transition is the explicit ask here, not
+ * an oversight.
  *
  * <p>Between the header row and the content area, a small info row shows a single
  * "{@code <TYPE> | <filename>}" line — no "File type:"/"File name:" labels — but **only once
@@ -226,25 +240,25 @@ function downloadTextFile(fileName: string, content: string): void {
  * Both values are already known statically per operation (`outputLanguage`/`downloadFileName`), so
  * nothing here is actually derived from the response itself — only the decision of *whether* to
  * show them is now response-gated. `config/outputLanguages.ts#OUTPUT_LANGUAGE_INFO` maps the
- * Prism language id (`outputLanguage`) each operation already passes to a human label
+ * Prism-derived language id (`outputLanguage`) each operation already passes to a human label
  * (`JSON`/`YAML`/`HTML`/etc.) and a per-language badge color, one shared map so the two can never
  * drift out of sync with each other (see that file's own doc comment — it used to be two
  * independently-maintained `Record<string, string>`s here). Its background is a fixed
- * `OUTPUT_INFO_BG` (a shade lighter than `OUTPUT_BG_DARK` — always dark, unlike the content area
- * below it, which still switches white/black by state) rather than a theme token, same
- * "independent of the app's light/dark toggle" reasoning as this panel's other colors. The
+ * `OUTPUT_INFO_BG` (a shade lighter than `vscodeDark`'s own background — always dark, unlike the
+ * content area below it, which still switches white/black by state) rather than a theme token,
+ * same "independent of the app's light/dark toggle" reasoning as this panel's other colors. The
  * `<TYPE>` segment is colored per language (common language-badge convention) and bold; the `|`
  * separator and the filename both use the muted `OUTPUT_FILENAME_COLOR` grey, since neither is the
- * focused content — the response itself is. All
- * three segments are plain `<Box component="span">`s inside one `Typography`, not separate
- * flex-positioned elements — a simpler one-line rendering superseded an earlier attempt at
- * horizontally aligning the type/filename with the line-number/response columns beneath them (that
- * column-alignment scheme, plus a full-height vertical gutter-divider line and a baseline-mismatch
- * fix it needed, were all tried in earlier passes and then explicitly simplified away per a direct
- * request for this plainer template — don't reintroduce that alignment complexity without
- * confirming it's wanted again). The syntax highlighter itself still has `showLineNumbers` (own
- * `OUTPUT_LINE_NUMBER_COLOR`) — only meaningful for the actual `output` branch, not the
- * error/placeholder ones, since neither of those renders line-oriented content.
+ * focused content — the response itself is. All three segments are plain `<Box component="span">`s
+ * inside one `Typography`, not separate flex-positioned elements — a simpler one-line rendering
+ * superseded an earlier attempt at horizontally aligning the type/filename with the line-number/
+ * response columns beneath them (that column-alignment scheme, plus a full-height vertical
+ * gutter-divider line and a baseline-mismatch fix it needed, were all tried in earlier passes and
+ * then explicitly simplified away per a direct request for this plainer template — don't
+ * reintroduce that alignment complexity without confirming it's wanted again). The Output editor's
+ * own line-number gutter (from CodeMirror's default `basicSetup`, styled by `vscodeDark`) replaces
+ * the old hand-tuned `!important` line-number color override react-syntax-highlighter needed — a
+ * real VS Code theme port already gets this right natively.
  *
  * <p>The info row's own border-bottom uses a fixed `OUTPUT_LINE_COLOR` rather than the theme's
  * `divider` token — `divider` is a translucent black/white overlay tuned for the app's own
@@ -270,6 +284,13 @@ export default function DevUtilToolPanel({
   const [minify, setMinify] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Memoized so a re-render (e.g. every keystroke while typing in Input) doesn't hand CodeMirror a
+  // brand-new extensions array reference each time — `inputFormat`/`outputLanguage` are constant
+  // for this component's whole mounted lifetime anyway (a tool switch remounts it via `key={...}`
+  // in DevUtilsPage.tsx), so this only ever actually recomputes once per mount regardless.
+  const inputExtensions = useMemo(() => getCodeMirrorExtensions(inputFormat), [inputFormat]);
+  const outputExtensions = useMemo(() => getCodeMirrorExtensions(outputLanguage), [outputLanguage]);
 
   // The resizable Input/Output split — see SPLIT_STORAGE_KEY's own comment for why this is
   // hand-rolled rather than built on react-resizable-panels. `rowRef` anchors the drag math (the
@@ -328,6 +349,26 @@ export default function DevUtilToolPanel({
       return next;
     });
   }, []);
+
+  // Output's own header row + (conditionally) the info row sit above the code area inside the
+  // same Paper — measured together here as one real pixel value, rather than assumed, so the
+  // Output editor's own `minHeight` prop below (see that instance's own comment) can floor its
+  // *rendered* height at exactly `availableHeight` minus however tall that chrome actually is,
+  // matching Input/the sidebar precisely instead of approximately. `useLayoutEffect`, not `useEffect`
+  // — this measurement must land before the browser paints, or the very first frame would floor
+  // the editor too tall by whatever this chrome's own height turns out to be. Recomputed whenever
+  // the info row's own presence toggles (`output !== null`), since that's the only thing that
+  // changes this chrome's total height in practice.
+  const outputChromeRef = useRef<HTMLDivElement | null>(null);
+  const [outputChromeHeight, setOutputChromeHeight] = useState(0);
+
+  useLayoutEffect(() => {
+    const node = outputChromeRef.current;
+    if (!node) {
+      return;
+    }
+    setOutputChromeHeight(node.getBoundingClientRect().height);
+  }, [output !== null]);
 
   const handleSubmit = useCallback(async () => {
     setSaving(true);
@@ -432,49 +473,35 @@ export default function DevUtilToolPanel({
           </Stack>
         </Stack>
 
-        <Box sx={{ p: 2, flex: 1, minHeight: 0, display: 'flex' }}>
-          <TextField
-            placeholder={inputPlaceholder}
-            multiline
-            // A fixed `rows` (the value itself is irrelevant — see the height override below)
-            // keeps MUI on the plain, non-autosizing <textarea rows="1"> rendering path; without
-            // it, `multiline` alone hands sizing to MUI's own `react-textarea-autosize`-based
-            // wrapper, which sets its own inline `height` via JS on every keystroke — fighting the
-            // fixed-height, internally-scrolling box this panel wants instead of the auto-grow one
-            // `minRows`/`maxRows` used to give it.
-            rows={1}
-            fullWidth
+        {/* `position: 'relative'` + the CodeMirror instance's own `position: 'absolute', inset: 0`
+            (via `style`) is deliberately *not* the same "flex: 1, minHeight: 0, height: '100%'"
+            approach used elsewhere in this file — that combination was tried first here too and
+            hit a real, reported regression (no scrollbar appeared for content overflowing the
+            box's own width/height; it just kept growing/clipping instead). Root cause: CodeMirror's
+            own `height="100%"` prop only sets `.cm-editor { height: 100% }` — for that percentage
+            to resolve to a real pixel value, its *direct* parent (the plain `<div>`
+            `@uiw/react-codemirror` itself renders, which receives this component's own `style`
+            prop) must have a genuinely definite height, and relying on that div picking one up
+            purely from ambient flex stretch/grow through this Box → Paper's own flex chain turned
+            out not to reliably resolve one in practice. `position: 'absolute', inset: 0` sidesteps
+            the whole question: it fills its containing block's *already fully laid-out* size
+            directly, however that size was arrived at, with no percentage-resolution of its own to
+            fail — the exact same "top: 0, bottom: 0 against a position: 'relative' ancestor" trick
+            already used for the resize handle further down in this same file. `.cm-scroller`'s own
+            `overflow-x: auto` (explicit) plus `overflow-y: auto` (which the CSS Overflow spec
+            implies once only one axis is set to something other than `visible`) then reliably
+            engage once `.cm-editor` itself has a real, definite size to be measured against. No
+            padding on this wrapping Box anymore — `editorChromeTheme`'s own `.cm-editor` padding
+            provides the same 16px inset directly on the editor now. */}
+        <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>
+          <CodeMirror
             value={input}
-            onChange={e => onInputChange(e.target.value)}
-            sx={{
-              flex: 1,
-              display: 'flex',
-              // Stretches the TextField's own root and the actual <textarea> to fill this fixed-
-              // height Box, with its own internal scrollbar once content overflows it — replacing
-              // the old minRows/maxRows auto-grow range now that the panel's height comes from
-              // `availableHeight` (a real viewport measurement) instead of a row count.
-              // `!important` is load-bearing on the textarea rule: react-textarea-autosize would
-              // otherwise still set its own inline `height` first, and a plain (non-`!important`)
-              // class rule can't outrank an inline style — only an `!important` declaration can,
-              // regardless of origin.
-              '& .MuiInputBase-root': { height: '100%' },
-              '& .MuiInputBase-inputMultiline': {
-                height: '100% !important',
-                overflow: 'auto !important',
-              },
-              // Hides the outlined variant's own border — without this, the TextField's box sits
-              // visibly nested inside this Input card's own Paper border, reading as "a box inside
-              // a box." All three states are targeted explicitly (default/hover/focused), not just
-              // the base `.MuiOutlinedInput-notchedOutline` selector alone — MUI's own hover/focus
-              // rules for that same element are more specific (extra pseudo-class), so an override
-              // scoped to only the base selector would silently lose on hover/focus, the identical
-              // specificity gotcha just fixed on the sidebar's selected-item background.
-              '& .MuiOutlinedInput-root': {
-                '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
-                '&:hover .MuiOutlinedInput-notchedOutline': { border: 'none' },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { border: 'none' },
-              },
-            }}
+            onChange={value => onInputChange(value)}
+            placeholder={inputPlaceholder}
+            theme="light"
+            extensions={[editorChromeTheme, ...inputExtensions]}
+            height="100%"
+            style={{ position: 'absolute', inset: 0 }}
           />
         </Box>
       </Paper>
@@ -482,12 +509,13 @@ export default function DevUtilToolPanel({
       <Paper
         variant="outlined"
         // `minHeight`, not `height` — Output must never look shorter than Input/the sidebar for a
-        // short response (a real, reported regression), but still needs to grow taller than that
-        // for a long one (the whole point of the earlier partial revert). A floor, not a fixed
-        // size, gives both: short content fills up to availableHeight via the content area's own
-        // `flex: 1` below (the usual "min-height on an auto-sized flex column, flex:1 child fills
-        // the resulting free space" pattern); long content just grows the Paper past it instead
-        // (min-height puts no ceiling on that), scrolling internally only past OUTPUT_MAX_HEIGHT.
+        // short response, but still needs to grow taller than that for a long one (the whole
+        // point of the earlier partial revert). A floor, not a fixed size: short content floors at
+        // availableHeight via the Output editor's own explicit `minHeight` prop below (a real,
+        // measured value — see `outputChromeHeight`'s own comment for why this Paper's own
+        // `minHeight` alone wasn't a reliable enough mechanism on its own); long content just grows
+        // the Paper past it instead (min-height puts no ceiling on that), scrolling internally only
+        // past OUTPUT_MAX_HEIGHT (via the Output editor's own `maxHeight` prop).
         sx={{
           flex: `1 1 ${100 - splitPercent}%`,
           minWidth: 320,
@@ -496,54 +524,56 @@ export default function DevUtilToolPanel({
           flexDirection: 'column',
         }}
       >
-        <Stack
-          direction="row"
-          alignItems="center"
-          justifyContent="space-between"
-          sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}
-        >
-          <Typography variant="subtitle2" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            Output
-          </Typography>
-          <Stack direction="row" spacing={1}>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<ContentCopyIcon fontSize="small" />}
-              onClick={handleCopy}
-              disabled={output === null}
-            >
-              {copied ? 'Copied!' : 'Copy'}
-            </Button>
-            <Tooltip title="Download">
-              {/* span wrapper — MUI requires one around a disabled button for the Tooltip to still
-                  attach its listeners */}
-              <span>
-                <IconButton size="small" onClick={handleDownload} disabled={output === null}>
-                  <DownloadIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-          </Stack>
-        </Stack>
-
-        {output !== null && (
+        <Box ref={outputChromeRef}>
           <Stack
             direction="row"
             alignItems="center"
-            sx={{ px: 2, py: 1, borderBottom: 1, borderColor: OUTPUT_LINE_COLOR, bgcolor: OUTPUT_INFO_BG }}
+            justifyContent="space-between"
+            sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}
           >
-            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-              <Box component="span" sx={{ color: OUTPUT_LANGUAGE_INFO[outputLanguage].color, fontWeight: 700 }}>
-                {OUTPUT_LANGUAGE_INFO[outputLanguage].label}
-              </Box>
-              <Box component="span" sx={{ color: OUTPUT_FILENAME_COLOR }}>
-                {' | '}
-                {downloadFileName}
-              </Box>
+            <Typography variant="subtitle2" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Output
             </Typography>
+            <Stack direction="row" spacing={1}>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<ContentCopyIcon fontSize="small" />}
+                onClick={handleCopy}
+                disabled={output === null}
+              >
+                {copied ? 'Copied!' : 'Copy'}
+              </Button>
+              <Tooltip title="Download">
+                {/* span wrapper — MUI requires one around a disabled button for the Tooltip to
+                    still attach its listeners */}
+                <span>
+                  <IconButton size="small" onClick={handleDownload} disabled={output === null}>
+                    <DownloadIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </Stack>
           </Stack>
-        )}
+
+          {output !== null && (
+            <Stack
+              direction="row"
+              alignItems="center"
+              sx={{ px: 2, py: 1, borderBottom: 1, borderColor: OUTPUT_LINE_COLOR, bgcolor: OUTPUT_INFO_BG }}
+            >
+              <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                <Box component="span" sx={{ color: OUTPUT_LANGUAGE_INFO[outputLanguage].color, fontWeight: 700 }}>
+                  {OUTPUT_LANGUAGE_INFO[outputLanguage].label}
+                </Box>
+                <Box component="span" sx={{ color: OUTPUT_FILENAME_COLOR }}>
+                  {' | '}
+                  {downloadFileName}
+                </Box>
+              </Typography>
+            </Stack>
+          )}
+        </Box>
 
         {error !== null ? (
           <Box sx={{ p: 2, flex: 1, minHeight: 0, maxHeight: OUTPUT_MAX_HEIGHT, overflow: 'auto', bgcolor: OUTPUT_BG_LIGHT }}>
@@ -581,47 +611,35 @@ export default function DevUtilToolPanel({
             </Stack>
           </Box>
         ) : output !== null ? (
-          // react-syntax-highlighter tags every line-number span with a `comment` className
-          // alongside `linenumber` (highlight.js's own createLineElement) so it can reuse the
-          // theme's comment-token color as a sensible default — but its style-merge order then
-          // re-applies that theme color *after* `lineNumberStyle`'s own `color`, silently
-          // clobbering it (confirmed by inspecting react-syntax-highlighter's own createElement/
-          // createStyleObject source, not guessed): `stylesheet['comment']` — vscDarkPlus's own
-          // `{ color: '#6a9955' }` — is spread on top of `lineNumberStyle`'s merged style, so
-          // `lineNumberStyle.color` never actually reaches the DOM. A `!important` CSS rule is the
-          // only thing that can still win here, since CSS's own cascade ranks any `!important`
-          // declaration above a plain (non-`!important`) inline style regardless of origin —
-          // targeting the `.react-syntax-highlighter-line-number` class this same library adds
-          // specifically for cases like this.
-          <Box
-            sx={{
-              flex: 1,
-              minHeight: 0,
-              maxHeight: OUTPUT_MAX_HEIGHT,
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'auto',
-              '& .react-syntax-highlighter-line-number': { color: `${OUTPUT_LINE_NUMBER_COLOR} !important` },
-            }}
-          >
-            <SyntaxHighlighter
-              language={outputLanguage}
-              style={vscDarkPlus}
-              showLineNumbers
-              lineNumberStyle={{ minWidth: '2.5em', paddingRight: '0.25em', userSelect: 'none', marginRight: '16px' }}
-              customStyle={{
-                margin: 0,
-                borderRadius: 0,
-                fontSize: '0.8rem',
-                padding: '16px',
-                flex: 1,
-                minHeight: 0,
-                background: OUTPUT_BG_DARK,
-              }}
-            >
-              {output}
-            </SyntaxHighlighter>
-          </Box>
+          // No wrapping Box needed here (unlike every other branch) — CodeMirror's own `style`
+          // prop lands directly on the outer element it renders. `minHeight` is passed explicitly
+          // (`availableHeight` minus `outputChromeHeight`, the header+info row's own real measured
+          // height above) rather than left to an ambient `flex: 1` fill — a first cut relied on
+          // exactly that ambient fill and it was a real, reported regression (this box's own
+          // min-height didn't actually match Input/the sidebar). Passing `minHeight` directly to
+          // CodeMirror is deterministic instead: the editor's own dimension theme sets it straight
+          // on `.cm-editor`, no reliance on how flex-grow happens to distribute this Paper's free
+          // space. `maxHeight` (not an external `sx.maxHeight` + `overflow: 'auto'`) is what caps
+          // growth past OUTPUT_MAX_HEIGHT — together, `minHeight`/`maxHeight` are the exact same
+          // "floor, then hard cap" shape the Paper's own `minHeight: availableHeight` above
+          // establishes, just enforced directly by the editor instead of inferred from its
+          // surrounding flex layout. `style={{flex: 1, minHeight: 0}}` still lets this element grow
+          // past its own `minHeight` prop when content genuinely needs more room (a `min-height`
+          // prop is a floor only, never a ceiling), matching the Paper's own ability to grow past
+          // its floor too. `readOnly` + `editable={false}` together give a fully read-only view
+          // that still allows native text selection (for a manual copy, alongside the explicit
+          // Copy button above) — `editable` alone would still render an editable cursor/caret
+          // despite `readOnly` blocking actual mutation.
+          <CodeMirror
+            value={output}
+            readOnly
+            editable={false}
+            theme={vscodeDark}
+            extensions={[editorChromeTheme, ...outputExtensions]}
+            minHeight={`${Math.max(0, availableHeight - outputChromeHeight)}px`}
+            maxHeight={`${OUTPUT_MAX_HEIGHT}px`}
+            style={{ flex: 1, minHeight: 0 }}
+          />
         ) : (
           <Stack
             spacing={1.5}

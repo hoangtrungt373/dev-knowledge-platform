@@ -889,6 +889,61 @@ section again. Full unabridged entry-by-entry history for all three lives in
       width change (there's nothing to widen from at rest). Verified via a clean `tsc --noEmit` and
       a successful `vite build` only — no Docker in this sandbox, so the actual zero-gap look and
       the hover-reveal are unverified in a real browser.
+    - **Follow-up: both Input and Output rebuilt on real CodeMirror 6 editors
+      (`@uiw/react-codemirror`), replacing the plain `TextField`/read-only `react-syntax-highlighter`
+      pairing, per request ("Move to #3" — the last of the three ideas from the original design
+      discussion). Two decisions confirmed with the user first, since both were named as open forks
+      in that same discussion: CodeMirror over Monaco (far lighter, no web worker/CDN story to
+      manage — this app's bundle was already flagged for size), and both panels rebuilt, not just
+      Output (so Input also gets real syntax highlighting for whatever it's typing/pasting).**
+      New `config/codeMirrorConfig.ts` — `getCodeMirrorExtensions(languageId)` maps every language
+      id this feature's own operations pass (both `inputFormat`'s and `outputLanguages.ts`'s
+      slightly different key sets for the same two languages) to the matching CodeMirror language
+      package (`@codemirror/lang-{json,yaml,html,css,less,sass,javascript,xml,sql,php}`, installed
+      new) — `erb`/`csv`/`text` fall back to plain, unhighlighted text (no maintained CodeMirror 6
+      ERB grammar exists, and CSV/plain text aren't real "languages" to highlight in the first
+      place). `editorChromeTheme` (a small shared `EditorView.theme()`) restores the panel's
+      existing `16px` content padding/`0.8rem` font size, both noticeably smaller under CodeMirror's
+      own defaults. Output uses the new `@uiw/codemirror-theme-vscode` package's `vscodeDark` theme
+      (a real VS Code Dark+ port) in place of the old hand-tuned `vscDarkPlus`+`!important`
+      line-number-color override; Input uses CodeMirror's own plain `'light'` theme, matching the
+      app's own chrome the same way the old `TextField` did.
+      `react-syntax-highlighter` itself is **not** removed as a dependency — `@chat/
+      components/MarkdownRenderer.tsx` and `@content/components/MarkdownField.tsx` both still use
+      it; only this one file stopped. Both editors' fixed-height/floor+cap sizing (`availableHeight`
+      for Input, the floor-plus-`OUTPUT_MAX_HEIGHT`-cap for Output) carried over unchanged, mapped
+      onto CodeMirror's own `height`/`maxHeight` props and `style={{flex:1, minHeight:0}}` instead
+      of the old hand-rolled `TextField`/`react-syntax-highlighter` CSS overrides — see
+      `gui/CLAUDE.md`'s own dev-utils section for the full reasoning behind each. Bundle impact:
+      production build grew from ~2.28 MB/725 KB gzip to ~3.04 MB/986 KB gzip (11 new dependencies:
+      the editor + its VS Code theme + 10 language packages) — a real, expected cost of this
+      request, not a regression to chase down. Verified via a clean `tsc --noEmit` and a successful
+      `vite build` only — no Docker in this sandbox, so the actual editors (typing/highlighting in
+      Input, read-only display/scroll in Output, both panels' sizing) are unverified in a real
+      browser.
+    - **3 bugs reported directly right after the CodeMirror follow-up above landed, all fixed in
+      `config/codeMirrorConfig.ts`/`DevUtilToolPanel.tsx`.** (1) A dotted focus outline appearing
+      when editing Input — `@codemirror/view`'s own base theme draws `&.cm-focused { outline: '1px
+      dotted #212121' }` on `.cm-editor` by design (to cover the gutters, which a plain native
+      focus ring on the content-editable element alone wouldn't); removed via `'&.cm-focused':
+      { outline: 'none' }` on the shared `editorChromeTheme`, since both editors already sit inside
+      their own bordered `Paper` card. (2) No scrollbar for content overflowing Input's own
+      width/height — CodeMirror's `height="100%"` prop needs its direct parent to have a genuinely
+      definite height for the percentage to resolve, and relying on ambient flex stretch/grow
+      through the wrapping `Box`/Paper chain didn't reliably produce one in practice (the editor
+      fell back to auto-sizing to content, clipped by the Paper's own `overflow: 'hidden'` instead
+      of ever engaging its own internal scroller). Fixed by switching Input's editor to `position:
+      'absolute', inset: 0` against a `position: 'relative'` wrapping `Box` — the same "fill an
+      already-laid-out ancestor directly, no percentage-resolution to fail" technique already used
+      for the resize handle elsewhere in this file. (3) Output's own min-height no longer matching
+      Input/the sidebar (a real regression) — the first cut inferred the floor from an *ambient*
+      `flex: 1` fill rather than setting it directly, which didn't actually land. Fixed with an
+      explicit, measured `minHeight` prop straight on the Output editor: a new `useLayoutEffect`
+      measurement of the header+info row's own real rendered height feeds
+      `minHeight={`${availableHeight - outputChromeHeight}px`}`, deterministic rather than inferred
+      from flex-grow distribution. Verified via a clean `tsc --noEmit` and a successful
+      `vite build` only — no Docker in this sandbox, so none of the three actual fixes is verified
+      in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.
