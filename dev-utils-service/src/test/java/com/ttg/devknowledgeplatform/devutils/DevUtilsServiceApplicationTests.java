@@ -18,7 +18,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
  * {@link MockMvc} — verifies, end to end rather than by static reasoning alone, that this app
  * actually starts (the {@code GlobalExceptionHandler}/{@code spring-boot-starter-security}
  * classpath dependency reasoning in {@code security.SecurityConfig}'s own Javadoc holds up) and
- * that every one of the 16 operation endpoints is genuinely reachable with no
+ * that every one of the 20 operation endpoints is genuinely reachable with no
  * {@code Authorization} header at all.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -228,6 +228,33 @@ class DevUtilsServiceApplicationTests {
                         .content("{\"input\":\"not valid base64!!\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_006")));
+    }
+
+    @Test
+    void encodeUrlIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/url/encode")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"Vui Coding & Co\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Vui%20Coding%20%26%20Co")));
+    }
+
+    @Test
+    void decodeUrlIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/url/decode")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"Vui%20Coding%20%26%20Co\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Vui Coding & Co")));
+    }
+
+    @Test
+    void malformedUrlEncodingReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/url/decode")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"100%\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_007")));
     }
 
     @Test

@@ -6,6 +6,7 @@ import StorageIcon from '@mui/icons-material/StorageOutlined';
 import PhpIcon from '@mui/icons-material/PhpOutlined';
 import AbcIcon from '@mui/icons-material/AbcOutlined';
 import CodeIcon from '@mui/icons-material/CodeOutlined';
+import LinkIcon from '@mui/icons-material/LinkOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, StringCaseResponse } from '../types';
@@ -28,7 +29,8 @@ export type TabKey =
   | 'php-to-json'
   | 'json-to-php'
   | 'string-case-convert'
-  | 'base64-string';
+  | 'base64-string'
+  | 'url-string';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -48,6 +50,7 @@ export const TAB_KEYS: TabKey[] = [
   'json-to-php',
   'string-case-convert',
   'base64-string',
+  'url-string',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -420,7 +423,7 @@ export const OPERATIONS: OperationConfig[] = [
     description: 'Encode and decode Base64 strings',
     icon: <CodeIcon fontSize="small" />,
     actionLabel: 'Encode',
-    inputPlaceholder: 'Vui Coding',
+    inputPlaceholder: 'Encode and decode Base64 strings',
     inputFormat: 'text',
     outputLanguage: 'text',
     // No minify option — a Base64 encoding has no distinct "compact form" to toggle, same
@@ -434,6 +437,30 @@ export const OPERATIONS: OperationConfig[] = [
     secondaryAction: {
       label: 'Decode',
       onSubmit: input => devUtilsApi.decodeBase64(input),
+    },
+  },
+  {
+    key: 'url-string',
+    // The second ENCODERS_DECODERS-group operation, added alongside dev-utils-service's own
+    // UrlEncodeOperation/UrlDecodeOperation — same Encode/Decode pairing shape base64-string
+    // already established.
+    group: 'Encoders/Decoders',
+    category: 'Encoders/Decoders',
+    label: 'URL Encode/Decode',
+    description: 'Encode and decode URL strings',
+    icon: <LinkIcon fontSize="small" />,
+    actionLabel: 'Encode',
+    inputPlaceholder: 'https://translate.google.com/?hl=vi&sl=vi&tl=en&op=translate',
+    inputFormat: 'text',
+    outputLanguage: 'text',
+    // No minify option — a percent-encoding has no distinct "compact form" to toggle, same
+    // reasoning `base64-string` already establishes.
+    supportsMinify: false,
+    downloadFileName: 'url-encoded.txt',
+    onSubmit: input => devUtilsApi.encodeUrl(input),
+    secondaryAction: {
+      label: 'Decode',
+      onSubmit: input => devUtilsApi.decodeUrl(input),
     },
   },
 ];

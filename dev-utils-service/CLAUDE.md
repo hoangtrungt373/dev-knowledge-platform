@@ -6,7 +6,7 @@ Module-local guidance for `dev-utils-service`. Read alongside the root `CLAUDE.m
 
 A stateless developer-utility API: JSON format/validate, YAML↔JSON conversion, HTML/CSS/LESS/SCSS/
 JS/ERB beautify+minify, XML validate/beautify+minify, JSON↔CSV conversion, SQL format+minify,
-PHP↔JSON conversion, String Case Converter, Base64 encode/decode. Package root:
+PHP↔JSON conversion, String Case Converter, Base64 encode/decode, URL encode/decode. Package root:
 `com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike
@@ -412,7 +412,8 @@ caller.** Every operation is a pure text-in/text-out transform:
 - `api/DevUtilsApi` (+ `api/impl/DevUtilsController`) — `POST /api/v1/dev-utils/json/format`,
   `/yaml-to-json`, `/json-to-yaml`, `/html/beautify`, `/css/beautify`, `/less/beautify`,
   `/scss/beautify`, `/js/beautify`, `/erb/beautify`, `/xml/beautify`, `/json-to-csv`,
-  `/csv-to-json`, `/sql/format`, `/php-to-json`, `/json-to-php`, `/string-case/convert`. The
+  `/csv-to-json`, `/sql/format`, `/php-to-json`, `/json-to-php`, `/string-case/convert`,
+  `/base64/encode`, `/base64/decode`, `/url/encode`, `/url/decode`. The
   controller injects each operation by its concrete type rather than dispatching through an
   enum-keyed registry — with one fixed REST endpoint per operation, there's no runtime "which
   operation" decision left to make (see `DevUtilOperation`'s own Javadoc).
@@ -788,13 +789,46 @@ regardless of whether it's the intended one).
   shared `GlobalExceptionHandler`). Test suite grew from 161 to 172, verified via a real
   `mvn -pl dev-utils-service -am test` run (JDK 21).
 
+**Ninth follow-up — 2 more operations (`UrlEncodeOperation`/`UrlDecodeOperation`), the second pair
+to declare `OperationGroup.ENCODERS_DECODERS`**, per direct request: "Implement new operation in
+ENCODERS_DECODERS group: URL Encode / Decode - URL encoding and decoding." Backs
+`POST /api/v1/dev-utils/url/encode` and `POST /api/v1/dev-utils/url/decode` — same Encode/Decode
+two-button shape `Base64EncodeOperation`/`Base64DecodeOperation` already established, so no new
+`gui`-side capability was needed this time (`base64-string`'s own `secondaryAction`/`savingAction`
+mechanism is reused as-is).
+- `UrlEncodeOperation` delegates to the JDK's own `URLEncoder.encode(input, UTF_8)`, then corrects
+  its one divergence from conventional URL percent-encoding: that encoder represents a space as
+  `+` (it targets HTML form submission, `application/x-www-form-urlencoded`), not `%20` — fixed
+  with a trailing `.replace("+", "%20")`, matching what JavaScript's `encodeURIComponent` (and most
+  general-purpose "URL Encode" tools) produce instead. Every other reserved delimiter (`: / ? # &
+  =`, etc.) is left exactly as `URLEncoder` already produces it. Never throws — every string has a
+  valid percent-encoding — so, like `Base64EncodeOperation`, it has no matching
+  `DevUtilsErrorCode`.
+- `UrlDecodeOperation` delegates to `URLDecoder.decode(input, UTF_8)`, which — matching
+  `UrlEncodeOperation`'s own output, and conventional query-string decoding generally — also
+  decodes a literal `+` back into a space. Real "parse, real invalid-input error" operation, the
+  same shape `Base64DecodeOperation` already establishes — new
+  `DevUtilsErrorCode.INVALID_URL_ENCODING` (`DEVUTILS_007`), backed directly by `URLDecoder`'s own
+  `IllegalArgumentException` message (e.g. "URLDecoder: Incomplete trailing escape (%) pattern") —
+  already specific enough not to need rewording.
+- `gui`'s `config/operations.tsx` gained the new `url-string` entry (group/category
+  `'Encoders/Decoders'`, right after `base64-string`); `api/devUtilsApi.ts` gained
+  `encodeUrl`/`decodeUrl`. See `gui/CLAUDE.md`'s own dev-utils section for the matching GUI-side
+  note.
+- 10 new tests: `UrlEncodeOperationTest` (3 — the exact reported URL example, a space-vs-`+`
+  encoding case, empty string), `UrlDecodeOperationTest` (4, one of which round-trips both `%20`
+  and a literal `+` back to a space), plus 3 new `DevUtilsServiceApplicationTests` cases (both new
+  endpoints' reachability with no `Authorization` header, and malformed percent-encoding returning
+  `400` with `DEVUTILS_007` through the shared `GlobalExceptionHandler`). Test suite grew from 172
+  to 182, verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
+
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
 `HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
 `JsOperationTest`, `ErbOperationTest`, `XmlOperationTest`, `JsonToCsvOperationTest`,
 `CsvToJsonOperationTest`, `SqlFormatOperationTest`, `PhpToJsonOperationTest`,
 `JsonToPhpOperationTest`, `StringCaseOperationTest`, `Base64EncodeOperationTest`,
-`Base64DecodeOperationTest`), plus `service/impl/support/
+`Base64DecodeOperationTest`, `UrlEncodeOperationTest`, `UrlDecodeOperationTest`), plus `service/impl/support/
 CurlyBraceFormatterTest` (the shared CSS/LESS/SCSS/JS reformatter — brace nesting, already-
 multiline selector lists, comment/string-literal protection, the JS ASI-safety guarantee,
 never-throws-on-unterminated-input), `service/impl/support/SqlFormatterTest` (clause-keyword line
@@ -813,19 +847,22 @@ real parse/serialize behavior (pretty vs. minified output, malformed-input rejec
 structural equality via `readTree`, jsoup's lenient-parsing/indent behavior, and — for
 `XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation` — real JAXP/CSV/PHP parsing and rejection
 behavior). Plus `DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)`
-+ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all eighteen endpoints with
++ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all twenty endpoints with
 **no** `Authorization` header through the real filter chain, confirming end to end (not just by
 static reasoning) that the app actually starts and every endpoint is genuinely public. This is
 exactly the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also
 covers the `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the
 latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP/
-Base64 all return `400` with `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005`/`DEVUTILS_006`
-respectively through the shared `GlobalExceptionHandler`. Plus `service/impl/support/
+Base64/URL-encoding all return `400` with
+`DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005`/`DEVUTILS_006`/`DEVUTILS_007` respectively through the
+shared `GlobalExceptionHandler`. Plus `service/impl/support/
 ConventionalJsonPrettyPrinterTest` (the one support class in this module with its own dedicated
 test file rather than only being exercised indirectly through an operation's own tests — see that
-class's own note above for why). 172 tests total (161 as of the seventh follow-up above, plus 8 new
-Base64 unit tests and 3 new `DevUtilsServiceApplicationTests` cases — see the eighth follow-up's own
-note for the full breakdown), verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
+class's own note above for why). 182 tests total (161 as of the seventh follow-up above, plus 8 new
+Base64 unit tests and 3 new `DevUtilsServiceApplicationTests` cases from the eighth follow-up, plus
+7 new URL unit tests and 3 more `DevUtilsServiceApplicationTests` cases from the ninth — see each
+follow-up's own note for the full breakdown), verified via a real
+`mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module
 

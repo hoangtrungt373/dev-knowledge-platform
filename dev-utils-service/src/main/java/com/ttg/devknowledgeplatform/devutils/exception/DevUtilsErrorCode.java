@@ -34,6 +34,9 @@ import lombok.Getter;
  * the JDK's own {@link java.util.Base64.Decoder}, a real (if strict) validator, unlike
  * {@code Base64EncodeOperation}, which — like {@code StringCaseOperation} — has no invalid-input
  * concept at all (every string has a valid encoding) and so needs no code of its own here.
+ * {@code INVALID_URL_ENCODING} is the same shape once more, for {@code UrlDecodeOperation} —
+ * backed by the JDK's own {@link java.net.URLDecoder}, unlike {@code UrlEncodeOperation}, which —
+ * like {@code Base64EncodeOperation} — has no invalid-input concept at all.
  */
 @Getter
 public enum DevUtilsErrorCode implements ErrorCode {
@@ -43,7 +46,8 @@ public enum DevUtilsErrorCode implements ErrorCode {
     INVALID_XML("DEVUTILS_003", "Invalid XML: {0}", HttpStatus.BAD_REQUEST),
     INVALID_CSV("DEVUTILS_004", "Invalid CSV: {0}", HttpStatus.BAD_REQUEST),
     INVALID_PHP("DEVUTILS_005", "Invalid PHP: {0}", HttpStatus.BAD_REQUEST),
-    INVALID_BASE64("DEVUTILS_006", "Invalid Base64: {0}", HttpStatus.BAD_REQUEST);
+    INVALID_BASE64("DEVUTILS_006", "Invalid Base64: {0}", HttpStatus.BAD_REQUEST),
+    INVALID_URL_ENCODING("DEVUTILS_007", "Invalid URL encoding: {0}", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

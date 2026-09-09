@@ -213,4 +213,23 @@ public interface DevUtilsApi {
      */
     @PostMapping("/base64/decode")
     ResponseEntity<DevUtilResponse> decodeBase64(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Percent-encodes raw text for safe use inside a URL. No minify option — see
+     * {@link TextRequest}'s own Javadoc for why; a percent-encoding has no distinct "compact form"
+     * to toggle. Never fails — every string has a valid encoding.
+     *
+     * @return {@code 200} with the URL-encoded text
+     */
+    @PostMapping("/url/encode")
+    ResponseEntity<DevUtilResponse> encodeUrl(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Decodes a percent-encoded URL string back into text.
+     *
+     * @return {@code 200} with the decoded text, or {@code 400} if {@code request.input()} isn't
+     *         validly percent-encoded
+     */
+    @PostMapping("/url/decode")
+    ResponseEntity<DevUtilResponse> decodeUrl(@Valid @RequestBody TextRequest request);
 }

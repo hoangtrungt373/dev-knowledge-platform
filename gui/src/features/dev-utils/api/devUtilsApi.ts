@@ -115,4 +115,16 @@ export const devUtilsApi = {
   decodeBase64(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
     return httpClient.post(`${BASE}/base64/decode`, { input }, showError);
   },
+
+  // The second ENCODERS_DECODERS-group operation, added alongside dev-utils-service's own
+  // UrlEncodeOperation/UrlDecodeOperation. No `minify` field on either — same reasoning
+  // `encodeBase64`/`decodeBase64` already establish; a percent-encoding has no distinct "compact
+  // form" to toggle.
+  encodeUrl(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/url/encode`, { input }, showError);
+  },
+
+  decodeUrl(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/url/decode`, { input }, showError);
+  },
 };

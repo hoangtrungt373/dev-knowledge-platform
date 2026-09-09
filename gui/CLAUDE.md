@@ -3500,6 +3500,33 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       successful `vite build` only — no Docker in this sandbox, so the actual two-button
       Encode/Decode flow (including the shared-disable-while-submitting behavior) is unverified in
       a real browser.
+  - **Follow-up: the second `ENCODERS_DECODERS`-group operation, "URL Encode/Decode," per
+    request — the second Encode/Decode pair, reusing the exact `secondaryAction`/`savingAction`
+    mechanism Base64 String already introduced (no new `DevUtilToolPanel.tsx` capability needed
+    this time).** `config/operations.tsx` gained the `url-string` entry, right after
+    `base64-string` (same `group`/`category`: `'Encoders/Decoders'`), with a new `LinkOutlined`
+    sidebar icon (confirmed present in the installed `@mui/icons-material` version first, same
+    verification step every icon addition in this feature already establishes) and a real
+    URL-with-query-string placeholder (`https://translate.google.com/?hl=vi&sl=vi&tl=en&op=translate`).
+    `api/devUtilsApi.ts` gained `encodeUrl`/`decodeUrl` — two separate methods (not one "url"
+    method with a direction flag), matching how every other bidirectional pair in this file
+    already gets one method per direction; neither takes a `minify` parameter, same reasoning
+    `encodeBase64`/`decodeBase64` already establish (a percent-encoding has no distinct "compact
+    form" to toggle).
+    - **`inputFormat`/`outputLanguage` both stay `'text'`**, same as `base64-string` — a
+      percent-encoded string isn't really a "language" with syntax to highlight, and `'text'`
+      already has a real `OUTPUT_LANGUAGE_INFO` entry (neutral grey) so the info-row badge doesn't
+      fall back to the raw string `"text"`. A failed Decode (the backend's own real
+      `INVALID_URL_ENCODING` failure path) takes the same generic `simplifyBackendMessage` fallback
+      every non-`'json'` `inputFormat` already does — no client-side URL-decoding parser exists to
+      give it a faster path the way JSON has one, same reasoning `base64-string`'s own Decode
+      action already establishes.
+    - Backend verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21) — see
+      `dev-utils-service/CLAUDE.md`'s own ninth-follow-up note for the operation classes themselves,
+      including the exact reported URL example and the space-vs-`+`/`%20` encoding distinction. GUI
+      side verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in
+      this sandbox, so the actual two-button Encode/Decode flow for this operation is unverified in
+      a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

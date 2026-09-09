@@ -24,6 +24,8 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.PhpToJsonOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.ScssOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.SqlFormatOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.StringCaseOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.UrlDecodeOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.UrlEncodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.XmlOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.YamlToJsonOperation;
 
@@ -57,6 +59,8 @@ public class DevUtilsController implements DevUtilsApi {
     private final StringCaseOperation stringCaseOperation;
     private final Base64EncodeOperation base64EncodeOperation;
     private final Base64DecodeOperation base64DecodeOperation;
+    private final UrlEncodeOperation urlEncodeOperation;
+    private final UrlDecodeOperation urlDecodeOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -146,5 +150,15 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<DevUtilResponse> decodeBase64(TextRequest request) {
         return ResponseEntity.ok(new DevUtilResponse(base64DecodeOperation.execute(request.input())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> encodeUrl(TextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(urlEncodeOperation.execute(request.input())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> decodeUrl(TextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(urlDecodeOperation.execute(request.input())));
     }
 }

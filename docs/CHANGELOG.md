@@ -985,6 +985,22 @@ section again. Full unabridged entry-by-entry history for all three lives in
         Verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21) and a clean
         `tsc --noEmit`/successful `vite build` on the GUI side — no Docker in this sandbox, so the
         actual two-button GUI flow is unverified in a real browser.
+    - **Follow-up: 2 more operations, `UrlEncodeOperation`/`UrlDecodeOperation`, per request ("add
+      new operation in ENCODERS_DECODERS group: URL Encode / Decode") — the second pair to declare
+      `OperationGroup.ENCODERS_DECODERS`, same Encode/Decode two-button shape `base64-string`
+      already established.** Backs `POST /api/v1/dev-utils/url/{encode,decode}`. `UrlEncodeOperation`
+      delegates to `URLEncoder.encode(input, UTF_8)` with its one divergence from conventional URL
+      percent-encoding corrected (`+` → `%20` for a space, matching `encodeURIComponent`); never
+      throws, same as `Base64EncodeOperation`. New `DevUtilsErrorCode.INVALID_URL_ENCODING`
+      (`DEVUTILS_007`) backs `UrlDecodeOperation`'s own real failure path
+      (`URLDecoder.decode(input, UTF_8)`'s `IllegalArgumentException`). `gui`'s
+      `config/operations.tsx` gained the `url-string` entry (reusing the existing
+      `secondaryAction`/`savingAction` mechanism `base64-string` already introduced — no new GUI
+      capability needed this time); `api/devUtilsApi.ts` gained `encodeUrl`/`decodeUrl`. 10 new
+      backend tests (172→182 — `UrlEncodeOperationTest`/`UrlDecodeOperationTest` plus 3 new
+      `DevUtilsServiceApplicationTests` cases), plus a clean `tsc --noEmit`/successful `vite build`
+      on the GUI side — no Docker in this sandbox, so the actual two-button GUI flow is unverified
+      in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.
