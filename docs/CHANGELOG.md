@@ -1020,6 +1020,23 @@ section again. Full unabridged entry-by-entry history for all three lives in
       `DevUtilsServiceApplicationTests` cases), plus a clean `tsc --noEmit`/successful `vite build`
       on the GUI side — no Docker in this sandbox, so the actual two-button GUI flow is unverified
       in a real browser.
+    - **Follow-up: 1 new operation, `HashGeneratorOperation`, per request ("Hash Generator -
+      Genereate SHA-1, SHA-256, SHA-384, SHA-512") — the first operation to declare
+      `OperationGroup.INSPECTORS`.** Backs `POST /api/v1/dev-utils/hash/generate`; computes all
+      four digests at once over the input's raw UTF-8 bytes (`MessageDigest`, hex-encoded
+      lowercase via `HexFormat.of()`) into a new `dto.HashResponse` — the second operation (after
+      String Case Converter) whose output is genuinely richer than a single string. Never throws
+      (all four algorithms are guaranteed present on every JDK), so it has no matching
+      `DevUtilsErrorCode`. `gui`'s `config/operations.tsx` gained the `hash-generator` entry —
+      the first entry outside "Formatters"/"Encoders/Decoders," rendering the sidebar's
+      "Inspectors" section headline for the first time — reusing `formatStringCaseResult`'s exact
+      formatting trick via a new `formatHashResult` helper; `api/devUtilsApi.ts` gained
+      `generateHash`; `types.ts` gained a matching `HashResponse` interface. 5 new backend tests
+      (193→198 — `HashGeneratorOperationTest` plus 1 new `DevUtilsServiceApplicationTests` case),
+      verified against a real standalone Java harness for the exact reported example (a
+      genuinely multi-byte UTF-8 input, via the em dash) before writing the test assertion, plus a
+      clean `tsc --noEmit`/successful `vite build` on the GUI side — no Docker in this sandbox, so
+      the actual GUI flow is unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

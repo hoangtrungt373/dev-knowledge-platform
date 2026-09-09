@@ -7,7 +7,8 @@ Module-local guidance for `dev-utils-service`. Read alongside the root `CLAUDE.m
 A stateless developer-utility API: JSON format/validate, YAML↔JSON conversion, HTML/CSS/LESS/SCSS/
 JS/ERB beautify+minify, XML validate/beautify+minify, JSON↔CSV conversion, SQL format+minify,
 PHP↔JSON conversion, String Case Converter, Base64 encode/decode, URL encode/decode, HTML entity
-encode/decode. Package root: `com.ttg.devknowledgeplatform.devutils.*`.
+encode/decode, Hash Generator (SHA-1/256/384/512). Package root:
+`com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike
 `ecommerce-service`/`identity-service`/`task-service`/`social-service`/`content-service`/
@@ -414,7 +415,7 @@ caller.** Every operation is a pure text-in/text-out transform:
   `/scss/beautify`, `/js/beautify`, `/erb/beautify`, `/xml/beautify`, `/json-to-csv`,
   `/csv-to-json`, `/sql/format`, `/php-to-json`, `/json-to-php`, `/string-case/convert`,
   `/base64/encode`, `/base64/decode`, `/url/encode`, `/url/decode`, `/html-entity/encode`,
-  `/html-entity/decode`. The
+  `/html-entity/decode`, `/hash/generate`. The
   controller injects each operation by its concrete type rather than dispatching through an
   enum-keyed registry — with one fixed REST endpoint per operation, there's no runtime "which
   operation" decision left to make (see `DevUtilOperation`'s own Javadoc).
@@ -870,6 +871,52 @@ was needed again.
   direction throws). Test suite grew from 182 to 193, verified via a real
   `mvn -pl dev-utils-service -am test` run (JDK 21).
 
+**Eleventh follow-up — 1 new operation (`HashGeneratorOperation`), the first to declare
+`OperationGroup.INSPECTORS`**, per direct request: "Hash Generator - Genereate SHA-1, SHA-256,
+SHA-384, SHA-512." Backs `POST /api/v1/dev-utils/hash/generate` — the concrete "hash calculator"
+example `OperationGroup.INSPECTORS`'s own Javadoc named ahead of use, landing for real (the other
+half of that same example, a JWT decoder, is still unbuilt).
+- **Computes all four digests at once over the input's raw UTF-8 bytes** (`MessageDigest`, one
+  call per algorithm, hex-encoded lowercase via `HexFormat.of()` — Java 17+'s own fixed-width
+  formatter, not a hand-rolled `String.format("%02x", b)` loop) — the second operation whose
+  response is genuinely richer than a single string, new `dto.HashResponse` (`sha1`/`sha256`/
+  `sha384`/`sha512`), the same "richer response, not `DevUtilResponse`" shape
+  `StringCaseOperation`/`StringCaseResponse` already establish. Chose "compute every algorithm at
+  once" over a single-algorithm-picked-by-the-caller design deliberately — a caller pasting one
+  input to hash almost always wants to compare it against more than one algorithm, the same reason
+  `StringCaseOperation` returns every case variant rather than one chosen up front, unlike
+  `Base64EncodeOperation`/`UrlEncodeOperation`/`HtmlEntityEncodeOperation`, which each commit to
+  exactly one transform.
+- **Never throws** — `SHA-1`/`SHA-256`/`SHA-384`/`SHA-512` are all guaranteed present in every
+  standard JDK security provider, so a private `digest(algorithm, bytes)` helper catches the
+  (statically required but practically unreachable) `NoSuchAlgorithmException` and rethrows it as
+  an `AssertionError` instead of letting it surface as a checked exception on `execute(...)` — no
+  matching `DevUtilsErrorCode` exists for this operation, the same "no invalid-input concept at
+  all" shape `Base64EncodeOperation`/`UrlEncodeOperation`/`HtmlEntityEncodeOperation`/
+  `HtmlEntityDecodeOperation` already establish (see `DevUtilsErrorCode`'s own updated Javadoc).
+- **The exact reported example was verified against a real standalone Java harness first, not
+  just trusted from the report** — confirmed byte-for-byte against a genuinely multi-byte UTF-8
+  input (`"DevKnowledge — Build, Ship, Share"`, containing an em dash, U+2014) before writing the
+  test assertion, the same discipline `Base64EncodeOperationTest`'s own multi-byte case already
+  establishes.
+- `gui`'s `config/operations.tsx` gained the new `hash-generator` entry — the first
+  `'Inspectors'`-group entry (that section's own sidebar headline now renders for the first time,
+  same generic-by-`OPERATION_GROUP_ORDER` mechanism that already rendered `'Encoders/Decoders'`
+  for real once `base64-string` landed) — with a new `FingerprintOutlined` sidebar icon. Its own
+  `onSubmit` formats `HashResponse`'s four named digests into the shared plain-text output shape
+  via a new `formatHashResult` helper, reusing `formatStringCaseResult`'s exact "`<Label>\n<value>`
+  pairs, blank-line separated" trick rather than building a second parallel result-rendering path
+  — same reasoning that helper's own comment already documents. `api/devUtilsApi.ts` gained
+  `generateHash` (returns `HashResponse`, not `DevUtilsResponse`); `types.ts` gained a matching
+  `HashResponse` interface.
+- 5 new tests: `HashGeneratorOperationTest` (4 — the exact reported example, a second
+  independently-verified plain-ASCII example, a lowercase-hex/fixed-length check across all four
+  algorithms, and the empty string hashing to each algorithm's own well-known published empty
+  digest) plus 1 new `DevUtilsServiceApplicationTests` case (the new endpoint's reachability with
+  no `Authorization` header — no malformed-input case to test, since this operation never
+  throws). Test suite grew from 193 to 198, verified via a real `mvn -pl dev-utils-service -am
+  test` run (JDK 21).
+
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
 `HtmlBeautifyOperationTest`, `CssOperationTest`, `LessOperationTest`, `ScssOperationTest`,
@@ -877,7 +924,8 @@ was needed again.
 `CsvToJsonOperationTest`, `SqlFormatOperationTest`, `PhpToJsonOperationTest`,
 `JsonToPhpOperationTest`, `StringCaseOperationTest`, `Base64EncodeOperationTest`,
 `Base64DecodeOperationTest`, `UrlEncodeOperationTest`, `UrlDecodeOperationTest`,
-`HtmlEntityEncodeOperationTest`, `HtmlEntityDecodeOperationTest`), plus `service/impl/support/
+`HtmlEntityEncodeOperationTest`, `HtmlEntityDecodeOperationTest`, `HashGeneratorOperationTest`),
+plus `service/impl/support/
 CurlyBraceFormatterTest` (the shared CSS/LESS/SCSS/JS reformatter — brace nesting, already-
 multiline selector lists, comment/string-literal protection, the JS ASI-safety guarantee,
 never-throws-on-unterminated-input), `service/impl/support/SqlFormatterTest` (clause-keyword line
@@ -896,24 +944,25 @@ real parse/serialize behavior (pretty vs. minified output, malformed-input rejec
 structural equality via `readTree`, jsoup's lenient-parsing/indent behavior, and — for
 `XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation` — real JAXP/CSV/PHP parsing and rejection
 behavior). Plus `DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)`
-+ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all twenty-two endpoints with
-**no** `Authorization` header through the real filter chain, confirming end to end (not just by
-static reasoning) that the app actually starts and every endpoint is genuinely public. This is
++ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all twenty-three endpoints
+with **no** `Authorization` header through the real filter chain, confirming end to end (not just
+by static reasoning) that the app actually starts and every endpoint is genuinely public. This is
 exactly the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also
 covers the `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the
 latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP/
 Base64/URL-encoding all return `400` with
 `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005`/`DEVUTILS_006`/`DEVUTILS_007` respectively through the
-shared `GlobalExceptionHandler` — `html-entity/encode`/`decode` have no matching case here, since
-neither direction ever throws (see `DevUtilsErrorCode`'s own updated Javadoc). Plus
-`service/impl/support/
+shared `GlobalExceptionHandler` — `html-entity/encode`/`decode` and `hash/generate` have no
+matching case here, since none of those three ever throws (see `DevUtilsErrorCode`'s own updated
+Javadoc). Plus `service/impl/support/
 ConventionalJsonPrettyPrinterTest` (the one support class in this module with its own dedicated
 test file rather than only being exercised indirectly through an operation's own tests — see that
-class's own note above for why). 193 tests total (161 as of the seventh follow-up above, plus 8 new
+class's own note above for why). 198 tests total (161 as of the seventh follow-up above, plus 8 new
 Base64 unit tests and 3 new `DevUtilsServiceApplicationTests` cases from the eighth follow-up, 7 new
-URL unit tests and 3 more `DevUtilsServiceApplicationTests` cases from the ninth, and 9 new HTML
-entity unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the tenth — see each
-follow-up's own note for the full breakdown), verified via a real
+URL unit tests and 3 more `DevUtilsServiceApplicationTests` cases from the ninth, 9 new HTML entity
+unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the tenth, and 4 new Hash
+Generator unit tests plus 1 more `DevUtilsServiceApplicationTests` case from the eleventh — see
+each follow-up's own note for the full breakdown), verified via a real
 `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module

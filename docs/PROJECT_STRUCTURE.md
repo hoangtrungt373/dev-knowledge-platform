@@ -2351,9 +2351,11 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 HtmlEntityEncode/DecodeOperation declare ENCODERS_DECODERS
 │   │                                 instead — the concrete example that group's own Javadoc named
 │   │                                 ahead of use ("a Base64/URL encoder") landing for real, all
-│   │                                 three pairs.
-│   │                                 INSPECTORS/WEB/GENERATORS remain declared-ahead-of-use, still
-│   │                                 with no operation of their own yet.
+│   │                                 three pairs. HashGeneratorOperation is the first to declare
+│   │                                 INSPECTORS — that group's own "a JWT decoder/hash
+│   │                                 calculator" example, half landed for real (a JWT decoder is
+│   │                                 still unbuilt). WEB/GENERATORS remain declared-ahead-of-use,
+│   │                                 still with no operation of their own yet.
 │   └── impl/
 │       ├── JsonFormatOperation.java     — execute(String input, boolean minify); validates +
 │       │                                   pretty-prints (or, minified, compact-serializes) in one
@@ -2456,6 +2458,11 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   untouched; never throws — the one pair in this module
 │       │                                   where neither direction has a matching
 │       │                                   DevUtilsErrorCode
+│       ├── HashGeneratorOperation.java — execute(String input): HashResponse — SHA-1/256/384/512
+│       │                                   over the input's raw UTF-8 bytes (MessageDigest,
+│       │                                   HexFormat.of() lowercase hex); the first operation to
+│       │                                   declare OperationGroup.INSPECTORS; never throws (all
+│       │                                   four algorithms are guaranteed on every JDK)
 │       └── support/
 │           ├── CurlyBraceFormatter.java — beautify(String)/minify(String), static utility (not a
 │           │                               DevUtilOperation itself). Shared by Css/Less/Scss/
@@ -2536,19 +2543,21 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 form)
 │   ├── DevUtilResponse.java       — output; shared by every single-string-output operation, not a
 │   │                                 rule going forward
-│   └── StringCaseResponse.java    — camelCase/pascalCase/snakeCase/kebabCase/constantCase/
-│                                     titleCase/sentenceCase — the first operation whose output was
-│                                     genuinely richer than one string, so it got its own type
-│                                     instead of being forced into DevUtilResponse
+│   ├── StringCaseResponse.java    — camelCase/pascalCase/snakeCase/kebabCase/constantCase/
+│   │                                 titleCase/sentenceCase — the first operation whose output was
+│   │                                 genuinely richer than one string, so it got its own type
+│   │                                 instead of being forced into DevUtilResponse
+│   └── HashResponse.java          — sha1/sha256/sha384/sha512, the second operation with a
+│                                     genuinely richer-than-one-string response
 └── api/
     ├── DevUtilsApi.java           — POST /api/v1/dev-utils/{json/format,yaml-to-json,
     │                                 json-to-yaml,html/beautify,css/beautify,less/beautify,
     │                                 scss/beautify,js/beautify,erb/beautify,xml/beautify,
     │                                 json-to-csv,csv-to-json,sql/format,php-to-json,json-to-php,
     │                                 string-case/convert,base64/encode,base64/decode,url/encode,
-    │                                 url/decode,html-entity/encode,html-entity/decode}. Every
-    │                                 endpoint is public — no @CurrentUserId, no authenticated
-    │                                 principal at all.
+    │                                 url/decode,html-entity/encode,html-entity/decode,
+    │                                 hash/generate}. Every endpoint is public — no
+    │                                 @CurrentUserId, no authenticated principal at all.
     └── impl/DevUtilsController.java — implements DevUtilsApi; injects each operation by its
                                         concrete type (no enum-keyed registry — one fixed endpoint
                                         per operation leaves no runtime dispatch decision to make)

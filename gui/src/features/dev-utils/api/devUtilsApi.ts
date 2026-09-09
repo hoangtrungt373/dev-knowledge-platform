@@ -1,5 +1,5 @@
 import { httpClient } from '@shared/api/httpClient';
-import { DevUtilsResponse, StringCaseResponse } from '../types';
+import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
 
 type ShowError = (message: string) => void;
 
@@ -138,5 +138,13 @@ export const devUtilsApi = {
 
   decodeHtmlEntity(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
     return httpClient.post(`${BASE}/html-entity/decode`, { input }, showError);
+  },
+
+  // The first INSPECTORS-group operation, added alongside dev-utils-service's own
+  // HashGeneratorOperation. Returns HashResponse, not DevUtilsResponse — the second operation
+  // (after convertStringCase) whose output is genuinely richer than a single string. No `minify`
+  // field — a hash digest has no distinct "compact form" to toggle.
+  generateHash(input: string, showError?: ShowError): Promise<HashResponse> {
+    return httpClient.post(`${BASE}/hash/generate`, { input }, showError);
   },
 };

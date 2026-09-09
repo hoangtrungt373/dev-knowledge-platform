@@ -18,7 +18,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
  * {@link MockMvc} — verifies, end to end rather than by static reasoning alone, that this app
  * actually starts (the {@code GlobalExceptionHandler}/{@code spring-boot-starter-security}
  * classpath dependency reasoning in {@code security.SecurityConfig}'s own Javadoc holds up) and
- * that every one of the 22 operation endpoints is genuinely reachable with no
+ * that every one of the 23 operation endpoints is genuinely reachable with no
  * {@code Authorization} header at all.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -273,6 +273,18 @@ class DevUtilsServiceApplicationTests {
                         .content("{\"input\":\"&lt;b&gt;Vui&lt;/b&gt; &amp; &quot;Coding&quot;\"}"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("<b>Vui</b> & \\\"Coding\\\"")));
+    }
+
+    @Test
+    void generateHashIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/hash/generate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"Vui Coding\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "2d1ed5c88f1825c1a74cf6fec2e5b61455d542e5")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "0b41e936e3341bc2ee9844992b5c6fbb69270b7a51877818d231ffd923aecbc9")));
     }
 
     @Test

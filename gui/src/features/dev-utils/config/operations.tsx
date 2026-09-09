@@ -8,9 +8,10 @@ import AbcIcon from '@mui/icons-material/AbcOutlined';
 import CodeIcon from '@mui/icons-material/CodeOutlined';
 import LinkIcon from '@mui/icons-material/LinkOutlined';
 import HtmlEntityIcon from '@mui/icons-material/HtmlOutlined';
+import FingerprintIcon from '@mui/icons-material/FingerprintOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
-import { DevUtilsResponse, StringCaseResponse } from '../types';
+import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
 import { OutputLanguage } from './outputLanguages';
 
 export type TabKey =
@@ -32,7 +33,8 @@ export type TabKey =
   | 'string-case-convert'
   | 'base64-string'
   | 'url-string'
-  | 'html-entity-string';
+  | 'html-entity-string'
+  | 'hash-generator';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -54,6 +56,7 @@ export const TAB_KEYS: TabKey[] = [
   'base64-string',
   'url-string',
   'html-entity-string',
+  'hash-generator',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -151,6 +154,20 @@ function formatStringCaseResult(result: StringCaseResponse): string {
     ['CONSTANT_CASE', result.constantCase],
     ['Title Case', result.titleCase],
     ['Sentence case', result.sentenceCase],
+  ];
+  return variants.map(([label, value]) => `${label}\n${value}`).join('\n\n');
+}
+
+// Hash Generator is the second operation whose backend response (HashResponse) isn't a single
+// string — same "format the named variants into one plain-text block" trick
+// formatStringCaseResult already establishes above, reused verbatim rather than building a second
+// parallel result-rendering path.
+function formatHashResult(result: HashResponse): string {
+  const variants: Array<[string, string]> = [
+    ['SHA-1', result.sha1],
+    ['SHA-256', result.sha256],
+    ['SHA-384', result.sha384],
+    ['SHA-512', result.sha512],
   ];
   return variants.map(([label, value]) => `${label}\n${value}`).join('\n\n');
 }
@@ -489,5 +506,28 @@ export const OPERATIONS: OperationConfig[] = [
       label: 'Decode',
       onSubmit: input => devUtilsApi.decodeHtmlEntity(input),
     },
+  },
+  {
+    key: 'hash-generator',
+    // The first INSPECTORS-group operation — see OperationGroup.java's own Javadoc, which named
+    // exactly this ("a JWT decoder/hash calculator") as one of the concrete examples that group
+    // was declared ahead of use for.
+    group: 'Inspectors',
+    category: 'Inspectors',
+    label: 'Hash Generator',
+    description: 'Generate SHA-1, SHA-256, SHA-384, and SHA-512 hashes',
+    icon: <FingerprintIcon fontSize="small" />,
+    actionLabel: 'Generate',
+    inputPlaceholder: 'DevKnowledge — Build, Ship, Share',
+    inputFormat: 'text',
+    outputLanguage: 'text',
+    // No minify option — a hash digest has no distinct "compact form" to toggle, same reasoning
+    // `base64-string`/`url-string`/`html-entity-string` already establish.
+    supportsMinify: false,
+    downloadFileName: 'hashes.txt',
+    // Same "format the richer response into the shared plain-text output shape" trick
+    // `string-case-convert`'s own onSubmit already establishes above — see
+    // formatHashResult's own comment.
+    onSubmit: async input => ({ output: formatHashResult(await devUtilsApi.generateHash(input)) }),
   },
 ];

@@ -42,7 +42,9 @@ import lombok.Getter;
  * {@code Base64EncodeOperation}/{@code UrlEncodeOperation}), and decode is lenient by design — an
  * unrecognized {@code &...;} sequence is left untouched rather than rejected, the same "no notion
  * of invalid input" shape {@code StringCaseOperation} already establishes, just applied to a
- * decode direction instead of an encode one.
+ * decode direction instead of an encode one. {@code HashGeneratorOperation} is the same "no
+ * invalid-input concept at all" story once more — every string has a valid SHA-1/256/384/512
+ * digest — so it has no matching code either.
  */
 @Getter
 public enum DevUtilsErrorCode implements ErrorCode {

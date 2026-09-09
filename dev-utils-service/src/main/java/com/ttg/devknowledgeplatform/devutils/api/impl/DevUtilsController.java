@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.ttg.devknowledgeplatform.devutils.api.DevUtilsApi;
 import com.ttg.devknowledgeplatform.devutils.dto.DevUtilResponse;
+import com.ttg.devknowledgeplatform.devutils.dto.HashResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.TextRequest;
@@ -13,6 +14,7 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.Base64EncodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CssOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CsvToJsonOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.ErbOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.HashGeneratorOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlBeautifyOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlEntityDecodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlEntityEncodeOperation;
@@ -65,6 +67,7 @@ public class DevUtilsController implements DevUtilsApi {
     private final UrlDecodeOperation urlDecodeOperation;
     private final HtmlEntityEncodeOperation htmlEntityEncodeOperation;
     private final HtmlEntityDecodeOperation htmlEntityDecodeOperation;
+    private final HashGeneratorOperation hashGeneratorOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -174,5 +177,10 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<DevUtilResponse> decodeHtmlEntity(TextRequest request) {
         return ResponseEntity.ok(new DevUtilResponse(htmlEntityDecodeOperation.execute(request.input())));
+    }
+
+    @Override
+    public ResponseEntity<HashResponse> generateHash(TextRequest request) {
+        return ResponseEntity.ok(hashGeneratorOperation.execute(request.input()));
     }
 }

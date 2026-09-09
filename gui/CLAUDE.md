@@ -3550,6 +3550,33 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       GUI side verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker
       in this sandbox, so the actual two-button Encode/Decode flow for this operation is unverified
       in a real browser.
+  - **Follow-up: the first `Inspectors`-group operation, "Hash Generator," per request — the first
+    operation whose sidebar section headline isn't "Formatters" or "Encoders/Decoders."**
+    `config/operations.tsx` gained the `hash-generator` entry (`group`/`category`
+    `'Inspectors'`), with a new `FingerprintOutlined` sidebar icon and the exact reported
+    `"DevKnowledge — Build, Ship, Share"` placeholder — the first time
+    `groupedVisibleOperations`'s own generic bucketing (in `DevUtilsPage.tsx`, built ahead of use
+    for exactly this moment) actually renders a second group headline in the sidebar, with no
+    change needed there. `types.ts` gained a `HashResponse` interface (mirroring
+    `dev-utils-service`'s own `dto.HashResponse` — `sha1`/`sha256`/`sha384`/`sha512`);
+    `api/devUtilsApi.ts` gained `generateHash` (returns `HashResponse`, not `DevUtilsResponse`,
+    same as `convertStringCase`).
+    - **This is the second operation (after `string-case-convert`) whose backend response isn't a
+      single string — a new `formatHashResult` helper reuses `formatStringCaseResult`'s exact
+      "`<Label>\n<value>` pairs, blank-line separated" formatting**, rather than building a second
+      parallel result-rendering path; its own `onSubmit` follows the identical
+      `async input => ({ output: formatHashResult(await devUtilsApi.generateHash(input)) })` shape
+      `string-case-convert`'s own `onSubmit` already established. One action only (no
+      `secondaryAction`) — unlike Base64/URL/HTML Entity, this operation computes every algorithm
+      at once rather than offering two directions over the same input, so there's nothing for a
+      second button to do.
+    - Backend verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21) — see
+      `dev-utils-service/CLAUDE.md`'s own eleventh-follow-up note, including the real
+      standalone-Java-harness verification of the exact reported example (a genuinely multi-byte
+      UTF-8 input, via the em dash) before writing the corresponding test assertion. GUI side
+      verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual Generate flow and the new "Inspectors" sidebar headline are
+      unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

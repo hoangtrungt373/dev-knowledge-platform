@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 import com.ttg.devknowledgeplatform.devutils.dto.DevUtilResponse;
+import com.ttg.devknowledgeplatform.devutils.dto.HashResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.TextRequest;
@@ -251,4 +252,15 @@ public interface DevUtilsApi {
      */
     @PostMapping("/html-entity/decode")
     ResponseEntity<DevUtilResponse> decodeHtmlEntity(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Computes every {@link HashResponse} digest at once (SHA-1, SHA-256, SHA-384, SHA-512) over
+     * the raw UTF-8 bytes of {@code request.input()}. No minify option — see
+     * {@link TextRequest}'s own Javadoc for why; a hash digest has no distinct "compact form" to
+     * toggle. Never fails.
+     *
+     * @return {@code 200} with all four digests
+     */
+    @PostMapping("/hash/generate")
+    ResponseEntity<HashResponse> generateHash(@Valid @RequestBody TextRequest request);
 }
