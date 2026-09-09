@@ -6,20 +6,23 @@ package com.ttg.devknowledgeplatform.devutils.service;
  * reformatter" from "this is an encoder" from "this is an inspector" at a glance, without having
  * to read each operation's own description.
  *
- * <p>Every operation in this module today is {@link #FORMATTERS} (JSON/YAML/HTML/CSS/LESS/SCSS/
- * JS/ERB/XML beautify+minify, JSON↔CSV, SQL format, PHP↔JSON, String Case Converter — every one of
- * them either reformats text in place or converts between two closely related text formats). The
- * other four groups are declared ahead of the operations that will actually use them, so the GUI's
- * own group-by-{@link #getLabel()} sidebar rendering has a stable, complete set of sections to
- * iterate from day one rather than needing a second change once the first non-{@code FORMATTERS}
- * operation lands: {@link #ENCODERS_DECODERS} (e.g. a future Base64/URL/HTML-entity encoder-
- * decoder — genuinely different from a formatter, since it changes a value's own representation
- * rather than just its whitespace/casing), {@link #INSPECTORS} (e.g. a future JWT decoder/hash
- * calculator — reads structure out of a value rather than transforming it), {@link #WEB} (e.g. a
- * future HTTP header/user-agent parser — inherently about a web-specific concept, not a generic
- * text shape), {@link #GENERATORS} (e.g. a future UUID/Lorem Ipsum generator — produces new
- * content from little or no input, unlike every operation above, which all transform an existing
- * input).
+ * <p>Most operations in this module are {@link #FORMATTERS} (JSON/YAML/HTML/CSS/LESS/SCSS/JS/ERB/
+ * XML beautify+minify, JSON↔CSV, SQL format, PHP↔JSON, String Case Converter — every one of them
+ * either reformats text in place or converts between two closely related text formats).
+ * {@link #ENCODERS_DECODERS} covers every operation that changes a value's own representation
+ * rather than just its whitespace/casing — Base64/URL/HTML-entity encode-decode, PHP's own
+ * serialize()/unserialize() wire format, and the Hash Generator (a one-way "encoding" into a
+ * digest, arguably closer to this group than to {@link #INSPECTORS} — moved here from that group
+ * per direct request). {@link #WEB} and {@link #GENERATORS} are declared ahead of the operations
+ * that will actually use them, so the GUI's own group-by-{@link #getLabel()} sidebar rendering
+ * already has a stable, complete set of sections to iterate whenever the first one lands, without
+ * needing a second change then: {@link #WEB} (e.g. a future HTTP header/user-agent parser —
+ * inherently about a web-specific concept, not a generic text shape), {@link #GENERATORS} (e.g. a
+ * future UUID/Lorem Ipsum generator — produces new content from little or no input, unlike every
+ * operation above, which all transform an existing input). {@link #INSPECTORS} is declared ahead
+ * of use the same way (e.g. a future JWT decoder — reads structure out of a value rather than
+ * transforming it) — it briefly had the Hash Generator too, before that operation moved to
+ * {@link #ENCODERS_DECODERS} above.
  */
 public enum OperationGroup {
     FORMATTERS("Formatters"),

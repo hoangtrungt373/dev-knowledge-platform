@@ -3550,10 +3550,12 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       GUI side verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker
       in this sandbox, so the actual two-button Encode/Decode flow for this operation is unverified
       in a real browser.
-  - **Follow-up: the first `Inspectors`-group operation, "Hash Generator," per request — the first
-    operation whose sidebar section headline isn't "Formatters" or "Encoders/Decoders."**
-    `config/operations.tsx` gained the `hash-generator` entry (`group`/`category`
-    `'Inspectors'`), with a new `FingerprintOutlined` sidebar icon and the exact reported
+  - **Follow-up: originally the first `Inspectors`-group operation, "Hash Generator," per request —
+    the first operation whose sidebar section headline wasn't "Formatters" or "Encoders/Decoders"
+    (moved to `'Encoders/Decoders'` by a later follow-up further down this section — the
+    `'Inspectors'` claims below describe this operation's original landing, not its current
+    group).** `config/operations.tsx` gained the `hash-generator` entry (`group`/`category`
+    `'Inspectors'` at the time), with a new `FingerprintOutlined` sidebar icon and the exact reported
     `"DevKnowledge — Build, Ship, Share"` placeholder — the first time
     `groupedVisibleOperations`'s own generic bucketing (in `DevUtilsPage.tsx`, built ahead of use
     for exactly this moment) actually renders a second group headline in the sidebar, with no
@@ -3663,6 +3665,29 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       GUI side verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker
       in this sandbox, so the actual two-button Serialize/Unserialize flow is unverified in a real
       browser.
+  - **Follow-up: `hash-generator` moved from the `'Inspectors'` group to `'Encoders/Decoders'`, per
+    direct request — a hash digest reads as a one-way encoding of a value more than an
+    "inspection" of one, and this keeps every operation added since the original 16 Formatters
+    ones (Base64/URL/HTML Entity/PHP Serializer/Hash) under one sidebar section.** Just
+    `config/operations.tsx`'s `group`/`category` fields on that one entry — no other change:
+    `DevUtilsPage.tsx`'s own `activeOperation.key === 'hash-generator'` check (which panel
+    component to render) is keyed on the operation's `key`, entirely independent of `group`, so
+    `HashGeneratorPanel`'s own bespoke layout is unaffected. The `'Inspectors'` sidebar section no
+    longer renders at all as a result (zero operations left in it, back to the pre-Hash-Generator
+    state) — `groupedVisibleOperations`'s own generic bucketing already drops an empty group
+    automatically, so nothing needed to change there either. See
+    `dev-utils-service/CLAUDE.md`'s own thirteenth-follow-up note for the matching backend-side
+    move. Verified via a clean `tsc --noEmit`/successful `vite build` only — no Docker in this
+    sandbox, so the actual sidebar section change is unverified in a real browser.
+  - **Follow-up: `php-serializer`'s own `label`/`description` renamed to name both directions
+    explicitly, per direct request — "PHP Serializer" alone read as one-way even though the
+    operation has always had a secondary Unserialize action.** `label` → `'PHP Serializer/
+    Unserializer'` (matching `url-string`'s own `'URL Encode/Decode'` naming, the most explicit of
+    the three existing Encode/Decode-pair labels — `base64-string`/`html-entity-string` still just
+    use the bare noun form); `description` → `"Serialize JSON into PHP's serialize() format, or
+    unserialize it back into JSON"`. Display-only — no change to `key`, routing, icon, or either
+    action's own behavior. Verified via a clean `tsc --noEmit`/successful `vite build` only — no
+    Docker in this sandbox, so the actual sidebar/headline text is unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

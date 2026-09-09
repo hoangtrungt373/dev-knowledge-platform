@@ -1084,6 +1084,18 @@ section again. Full unabridged entry-by-entry history for all three lives in
       `DevUtilsServiceApplicationTests` cases), plus a clean `tsc --noEmit`/successful `vite build`
       on the GUI side — no Docker in this sandbox, so the actual two-button GUI flow is unverified
       in a real browser.
+    - **Follow-up: `HashGeneratorOperation`/`hash-generator` moved from the `Inspectors` group to
+      `Encoders/Decoders`, per direct request** — a hash digest reads as a one-way encoding of a
+      value more than an "inspection" of one, and this keeps every operation added since the
+      original 16 Formatters ones under one sidebar section. Just `group()`'s return value
+      (backend) and `config/operations.tsx`'s `group`/`category` fields (GUI) — no behavior
+      change, and no effect on which panel renders it (`HashGeneratorPanel` is still keyed by
+      operation `key`, not `group`). `OperationGroup.INSPECTORS` is back to fully
+      declared-ahead-of-use as a result (only its own "a JWT decoder" example remains unbuilt).
+    - **Follow-up: `php-serializer`'s `label`/`description` renamed to name both directions
+      explicitly, per direct request** — `'PHP Serializer'` → `'PHP Serializer/Unserializer'`
+      (matching `url-string`'s own `'URL Encode/Decode'` naming), description updated to mention
+      both Serialize and Unserialize. Display-only, no behavior change.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

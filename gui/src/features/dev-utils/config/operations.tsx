@@ -511,11 +511,13 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'hash-generator',
-    // The first INSPECTORS-group operation — see OperationGroup.java's own Javadoc, which named
-    // exactly this ("a JWT decoder/hash calculator") as one of the concrete examples that group
-    // was declared ahead of use for.
-    group: 'Inspectors',
-    category: 'Inspectors',
+    // Moved here from 'Inspectors', per direct request — a hash digest is arguably closer to a
+    // one-way encoding of a value than an "inspection" of one, and this keeps every non-Formatters
+    // text-transform operation (Base64/URL/HTML Entity/PHP Serializer/Hash) under one sidebar
+    // section. See OperationGroup.java's own updated Javadoc for the backend side of this move —
+    // 'Inspectors' is back to fully declared-ahead-of-use (a future JWT decoder) as a result.
+    group: 'Encoders/Decoders',
+    category: 'Encoders/Decoders',
     label: 'Hash Generator',
     description: 'Generate SHA-1, SHA-256, SHA-384, and SHA-512 hashes',
     icon: <FingerprintIcon fontSize="small" />,
@@ -542,8 +544,12 @@ export const OPERATIONS: OperationConfig[] = [
     // between JSON and PHP's own serialize()/unserialize() wire format (`a:N:{...}`).
     group: 'Encoders/Decoders',
     category: 'Encoders/Decoders',
-    label: 'PHP Serializer',
-    description: "Serialize JSON into PHP's serialize() format, and back",
+    // Label/description both name both directions explicitly — "PHP Serializer" alone (the
+    // original label) read as one-way, the same "Base64 String"/"HTML Entity" ambiguity
+    // `url-string`'s own "URL Encode/Decode" label already avoids; matched that convention here
+    // once this operation's own two-button Serialize/Unserialize shape made the gap noticeable.
+    label: 'PHP Serializer/Unserializer',
+    description: "Serialize JSON into PHP's serialize() format, or unserialize it back into JSON",
     icon: <PhpIcon fontSize="small" />,
     actionLabel: 'Serialize',
     inputPlaceholder: '{"name":"DevKnowledge","active":true,"count":47}',

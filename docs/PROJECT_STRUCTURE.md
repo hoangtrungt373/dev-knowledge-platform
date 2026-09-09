@@ -2352,11 +2352,12 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 UnserializeOperation declare ENCODERS_DECODERS
 │   │                                 instead — the concrete example that group's own Javadoc named
 │   │                                 ahead of use ("a Base64/URL encoder") landing for real, all
-│   │                                 four pairs. HashGeneratorOperation is the first to declare
-│   │                                 INSPECTORS — that group's own "a JWT decoder/hash
-│   │                                 calculator" example, half landed for real (a JWT decoder is
-│   │                                 still unbuilt). WEB/GENERATORS remain declared-ahead-of-use,
-│   │                                 still with no operation of their own yet.
+│   │                                 four pairs, plus HashGeneratorOperation (moved here from
+│   │                                 INSPECTORS per direct request — a hash digest reads as a
+│   │                                 one-way encoding of a value more than an "inspection" of one).
+│   │                                 INSPECTORS/WEB/GENERATORS remain fully declared-ahead-of-use,
+│   │                                 still with no operation of their own (INSPECTORS' own
+│   │                                 "a JWT decoder" example is still unbuilt).
 │   └── impl/
 │       ├── JsonFormatOperation.java     — execute(String input, boolean minify); validates +
 │       │                                   pretty-prints (or, minified, compact-serializes) in one
@@ -2461,9 +2462,10 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   DevUtilsErrorCode
 │       ├── HashGeneratorOperation.java — execute(String input): HashResponse — SHA-1/256/384/512
 │       │                                   over the input's raw UTF-8 bytes (MessageDigest,
-│       │                                   HexFormat.of() lowercase hex); the first operation to
-│       │                                   declare OperationGroup.INSPECTORS; never throws (all
-│       │                                   four algorithms are guaranteed on every JDK)
+│       │                                   HexFormat.of() lowercase hex); declares
+│       │                                   OperationGroup.ENCODERS_DECODERS (moved here from
+│       │                                   INSPECTORS per direct request); never throws (all four
+│       │                                   algorithms are guaranteed on every JDK)
 │       ├── PhpSerializeOperation.java   — execute(String input); JSON → PHP's own serialize()
 │       │                                   wire format (a:N:{...}) via support/PhpSerializeWriter;
 │       │                                   reuses INVALID_JSON (same choice JsonToPhpOperation

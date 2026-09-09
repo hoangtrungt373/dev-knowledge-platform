@@ -872,11 +872,13 @@ was needed again.
   direction throws). Test suite grew from 182 to 193, verified via a real
   `mvn -pl dev-utils-service -am test` run (JDK 21).
 
-**Eleventh follow-up — 1 new operation (`HashGeneratorOperation`), the first to declare
-`OperationGroup.INSPECTORS`**, per direct request: "Hash Generator - Genereate SHA-1, SHA-256,
-SHA-384, SHA-512." Backs `POST /api/v1/dev-utils/hash/generate` — the concrete "hash calculator"
-example `OperationGroup.INSPECTORS`'s own Javadoc named ahead of use, landing for real (the other
-half of that same example, a JWT decoder, is still unbuilt).
+**Eleventh follow-up — 1 new operation (`HashGeneratorOperation`), originally the first to declare
+`OperationGroup.INSPECTORS`** (moved to `OperationGroup.ENCODERS_DECODERS` by a later, thirteenth
+follow-up further down — the `'Inspectors'`-group claims in this section describe this operation's
+original landing, not its current group)**,** per direct request: "Hash Generator - Genereate
+SHA-1, SHA-256, SHA-384, SHA-512." Backs `POST /api/v1/dev-utils/hash/generate` — the concrete
+"hash calculator" example `OperationGroup.INSPECTORS`'s own Javadoc named ahead of use, landing for
+real at the time (the other half of that same example, a JWT decoder, is still unbuilt).
 - **Computes all four digests at once over the input's raw UTF-8 bytes** (`MessageDigest`, one
   call per algorithm, hex-encoded lowercase via `HexFormat.of()` — Java 17+'s own fixed-width
   formatter, not a hand-rolled `String.format("%02x", b)` loop) — the second operation whose
@@ -982,6 +984,24 @@ PHP session data are stored as. Two new support classes, mirroring the existing
   (both new endpoints' reachability with no `Authorization` header, and malformed serialized PHP
   data returning `400` with `DEVUTILS_008` through the shared `GlobalExceptionHandler`). Test suite
   grew from 198 to 222, verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
+
+**Thirteenth follow-up — `HashGeneratorOperation` moved from `OperationGroup.INSPECTORS` to
+`OperationGroup.ENCODERS_DECODERS`**, per direct request. No behavior change — same
+`POST /api/v1/dev-utils/hash/generate` endpoint, same four-digests-at-once response — only
+`group()`'s own return value changed, plus the Javadoc on both `HashGeneratorOperation` and
+`OperationGroup` itself updated to match (a hash digest reads as a one-way encoding of a value more
+than an "inspection" of one, and this keeps every operation added since the original 16
+`FORMATTERS` ones — Base64/URL/HTML-entity/PHP-serialize/Hash — under the one `Encoders/Decoders`
+sidebar section). `OperationGroup.INSPECTORS` is back to fully declared-ahead-of-use as a result —
+its own "a JWT decoder" example (the half of the original combined "a JWT decoder/hash calculator"
+example this class used to cover) is still unbuilt. `gui`'s `config/operations.tsx` gained the
+matching `group`/`category` update on the `hash-generator` entry — no other GUI change, since which
+group an operation belongs to has no bearing on which panel component renders it
+(`DevUtilsPage.tsx` still picks `HashGeneratorPanel` for this operation via its own
+`activeOperation.key === 'hash-generator'` check, entirely independent of `group`). No test
+changes needed — nothing in the test suite asserted this operation's group. Verified via a clean
+`tsc --noEmit`/successful `vite build` on the GUI side and by re-reading the changed Java files —
+no `mvn test`/real browser run in this session for a change with no behavior to exercise.
 
 **Test suite:** `src/test/java/.../service/impl/` — one plain JUnit 5 test class per operation
 (`JsonFormatOperationTest`, `YamlToJsonOperationTest`, `JsonToYamlOperationTest`,
