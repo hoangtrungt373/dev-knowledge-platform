@@ -3974,6 +3974,30 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
       sandbox, so the actual sidebar/Parse-button/output rendering is unverified in a real
       browser.
+  - **Follow-up: `url-parser` moved from `'Web'` to `'Inspectors'`, per direct request** — mirrors
+    the backend's own `UrlParserOperation` group move (this operation reads structure out of a
+    value rather than transforming it, the same shape `jwt-debugger`/`regexp-tester` already
+    establish). Just `config/operations.tsx`'s `group`/`category` fields on that one entry — no
+    behavior change, and no effect on which panel renders it (`url-parser` already went through
+    the shared `DevUtilToolPanel`, unaffected by which sidebar section it sits under). The
+    `OperationGroupName` doc comment above `OPERATION_GROUP_ORDER` was corrected again in the same
+    pass — `'Web'` is back to fully declared-ahead-of-use.
+  - **Follow-up: 1 new operation, "Cron Job Parser," per request — the third operation to declare
+    `OperationGroup.INSPECTORS`.** Backs `POST /api/v1/dev-utils/cron/parse`. **Needed no new GUI
+    capability** — like `url-parser` (and unlike Hash Generator/Base64 Image/RegExp Tester), this
+    operation's output is a single plain-text sentence, so it renders through the existing shared
+    `DevUtilToolPanel.tsx` unchanged (`outputLanguage: 'text'`, not `'json'`, since the output is a
+    sentence, not structured data — matching `hash-generator`'s own `'text'` output shape rather
+    than `jwt-debugger`'s/`url-parser`'s `'json'` one). `config/operations.tsx` gained the
+    `cron-parser` entry (`group`/`category` `'Inspectors'`, a new `ScheduleOutlined` sidebar icon,
+    the exact reported example `"0 9 * * 1-5"` as its placeholder) and `api/devUtilsApi.ts` gained
+    `parseCron`. `errorFormatting.ts`'s own doc comment was updated to note this operation takes
+    the same generic backend-message fallback path `jwt-debugger`/`url-parser` already do (its
+    input is a cron expression, not JSON, even though — unlike those two — its output isn't JSON
+    either).
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual sidebar/Parse-button/output rendering is unverified in a real
+      browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

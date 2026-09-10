@@ -13,16 +13,19 @@ package com.ttg.devknowledgeplatform.devutils.service;
  * rather than just its whitespace/casing — Base64/URL/HTML-entity encode-decode, PHP's own
  * serialize()/unserialize() wire format, and the Hash Generator (a one-way "encoding" into a
  * digest, arguably closer to this group than to {@link #INSPECTORS} — moved here from that group
- * per direct request). {@link #WEB} and {@link #GENERATORS} are declared ahead of the operations
- * that will actually use them, so the GUI's own group-by-{@link #getLabel()} sidebar rendering
- * already has a stable, complete set of sections to iterate whenever the first one lands, without
- * needing a second change then: {@link #WEB} (e.g. a future HTTP header/user-agent parser —
- * inherently about a web-specific concept, not a generic text shape), {@link #GENERATORS} (e.g. a
- * future UUID/Lorem Ipsum generator — produces new content from little or no input, unlike every
- * operation above, which all transform an existing input). {@link #INSPECTORS} is declared ahead
- * of use the same way (e.g. a future JWT decoder — reads structure out of a value rather than
- * transforming it) — it briefly had the Hash Generator too, before that operation moved to
- * {@link #ENCODERS_DECODERS} above.
+ * per direct request). {@link #INSPECTORS} covers every operation that *reads* structure out of a
+ * value rather than transforming it — a JWT decoder, a regular-expression tester, a URL parser
+ * (the last two moved here per direct request; {@link OperationGroup} originally named "a future
+ * JWT decoder" as this group's own worked example, before any of the three actually existed).
+ * {@link #WEB} and {@link #GENERATORS} are still declared ahead of the operations that will
+ * eventually use them, so the GUI's own group-by-{@link #getLabel()} sidebar rendering already has
+ * a stable, complete set of sections to iterate whenever the first one lands, without needing a
+ * second change then: {@link #WEB} (e.g. a future HTTP header/user-agent parser — a URL parser was
+ * considered for this group too, given the same "inherently web-specific" reasoning, but landed in
+ * {@link #INSPECTORS} instead per direct request, since reading structure out of a value is the
+ * more specific/decisive shape here), {@link #GENERATORS} (e.g. a future UUID/Lorem Ipsum
+ * generator — produces new content from little or no input, unlike every operation above, which
+ * all transform an existing input).
  */
 public enum OperationGroup {
     FORMATTERS("Formatters"),

@@ -198,4 +198,11 @@ export const devUtilsApi = {
   parseUrl(input: string, minify: boolean, showError?: ShowError): Promise<DevUtilsResponse> {
     return httpClient.post(`${BASE}/url/parse`, { input, minify }, showError);
   },
+
+  // The third INSPECTORS-group operation, added alongside dev-utils-service's own
+  // CronParserOperation. No `minify` field — same reasoning `encodeBase64`/`generateHash`/etc.
+  // already establish; a plain-English description has no distinct "compact form" to toggle.
+  parseCron(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/cron/parse`, { input }, showError);
+  },
 };

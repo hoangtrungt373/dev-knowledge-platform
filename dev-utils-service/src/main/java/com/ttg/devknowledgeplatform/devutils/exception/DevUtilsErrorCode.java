@@ -71,7 +71,10 @@ import lombok.Getter;
  * {@link java.net.URI}, or a syntactically valid URI reference that isn't absolute/has no host
  * (e.g. a bare path, or a {@code mailto:} address) — genuinely distinct from
  * {@code INVALID_URL_ENCODING} above, which is about percent-encoding syntax specifically, not a
- * URL's overall structure.
+ * URL's overall structure. {@code INVALID_CRON} backs {@code CronParserOperation}'s own real
+ * failure path — the wrong field count (not exactly 5), or any one field's own syntax malformed
+ * or out of range (a non-numeric/unrecognized-alias token, a non-positive step, or a value outside
+ * that field's valid range).
  */
 @Getter
 public enum DevUtilsErrorCode implements ErrorCode {
@@ -88,7 +91,8 @@ public enum DevUtilsErrorCode implements ErrorCode {
     INVALID_JWT("DEVUTILS_010", "Invalid JWT: {0}", HttpStatus.BAD_REQUEST),
     INVALID_REGEX("DEVUTILS_011", "Invalid regular expression: {0}", HttpStatus.BAD_REQUEST),
     REGEX_TIMEOUT("DEVUTILS_012", "Regular expression evaluation timed out: {0}", HttpStatus.BAD_REQUEST),
-    INVALID_URL("DEVUTILS_013", "Invalid URL: {0}", HttpStatus.BAD_REQUEST);
+    INVALID_URL("DEVUTILS_013", "Invalid URL: {0}", HttpStatus.BAD_REQUEST),
+    INVALID_CRON("DEVUTILS_014", "Invalid cron expression: {0}", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

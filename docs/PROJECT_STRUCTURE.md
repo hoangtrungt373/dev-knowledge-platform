@@ -2356,17 +2356,13 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 HashGeneratorOperation (moved here from INSPECTORS per direct
 │   │                                 request — a hash digest reads as a one-way encoding of a
 │   │                                 value more than an "inspection" of one).
-│   │                                 JwtDebuggerOperation/RegexTesterOperation both declare
-│   │                                 INSPECTORS — the first two operations to actually land there,
-│   │                                 fulfilling that group's own "a JWT decoder" worked example
-│   │                                 (RegexTesterOperation itself wasn't the named example, but
-│   │                                 fits the same "reads/tests a value rather than transforming
-│   │                                 it" shape). UrlParserOperation declares WEB — the first
-│   │                                 operation to actually land there (a URL is exactly the
-│   │                                 "inherently web-specific concept" that group's own Javadoc
-│   │                                 describes; its own named example was an HTTP header/
-│   │                                 user-agent parser, still unbuilt). GENERATORS remains fully
-│   │                                 declared-ahead-of-use, still with no operation of its own.
+│   │                                 JwtDebuggerOperation/RegexTesterOperation/UrlParserOperation/
+│   │                                 CronParserOperation all declare INSPECTORS — reads/tests a
+│   │                                 value rather than transforming it, fulfilling that group's
+│   │                                 own "a JWT decoder" worked example (UrlParserOperation
+│   │                                 originally declared WEB, moved here per direct request; the
+│   │                                 other three were never WEB). WEB/GENERATORS both remain fully
+│   │                                 declared-ahead-of-use, still with no operation of their own.
 │   └── impl/
 │       ├── JsonFormatOperation.java     — execute(String input, boolean minify); validates +
 │       │                                   pretty-prints (or, minified, compact-serializes) in one
@@ -2526,9 +2522,10 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   BusinessException wrapping INVALID_REGEX (DEVUTILS_011)
 │       │                                   on a pattern that fails to compile, or REGEX_TIMEOUT
 │       │                                   (DEVUTILS_012) on a timeout
-│       ├── UrlParserOperation.java     — execute(String input, boolean minify); the first
-│       │                                   operation to declare OperationGroup.WEB. Backed by
-│       │                                   java.net.URI (a real parser, not a hand-rolled split);
+│       ├── UrlParserOperation.java     — execute(String input, boolean minify); declares
+│       │                                   OperationGroup.INSPECTORS (moved from WEB per direct
+│       │                                   request). Backed by java.net.URI (a real parser, not a
+│       │                                   hand-rolled split);
 │       │                                   field names/shapes mirror the browser's own URL object
 │       │                                   (protocol/username/password/hostname/port/pathname/
 │       │                                   search/hash/origin) plus a `query` field that object
@@ -2539,6 +2536,22 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   literal "null" for a non-network scheme. Throws
 │       │                                   BusinessException wrapping INVALID_URL (DEVUTILS_013)
 │       │                                   on a malformed URI or one with no scheme/host
+│       ├── CronParserOperation.java    — execute(String input); declares
+│       │                                   OperationGroup.INSPECTORS. Translates a standard
+│       │                                   5-field cron expression into a plain-English
+│       │                                   description; resolves each field to its concrete set
+│       │                                   of matching values first (wildcard/range/step/list all
+│       │                                   collapse to the same set when equivalent), classifies
+│       │                                   the set via a sealed FieldValue interface + exhaustive
+│       │                                   switch (Every/Single/ContiguousRange/SteppedRange/
+│       │                                   ListOf), then composes minute+hour into one time
+│       │                                   clause and day-of-month/month/day-of-week into their
+│       │                                   own — day-of-month and day-of-week, when both
+│       │                                   restricted, are joined with "or" (real POSIX OR
+│       │                                   semantics). No minify (reuses TextRequest). Throws
+│       │                                   BusinessException wrapping INVALID_CRON (DEVUTILS_014)
+│       │                                   on the wrong field count or a malformed/out-of-range
+│       │                                   field
 │       └── support/
 │           ├── CurlyBraceFormatter.java — beautify(String)/minify(String), static utility (not a
 │           │                               DevUtilOperation itself). Shared by Css/Less/Scss/
@@ -2634,10 +2647,11 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 scss/beautify, js/beautify, erb/beautify, xml/beautify,
 │   │                                 csv-to-json, sql/format, php-to-json, json-to-php, jwt/debug,
 │   │                                 url/parse)
-│   ├── TextRequest.java           — input only (same @Size cap); backs json-to-yaml/json-to-csv/
-│   │                                 string-case/convert, none of which has a minify concept
-│   │                                 (YAML/CSV/a case conversion all lack a distinct "compact"
-│   │                                 form)
+│   ├── TextRequest.java           — input only (same @Size cap); backs every operation with no
+│   │                                 minify concept: json-to-yaml/json-to-csv, string-case/convert/
+│   │                                 hash/generate, every Encoders/Decoders encode/decode pair
+│   │                                 (base64/url/html-entity/php-serialize/hex), and cron/parse —
+│   │                                 none of which has a distinct "compact form" to toggle
 │   ├── RegexTestRequest.java      — pattern/flags/testText (@Size(max=16) on flags, @NotBlank
 │   │                                 @Size(max=MAX_INPUT_LENGTH) on the other two) — the first
 │   │                                 request DTO with 3 genuinely separate fields rather than
@@ -2659,8 +2673,9 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
     │                                 url/decode,html-entity/encode,html-entity/decode,
     │                                 hash/generate,php-serialize/serialize,
     │                                 php-serialize/unserialize,hex/encode,hex/decode,
-    │                                 jwt/debug,regexp/test,url/parse}. Every endpoint is public —
-    │                                 no @CurrentUserId, no authenticated principal at all.
+    │                                 jwt/debug,regexp/test,url/parse,cron/parse}. Every endpoint
+    │                                 is public — no @CurrentUserId, no authenticated principal
+    │                                 at all.
     └── impl/DevUtilsController.java — implements DevUtilsApi; injects each operation by its
                                         concrete type (no enum-keyed registry — one fixed endpoint
                                         per operation leaves no runtime dispatch decision to make)

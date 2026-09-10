@@ -10,8 +10,9 @@ PHP↔JSON conversion, String Case Converter, Base64 encode/decode, URL encode/d
 encode/decode, Hash Generator (SHA-1/256/384/512), PHP Serializer (JSON ↔ PHP's own serialize()
 format), ASCII↔Hex conversion, JWT Debugger (read a JWT's header/payload, no signature
 verification), RegExp Tester (test a pattern against text, real matches only — see
-`RegexTesterOperation`'s own Javadoc for its ReDoS-timeout guard), URL Parser (protocol/hostname/port/pathname/search/
-query/hash/origin, mirroring the browser's own `URL` object). Package root:
+`RegexTesterOperation`'s own Javadoc for its ReDoS-timeout guard), URL Parser (protocol/hostname/
+port/pathname/search/query/hash/origin, mirroring the browser's own `URL` object), Cron Job Parser
+(a 5-field cron expression into a plain-English schedule). Package root:
 `com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike
@@ -406,10 +407,13 @@ caller.** Every operation is a pure text-in/text-out transform:
   `MinifiableTextRequest` (`input`/`minify`) backs every operation with a real minify concept
   (`json/format`/`yaml-to-json`/`html/beautify`/`css/beautify`/`less/beautify`/`scss/beautify`/
   `js/beautify`/`erb/beautify`/`xml/beautify`/`csv-to-json`/`sql/format`/`php-to-json`/
-  `json-to-php`/`jwt/debug`/`url/parse`); `TextRequest` (`input` only) backs
-  `json-to-yaml`/`json-to-csv`/`string-case/convert`, none of which has a minify concept at all
-  (YAML/CSV/a case conversion all lack a distinct "compact" form to toggle) — not the same type
-  with an ignored field. `RegexTestRequest` (`pattern`/`flags`/`testText`) backs `regexp/test`
+  `json-to-php`/`jwt/debug`/`url/parse`); `TextRequest` (`input` only) backs every operation with
+  no minify concept at all — `json-to-yaml`/`json-to-csv` (YAML/CSV have no distinct "compact"
+  form), `string-case/convert`/`hash/generate` (no "compact form" of a case conversion or a hash
+  digest), every `Encoders/Decoders`-group encode/decode pair (`base64`/`url`/`html-entity`/
+  `php-serialize`/`hex`, an encoded/decoded form has no compact representation to toggle either),
+  and `cron/parse` (a plain-English sentence has no compact form) — not the same type as
+  `MinifiableTextRequest` with an ignored field. `RegexTestRequest` (`pattern`/`flags`/`testText`) backs `regexp/test`
   only — the first request DTO with 3 genuinely separate fields rather than "text in, a minify
   flag" (see that record's own Javadoc). Every `input`/`pattern`/`testText` field carries
   `@NotBlank @Size(max = DevUtilsLimits.MAX_INPUT_LENGTH)`. `DevUtilResponse` (`output`) stays
@@ -424,8 +428,8 @@ caller.** Every operation is a pure text-in/text-out transform:
   `/base64/encode`, `/base64/decode`, `/url/encode`, `/url/decode`, `/html-entity/encode`,
   `/html-entity/decode`, `/hash/generate`, `/php-serialize/serialize`,
   `/php-serialize/unserialize`, `/hex/encode`, `/hex/decode`, `/jwt/debug`, `/regexp/test`,
-  `/url/parse`. The controller injects each operation by its concrete type rather than
-  dispatching through an enum-keyed registry — with one fixed REST endpoint per operation, there's
+  `/url/parse`, `/cron/parse`. The controller injects each operation by its concrete type rather
+  than dispatching through an enum-keyed registry — with one fixed REST endpoint per operation, there's
   no runtime "which
   operation" decision left to make (see `DevUtilOperation`'s own Javadoc).
 
@@ -1069,7 +1073,7 @@ the request named them as two operations.
 `HtmlEntityEncodeOperationTest`, `HtmlEntityDecodeOperationTest`, `HashGeneratorOperationTest`,
 `PhpSerializeOperationTest`, `PhpUnserializeOperationTest`, `AsciiToHexOperationTest`,
 `HexToAsciiOperationTest`, `JwtDebuggerOperationTest`, `RegexTesterOperationTest`,
-`UrlParserOperationTest`), plus `service/impl/support/
+`UrlParserOperationTest`, `CronParserOperationTest`), plus `service/impl/support/
 CurlyBraceFormatterTest` (the shared CSS/LESS/SCSS/JS reformatter — brace nesting, already-
 multiline selector lists, comment/string-literal protection, the JS ASI-safety guarantee,
 never-throws-on-unterminated-input), `service/impl/support/SqlFormatterTest` (clause-keyword line
@@ -1092,16 +1096,16 @@ real parse/serialize behavior (pretty vs. minified output, malformed-input rejec
 structural equality via `readTree`, jsoup's lenient-parsing/indent behavior, and — for
 `XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation` — real JAXP/CSV/PHP parsing and rejection
 behavior). Plus `DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)`
-+ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all thirty endpoints
++ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all thirty-one endpoints
 with **no** `Authorization` header through the real filter chain, confirming end to end (not just
 by static reasoning) that the app actually starts and every endpoint is genuinely public. This is
 exactly the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also
 covers the `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the
 latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP/
-Base64/URL-encoding/PHP-serialized-data/hex/JWT/regex/URL all return `400` with
+Base64/URL-encoding/PHP-serialized-data/hex/JWT/regex/URL/cron all return `400` with
 `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005`/`DEVUTILS_006`/`DEVUTILS_007`/`DEVUTILS_008`/
-`DEVUTILS_009`/`DEVUTILS_010`/`DEVUTILS_011`/`DEVUTILS_013` respectively through the shared
-`GlobalExceptionHandler` — `html-entity/encode`/`decode`, `hash/generate`,
+`DEVUTILS_009`/`DEVUTILS_010`/`DEVUTILS_011`/`DEVUTILS_013`/`DEVUTILS_014` respectively through
+the shared `GlobalExceptionHandler` — `html-entity/encode`/`decode`, `hash/generate`,
 `php-serialize/serialize`, and `hex/encode` have no matching case here, since none of those five
 ever throws (see `DevUtilsErrorCode`'s own updated Javadoc); `regexp/test`'s own second failure
 mode (`DEVUTILS_012`, a timeout) has no dedicated `DevUtilsServiceApplicationTests` case either —
@@ -1111,7 +1115,7 @@ directly in `RegexTesterOperationTest`. Plus
 `service/impl/support/
 ConventionalJsonPrettyPrinterTest` (the one support class in this module with its own dedicated
 test file rather than only being exercised indirectly through an operation's own tests — see that
-class's own note above for why). 269 tests total (161 as of the seventh follow-up above, plus 8 new
+class's own note above for why). 288 tests total (161 as of the seventh follow-up above, plus 8 new
 Base64 unit tests and 3 new `DevUtilsServiceApplicationTests` cases from the eighth follow-up, 7 new
 URL unit tests and 3 more `DevUtilsServiceApplicationTests` cases from the ninth, 9 new HTML entity
 unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the tenth, 4 new Hash
@@ -1122,8 +1126,10 @@ ASCII/Hex unit tests plus 3 more `DevUtilsServiceApplicationTests` cases from th
 6 new JWT Debugger unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the
 sixteenth (the fifteenth follow-up added no new test, a duplication-only refactor), 9 new
 RegExp Tester unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the seventeenth,
-and 13 new URL Parser unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the
-eighteenth — see each follow-up's own note for the full breakdown), verified via a real
+13 new URL Parser unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the
+eighteenth (the nineteenth follow-up added no new test, a pure group reclassification), and 17 new
+Cron Job Parser unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the twentieth
+— see each follow-up's own note for the full breakdown), verified via a real
 `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 **Fifteenth follow-up — a second code-quality analysis pass (mirroring the first one above and the
@@ -1351,6 +1357,89 @@ specifically (still unbuilt) rather than this literal operation.
   reachability with no `Authorization` header, and a malformed URL returning `400` with
   `DEVUTILS_013`). Test suite grew from 254 to 269, verified via a real
   `mvn -pl dev-utils-service -am test` run (JDK 21) — 269/269 passing.
+
+**Nineteenth follow-up — `UrlParserOperation` moved from `OperationGroup.WEB` to
+`OperationGroup.INSPECTORS`, per direct request.** No behavior change — same
+`POST /api/v1/dev-utils/url/parse` endpoint, same response shape — only `group()`'s own return
+value changed, plus `OperationGroup`'s own Javadoc updated to match (this operation reads
+structure out of a value rather than transforming it, the same shape `JwtDebuggerOperation`/
+`RegexTesterOperation` already establish for `INSPECTORS`; `WEB` is back to fully
+declared-ahead-of-use as a result — its own "an HTTP header/user-agent parser" example, named
+before any of `INSPECTORS`'s three current operations existed, is still unbuilt).
+`gui`'s `config/operations.tsx` gained the matching `group`/`category` update on the `url-parser`
+entry — no other GUI change, since which group an operation belongs to has no bearing on which
+panel component renders it. No test changes needed — nothing in the test suite asserted this
+operation's group. Verified by re-reading the changed Java/TS files and a clean `tsc --noEmit`/
+successful `vite build` on the GUI side — no `mvn test`/real browser run for a change with no
+behavior to exercise (the same "no test needed for a pure reclassification" precedent
+`HashGeneratorOperation`'s own group move already established).
+
+**Twentieth follow-up — 1 new operation (`CronParserOperation`), the third to declare
+`OperationGroup.INSPECTORS`**, per direct request: "Cron Job Parser" — translating a standard
+5-field cron expression into a plain-English description, e.g. {@code "0 9 * * 1-5"} →
+{@code "At 09:00, Monday through Friday"} (the exact reported example). Backs
+`POST /api/v1/dev-utils/cron/parse` — reuses `TextRequest` (no minify concept; see that record's
+own updated Javadoc), the same shape `StringCaseOperation`/`HashGeneratorOperation` already use.
+
+- **Scoped to standard POSIX/Vixie cron syntax only** — exactly 5 whitespace-separated fields
+  (minute/hour/day-of-month/month/day-of-week); wildcards, single values, comma-separated lists,
+  ranges (including a wrap-around range like `FRI-MON`), and steps (`a-b/n`, `*/n`, or the Vixie
+  extension `a/n` meaning "from `a` to the field's own max"). Month/day-of-week additionally
+  accept case-insensitive 3-letter names; day-of-week accepts `0`–`7` (both `0` and `7` mean
+  Sunday, per POSIX — normalized to canonical `0` before classification). **Deliberately not
+  supported**: the 6/7-field variants some schedulers add (a seconds or year field), or any of
+  Quartz's own extended syntax (`L`/`W`/`#`/`?`) — exactly 5 fields required, rejecting anything
+  else, the same "real syntax, not every variant a similar tool might accept" scoping
+  `RegexTesterOperation`'s own JS-flags translation already establishes.
+- **Design: resolve each field to the concrete set of matching values first, then describe the
+  set — not the field's own literal syntax.** `*/5` and the equivalent explicit list
+  `0,5,10,...,55` resolve to the identical set and therefore produce the identical description,
+  sidestepping a special case for every syntactic way to write the same schedule. Each resolved
+  set is classified into exactly one of 5 shapes via a **sealed interface with an exhaustive
+  `switch`** (Java 21 — a real use of the language feature root `CLAUDE.md` itself calls out,
+  since adding a 6th shape later becomes a compile error everywhere it isn't handled, not a
+  silently-wrong runtime fallback): `Every` (covers the field's entire valid range), `Single`, a
+  `ContiguousRange`, a `SteppedRange` (a constant-gap arithmetic progression that isn't
+  contiguous — confirmed via harness that `1,3,5` for day-of-week genuinely is one, and is
+  described as "every 2 days, starting Monday" rather than a flat list, a more informative result
+  the classifier finds for free), or an arbitrary `ListOf` values fitting none of those.
+- **Minute and hour are composed together into one time-of-day clause**, not two independent
+  ones — the two fields read far more naturally as a pair ("At 09:00") than separately; several
+  named combinations get their own idiomatic phrasing (both single → `"At HH:MM"`; both wildcard
+  → `"Every minute"`; a minute step with wildcard hour → `"Every N minutes"`; minute `0` with an
+  hour step → `"Every N hours"`), with a generic fallback for anything else.
+- **Day-of-month and day-of-week, when *both* restricted (neither is `Every`), are joined with
+  "or"** — the real POSIX semantics (the schedule fires when *either* field matches, not both at
+  once), rather than silently implying "and" the way every other clause pairing in the sentence
+  already does via plain comma-joining.
+- **Real failure path**: new `DevUtilsErrorCode.INVALID_CRON` (`DEVUTILS_014`) — the wrong field
+  count, an unrecognized/non-numeric token, a non-positive step, or a value outside a field's own
+  valid range, each message naming which field failed and why.
+- `gui`'s own `/dev-utils` page needed no new capability — this operation's plain "text in, plain
+  text out" shape already fits the shared `DevUtilToolPanel.tsx` exactly (`outputLanguage: 'text'`,
+  not `'json'`, since the output is a sentence, not structured data).
+- 17 new tests in `CronParserOperationTest` (the exact reported example; every named time-clause
+  combination; day-of-week names resolving identically to numbers; the Sunday `0`/`7` alias
+  collapsing to the same result; the day-of-month/day-of-week "or" join; a wrap-around
+  day-of-week range; the arithmetic-progression-vs-arbitrary-list distinction — including the
+  self-caught test-expectation bug below; extra whitespace tolerance; and 4 rejection cases), plus
+  2 new `DevUtilsServiceApplicationTests` cases (the new endpoint's reachability with no
+  `Authorization` header, and a malformed cron expression returning `400` with `DEVUTILS_014`).
+  **A test-writing mistake caught by the test run itself, not assumed correct**: the first draft
+  asserted `"0 9 * * 1,3,5"` (Monday/Wednesday/Friday) should describe as a flat list — wrong, since
+  `1,3,5` is genuinely an arithmetic progression (constant step of 2), so the classifier correctly
+  preferred `"every 2 days, starting Monday"` instead; fixed by correcting the test's own
+  expectation and adding a second, genuinely-non-arithmetic list case (`1,2,5`) to actually cover
+  the flat-list phrasing. Test suite grew from 269 to 288, verified via a real
+  `mvn -pl dev-utils-service -am test` run (JDK 21) — 288/288 passing.
+- **A real, self-caught Javadoc bug during development**: the class-level Javadoc originally wrote
+  the Vixie step syntax literally as `{@code */n}` inside a `/** ... */` block comment — the literal
+  `*/` characters prematurely closed the comment itself, cascading into dozens of "class, interface,
+  enum, or record expected" compile errors from that point on. Fixed by escaping the slash as the
+  HTML entity `&#47;` inside the two affected `{@code}` spans — caught by a targeted
+  `mvn -pl dev-utils-service -am compile` run (per root `CLAUDE.md`'s own "only when there's a
+  concrete reason to suspect a compile error" rule — a brand-new, syntactically-unusual Javadoc
+  comment was exactly that reason), not left for `mvn test` to discover.
 
 ## Rules specific to this module
 

@@ -1257,6 +1257,43 @@ section again. Full unabridged entry-by-entry history for all three lives in
         `'Inspectors'` — a new `PublicOutlined` icon) and `api/devUtilsApi.ts` gained `parseUrl`.
         Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
         sandbox, so the actual on-screen result is unverified in a real browser.
+    - **Follow-up: `UrlParserOperation` moved from `OperationGroup.WEB` to
+      `OperationGroup.INSPECTORS`, per direct request.** No behavior change — same endpoint, same
+      response shape, only `group()`'s own return value (plus `OperationGroup`'s own Javadoc) —
+      this operation reads structure out of a value rather than transforming it, the same shape
+      `JwtDebuggerOperation`/`RegexTesterOperation` already establish; `'Web'` is back to fully
+      declared-ahead-of-use. `gui`'s `config/operations.tsx` gained the matching `group`/`category`
+      update. No test changes needed. Verified by re-reading the changed files and a clean
+      `tsc --noEmit`/successful `vite build` on the GUI side — no `mvn test` run for a change with
+      no behavior to exercise.
+    - **Follow-up: 1 new operation, `CronParserOperation`, per request ("Cron Job Parser") — the
+      third operation to declare `OperationGroup.INSPECTORS`.** Backs
+      `POST /api/v1/dev-utils/cron/parse` (reuses `TextRequest` — no minify concept). Translates
+      a standard 5-field cron expression into a plain-English description, e.g. `"0 9 * * 1-5"` →
+      `"At 09:00, Monday through Friday"` (the exact reported example). Scoped to standard
+      POSIX/Vixie syntax only (wildcards, single values, lists, ranges including wrap-around,
+      steps, and 3-letter month/day names) — deliberately not the 6/7-field variants some
+      schedulers add, or Quartz's own extended syntax. Resolves each field to its concrete set of
+      matching values first, then classifies the set via a sealed `FieldValue` interface +
+      exhaustive `switch` (Java 21) into `Every`/`Single`/`ContiguousRange`/`SteppedRange`/
+      `ListOf` — `*/5` and the equivalent explicit list resolve to the same set and produce the
+      same description, sidestepping a special case per syntax. Minute+hour compose into one
+      time-of-day clause; day-of-month and day-of-week, when *both* restricted, are joined with
+      "or" — the real POSIX semantics (fires when either matches). New
+      `DevUtilsErrorCode.INVALID_CRON` (`DEVUTILS_014`). 17 new backend tests (269→288 —
+      `CronParserOperationTest`, including a self-caught test-expectation bug: `1,3,5` is a genuine
+      arithmetic progression, so it correctly describes as "every 2 days" rather than a flat list —
+      plus 2 new `DevUtilsServiceApplicationTests` cases), verified via a real
+      `mvn -pl dev-utils-service -am test` run (JDK 21) — 288/288 passing. A self-caught Javadoc
+      bug during development: a literal `*/n` inside a `{@code}` span prematurely closed the
+      surrounding block comment, cascading into dozens of compile errors — fixed by escaping the
+      slash as `&#47;`, caught via a targeted `mvn -pl dev-utils-service -am compile` run.
+      - **`gui`**: needed no new capability — this operation's plain "text in, plain text out"
+        shape already fits the shared `DevUtilToolPanel.tsx` exactly (`outputLanguage: 'text'`).
+        `config/operations.tsx` gained the `cron-parser` entry (`'Inspectors'`, a new
+        `ScheduleOutlined` icon) and `api/devUtilsApi.ts` gained `parseCron`. Verified via a clean
+        `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the
+        actual on-screen result is unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

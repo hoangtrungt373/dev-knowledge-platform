@@ -18,7 +18,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
  * {@link MockMvc} — verifies, end to end rather than by static reasoning alone, that this app
  * actually starts (the {@code GlobalExceptionHandler}/{@code spring-boot-starter-security}
  * classpath dependency reasoning in {@code security.SecurityConfig}'s own Javadoc holds up) and
- * that every one of the 30 operation endpoints is genuinely reachable with no
+ * that every one of the 31 operation endpoints is genuinely reachable with no
  * {@code Authorization} header at all.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -402,6 +402,24 @@ class DevUtilsServiceApplicationTests {
                         .content("{\"input\":\"/just/a/path\",\"minify\":false}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_013")));
+    }
+
+    @Test
+    void parseCronIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/cron/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"0 9 * * 1-5\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Monday through Friday")));
+    }
+
+    @Test
+    void malformedCronReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/cron/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"0 9 * *\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_014")));
     }
 
     @Test

@@ -13,6 +13,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.TextRequest;
 import com.ttg.devknowledgeplatform.devutils.service.impl.AsciiToHexOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.Base64DecodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.Base64EncodeOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.CronParserOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CssOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CsvToJsonOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.ErbOperation;
@@ -83,6 +84,7 @@ public class DevUtilsController implements DevUtilsApi {
     private final JwtDebuggerOperation jwtDebuggerOperation;
     private final RegexTesterOperation regexTesterOperation;
     private final UrlParserOperation urlParserOperation;
+    private final CronParserOperation cronParserOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -233,5 +235,10 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<DevUtilResponse> parseUrl(MinifiableTextRequest request) {
         return ResponseEntity.ok(new DevUtilResponse(urlParserOperation.execute(request.input(), request.minify())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> parseCron(TextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(cronParserOperation.execute(request.input())));
     }
 }

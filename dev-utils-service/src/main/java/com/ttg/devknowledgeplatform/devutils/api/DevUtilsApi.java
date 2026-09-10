@@ -342,4 +342,17 @@ public interface DevUtilsApi {
      */
     @PostMapping("/url/parse")
     ResponseEntity<DevUtilResponse> parseUrl(@Valid @RequestBody MinifiableTextRequest request);
+
+    /**
+     * Translates a standard 5-field cron expression into a plain-English description (see
+     * {@code CronParserOperation}'s own Javadoc for the exact supported syntax). No minify
+     * option — see {@link TextRequest}'s own Javadoc for why; a description sentence has no
+     * distinct "compact form" to toggle.
+     *
+     * @return {@code 200} with the description, or {@code 400} if {@code request.input()} isn't
+     *         exactly 5 whitespace-separated fields, or any field's own syntax is malformed or
+     *         out of range
+     */
+    @PostMapping("/cron/parse")
+    ResponseEntity<DevUtilResponse> parseCron(@Valid @RequestBody TextRequest request);
 }

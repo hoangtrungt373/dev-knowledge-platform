@@ -26,11 +26,11 @@ import lombok.RequiredArgsConstructor;
  * {@code origin}, deliberately named and shaped after the browser's own {@code URL} object (the
  * WHATWG URL Standard) rather than {@code java.net.URI}'s own accessor names — plus one field
  * that object doesn't have, {@code query}, the parsed {@code search} string as a real JSON object
- * (what most "URL parser" tools add on top of the raw property list). The first operation to
- * actually declare {@link OperationGroup#WEB} — a URL is exactly the "inherently web-specific
- * concept, not a generic text shape" that group's own Javadoc describes (its own named example was
- * an HTTP header/user-agent parser, still unbuilt; this is the same spirit, not that literal
- * example).
+ * (what most "URL parser" tools add on top of the raw property list). Declares
+ * {@link OperationGroup#INSPECTORS} (moved here from {@link OperationGroup#WEB} per direct
+ * request) — this operation reads structure out of a value rather than transforming it, the same
+ * "inspection" shape {@code JwtDebuggerOperation}/{@code RegexTesterOperation} already establish
+ * for that group; {@link OperationGroup#WEB} is back to fully declared-ahead-of-use as a result.
  *
  * <p><b>Backed by {@link URI}, a real validating parser — not a hand-rolled string split — but
  * genuinely not identical to a browser's own WHATWG URL parser</b>, which this operation's field
@@ -82,7 +82,7 @@ public class UrlParserOperation implements DevUtilOperation {
 
     @Override
     public OperationGroup group() {
-        return OperationGroup.WEB;
+        return OperationGroup.INSPECTORS;
     }
 
     /**

@@ -62,6 +62,10 @@ const HEADLINE = 'Cannot be processed';
  * own backend message (a raw `URISyntaxException` message, or a plain "must be an absolute URL
  * with a scheme and host" sentence) never carries a location suffix at all either, the same
  * no-location-to-tolerate case two of `jwt-debugger`'s own three failure shapes already are.
+ * `cron-parser` takes the same fallback path too — its input is a cron expression, not JSON, and
+ * its own backend message (naming which field failed and why — the wrong field count, an
+ * unrecognized token, an out-of-range value, or a non-positive step) never carries a location
+ * suffix either.
  */
 export function buildDevUtilError(input: string, isJsonInput: boolean, backendMessage: string): DevUtilError {
   if (isJsonInput) {

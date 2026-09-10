@@ -14,6 +14,7 @@ import ImageIcon from '@mui/icons-material/ImageOutlined';
 import TokenIcon from '@mui/icons-material/TokenOutlined';
 import RegexIcon from '@mui/icons-material/FindReplaceOutlined';
 import UrlParserIcon from '@mui/icons-material/PublicOutlined';
+import CronParserIcon from '@mui/icons-material/ScheduleOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
@@ -46,7 +47,8 @@ export type TabKey =
   | 'base64-image'
   | 'jwt-debugger'
   | 'regexp-tester'
-  | 'url-parser';
+  | 'url-parser'
+  | 'cron-parser';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -75,6 +77,7 @@ export const TAB_KEYS: TabKey[] = [
   'jwt-debugger',
   'regexp-tester',
   'url-parser',
+  'cron-parser',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -86,10 +89,12 @@ export function tabFromHash(hash: string): TabKey {
 
 /** Mirrors the backend's own `service.OperationGroup` enum (`dev-utils-service`) — a much broader
  * clustering than `OperationConfig.category` below, meant to span the whole page rather than one
- * operation's own headline card. `'Formatters'`/`'Encoders/Decoders'`/`'Inspectors'`/`'Web'` all
- * have real operations today; `'Generators'` is still declared ahead of the operation that will
- * eventually use it (e.g. a future UUID/Lorem Ipsum generator — see the backend enum's own Javadoc),
- * so `OPERATION_GROUP_ORDER`/`groupOperationsByGroup` below already have a stable, complete section
+ * operation's own headline card. `'Formatters'`/`'Encoders/Decoders'`/`'Inspectors'` all have real
+ * operations today; `'Web'`/`'Generators'` are both still declared ahead of the operation that will
+ * eventually use them (`'Web'`'s own URL Parser example moved to `'Inspectors'` instead, per direct
+ * request — see the backend enum's own Javadoc for the full reasoning; `'Generators'` is still
+ * awaiting its own first operation, e.g. a future UUID/Lorem Ipsum generator), so
+ * `OPERATION_GROUP_ORDER`/`groupOperationsByGroup` below already have a stable, complete section
  * order to render from day one. */
 export type OperationGroupName = 'Formatters' | 'Encoders/Decoders' | 'Inspectors' | 'Web' | 'Generators';
 
@@ -724,14 +729,14 @@ export const OPERATIONS: OperationConfig[] = [
   },
   {
     key: 'url-parser',
-    // The first WEB-group operation — a URL is exactly the "inherently web-specific concept" that
-    // group's own Javadoc describes (its own named example was an HTTP header/user-agent parser,
-    // still unbuilt; this is the same spirit, not that literal example). Renders through the
+    // Moved here from 'Web', per direct request — this operation reads structure out of a value
+    // rather than transforming it, the same "inspection" shape jwt-debugger/regexp-tester already
+    // establish; 'Web' is back to fully declared-ahead-of-use as a result. Renders through the
     // shared DevUtilToolPanel like every Formatters-group operation — its output (protocol/
     // hostname/port/etc., plus a parsed query object) is a single JSON string, no bespoke panel
     // needed.
-    group: 'Web',
-    category: 'Web',
+    group: 'Inspectors',
+    category: 'Inspectors',
     label: 'URL Parser',
     description: 'Separate a URL into its components and query string',
     icon: <UrlParserIcon fontSize="small" />,
@@ -742,5 +747,24 @@ export const OPERATIONS: OperationConfig[] = [
     supportsMinify: true,
     downloadFileName: 'url-components.json',
     onSubmit: devUtilsApi.parseUrl,
+  },
+  {
+    key: 'cron-parser',
+    // The third INSPECTORS-group operation. Plain text in, plain text out (a description
+    // sentence), no minify concept — renders through the shared DevUtilToolPanel like
+    // jwt-debugger, just with outputLanguage 'text' instead of 'json' since the output isn't
+    // structured data.
+    group: 'Inspectors',
+    category: 'Inspectors',
+    label: 'Cron Job Parser',
+    description: 'Translate a cron expression into a plain-English schedule',
+    icon: <CronParserIcon fontSize="small" />,
+    actionLabel: 'Parse',
+    inputPlaceholder: '0 9 * * 1-5',
+    inputFormat: 'text',
+    outputLanguage: 'text',
+    supportsMinify: false,
+    downloadFileName: 'cron-schedule.txt',
+    onSubmit: input => devUtilsApi.parseCron(input),
   },
 ];
