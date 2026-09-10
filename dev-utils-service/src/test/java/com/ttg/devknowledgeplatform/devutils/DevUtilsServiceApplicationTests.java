@@ -18,7 +18,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
  * {@link MockMvc} — verifies, end to end rather than by static reasoning alone, that this app
  * actually starts (the {@code GlobalExceptionHandler}/{@code spring-boot-starter-security}
  * classpath dependency reasoning in {@code security.SecurityConfig}'s own Javadoc holds up) and
- * that every one of the 31 operation endpoints is genuinely reachable with no
+ * that every one of the 32 operation endpoints is genuinely reachable with no
  * {@code Authorization} header at all.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -420,6 +420,27 @@ class DevUtilsServiceApplicationTests {
                         .content("{\"input\":\"0 9 * *\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_014")));
+    }
+
+    @Test
+    void compareTextDiffIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/text-diff/compare")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"original\":\"a\\nb\",\"updated\":\"a\\nc\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"addedCount\":1")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"removedCount\":1")));
+    }
+
+    @Test
+    void tooManyDiffLinesReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
+        String tooManyLines = "x\\n".repeat(2001);
+
+        mockMvc.perform(post("/api/v1/dev-utils/text-diff/compare")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"original\":\"" + tooManyLines + "\",\"updated\":\"a\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_015")));
     }
 
     @Test

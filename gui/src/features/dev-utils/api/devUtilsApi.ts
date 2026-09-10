@@ -1,5 +1,5 @@
 import { httpClient } from '@shared/api/httpClient';
-import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
+import { DevUtilsResponse, HashResponse, StringCaseResponse, TextDiffResponse } from '../types';
 
 type ShowError = (message: string) => void;
 
@@ -204,5 +204,14 @@ export const devUtilsApi = {
   // already establish; a plain-English description has no distinct "compact form" to toggle.
   parseCron(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
     return httpClient.post(`${BASE}/cron/parse`, { input }, showError);
+  },
+
+  // The fourth INSPECTORS-group operation, added alongside dev-utils-service's own
+  // TextDiffOperation. Returns TextDiffResponse, not DevUtilsResponse — the third operation (after
+  // convertStringCase/generateHash) whose output is genuinely richer than a single string. Two
+  // separate fields (original, updated), not `input`/`minify` — the second operation (after
+  // testRegexp) with a genuinely different request shape.
+  compareTextDiff(original: string, updated: string, showError?: ShowError): Promise<TextDiffResponse> {
+    return httpClient.post(`${BASE}/text-diff/compare`, { original, updated }, showError);
   },
 };

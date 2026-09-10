@@ -15,11 +15,13 @@ import TokenIcon from '@mui/icons-material/TokenOutlined';
 import RegexIcon from '@mui/icons-material/FindReplaceOutlined';
 import UrlParserIcon from '@mui/icons-material/PublicOutlined';
 import CronParserIcon from '@mui/icons-material/ScheduleOutlined';
+import TextDiffIcon from '@mui/icons-material/DifferenceOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
 import { OutputLanguage } from './outputLanguages';
 import { parseRegexInput, serializeRegexInput } from '../utils/regexInputFormat';
+import { serializeTextDiffInput } from '../utils/textDiffInputFormat';
 
 export type TabKey =
   | 'json-format'
@@ -48,7 +50,8 @@ export type TabKey =
   | 'jwt-debugger'
   | 'regexp-tester'
   | 'url-parser'
-  | 'cron-parser';
+  | 'cron-parser'
+  | 'text-diff-checker';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -78,6 +81,7 @@ export const TAB_KEYS: TabKey[] = [
   'regexp-tester',
   'url-parser',
   'cron-parser',
+  'text-diff-checker',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -766,5 +770,37 @@ export const OPERATIONS: OperationConfig[] = [
     supportsMinify: false,
     downloadFileName: 'cron-schedule.txt',
     onSubmit: input => devUtilsApi.parseCron(input),
+  },
+  {
+    key: 'text-diff-checker',
+    // The fourth INSPECTORS-group operation, and the fourth custom-layout one overall (after
+    // hash-generator/base64-image/regexp-tester) — its input is 2 genuinely separate text blocks
+    // and its output is a real line-by-line structure, neither of which fits the shared
+    // DevUtilToolPanel. Renders through components/TextDiffPanel.tsx.
+    group: 'Inspectors',
+    category: 'Inspectors',
+    label: 'Text Diff Checker',
+    description: 'Compare two versions of text, line by line — works like git diff',
+    icon: <TextDiffIcon fontSize="small" />,
+    actionLabel: 'Compare',
+    // Run through the same serializeTextDiffInput TextDiffPanel.tsx itself uses, so this
+    // placeholder can never drift out of sync with what that component actually parses.
+    inputPlaceholder: serializeTextDiffInput({
+      original: "const ship = () => 'today';\nconsole.log(ship());",
+      updated: "const ship = () => 'production';\nconsole.log(ship());\nconsole.log('Done 🚀');",
+    }),
+    // `inputFormat`/`outputLanguage`/`supportsMinify` are all unused by TextDiffPanel (it renders
+    // no CodeMirror editor and reads no minify flag) but still filled in with reasonable values to
+    // satisfy `OperationConfig`'s shared shape — the same "present but inert for this operation"
+    // treatment `hash-generator`/`base64-image` already get.
+    inputFormat: 'text',
+    outputLanguage: 'text',
+    supportsMinify: false,
+    downloadFileName: 'diff.txt',
+    // No `onSubmit` — TextDiffOperation's own TextDiffResponse doesn't fit the shared
+    // `(input, minify) => Promise<DevUtilsResponse>` shape every other operation's `onSubmit`
+    // establishes (a real loss of per-line type information to force it through a formatted
+    // string and back), so TextDiffPanel.tsx calls `devUtilsApi.compareTextDiff` directly instead
+    // — see that component's own doc comment for the full reasoning.
   },
 ];

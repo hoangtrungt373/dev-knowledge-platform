@@ -2357,12 +2357,13 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 request — a hash digest reads as a one-way encoding of a
 │   │                                 value more than an "inspection" of one).
 │   │                                 JwtDebuggerOperation/RegexTesterOperation/UrlParserOperation/
-│   │                                 CronParserOperation all declare INSPECTORS — reads/tests a
-│   │                                 value rather than transforming it, fulfilling that group's
-│   │                                 own "a JWT decoder" worked example (UrlParserOperation
-│   │                                 originally declared WEB, moved here per direct request; the
-│   │                                 other three were never WEB). WEB/GENERATORS both remain fully
-│   │                                 declared-ahead-of-use, still with no operation of their own.
+│   │                                 CronParserOperation/TextDiffOperation all declare
+│   │                                 INSPECTORS — reads/tests a value rather than transforming it,
+│   │                                 fulfilling that group's own "a JWT decoder" worked example
+│   │                                 (UrlParserOperation originally declared WEB, moved here per
+│   │                                 direct request; the other four were never WEB). WEB/
+│   │                                 GENERATORS both remain fully declared-ahead-of-use, still with
+│   │                                 no operation of their own.
 │   └── impl/
 │       ├── JsonFormatOperation.java     — execute(String input, boolean minify); validates +
 │       │                                   pretty-prints (or, minified, compact-serializes) in one
@@ -2552,6 +2553,21 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   BusinessException wrapping INVALID_CRON (DEVUTILS_014)
 │       │                                   on the wrong field count or a malformed/out-of-range
 │       │                                   field
+│       ├── TextDiffOperation.java      — execute(String original, String updated):
+│       │                                   TextDiffResponse; declares OperationGroup.INSPECTORS.
+│       │                                   A classic bottom-up LCS (Longest Common Subsequence)
+│       │                                   dynamic-programming diff — the same class of algorithm
+│       │                                   git diff itself uses (a variant of Myers' algorithm) —
+│       │                                   reconstructing a real CONTEXT/ADDED/REMOVED line
+│       │                                   sequence, not a naive "every original line removed,
+│       │                                   every updated line added" comparison. Rejects input
+│       │                                   over MAX_LINES = 2000 lines (either side) before ever
+│       │                                   running the O(n×m) algorithm — a cheap upfront
+│       │                                   line-count check, unlike RegexTesterOperation's
+│       │                                   own runtime-timeout mitigation (regex pattern cost isn't
+│       │                                   knowable in advance the way input size is). Throws
+│       │                                   BusinessException wrapping DIFF_INPUT_TOO_LARGE
+│       │                                   (DEVUTILS_015) over that cap
 │       └── support/
 │           ├── CurlyBraceFormatter.java — beautify(String)/minify(String), static utility (not a
 │           │                               DevUtilOperation itself). Shared by Css/Less/Scss/
@@ -2656,14 +2672,25 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 @Size(max=MAX_INPUT_LENGTH) on the other two) — the first
 │   │                                 request DTO with 3 genuinely separate fields rather than
 │   │                                 "text in, a minify flag"; backs regexp/test only
+│   ├── TextDiffRequest.java       — original/updated (@Size(max=MAX_INPUT_LENGTH) each,
+│   │                                 deliberately no @NotBlank on either — comparing against a
+│   │                                 blank/absent value is a legitimate, common diff); backs
+│   │                                 text-diff/compare only
 │   ├── DevUtilResponse.java       — output; shared by every single-string-output operation, not a
 │   │                                 rule going forward
 │   ├── StringCaseResponse.java    — camelCase/pascalCase/snakeCase/kebabCase/constantCase/
 │   │                                 titleCase/sentenceCase — the first operation whose output was
 │   │                                 genuinely richer than one string, so it got its own type
 │   │                                 instead of being forced into DevUtilResponse
-│   └── HashResponse.java          — sha1/sha256/sha384/sha512, the second operation with a
-│                                     genuinely richer-than-one-string response
+│   ├── HashResponse.java          — sha1/sha256/sha384/sha512, the second operation with a
+│   │                                 genuinely richer-than-one-string response
+│   └── TextDiffResponse.java      — lines (List<DiffLine>)/addedCount/removedCount/
+│                                     unchangedCount, with a nested DiffLineType enum
+│                                     (CONTEXT/ADDED/REMOVED) and DiffLine record (type/text) — the
+│                                     third operation with a genuinely richer-than-one-string
+│                                     response, needed here specifically to avoid lossily
+│                                     formatting a real line-by-line structure into a string only
+│                                     to re-parse it apart again on the GUI side
 └── api/
     ├── DevUtilsApi.java           — POST /api/v1/dev-utils/{json/format,yaml-to-json,
     │                                 json-to-yaml,html/beautify,css/beautify,less/beautify,
@@ -2673,7 +2700,8 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
     │                                 url/decode,html-entity/encode,html-entity/decode,
     │                                 hash/generate,php-serialize/serialize,
     │                                 php-serialize/unserialize,hex/encode,hex/decode,
-    │                                 jwt/debug,regexp/test,url/parse,cron/parse}. Every endpoint
+    │                                 jwt/debug,regexp/test,url/parse,cron/parse,
+    │                                 text-diff/compare}. Every endpoint
     │                                 is public — no @CurrentUserId, no authenticated principal
     │                                 at all.
     └── impl/DevUtilsController.java — implements DevUtilsApi; injects each operation by its

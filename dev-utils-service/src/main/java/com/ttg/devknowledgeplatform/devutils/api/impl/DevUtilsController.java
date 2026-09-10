@@ -9,6 +9,8 @@ import com.ttg.devknowledgeplatform.devutils.dto.HashResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.RegexTestRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
+import com.ttg.devknowledgeplatform.devutils.dto.TextDiffRequest;
+import com.ttg.devknowledgeplatform.devutils.dto.TextDiffResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.TextRequest;
 import com.ttg.devknowledgeplatform.devutils.service.impl.AsciiToHexOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.Base64DecodeOperation;
@@ -36,6 +38,7 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.RegexTesterOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.ScssOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.SqlFormatOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.StringCaseOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.TextDiffOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.UrlDecodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.UrlEncodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.UrlParserOperation;
@@ -85,6 +88,7 @@ public class DevUtilsController implements DevUtilsApi {
     private final RegexTesterOperation regexTesterOperation;
     private final UrlParserOperation urlParserOperation;
     private final CronParserOperation cronParserOperation;
+    private final TextDiffOperation textDiffOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -240,5 +244,10 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<DevUtilResponse> parseCron(TextRequest request) {
         return ResponseEntity.ok(new DevUtilResponse(cronParserOperation.execute(request.input())));
+    }
+
+    @Override
+    public ResponseEntity<TextDiffResponse> compareTextDiff(TextDiffRequest request) {
+        return ResponseEntity.ok(textDiffOperation.execute(request.original(), request.updated()));
     }
 }

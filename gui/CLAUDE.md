@@ -3998,6 +3998,87 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
       sandbox, so the actual sidebar/Parse-button/output rendering is unverified in a real
       browser.
+  - **Follow-up: "Text Diff Checker" (Compare two versions of the text), per request — the fifth
+    operation to declare `OperationGroup.INSPECTORS`, and the fourth custom-layout operation
+    overall (after Hash Generator, Base64 Image, RegExp Tester).** Backs
+    `POST /api/v1/dev-utils/text-diff/compare`. Asked directly whether this operation needed its
+    own panel/layout, per the request's own explicit question ("For this operation, new
+    panel/layout is required i think. What is your idea?") — recommended and built **Option A: a
+    unified GitHub-style diff view**, two stacked Original/Updated input cards feeding one Diff
+    output card that renders each line with a real green/red background (theme-alpha-based, not
+    fixed literals — the same "plain theme tokens are the more correct choice here" reasoning
+    `RegExpTesterPanel.tsx`'s own error box already establishes) — over **Option B: a side-by-side
+    view** (two columns, before/after), offered as a deferred `Idea:` rather than built. This
+    operation's input is genuinely 2 separate text blocks (original/updated) and its output is a
+    real line-by-line structure (added/removed/unchanged), neither of which fits
+    `DevUtilToolPanel.tsx`'s single-code-editor Input/Output pair at all — the same "some
+    operations need a genuinely different layout" precedent `HashGeneratorPanel.tsx`/
+    `Base64ImagePanel.tsx`/`RegExpTesterPanel.tsx` already established.
+    - New `components/TextDiffPanel.tsx` — two Input cards (**Original**/**Updated**, mirroring
+      `RegExpTesterPanel.tsx`'s own two-box Input side), both writing into the same lifted `input`
+      string via a new `utils/textDiffInputFormat.ts` (`serializeTextDiffInput`/
+      `parseTextDiffInput`) — the same "one shared lifted string, several visual widgets" trick
+      `RegExpTesterPanel.tsx`'s own `utils/regexInputFormat.ts` already establishes, using a
+      git-conflict-marker-styled separator line (`<<<<<<< DIFF-CHECKER-SEPARATOR >>>>>>>`) instead
+      of a blank line (RegExp Tester's own choice) — unsafe here, since either text block can
+      legitimately contain a blank line of its own. The **Diff** output card shows a `+N −M`
+      summary badge plus Copy/Download, the latter two producing real git-diff-style
+      `+ `/`- `/`  `-prefixed text via `formatUnifiedDiffText`, so the copied/downloaded result
+      stays directly usable as a plain-text diff outside this page even though the on-screen
+      rendering is colored, not plain-text.
+    - **No `onSubmit` on `config/operations.tsx`'s `text-diff-checker` entry, unlike every other
+      operation** — this operation's response (`TextDiffResponse`) doesn't fit the shared
+      `(input, minify) => Promise<DevUtilsResponse>` signature `OperationConfig.onSubmit`
+      establishes (its own `lines` array, with each line's real `ADDED`/`REMOVED`/`CONTEXT` type,
+      would have to be formatted into a string and re-parsed back apart for no reason).
+      `TextDiffPanel.tsx` calls `devUtilsApi.compareTextDiff` directly instead — the same
+      "omitted, not a dead placeholder" treatment `base64-image`'s own entry already establishes,
+      even though that operation omits it for a different underlying reason (no backend call at
+      all, vs. a genuinely incompatible response shape here). `types.ts` gained
+      `DiffLineType`/`DiffLine`/`TextDiffResponse` mirroring the backend DTOs field-for-field;
+      `api/devUtilsApi.ts` gained `compareTextDiff`.
+    - **Deliberate deviation from the user's own literal example, explained rather than silently
+      overridden**: the reported example's hand-typed "changes by lines" output showed every
+      original line removed and every updated line added, but a real LCS diff correctly recognizes
+      `console.log(ship());` as unchanged in both versions — implementing the correct algorithm
+      (matching "works like git diff," explicitly asked for by name) was more faithful to the
+      actual request than reproducing the imprecise example; see
+      `dev-utils-service/CLAUDE.md`'s own `TextDiffOperation` note for the full backend-side
+      verification of this.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual on-screen result (Original/Updated editing, Compare, the colored
+      diff rendering, Copy/Download) is unverified in a real browser.
+    - **Follow-up: line numbers in all three panels (Original/Updated/Diff), per request — no
+      backend change needed.** `TextDiffResponse` was never going to carry a line-number field
+      (see `dev-utils-service/CLAUDE.md`'s own `TextDiffOperation` note — its `DiffLine` record is
+      deliberately just `type`/`text`), so this is entirely a `TextDiffPanel.tsx` change.
+      **Original/Updated switched from plain `TextField`s to real CodeMirror 6 editors**
+      (`@uiw/react-codemirror`, already a dependency — no new package) — line numbers come for
+      free from CodeMirror's own default `basicSetup`, the same gutter `DevUtilToolPanel.tsx`'s own
+      Input/Output editors already show; no language extension is passed (the diffed text is
+      arbitrary, not one known language), so this is plain-text highlighting only, the same
+      "`erb`/`csv`/`text` fall back to `[]`" case `config/codeMirrorConfig.ts` already documents.
+      Reuses that file's own shared `editorChromeTheme` (16px inset/0.8rem font/no focus-outline
+      box) so these two editors don't look out of place next to every other editor in this
+      feature — `utils/textFieldStyles.ts#HIDDEN_TEXT_FIELD_OUTLINE_SX` is no longer imported here
+      as a result (CodeMirror has no `TextField`-style notched outline to hide in the first place),
+      though the util itself stays, still used by `HashGeneratorPanel.tsx`/`Base64ImagePanel.tsx`.
+      A fixed pixel height (`EDITOR_HEIGHT_PX`), not `DevUtilToolPanel.tsx`'s own `position:
+      absolute, inset: 0` trick — that trick exists there only to fill an ambiently-sized flex
+      parent; these two boxes have no such parent, so a plain fixed height resolves with no
+      percentage-height pitfall to route around.
+      - **The Diff panel gets a GitHub-style two-column old/new gutter, not one running count** —
+        an `ADDED`/`REMOVED` line only ever exists on one side of the comparison, so a single
+        counter would either skip numbers or misrepresent which side a line belongs to. New
+        `buildDiffLineRows` walks `result.lines` once, advancing an Original counter on every
+        `REMOVED`/`CONTEXT` line and an Updated counter on every `ADDED`/`CONTEXT` line — mirroring
+        how `TextDiffOperation`'s own LCS reconstruction walked both input arrays to produce this
+        same sequence in the first place. Memoized (`useMemo` keyed on `result`) so it isn't
+        recomputed on every keystroke in Original/Updated, which don't touch `result` at all until
+        Compare runs again.
+      - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+        sandbox, so the actual on-screen line numbers (both editors' gutters, and the Diff panel's
+        two-column old/new numbers) are unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

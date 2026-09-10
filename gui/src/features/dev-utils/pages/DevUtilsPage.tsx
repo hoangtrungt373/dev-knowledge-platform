@@ -24,6 +24,7 @@ import DevUtilToolPanel from '../components/DevUtilToolPanel';
 import HashGeneratorPanel from '../components/HashGeneratorPanel';
 import Base64ImagePanel from '../components/Base64ImagePanel';
 import RegExpTesterPanel from '../components/RegExpTesterPanel';
+import TextDiffPanel from '../components/TextDiffPanel';
 import DevUtilSidebarItem from '../components/DevUtilSidebarItem';
 import { OPERATION_GROUP_ORDER, OPERATIONS, TabKey, tabFromHash } from '../config/operations';
 
@@ -428,11 +429,12 @@ export default function DevUtilsPage(): JSX.Element {
           <Box ref={toolPanelRef}>
             {/* Some operations render their own bespoke layout instead of the shared
                 DevUtilToolPanel — Hash Generator's result (four independent digests), Base64
-                Image's own file-upload/live-preview shape, and RegExp Tester's own 3-field input
-                (pattern/flags/test text, not one string with a minify flag) all don't fit that
-                component's plain Input/Output editor pair at all. A direct key check per
-                operation, not a lookup table/registry — there are only three custom-layout
-                operations today; extend this the same way (one more `else if`) if a fourth one
+                Image's own file-upload/live-preview shape, RegExp Tester's own 3-field input
+                (pattern/flags/test text, not one string with a minify flag), and Text Diff
+                Checker's own 2-field input plus real line-by-line output structure all don't fit
+                that component's plain Input/Output editor pair at all. A direct key check per
+                operation, not a lookup table/registry — there are only four custom-layout
+                operations today; extend this the same way (one more `else if`) if a fifth one
                 ever needs its own layout too, rather than building plugin infrastructure for a
                 hypothetical N ahead of time. */}
             {activeOperation.key === 'hash-generator' ? (
@@ -470,6 +472,14 @@ export default function DevUtilsPage(): JSX.Element {
                 // Non-null: every operation rendered through this branch supplies `onSubmit` —
                 // see `OperationConfig.onSubmit`'s own doc comment.
                 onSubmit={activeOperation.onSubmit!}
+              />
+            ) : activeOperation.key === 'text-diff-checker' ? (
+              <TextDiffPanel
+                key={activeOperation.key}
+                input={input}
+                onInputChange={setInput}
+                actionLabel={activeOperation.actionLabel}
+                downloadFileName={activeOperation.downloadFileName}
               />
             ) : (
               <DevUtilToolPanel

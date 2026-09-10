@@ -1294,6 +1294,60 @@ section again. Full unabridged entry-by-entry history for all three lives in
         `ScheduleOutlined` icon) and `api/devUtilsApi.ts` gained `parseCron`. Verified via a clean
         `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the
         actual on-screen result is unverified in a real browser.
+    - **Follow-up: 1 new operation, `TextDiffOperation`, per request ("Text Diff Checker - Compare
+      two versions of the text (works like Git Diff)") — the fourth operation to declare
+      `OperationGroup.INSPECTORS`.** Backs `POST /api/v1/dev-utils/text-diff/compare` (a new
+      `TextDiffRequest`/`TextDiffResponse` pair, not `TextRequest`/`DevUtilResponse` — two input
+      fields, and a genuinely structured line-by-line output). Implements a real LCS (Longest
+      Common Subsequence) dynamic-programming diff — the same class of algorithm `git diff` itself
+      uses (a variant of Myers' algorithm) — not a naive "every original line removed, every
+      updated line added" comparison; verified against the user's own reported example via a
+      standalone JDK 21 harness before writing any production code, which proved the example's own
+      literal expected output was actually wrong per real diff semantics (it recognizes
+      `console.log(ship());` as an unchanged line, which the example's own hand-written output
+      didn't). This discrepancy was explained to the user rather than silently reproduced or
+      silently overridden — implementing the correct algorithm is more faithful to "works like git
+      diff," which was explicitly asked for by name. Rejects input over `MAX_LINES = 2000` lines
+      (either side) *before* running the O(n×m) algorithm — an upfront, cheap line-count check,
+      deliberately different from `RegexTesterOperation`'s own runtime-timeout mitigation: regex
+      pattern cost isn't knowable in advance, but diff input size is. New
+      `DevUtilsErrorCode.DIFF_INPUT_TOO_LARGE` (`DEVUTILS_015`). 10 new backend tests (288→300 —
+      `TextDiffOperationTest`, including the exact reported example asserting the LCS-correct
+      result, and both edges of `MAX_LINES`, plus 2 new `DevUtilsServiceApplicationTests` cases),
+      verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21) — 300/300 passing.
+      - **`gui`**: the user asked directly whether this operation needed its own panel/layout, and
+        a new dedicated `components/TextDiffPanel.tsx` was recommended and built (Option A: a
+        unified GitHub-style diff view, two stacked Original/Updated input cards feeding one Diff
+        output card with real green/red line backgrounds — chosen over Option B, a side-by-side
+        view, offered as a deferred `Idea:`) — this operation's input is genuinely 2 separate text
+        blocks and its output is a real structured line sequence, neither of which fits
+        `DevUtilToolPanel.tsx`'s single-code-editor Input/Output shape, the same "some operations
+        need a genuinely different layout" precedent `HashGeneratorPanel.tsx`/
+        `Base64ImagePanel.tsx`/`RegExpTesterPanel.tsx` already established. New
+        `utils/textDiffInputFormat.ts` serializes the `original`/`updated` pair into the single
+        lifted `input` string `DevUtilsPage.tsx`'s Sample/Clear buttons already operate on, via a
+        git-conflict-marker-styled separator line (not a blank line, RegExp Tester's own choice —
+        unsafe here since either field can legitimately contain a blank line). **No `onSubmit` on
+        `config/operations.tsx`'s `text-diff-checker` entry** — this operation's response doesn't
+        fit the shared `(input, minify) => Promise<DevUtilsResponse>` signature (its own `lines`
+        array would have to be lossily formatted into a string and re-parsed for no reason), so
+        `TextDiffPanel.tsx` calls `devUtilsApi.compareTextDiff` directly instead — the same
+        "omitted, not a dead placeholder" treatment `base64-image`'s own entry already establishes,
+        for a different underlying reason (a genuinely different response shape rather than no
+        backend call at all). `types.ts` gained `DiffLineType`/`DiffLine`/`TextDiffResponse`
+        mirroring the backend DTOs field-for-field. Verified via a clean `tsc --noEmit` and a
+        successful `vite build` only — no Docker in this sandbox, so the actual on-screen result is
+        unverified in a real browser.
+      - **Follow-up: line numbers in all three panels (Original/Updated/Diff), per request — a
+        `gui`-only change, no backend change needed** (`TextDiffResponse`'s `DiffLine` stays just
+        `type`/`text`). `TextDiffPanel.tsx`'s Original/Updated switched from plain `TextField`s to
+        real CodeMirror 6 editors (line numbers come for free from CodeMirror's own default
+        `basicSetup`, the same gutter `DevUtilToolPanel.tsx`'s editors already show); the Diff
+        panel gained a GitHub-style two-column old/new line-number gutter (a new
+        `buildDiffLineRows` helper, since an `ADDED`/`REMOVED` line only ever exists on one side of
+        the comparison, so a single running count can't represent both). Verified via a clean
+        `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the
+        actual on-screen line numbers are unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

@@ -74,7 +74,15 @@ import lombok.Getter;
  * URL's overall structure. {@code INVALID_CRON} backs {@code CronParserOperation}'s own real
  * failure path — the wrong field count (not exactly 5), or any one field's own syntax malformed
  * or out of range (a non-numeric/unrecognized-alias token, a non-positive step, or a value outside
- * that field's valid range).
+ * that field's valid range). {@code DIFF_INPUT_TOO_LARGE} backs {@code TextDiffOperation}'s own
+ * real failure path — not a genuinely *invalid* input (any two texts have some well-defined diff),
+ * but a resource-exhaustion guard: the line-by-line LCS algorithm it uses is {@code O(n×m)} in
+ * line count, so either text having too many lines is rejected outright before the expensive
+ * comparison ever runs, rather than attempting it and hoping it finishes in time (see that class's
+ * own Javadoc for why this is a cleaner mitigation than {@code RegexTesterOperation}'s own
+ * best-effort timeout — the input size here is known and cheap to check *before* doing the
+ * expensive work, unlike a regex match, which can't be judged expensive without already running
+ * it).
  */
 @Getter
 public enum DevUtilsErrorCode implements ErrorCode {
@@ -92,7 +100,8 @@ public enum DevUtilsErrorCode implements ErrorCode {
     INVALID_REGEX("DEVUTILS_011", "Invalid regular expression: {0}", HttpStatus.BAD_REQUEST),
     REGEX_TIMEOUT("DEVUTILS_012", "Regular expression evaluation timed out: {0}", HttpStatus.BAD_REQUEST),
     INVALID_URL("DEVUTILS_013", "Invalid URL: {0}", HttpStatus.BAD_REQUEST),
-    INVALID_CRON("DEVUTILS_014", "Invalid cron expression: {0}", HttpStatus.BAD_REQUEST);
+    INVALID_CRON("DEVUTILS_014", "Invalid cron expression: {0}", HttpStatus.BAD_REQUEST),
+    DIFF_INPUT_TOO_LARGE("DEVUTILS_015", "Text is too large to diff: {0}", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

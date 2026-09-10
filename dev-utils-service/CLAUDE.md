@@ -12,7 +12,8 @@ format), ASCII↔Hex conversion, JWT Debugger (read a JWT's header/payload, no s
 verification), RegExp Tester (test a pattern against text, real matches only — see
 `RegexTesterOperation`'s own Javadoc for its ReDoS-timeout guard), URL Parser (protocol/hostname/
 port/pathname/search/query/hash/origin, mirroring the browser's own `URL` object), Cron Job Parser
-(a 5-field cron expression into a plain-English schedule). Package root:
+(a 5-field cron expression into a plain-English schedule), Text Diff Checker (a real LCS diff
+between two texts, line by line — "works like git diff"). Package root:
 `com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike
@@ -416,11 +417,17 @@ caller.** Every operation is a pure text-in/text-out transform:
   `MinifiableTextRequest` with an ignored field. `RegexTestRequest` (`pattern`/`flags`/`testText`) backs `regexp/test`
   only — the first request DTO with 3 genuinely separate fields rather than "text in, a minify
   flag" (see that record's own Javadoc). Every `input`/`pattern`/`testText` field carries
-  `@NotBlank @Size(max = DevUtilsLimits.MAX_INPUT_LENGTH)`. `DevUtilResponse` (`output`) stays
-  shared across every single-string-output operation, but `StringCaseResponse` is the first
-  operation whose output is genuinely richer (7 named case variants at once) to actually need its
-  own response type instead — exactly the scenario `DevUtilResponse`'s own Javadoc anticipated. See
-  `DevUtilOperation`'s own Javadoc for the full reasoning against one shared request/response pair.
+  `@NotBlank @Size(max = DevUtilsLimits.MAX_INPUT_LENGTH)`. `dto/TextDiffRequest` (`original`/
+  `updated`) backs `text-diff/compare` only — its own two fields deliberately carry **no**
+  `@NotBlank` (only the shared `@Size` cap), since comparing against a blank/absent value is a
+  legitimate, common diff. `DevUtilResponse` (`output`) stays shared across every
+  single-string-output operation, but `StringCaseResponse` is the first operation whose output is
+  genuinely richer (7 named case variants at once) to actually need its own response type instead
+  — exactly the scenario `DevUtilResponse`'s own Javadoc anticipated; `dto/TextDiffResponse`
+  (`lines`/`addedCount`/`removedCount`/`unchangedCount`, with a nested `DiffLineType` enum and
+  `DiffLine` record) is the second, for the same reason — a real line-by-line diff structure would
+  lose information if flattened into a plain string. See `DevUtilOperation`'s own Javadoc for the
+  full reasoning against one shared request/response pair.
 - `api/DevUtilsApi` (+ `api/impl/DevUtilsController`) — `POST /api/v1/dev-utils/json/format`,
   `/yaml-to-json`, `/json-to-yaml`, `/html/beautify`, `/css/beautify`, `/less/beautify`,
   `/scss/beautify`, `/js/beautify`, `/erb/beautify`, `/xml/beautify`, `/json-to-csv`,
@@ -428,9 +435,9 @@ caller.** Every operation is a pure text-in/text-out transform:
   `/base64/encode`, `/base64/decode`, `/url/encode`, `/url/decode`, `/html-entity/encode`,
   `/html-entity/decode`, `/hash/generate`, `/php-serialize/serialize`,
   `/php-serialize/unserialize`, `/hex/encode`, `/hex/decode`, `/jwt/debug`, `/regexp/test`,
-  `/url/parse`, `/cron/parse`. The controller injects each operation by its concrete type rather
-  than dispatching through an enum-keyed registry — with one fixed REST endpoint per operation, there's
-  no runtime "which
+  `/url/parse`, `/cron/parse`, `/text-diff/compare`. The controller injects each operation by its
+  concrete type rather than dispatching through an enum-keyed registry — with one fixed REST
+  endpoint per operation, there's no runtime "which
   operation" decision left to make (see `DevUtilOperation`'s own Javadoc).
 
 **Code-quality analysis pass (mirroring the earlier `gui` dev-utils analysis) found and fixed 2
@@ -1073,7 +1080,7 @@ the request named them as two operations.
 `HtmlEntityEncodeOperationTest`, `HtmlEntityDecodeOperationTest`, `HashGeneratorOperationTest`,
 `PhpSerializeOperationTest`, `PhpUnserializeOperationTest`, `AsciiToHexOperationTest`,
 `HexToAsciiOperationTest`, `JwtDebuggerOperationTest`, `RegexTesterOperationTest`,
-`UrlParserOperationTest`, `CronParserOperationTest`), plus `service/impl/support/
+`UrlParserOperationTest`, `CronParserOperationTest`, `TextDiffOperationTest`), plus `service/impl/support/
 CurlyBraceFormatterTest` (the shared CSS/LESS/SCSS/JS reformatter — brace nesting, already-
 multiline selector lists, comment/string-literal protection, the JS ASI-safety guarantee,
 never-throws-on-unterminated-input), `service/impl/support/SqlFormatterTest` (clause-keyword line
@@ -1096,26 +1103,30 @@ real parse/serialize behavior (pretty vs. minified output, malformed-input rejec
 structural equality via `readTree`, jsoup's lenient-parsing/indent behavior, and — for
 `XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation` — real JAXP/CSV/PHP parsing and rejection
 behavior). Plus `DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)`
-+ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all thirty-one endpoints
++ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all thirty-two endpoints
 with **no** `Authorization` header through the real filter chain, confirming end to end (not just
 by static reasoning) that the app actually starts and every endpoint is genuinely public. This is
 exactly the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also
 covers the `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the
 latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP/
-Base64/URL-encoding/PHP-serialized-data/hex/JWT/regex/URL/cron all return `400` with
+Base64/URL-encoding/PHP-serialized-data/hex/JWT/regex/URL/cron/diff-input-too-large all return
+`400` with
 `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005`/`DEVUTILS_006`/`DEVUTILS_007`/`DEVUTILS_008`/
-`DEVUTILS_009`/`DEVUTILS_010`/`DEVUTILS_011`/`DEVUTILS_013`/`DEVUTILS_014` respectively through
+`DEVUTILS_009`/`DEVUTILS_010`/`DEVUTILS_011`/`DEVUTILS_013`/`DEVUTILS_014`/`DEVUTILS_015`
+respectively through
 the shared `GlobalExceptionHandler` — `html-entity/encode`/`decode`, `hash/generate`,
 `php-serialize/serialize`, and `hex/encode` have no matching case here, since none of those five
 ever throws (see `DevUtilsErrorCode`'s own updated Javadoc); `regexp/test`'s own second failure
 mode (`DEVUTILS_012`, a timeout) has no dedicated `DevUtilsServiceApplicationTests` case either —
 deliberately, so this fast-running end-to-end suite doesn't also have to eat
 `RegexTesterOperation`'s own real ~2-second timeout a second time; that path is already covered
-directly in `RegexTesterOperationTest`. Plus
+directly in `RegexTesterOperationTest`. `text-diff/compare` has no matching *invalid-input* case
+here (its `TextDiffRequest` has no `@NotBlank` to trip, and a genuinely malformed diff isn't a
+thing), only the `DEVUTILS_015` line-cap case above. Plus
 `service/impl/support/
 ConventionalJsonPrettyPrinterTest` (the one support class in this module with its own dedicated
 test file rather than only being exercised indirectly through an operation's own tests — see that
-class's own note above for why). 288 tests total (161 as of the seventh follow-up above, plus 8 new
+class's own note above for why). 300 tests total (161 as of the seventh follow-up above, plus 8 new
 Base64 unit tests and 3 new `DevUtilsServiceApplicationTests` cases from the eighth follow-up, 7 new
 URL unit tests and 3 more `DevUtilsServiceApplicationTests` cases from the ninth, 9 new HTML entity
 unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the tenth, 4 new Hash
@@ -1127,9 +1138,10 @@ ASCII/Hex unit tests plus 3 more `DevUtilsServiceApplicationTests` cases from th
 sixteenth (the fifteenth follow-up added no new test, a duplication-only refactor), 9 new
 RegExp Tester unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the seventeenth,
 13 new URL Parser unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the
-eighteenth (the nineteenth follow-up added no new test, a pure group reclassification), and 17 new
-Cron Job Parser unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the twentieth
-— see each follow-up's own note for the full breakdown), verified via a real
+eighteenth (the nineteenth follow-up added no new test, a pure group reclassification), 17 new
+Cron Job Parser unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the twentieth,
+and 10 new Text Diff Checker unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from
+the twenty-first — see each follow-up's own note for the full breakdown), verified via a real
 `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 **Fifteenth follow-up — a second code-quality analysis pass (mirroring the first one above and the
@@ -1440,6 +1452,56 @@ own updated Javadoc), the same shape `StringCaseOperation`/`HashGeneratorOperati
   `mvn -pl dev-utils-service -am compile` run (per root `CLAUDE.md`'s own "only when there's a
   concrete reason to suspect a compile error" rule — a brand-new, syntactically-unusual Javadoc
   comment was exactly that reason), not left for `mvn test` to discover.
+
+**Twenty-first follow-up — 1 new operation (`TextDiffOperation`), the fourth to declare
+`OperationGroup.INSPECTORS`**, per direct request: "Text Diff Checker" — "works like git diff."
+Backs `POST /api/v1/dev-utils/text-diff/compare`. The first operation with 2 *and* the first with
+a genuinely richer-than-`DevUtilResponse` output at the same time — new `dto.TextDiffRequest`
+(`original`/`updated`, deliberately **not** `@NotBlank` on either, unlike almost every other DTO
+in this module — comparing against blank is a legitimate "everything was added/removed" diff) and
+`dto.TextDiffResponse` (`lines: List<DiffLine>` + 3 counts, the same "structured, never re-parsed"
+shape `HashResponse`/`StringCaseResponse` already establish).
+
+- **A real Longest Common Subsequence (LCS) diff — the same class of algorithm `git diff` itself
+  is built on (a variant of Myers' algorithm) — not a cosmetic relabeling of every line.**
+  **Deliberately does not reproduce the reported example's own line-by-line output verbatim**: that
+  example showed every `original` line as removed and every `updated` line as added, but
+  `console.log(ship());` is identical in both — a real diff (confirmed via a standalone Java
+  harness against this exact example, before any production code was written) correctly
+  recognizes it as unchanged, showing only the one line that actually changed plus the one line
+  genuinely added. Reproducing the example's own output literally would mean *not* actually
+  diffing — the whole point of "works like git diff" is exactly this recognition of what's
+  unchanged.
+- **Resource-exhaustion guard, checked *before* running the expensive comparison — a cleaner
+  mitigation than `RegexTesterOperation`'s own best-effort timeout.** The LCS algorithm here is a
+  classic full dynamic-programming table, `O(n×m)` in *line* count (not character count); a
+  malicious input built from many blank lines could reach tens of thousands of lines within the
+  existing `MAX_INPUT_LENGTH` character cap alone, which would make the DP table astronomically
+  large. Unlike a regex pattern's own cost (which can't be judged without already running it),
+  input *size* here is known and cheap to check upfront — confirmed via harness that a worst-case
+  2000×2000-line comparison (every line different, the slowest real shape) completes in under
+  50ms using about 15MB, so `TextDiffOperation.MAX_LINES` (2000) is rejected outright *before* the
+  comparison ever starts, rather than attempted and hoped to finish in time. New
+  `DevUtilsErrorCode.DIFF_INPUT_TOO_LARGE` (`DEVUTILS_015`) — deliberately not named `INVALID_*`
+  like every prior error code in this enum, since any two texts have some well-defined diff; this
+  is a resource guard, not a genuine input-validity failure.
+- **A single trailing newline is treated as insignificant** (`"a\nb\n"` and `"a\nb"` diff
+  identically), matching every mainstream diff tool's own default — `String#split`'s own default
+  (positive) limit already drops a trailing empty string for free, so no extra handling was
+  needed beyond normalizing `\r\n` to `\n` first. A blank line *in the middle* of either text is
+  still preserved and diffed normally.
+- `gui`'s own `/dev-utils` page needed a fourth bespoke panel component for this operation, the
+  same "some operations need a genuinely different layout" precedent Hash Generator/Base64 Image/
+  RegExp Tester already established — see `gui/CLAUDE.md`'s own dev-utils section for the full
+  GUI-side detail (`components/TextDiffPanel.tsx`, `utils/textDiffInputFormat.ts`).
+- 10 new tests in `TextDiffOperationTest` (the exact reported example, confirming the
+  unchanged-line recognition; identical-text producing only context lines; blank-`original`/
+  blank-`updated`/both-blank; `null` fields treated as blank; the trailing-newline-insignificant
+  case; a genuine mid-text blank line preserved; and both edges of the line cap — rejected one
+  over it, accepted exactly at it), plus 2 new `DevUtilsServiceApplicationTests` cases (the new
+  endpoint's reachability with no `Authorization` header, and an oversized input returning `400`
+  with `DEVUTILS_015`). Test suite grew from 288 to 300, verified via a real
+  `mvn -pl dev-utils-service -am test` run (JDK 21) — 300/300 passing.
 
 ## Rules specific to this module
 

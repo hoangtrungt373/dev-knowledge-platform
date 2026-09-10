@@ -23,3 +23,25 @@ export interface HashResponse {
   sha384: string;
   sha512: string;
 }
+
+// Mirrors dev-utils-service's own dto.TextDiffResponse.DiffLineType enum exactly — a plain string
+// union, not a TS enum, matching how every other backend enum crossing this API boundary
+// (OperationGroupName's own backend counterpart, etc.) is represented on this side.
+export type DiffLineType = 'CONTEXT' | 'ADDED' | 'REMOVED';
+
+// Mirrors dev-utils-service's own dto.TextDiffResponse.DiffLine record field-for-field.
+export interface DiffLine {
+  type: DiffLineType;
+  text: string;
+}
+
+// Mirrors dev-utils-service's own dto.TextDiffResponse field-for-field — the third operation
+// (after StringCaseResponse/HashResponse) whose output is genuinely richer than a single string;
+// `lines` is real structured data (never re-parsed from a `-`/`+`-prefixed text block) so
+// `components/TextDiffPanel.tsx` can render each line's own color/emphasis directly.
+export interface TextDiffResponse {
+  lines: DiffLine[];
+  addedCount: number;
+  removedCount: number;
+  unchangedCount: number;
+}

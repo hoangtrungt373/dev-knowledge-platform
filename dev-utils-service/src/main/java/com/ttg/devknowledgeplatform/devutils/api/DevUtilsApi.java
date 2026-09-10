@@ -10,6 +10,8 @@ import com.ttg.devknowledgeplatform.devutils.dto.HashResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.RegexTestRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
+import com.ttg.devknowledgeplatform.devutils.dto.TextDiffRequest;
+import com.ttg.devknowledgeplatform.devutils.dto.TextDiffResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.TextRequest;
 
 import jakarta.validation.Valid;
@@ -355,4 +357,15 @@ public interface DevUtilsApi {
      */
     @PostMapping("/cron/parse")
     ResponseEntity<DevUtilResponse> parseCron(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Compares {@code request.original()} against {@code request.updated()} line by line via a
+     * real LCS diff (see {@code TextDiffOperation}'s own Javadoc) and returns every line, each
+     * tagged added/removed/unchanged, plus the 3 counts.
+     *
+     * @return {@code 200} with the diff, or {@code 400} if either side has more lines than
+     *         {@code TextDiffOperation.MAX_LINES}
+     */
+    @PostMapping("/text-diff/compare")
+    ResponseEntity<TextDiffResponse> compareTextDiff(@Valid @RequestBody TextDiffRequest request);
 }
