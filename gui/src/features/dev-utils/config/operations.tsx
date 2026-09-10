@@ -11,6 +11,7 @@ import HtmlEntityIcon from '@mui/icons-material/HtmlOutlined';
 import FingerprintIcon from '@mui/icons-material/FingerprintOutlined';
 import HexIcon from '@mui/icons-material/HexagonOutlined';
 import ImageIcon from '@mui/icons-material/ImageOutlined';
+import TokenIcon from '@mui/icons-material/TokenOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
@@ -39,7 +40,8 @@ export type TabKey =
   | 'hash-generator'
   | 'php-serializer'
   | 'hex-ascii'
-  | 'base64-image';
+  | 'base64-image'
+  | 'jwt-debugger';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -65,6 +67,7 @@ export const TAB_KEYS: TabKey[] = [
   'php-serializer',
   'hex-ascii',
   'base64-image',
+  'jwt-debugger',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -76,11 +79,11 @@ export function tabFromHash(hash: string): TabKey {
 
 /** Mirrors the backend's own `service.OperationGroup` enum (`dev-utils-service`) — a much broader
  * clustering than `OperationConfig.category` below, meant to span the whole page rather than one
- * operation's own headline card. `'Formatters'` is the only group any operation actually declares
- * today; the other four are declared ahead of the operations that will eventually use them (an
- * encoder/decoder, an inspector, a web-specific tool, a generator — see the backend enum's own
- * Javadoc for a real example of each), so `OPERATION_GROUP_ORDER`/`groupOperationsByGroup` below
- * already have a stable, complete section order to render from day one. */
+ * operation's own headline card. `'Formatters'`/`'Encoders/Decoders'`/`'Inspectors'` all have real
+ * operations today; `'Web'`/`'Generators'` are still declared ahead of the operations that will
+ * eventually use them (a web-specific tool, a generator — see the backend enum's own Javadoc for a
+ * real example of each), so `OPERATION_GROUP_ORDER`/`groupOperationsByGroup` below already have a
+ * stable, complete section order to render from day one. */
 export type OperationGroupName = 'Formatters' | 'Encoders/Decoders' | 'Inspectors' | 'Web' | 'Generators';
 
 /** Fixed rendering order for the sidebar's own group headlines — mirrors the backend enum's own
@@ -644,5 +647,33 @@ export const OPERATIONS: OperationConfig[] = [
     outputLanguage: 'text',
     supportsMinify: false,
     downloadFileName: 'image.txt',
+  },
+  {
+    key: 'jwt-debugger',
+    // The first operation to actually declare 'Inspectors' — see OperationGroup.java's own
+    // Javadoc, which named exactly this ("a JWT decoder") as the concrete example that group was
+    // declared ahead of use for. Renders the sidebar's "Inspectors" section headline for the first
+    // time (the same generic, group-agnostic bucketing that already rendered "Encoders/Decoders"
+    // once `base64-string` landed handles this with no further change needed here).
+    group: 'Inspectors',
+    category: 'Inspectors',
+    label: 'JWT Debugger',
+    description: "Read a JWT's header and payload — no signature verification",
+    icon: <TokenIcon fontSize="small" />,
+    actionLabel: 'Debug',
+    // The exact reported example — decodes to header {"alg":"HS256","typ":"JWT"} and payload
+    // {"sub":"1234567890","name":"Vui Coding","iat":1516239022}, keeping the same "Vui Coding"
+    // project theme every other operation's own placeholder already uses.
+    inputPlaceholder:
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlZ1aSBDb2RpbmciLCJpYXQiOjE1MTYyMzkwMjJ9.demo-signature',
+    // 'text', not 'json' — the input is a dot-separated JWT string, not raw JSON, even though the
+    // *output* is JSON; picking 'json' here would make a failed submit incorrectly try the
+    // browser's own JSON.parse fast path first (see errorFormatting.ts#buildDevUtilError), which
+    // would misreport a bad segment count or an invalid-Base64URL segment as a JSON syntax error.
+    inputFormat: 'text',
+    outputLanguage: 'json',
+    supportsMinify: true,
+    downloadFileName: 'jwt-debug.json',
+    onSubmit: devUtilsApi.debugJwt,
   },
 ];

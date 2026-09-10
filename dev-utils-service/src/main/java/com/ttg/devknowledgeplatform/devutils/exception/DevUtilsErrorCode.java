@@ -54,7 +54,12 @@ import lombok.Getter;
  * {@code HexToAsciiOperation} — backed by the JDK's own {@link java.util.HexFormat#parseHex}
  * (an odd digit count or a non-hex character), unlike {@code AsciiToHexOperation}, which — like
  * {@code Base64EncodeOperation} — has no invalid-input concept at all (every string has a valid
- * hex representation).
+ * hex representation). {@code INVALID_JWT} is the same shape once more, for
+ * {@code JwtDebuggerOperation} — backed by a real structural check (exactly 3 dot-separated
+ * segments, the JWS Compact Serialization shape RFC 7515 §3.1 requires) plus the JDK's own
+ * {@link java.util.Base64.Decoder} (URL-safe alphabet) and this module's own JSON parser for the
+ * header/payload segments; the one operation in this enum whose failure message can come from
+ * either of two genuinely different validators depending on which segment/step actually failed.
  */
 @Getter
 public enum DevUtilsErrorCode implements ErrorCode {
@@ -67,7 +72,8 @@ public enum DevUtilsErrorCode implements ErrorCode {
     INVALID_BASE64("DEVUTILS_006", "Invalid Base64: {0}", HttpStatus.BAD_REQUEST),
     INVALID_URL_ENCODING("DEVUTILS_007", "Invalid URL encoding: {0}", HttpStatus.BAD_REQUEST),
     INVALID_PHP_SERIALIZED("DEVUTILS_008", "Invalid PHP serialized data: {0}", HttpStatus.BAD_REQUEST),
-    INVALID_HEX("DEVUTILS_009", "Invalid hex data: {0}", HttpStatus.BAD_REQUEST);
+    INVALID_HEX("DEVUTILS_009", "Invalid hex data: {0}", HttpStatus.BAD_REQUEST),
+    INVALID_JWT("DEVUTILS_010", "Invalid JWT: {0}", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

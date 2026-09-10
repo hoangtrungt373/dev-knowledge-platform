@@ -303,4 +303,18 @@ public interface DevUtilsApi {
      */
     @PostMapping("/hex/decode")
     ResponseEntity<DevUtilResponse> decodeHex(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Reads a JWT's header and payload without verifying its signature, returned as one JSON
+     * object ({@code {"header": ..., "payload": ..., "signature": "..."}}, pretty-printed or, with
+     * {@code request.minify()}, compact/single-line) — the header/payload segments are decoded and
+     * embedded as real nested objects; the signature segment is carried through verbatim (never
+     * decoded — see {@code JwtDebuggerOperation}'s own Javadoc for why).
+     *
+     * @return {@code 200} with the decoded JWT, or {@code 400} if {@code request.input()} isn't
+     *         exactly 3 dot-separated segments, or either the header or payload segment isn't
+     *         valid Base64URL-encoded JSON
+     */
+    @PostMapping("/jwt/debug")
+    ResponseEntity<DevUtilResponse> debugJwt(@Valid @RequestBody MinifiableTextRequest request);
 }

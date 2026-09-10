@@ -2356,9 +2356,10 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 HashGeneratorOperation (moved here from INSPECTORS per direct
 │   │                                 request — a hash digest reads as a one-way encoding of a
 │   │                                 value more than an "inspection" of one).
-│   │                                 INSPECTORS/WEB/GENERATORS remain fully declared-ahead-of-use,
-│   │                                 still with no operation of their own (INSPECTORS' own
-│   │                                 "a JWT decoder" example is still unbuilt).
+│   │                                 JwtDebuggerOperation declares INSPECTORS — the first operation
+│   │                                 to actually land there, fulfilling that group's own "a JWT
+│   │                                 decoder" worked example. WEB/GENERATORS remain fully
+│   │                                 declared-ahead-of-use, still with no operation of their own.
 │   └── impl/
 │       ├── JsonFormatOperation.java     — execute(String input, boolean minify); validates +
 │       │                                   pretty-prints (or, minified, compact-serializes) in one
@@ -2487,6 +2488,19 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   space-separated or unseparated hex); throws
 │       │                                   BusinessException wrapping INVALID_HEX (DEVUTILS_009)
 │       │                                   on an odd digit count or a non-hex character
+│       ├── JwtDebuggerOperation.java    — execute(String input, boolean minify); the first
+│       │                                   operation to declare OperationGroup.INSPECTORS. Splits
+│       │                                   input on "." into exactly 3 segments (header/payload/
+│       │                                   signature, RFC 7515 §3.1); Base64URL-decodes the first
+│       │                                   two as UTF-8 JSON and re-embeds each as a real nested
+│       │                                   object in the result; the signature segment is carried
+│       │                                   through verbatim, never decoded or verified — this
+│       │                                   module holds no key material, and this is a debugging
+│       │                                   aid (mirroring jwt.io's own "Decoded" panel), not an
+│       │                                   authentication check. Throws BusinessException wrapping
+│       │                                   INVALID_JWT (DEVUTILS_010) on the wrong segment count,
+│       │                                   an invalid-Base64URL segment, or a segment that decodes
+│       │                                   to invalid JSON
 │       └── support/
 │           ├── CurlyBraceFormatter.java — beautify(String)/minify(String), static utility (not a
 │           │                               DevUtilOperation itself). Shared by Css/Less/Scss/
@@ -2601,9 +2615,9 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
     │                                 string-case/convert,base64/encode,base64/decode,url/encode,
     │                                 url/decode,html-entity/encode,html-entity/decode,
     │                                 hash/generate,php-serialize/serialize,
-    │                                 php-serialize/unserialize,hex/encode,hex/decode}. Every
-    │                                 endpoint is public — no @CurrentUserId, no authenticated
-    │                                 principal at all.
+    │                                 php-serialize/unserialize,hex/encode,hex/decode,
+    │                                 jwt/debug}. Every endpoint is public — no @CurrentUserId, no
+    │                                 authenticated principal at all.
     └── impl/DevUtilsController.java — implements DevUtilsApi; injects each operation by its
                                         concrete type (no enum-keyed registry — one fixed endpoint
                                         per operation leaves no runtime dispatch decision to make)

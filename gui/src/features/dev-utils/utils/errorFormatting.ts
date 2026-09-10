@@ -51,7 +51,13 @@ const HEADLINE = 'Cannot be processed';
  * actions, `php-serializer`'s own Unserialize action, and `hex-ascii`'s own Hex to ASCII action
  * take this same fallback path too — each uses `inputFormat: 'text'` (not `'json'`) since the
  * shared input box's actual content isn't JSON for at least one of the operation's two directions,
- * so `isJsonInput` is always `false` for them regardless of which action just ran.
+ * so `isJsonInput` is always `false` for them regardless of which action just ran. `jwt-debugger`
+ * takes the same fallback path for the same underlying reason (its *input* is a dot-separated JWT
+ * string, not JSON, even though its *output* is) — its own backend message already names which
+ * segment failed and, for an invalid-JSON segment specifically, already carries a clean
+ * `"(line N, column M)"` suffix; the other two failure shapes (a wrong segment count, an invalid
+ * Base64URL segment) carry no location at all, which `simplifyBackendMessage` already tolerates
+ * (no match just means no suffix gets appended).
  */
 export function buildDevUtilError(input: string, isJsonInput: boolean, backendMessage: string): DevUtilError {
   if (isJsonInput) {

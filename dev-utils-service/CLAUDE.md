@@ -416,7 +416,7 @@ caller.** Every operation is a pure text-in/text-out transform:
   `/csv-to-json`, `/sql/format`, `/php-to-json`, `/json-to-php`, `/string-case/convert`,
   `/base64/encode`, `/base64/decode`, `/url/encode`, `/url/decode`, `/html-entity/encode`,
   `/html-entity/decode`, `/hash/generate`, `/php-serialize/serialize`,
-  `/php-serialize/unserialize`, `/hex/encode`, `/hex/decode`. The
+  `/php-serialize/unserialize`, `/hex/encode`, `/hex/decode`, `/jwt/debug`. The
   controller injects each operation by its concrete type rather than dispatching through an
   enum-keyed registry — with one fixed REST endpoint per operation, there's no runtime "which
   operation" decision left to make (see `DevUtilOperation`'s own Javadoc).
@@ -1060,7 +1060,7 @@ the request named them as two operations.
 `Base64DecodeOperationTest`, `UrlEncodeOperationTest`, `UrlDecodeOperationTest`,
 `HtmlEntityEncodeOperationTest`, `HtmlEntityDecodeOperationTest`, `HashGeneratorOperationTest`,
 `PhpSerializeOperationTest`, `PhpUnserializeOperationTest`, `AsciiToHexOperationTest`,
-`HexToAsciiOperationTest`), plus `service/impl/support/
+`HexToAsciiOperationTest`, `JwtDebuggerOperationTest`), plus `service/impl/support/
 CurlyBraceFormatterTest` (the shared CSS/LESS/SCSS/JS reformatter — brace nesting, already-
 multiline selector lists, comment/string-literal protection, the JS ASI-safety guarantee,
 never-throws-on-unterminated-input), `service/impl/support/SqlFormatterTest` (clause-keyword line
@@ -1083,29 +1083,32 @@ real parse/serialize behavior (pretty vs. minified output, malformed-input rejec
 structural equality via `readTree`, jsoup's lenient-parsing/indent behavior, and — for
 `XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation` — real JAXP/CSV/PHP parsing and rejection
 behavior). Plus `DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)`
-+ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all twenty-seven endpoints
++ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all twenty-eight endpoints
 with **no** `Authorization` header through the real filter chain, confirming end to end (not just
 by static reasoning) that the app actually starts and every endpoint is genuinely public. This is
 exactly the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also
 covers the `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the
 latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP/
-Base64/URL-encoding/PHP-serialized-data/hex all return `400` with
+Base64/URL-encoding/PHP-serialized-data/hex/JWT all return `400` with
 `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005`/`DEVUTILS_006`/`DEVUTILS_007`/`DEVUTILS_008`/
-`DEVUTILS_009` respectively through the shared `GlobalExceptionHandler` — `html-entity/encode`/
-`decode`, `hash/generate`, `php-serialize/serialize`, and `hex/encode` have no matching case here,
-since none of those five ever throws (see `DevUtilsErrorCode`'s own updated Javadoc). Plus
+`DEVUTILS_009`/`DEVUTILS_010` respectively through the shared `GlobalExceptionHandler` —
+`html-entity/encode`/`decode`, `hash/generate`, `php-serialize/serialize`, and `hex/encode` have no
+matching case here, since none of those five ever throws (see `DevUtilsErrorCode`'s own updated
+Javadoc). Plus
 `service/impl/support/
 ConventionalJsonPrettyPrinterTest` (the one support class in this module with its own dedicated
 test file rather than only being exercised indirectly through an operation's own tests — see that
-class's own note above for why). 235 tests total (161 as of the seventh follow-up above, plus 8 new
+class's own note above for why). 243 tests total (161 as of the seventh follow-up above, plus 8 new
 Base64 unit tests and 3 new `DevUtilsServiceApplicationTests` cases from the eighth follow-up, 7 new
 URL unit tests and 3 more `DevUtilsServiceApplicationTests` cases from the ninth, 9 new HTML entity
 unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the tenth, 4 new Hash
 Generator unit tests plus 1 more `DevUtilsServiceApplicationTests` case from the eleventh, 21
 new PHP Serializer unit tests plus 3 more `DevUtilsServiceApplicationTests` cases from the
-twelfth (the thirteenth follow-up added no tests, a pure group reclassification), and 10 new
-ASCII/Hex unit tests plus 3 more `DevUtilsServiceApplicationTests` cases from the fourteenth — see
-each follow-up's own note for the full breakdown), verified via a real
+twelfth (the thirteenth follow-up added no tests, a pure group reclassification), 10 new
+ASCII/Hex unit tests plus 3 more `DevUtilsServiceApplicationTests` cases from the fourteenth, and
+6 new JWT Debugger unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the
+sixteenth (the fifteenth follow-up added no new test, a duplication-only refactor) — see each
+follow-up's own note for the full breakdown), verified via a real
 `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 **Fifteenth follow-up — a second code-quality analysis pass (mirroring the first one above and the
@@ -1159,6 +1162,50 @@ follow-ups 8–14.**
   so no new test needed; the fixed `PhpSerializeParserTest` method itself is one of the existing
   235, not a 236th). Verified via a real `mvn -pl dev-utils-service -am compile`/`test` run (JDK
   21), same as every other change to this module.
+
+**Sixteenth follow-up — 1 new operation (`JwtDebuggerOperation`), the first to actually declare
+`OperationGroup.INSPECTORS`**, per direct request: "JWT Debugger - Read JWT header and payload."
+Backs `POST /api/v1/dev-utils/jwt/debug` — reuses `MinifiableTextRequest`/`DevUtilResponse`, the
+same "pretty vs. minify JSON output" shape `JsonFormatOperation`/`YamlToJsonOperation`/etc. already
+establish, rather than a bespoke response type; the operation's own output is a single JSON string
+(the same string-in-a-`DevUtilResponse` convention every JSON-emitting operation already follows),
+not a genuinely richer shape the way `StringCaseResponse`/`HashResponse` needed.
+
+- **Splits `input` on `.` into exactly 3 segments** (header, payload, signature — the JWS Compact
+  Serialization shape every JWT uses, RFC 7515 §3.1). The header/payload segments are
+  Base64URL-decoded (`Base64.getUrlDecoder()`, confirmed via a real standalone Java harness first to
+  tolerate the unpadded form every real-world JWT actually uses, and to correctly reject the
+  standard `+`/`/` alphabet as invalid) as UTF-8 JSON text, then re-embedded as real nested
+  `ObjectNode`s in the result — not as escaped strings, so the caller sees genuine JSON structure,
+  matching the exact reported example's own output shape byte-for-byte (verified in the operation's
+  own test, not just reasoned about).
+- **The signature segment is carried through verbatim, never decoded** — a real signature is
+  arbitrary binary, essentially never valid UTF-8 text, so its raw Base64URL form is the only
+  representation that means anything to a reader. **No signature verification of any kind, by
+  design** — this module holds no key material to verify against in the first place, and a fully
+  public, unauthenticated endpoint has no business asserting a token is trustworthy regardless; this
+  operation is a pure debugging aid (mirroring jwt.io's own "Decoded" panel), not an authentication
+  check.
+- **New `DevUtilsErrorCode.INVALID_JWT` (`DEVUTILS_010`)** backs 3 real failure paths, each
+  message naming *which* segment failed rather than a generic "invalid JWT": (1) the wrong segment
+  count; (2) a header/payload segment that isn't valid Base64URL; (3) a header/payload segment that
+  decodes to invalid JSON. **Deliberately doesn't route through the shared `JsonNodeIo.readTree`
+  helper** for the JSON-parse step — that helper has no way to name which segment failed, and this
+  operation's whole value-add over a generic JSON error is saying "header"/"payload" specifically —
+  so `decodeJsonSegment`'s own two catch clauses call `objectMapper.readTree`/
+  `ParsingExceptionMessages.friendlyMessage` directly instead, each prepending `segmentName` to the
+  message. This is a deliberate, narrow exception to "reuse `JsonNodeIo`," not a missed
+  opportunity to share — the same "don't force a genuinely different shape through a common helper"
+  principle this module's own `DevUtilOperation` Javadoc already establishes for the operations
+  themselves.
+- 8 new tests: `JwtDebuggerOperationTest` (6 — the exact reported example decoded byte-for-byte
+  identical to the request's own expected output, minify producing single-line output, leading/
+  trailing whitespace tolerance, the wrong-segment-count case, an invalid-Base64URL header segment,
+  and a payload segment that decodes to non-JSON text), plus 2 new
+  `DevUtilsServiceApplicationTests` cases (the new endpoint's reachability with no `Authorization`
+  header, and a malformed token returning `400` with `DEVUTILS_010` through the shared
+  `GlobalExceptionHandler`). Test suite grew from 235 to 243, verified via a real
+  `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 ## Rules specific to this module
 

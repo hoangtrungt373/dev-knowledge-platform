@@ -174,4 +174,12 @@ export const devUtilsApi = {
   decodeHex(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
     return httpClient.post(`${BASE}/hex/decode`, { input }, showError);
   },
+
+  // The first INSPECTORS-group operation, added alongside dev-utils-service's own
+  // JwtDebuggerOperation. Shares MinifiableTextRequest's own "pretty vs. minify" shape — unlike
+  // every ENCODERS_DECODERS pair above, this operation's output (a JSON object) genuinely has a
+  // "compact form" to toggle, the same reasoning `formatJson`/`beautifyXml` etc. already establish.
+  debugJwt(input: string, minify: boolean, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/jwt/debug`, { input, minify }, showError);
+  },
 };

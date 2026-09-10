@@ -3875,6 +3875,34 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       unrelated `@chat` warnings are the same pre-existing, already-documented ones) and a
       successful `vite build` only — no Docker in this sandbox, so the actual on-screen result
       (all three panels' headers/copy-feedback/hidden borders) is unverified in a real browser.
+  - **Follow-up: 1 new operation, "JWT Debugger," per request — the first operation to actually
+    declare `OperationGroup.INSPECTORS`, fulfilling that group's own worked-example Javadoc.**
+    Backs `POST /api/v1/dev-utils/jwt/debug`, wired up entirely through the existing shared
+    `DevUtilToolPanel.tsx` — unlike Hash Generator/Base64 Image, this operation's input/output both
+    fit the plain "text in, a minify flag, JSON text out" shape every `Formatters`/most
+    `Encoders/Decoders` operations already use, so no bespoke panel component was needed.
+    `config/operations.tsx` gained the `jwt-debugger` entry (`group`/`category` `'Inspectors'` —
+    the sidebar's own generic, group-agnostic bucketing renders that section's headline for the
+    first time with no further change needed, the same mechanism that already handled
+    `'Encoders/Decoders'` once `base64-string` first landed), a new `TokenOutlined` sidebar icon
+    (confirmed present in the installed `@mui/icons-material` version first, per this feature's own
+    standing verification step), and the exact reported example as its placeholder (which already
+    happens to decode to a payload containing `"Vui Coding"`, keeping the same running project
+    theme every other operation's placeholder already uses). `inputFormat: 'text'` (not `'json'`)
+    even though the *output* is JSON — the input is a dot-separated JWT string, and picking
+    `'json'` would make a failed submit incorrectly try the browser's own `JSON.parse` fast path
+    first, misreporting a bad segment count or an invalid-Base64URL segment as a JSON syntax error;
+    `errorFormatting.ts`'s own doc comment was updated to note this operation takes the generic
+    backend-message fallback path for the same reason `php-serializer`/`hex-ascii` already do.
+    `api/devUtilsApi.ts` gained `debugJwt` (the first `Encoders/Decoders`-shaped-but-`Inspectors`-
+    grouped method to reuse the "pretty vs. minify" `MinifiableTextRequest` shape, since this
+    operation's JSON output genuinely has a compact form to toggle, unlike every prior
+    `Encoders/Decoders` pair). The `OperationGroupName` doc comment above `OPERATION_GROUP_ORDER`
+    was also corrected in passing — it had drifted to still claim `'Formatters'` was the only group
+    with a real operation, stale since `'Encoders/Decoders'` gained its first one turns ago; now
+    accurately says `'Web'`/`'Generators'` are the only two still declared ahead of use. Verified
+    via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so
+    the actual sidebar/Debug-button/output rendering is unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

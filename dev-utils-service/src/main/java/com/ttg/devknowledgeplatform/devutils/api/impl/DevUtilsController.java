@@ -25,6 +25,7 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.JsonFormatOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToCsvOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToPhpOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToYamlOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.JwtDebuggerOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.LessOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.PhpSerializeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.PhpToJsonOperation;
@@ -76,6 +77,7 @@ public class DevUtilsController implements DevUtilsApi {
     private final PhpUnserializeOperation phpUnserializeOperation;
     private final AsciiToHexOperation asciiToHexOperation;
     private final HexToAsciiOperation hexToAsciiOperation;
+    private final JwtDebuggerOperation jwtDebuggerOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -210,5 +212,10 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<DevUtilResponse> decodeHex(TextRequest request) {
         return ResponseEntity.ok(new DevUtilResponse(hexToAsciiOperation.execute(request.input())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> debugJwt(MinifiableTextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(jwtDebuggerOperation.execute(request.input(), request.minify())));
     }
 }

@@ -1157,6 +1157,34 @@ section again. Full unabridged entry-by-entry history for all three lives in
       takes the same upload path a real file does) and falls back to `readText()` for a plain
       Data URL string. Verified via a clean `tsc --noEmit`/successful `vite build` only — no
       Docker in this sandbox, so neither change is verified in a real browser.
+    - **Follow-up: 1 new operation, `JwtDebuggerOperation`, per request ("JWT Debugger - Read JWT
+      header and payload") — the first operation to actually declare `OperationGroup.INSPECTORS`,
+      fulfilling that group's own worked-example Javadoc.** Backs `POST /api/v1/dev-utils/jwt/debug`
+      (`MinifiableTextRequest`, same "pretty vs. minify" shape `JsonFormatOperation` etc. already
+      use). Splits `input` on `.` into exactly 3 segments (header/payload/signature — the JWS
+      Compact Serialization shape, RFC 7515 §3.1); the header/payload segments are Base64URL-decoded
+      (`Base64.getUrlDecoder()`, tolerating the unpadded form every real JWT uses — confirmed via a
+      real standalone Java harness) and re-embedded as real nested JSON objects in the result; the
+      signature segment is carried through **verbatim, never decoded** — a real signature is
+      arbitrary binary, essentially never valid UTF-8 text, so its raw form is the only
+      representation that means anything. No signature verification of any kind — this module holds
+      no key material, and a fully public endpoint has no business asserting a token is trustworthy.
+      New `DevUtilsErrorCode.INVALID_JWT` (`DEVUTILS_010`) backs 3 real failure paths (wrong segment
+      count; a header/payload segment that isn't valid Base64URL; a header/payload segment that
+      decodes to invalid JSON), each message naming which segment failed rather than a generic
+      "invalid JWT." 8 new backend tests (235→243 — `JwtDebuggerOperationTest` plus 2 new
+      `DevUtilsServiceApplicationTests` cases), verified via a real `mvn -pl dev-utils-service -am
+      test` run (JDK 21) — 243/243 passing.
+      - **`gui`**: wired up entirely through the existing shared `DevUtilToolPanel.tsx` — no bespoke
+        panel needed, unlike Hash Generator/Base64 Image, since this operation's plain "text in, a
+        minify flag, JSON text out" shape already fits it. `config/operations.tsx` gained the
+        `jwt-debugger` entry (`'Inspectors'` — rendering that sidebar section for the first time,
+        via the same generic bucketing that already handled `'Encoders/Decoders'`), a new
+        `TokenOutlined` icon, and the exact reported example as its placeholder; `inputFormat:
+        'text'` (not `'json'`, even though the output is) for the same reason `php-serializer`/
+        `hex-ascii` already use it. `api/devUtilsApi.ts` gained `debugJwt`. Verified via a clean
+        `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the
+        actual on-screen result is unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.
