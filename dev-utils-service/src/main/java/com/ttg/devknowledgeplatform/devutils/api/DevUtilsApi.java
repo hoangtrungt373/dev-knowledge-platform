@@ -330,4 +330,16 @@ public interface DevUtilsApi {
      */
     @PostMapping("/regexp/test")
     ResponseEntity<DevUtilResponse> testRegexp(@Valid @RequestBody RegexTestRequest request);
+
+    /**
+     * Parses {@code request.input()} into its structural components (protocol/username/password/
+     * hostname/port/pathname/search/query/hash/origin — see {@code UrlParserOperation}'s own
+     * Javadoc for the exact shape and normalization rules), pretty-printed or, with
+     * {@code request.minify()}, compact/single-line.
+     *
+     * @return {@code 200} with the parsed components, or {@code 400} if {@code request.input()}
+     *         isn't a syntactically valid, absolute URL with a host
+     */
+    @PostMapping("/url/parse")
+    ResponseEntity<DevUtilResponse> parseUrl(@Valid @RequestBody MinifiableTextRequest request);
 }

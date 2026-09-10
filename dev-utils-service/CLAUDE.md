@@ -10,7 +10,8 @@ PHP↔JSON conversion, String Case Converter, Base64 encode/decode, URL encode/d
 encode/decode, Hash Generator (SHA-1/256/384/512), PHP Serializer (JSON ↔ PHP's own serialize()
 format), ASCII↔Hex conversion, JWT Debugger (read a JWT's header/payload, no signature
 verification), RegExp Tester (test a pattern against text, real matches only — see
-`RegexTesterOperation`'s own Javadoc for its ReDoS-timeout guard). Package root:
+`RegexTesterOperation`'s own Javadoc for its ReDoS-timeout guard), URL Parser (protocol/hostname/port/pathname/search/
+query/hash/origin, mirroring the browser's own `URL` object). Package root:
 `com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike
@@ -400,14 +401,17 @@ caller.** Every operation is a pure text-in/text-out transform:
   before any other check runs) — so every operation shares one cap rather than each endpoint
   guessing its own number; split it per operation later if a real use case needs a different bound
   for one of them.
-- `dto/{MinifiableTextRequest,TextRequest,DevUtilResponse,StringCaseResponse}` — request/response
-  DTOs are shared **only where the shape genuinely matches**: `MinifiableTextRequest`
-  (`input`/`minify`) backs every operation with a real minify concept (`json/format`/
-  `yaml-to-json`/`html/beautify`/`css/beautify`/`less/beautify`/`scss/beautify`/`js/beautify`/
-  `erb/beautify`/`xml/beautify`/`csv-to-json`/`sql/format`/`php-to-json`/`json-to-php`);
-  `TextRequest` (`input` only) backs `json-to-yaml`/`json-to-csv`/`string-case/convert`, none of
-  which has a minify concept at all (YAML/CSV/a case conversion all lack a distinct "compact" form
-  to toggle) — not the same type with an ignored field. Every `input` field carries
+- `dto/{MinifiableTextRequest,TextRequest,RegexTestRequest,DevUtilResponse,StringCaseResponse}` —
+  request/response DTOs are shared **only where the shape genuinely matches**:
+  `MinifiableTextRequest` (`input`/`minify`) backs every operation with a real minify concept
+  (`json/format`/`yaml-to-json`/`html/beautify`/`css/beautify`/`less/beautify`/`scss/beautify`/
+  `js/beautify`/`erb/beautify`/`xml/beautify`/`csv-to-json`/`sql/format`/`php-to-json`/
+  `json-to-php`/`jwt/debug`/`url/parse`); `TextRequest` (`input` only) backs
+  `json-to-yaml`/`json-to-csv`/`string-case/convert`, none of which has a minify concept at all
+  (YAML/CSV/a case conversion all lack a distinct "compact" form to toggle) — not the same type
+  with an ignored field. `RegexTestRequest` (`pattern`/`flags`/`testText`) backs `regexp/test`
+  only — the first request DTO with 3 genuinely separate fields rather than "text in, a minify
+  flag" (see that record's own Javadoc). Every `input`/`pattern`/`testText` field carries
   `@NotBlank @Size(max = DevUtilsLimits.MAX_INPUT_LENGTH)`. `DevUtilResponse` (`output`) stays
   shared across every single-string-output operation, but `StringCaseResponse` is the first
   operation whose output is genuinely richer (7 named case variants at once) to actually need its
@@ -419,9 +423,10 @@ caller.** Every operation is a pure text-in/text-out transform:
   `/csv-to-json`, `/sql/format`, `/php-to-json`, `/json-to-php`, `/string-case/convert`,
   `/base64/encode`, `/base64/decode`, `/url/encode`, `/url/decode`, `/html-entity/encode`,
   `/html-entity/decode`, `/hash/generate`, `/php-serialize/serialize`,
-  `/php-serialize/unserialize`, `/hex/encode`, `/hex/decode`, `/jwt/debug`, `/regexp/test`. The
-  controller injects each operation by its concrete type rather than dispatching through an
-  enum-keyed registry — with one fixed REST endpoint per operation, there's no runtime "which
+  `/php-serialize/unserialize`, `/hex/encode`, `/hex/decode`, `/jwt/debug`, `/regexp/test`,
+  `/url/parse`. The controller injects each operation by its concrete type rather than
+  dispatching through an enum-keyed registry — with one fixed REST endpoint per operation, there's
+  no runtime "which
   operation" decision left to make (see `DevUtilOperation`'s own Javadoc).
 
 **Code-quality analysis pass (mirroring the earlier `gui` dev-utils analysis) found and fixed 2
@@ -1063,7 +1068,8 @@ the request named them as two operations.
 `Base64DecodeOperationTest`, `UrlEncodeOperationTest`, `UrlDecodeOperationTest`,
 `HtmlEntityEncodeOperationTest`, `HtmlEntityDecodeOperationTest`, `HashGeneratorOperationTest`,
 `PhpSerializeOperationTest`, `PhpUnserializeOperationTest`, `AsciiToHexOperationTest`,
-`HexToAsciiOperationTest`, `JwtDebuggerOperationTest`, `RegexTesterOperationTest`), plus `service/impl/support/
+`HexToAsciiOperationTest`, `JwtDebuggerOperationTest`, `RegexTesterOperationTest`,
+`UrlParserOperationTest`), plus `service/impl/support/
 CurlyBraceFormatterTest` (the shared CSS/LESS/SCSS/JS reformatter — brace nesting, already-
 multiline selector lists, comment/string-literal protection, the JS ASI-safety guarantee,
 never-throws-on-unterminated-input), `service/impl/support/SqlFormatterTest` (clause-keyword line
@@ -1086,15 +1092,15 @@ real parse/serialize behavior (pretty vs. minified output, malformed-input rejec
 structural equality via `readTree`, jsoup's lenient-parsing/indent behavior, and — for
 `XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation` — real JAXP/CSV/PHP parsing and rejection
 behavior). Plus `DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)`
-+ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all twenty-nine endpoints
++ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all thirty endpoints
 with **no** `Authorization` header through the real filter chain, confirming end to end (not just
 by static reasoning) that the app actually starts and every endpoint is genuinely public. This is
 exactly the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also
 covers the `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the
 latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP/
-Base64/URL-encoding/PHP-serialized-data/hex/JWT/regex all return `400` with
+Base64/URL-encoding/PHP-serialized-data/hex/JWT/regex/URL all return `400` with
 `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005`/`DEVUTILS_006`/`DEVUTILS_007`/`DEVUTILS_008`/
-`DEVUTILS_009`/`DEVUTILS_010`/`DEVUTILS_011` respectively through the shared
+`DEVUTILS_009`/`DEVUTILS_010`/`DEVUTILS_011`/`DEVUTILS_013` respectively through the shared
 `GlobalExceptionHandler` — `html-entity/encode`/`decode`, `hash/generate`,
 `php-serialize/serialize`, and `hex/encode` have no matching case here, since none of those five
 ever throws (see `DevUtilsErrorCode`'s own updated Javadoc); `regexp/test`'s own second failure
@@ -1105,7 +1111,7 @@ directly in `RegexTesterOperationTest`. Plus
 `service/impl/support/
 ConventionalJsonPrettyPrinterTest` (the one support class in this module with its own dedicated
 test file rather than only being exercised indirectly through an operation's own tests — see that
-class's own note above for why). 254 tests total (161 as of the seventh follow-up above, plus 8 new
+class's own note above for why). 269 tests total (161 as of the seventh follow-up above, plus 8 new
 Base64 unit tests and 3 new `DevUtilsServiceApplicationTests` cases from the eighth follow-up, 7 new
 URL unit tests and 3 more `DevUtilsServiceApplicationTests` cases from the ninth, 9 new HTML entity
 unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the tenth, 4 new Hash
@@ -1114,9 +1120,10 @@ new PHP Serializer unit tests plus 3 more `DevUtilsServiceApplicationTests` case
 twelfth (the thirteenth follow-up added no tests, a pure group reclassification), 10 new
 ASCII/Hex unit tests plus 3 more `DevUtilsServiceApplicationTests` cases from the fourteenth,
 6 new JWT Debugger unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the
-sixteenth (the fifteenth follow-up added no new test, a duplication-only refactor), and 9 new
-RegExp Tester unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the seventeenth
-— see each follow-up's own note for the full breakdown), verified via a real
+sixteenth (the fifteenth follow-up added no new test, a duplication-only refactor), 9 new
+RegExp Tester unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the seventeenth,
+and 13 new URL Parser unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the
+eighteenth — see each follow-up's own note for the full breakdown), verified via a real
 `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 **Fifteenth follow-up — a second code-quality analysis pass (mirroring the first one above and the
@@ -1280,6 +1287,70 @@ every operation through one shared request shape.
   to 254, verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21) — the
   `RegexTesterOperationTest` class itself took ~2.0s of that run, consistent with the timeout test
   actually exercising the real 2-second guard rather than mocking around it.
+
+**Eighteenth follow-up — 1 new operation (`UrlParserOperation`), the first to declare
+`OperationGroup.WEB`**, per direct request: "URL Parser - Separate components and query string."
+Backs `POST /api/v1/dev-utils/url/parse` — reuses `MinifiableTextRequest`/`DevUtilResponse`, the
+same "pretty vs. minify JSON output" shape `JsonFormatOperation`/`JwtDebuggerOperation`/etc.
+already establish (this operation's own JSON output has no genuinely richer shape than a single
+string, unlike `HashResponse`/`StringCaseResponse`). Fulfills `OperationGroup.WEB`'s own Javadoc —
+a URL is exactly the "inherently web-specific concept, not a generic text shape" that group was
+declared ahead of use for, even though its own named example was an HTTP header/user-agent parser
+specifically (still unbuilt) rather than this literal operation.
+
+- **Field names and shapes deliberately mirror the browser's own `URL` object (the WHATWG URL
+  Standard)** — `protocol`/`username`/`password`/`hostname`/`port`/`pathname`/`search`/`hash`/
+  `origin` — plus one field that object doesn't have, `query` (the parsed `search` string as a
+  real JSON object, what most standalone "URL parser" tools add on top of the raw property list).
+  **Backed by `java.net.URI`, a real validating parser — not a hand-rolled string split** — but
+  genuinely not identical to a browser's own WHATWG URL parser: `URI` is stricter about what it
+  accepts (rejects an unencoded space a browser tolerates, confirmed via a real standalone Java
+  harness) and normalizes less (preserves the scheme/host's own original casing, where WHATWG
+  always lowercases both — closed explicitly via `String#toLowerCase(Locale.ROOT)` on each, the
+  one normalization gap this operation *does* bridge). Rejecting a URL a browser would accept is
+  an accepted, documented gap, not a bug to chase — the same "real parser, not spec-identical to
+  what these field names evoke" trade-off `RegexTesterOperation`'s own JS-flags-on-a-Java-engine
+  translation already makes.
+- **`port`/`origin` both normalize away a scheme's own default port** (443 for `https`, 80 for
+  `http`/`ws`, 21 for `ftp`, 443 for `wss` — the WHATWG Standard's fixed "special scheme" table),
+  matching every browser's own `URL.port`/`URL.origin` treating an explicitly-default port
+  identically to an absent one — confirmed via harness: `https://vuicoding.me:443/...` (the exact
+  reported example) resolves `port` to `""`, not `"443"`. **This is a deliberate correction of the
+  reported example's own literal expected value**, which showed a stray non-English placeholder
+  (`"port": "mặc định"`, Vietnamese for "default") in an otherwise all-English field list — read as
+  an unintentional slip (every other field in the example follows exact WHATWG semantics) rather
+  than a real requirement for a translated string; the empty-string convention every browser's own
+  `URL.port` already uses was implemented instead. `origin` is the opaque literal string `"null"`
+  (matching the WHATWG Standard's own opaque-origin serialization for a non-network scheme, e.g. a
+  custom `myapp://host/path`) — never a JSON `null`, since this operation's whole output is a JSON
+  *object* and a bare `null` there would misleadingly read as "this field is absent."
+- **`query` matches `Object.fromEntries(new URLSearchParams(search))`'s own JS behavior**,
+  including for a duplicate key: the *last* occurrence's value wins, but the key keeps its *first*
+  position in the object — a plain insertion-ordered map update (Jackson's `ObjectNode#put` on an
+  already-present key), not a remove-then-re-append, the same behavior a JS object's own property
+  reassignment already has (confirmed via a dedicated test, not assumed). Both key and value are
+  percent-decoded via `URLDecoder#decode` (UTF-8), the same application/x-www-form-urlencoded
+  convention `UrlDecodeOperation` already uses elsewhere in this module.
+- **Real failure path**: new `DevUtilsErrorCode.INVALID_URL` (`DEVUTILS_013`) — deliberately a
+  distinct code from the existing `INVALID_URL_ENCODING` (`DEVUTILS_007`), which is about
+  percent-encoding syntax specifically, not a URL's overall structure — backed by either a raw
+  `URISyntaxException` message, or (for a syntactically valid but non-absolute/host-less URI
+  reference, e.g. a bare path or a `mailto:` address, both confirmed via harness to parse
+  successfully with a `null` scheme/host rather than throwing) a plain "must be an absolute URL
+  with a scheme and host" sentence.
+- `gui`'s own `/dev-utils` page needed no new capability at all — this operation's plain
+  "text in, a minify flag, JSON text out" shape already fits the shared `DevUtilToolPanel.tsx`
+  exactly, unlike `JwtDebuggerOperation`'s two custom-panel siblings.
+- 13 new tests in `UrlParserOperationTest` (the exact reported example, byte-for-byte, with the
+  corrected empty-string port; minify; a non-default port kept and reflected in `origin`; the
+  default-port normalization; userinfo splitting; scheme/hostname lowercasing with path casing
+  left untouched; the empty-pathname-becomes-"/" default; the opaque-`"null"`-origin case for a
+  custom scheme; a query key with no `=`; the duplicate-key-keeps-first-position case; and 3
+  rejection cases — a malformed URI, a schemeless/hostless path, and a syntactically-valid-but-
+  host-less `mailto:` URI), plus 2 new `DevUtilsServiceApplicationTests` cases (the new endpoint's
+  reachability with no `Authorization` header, and a malformed URL returning `400` with
+  `DEVUTILS_013`). Test suite grew from 254 to 269, verified via a real
+  `mvn -pl dev-utils-service -am test` run (JDK 21) — 269/269 passing.
 
 ## Rules specific to this module
 

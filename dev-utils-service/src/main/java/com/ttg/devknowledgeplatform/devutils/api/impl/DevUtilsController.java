@@ -37,6 +37,7 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.SqlFormatOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.StringCaseOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.UrlDecodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.UrlEncodeOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.UrlParserOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.XmlOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.YamlToJsonOperation;
 
@@ -81,6 +82,7 @@ public class DevUtilsController implements DevUtilsApi {
     private final HexToAsciiOperation hexToAsciiOperation;
     private final JwtDebuggerOperation jwtDebuggerOperation;
     private final RegexTesterOperation regexTesterOperation;
+    private final UrlParserOperation urlParserOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -226,5 +228,10 @@ public class DevUtilsController implements DevUtilsApi {
     public ResponseEntity<DevUtilResponse> testRegexp(RegexTestRequest request) {
         return ResponseEntity.ok(new DevUtilResponse(
                 regexTesterOperation.execute(request.pattern(), request.flags(), request.testText())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> parseUrl(MinifiableTextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(urlParserOperation.execute(request.input(), request.minify())));
     }
 }

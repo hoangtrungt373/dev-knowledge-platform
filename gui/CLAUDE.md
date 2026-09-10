@@ -3903,6 +3903,77 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     accurately says `'Web'`/`'Generators'` are the only two still declared ahead of use. Verified
     via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so
     the actual sidebar/Debug-button/output rendering is unverified in a real browser.
+  - **Follow-up: 1 new operation, "RegExp Tester," per request — the second operation to declare
+    `OperationGroup.INSPECTORS`, and the third custom-layout operation overall (after Hash
+    Generator and Base64 Image).** Backs `POST /api/v1/dev-utils/regexp/test`. Recommended and
+    built a bespoke panel rather than bending this into the shared `DevUtilToolPanel.tsx` — this
+    operation's input is genuinely 3 separate fields (a pattern, its flags, and the text to test
+    it against), not "text in, a minify flag," the exact shape that component's own Javadoc
+    already documents as the reason it deliberately isn't a shared `execute(...)` signature on the
+    backend either.
+    - **New `components/RegExpTesterPanel.tsx`** — two Input cards (mirroring
+      `Base64ImagePanel.tsx`'s own two-card Input shape): **Pattern** (a `/pattern/flags`-styled
+      row — literal `/` characters flanking a pattern `TextField` and a narrow flags `TextField`,
+      plus a caption naming the 4 supported flags) and **Test String** (a plain multiline box with
+      Paste + the Test action in its own header, mirroring `Base64ImagePanel`'s "Image Data URL"
+      card). **Output** is a plain read-only text block — no CodeMirror, matches are a short list
+      of extracted strings, not code to syntax-highlight, the same "much simpler than the shared
+      panel" choice `HashGeneratorPanel.tsx` already makes for its own output.
+    - **New `utils/regexInputFormat.ts` (`serializeRegexInput`/`parseRegexInput`)** — encodes the
+      3 fields into the single lifted `input` string `DevUtilsPage.tsx`'s Sample/Clear buttons
+      already operate on (`/pattern/flags\n\ntestText`, safe to round-trip since a pattern can
+      never contain a real newline), the same "one shared lifted string, several visual widgets"
+      trick `Base64ImagePanel.tsx` already established for its own Upload/Data-URL pair. Shared
+      between the panel (which derives all 3 fields from `input` on every render, with no separate
+      local state for the text itself) and `config/operations.tsx`'s own `onSubmit` (which
+      decomposes the same string back apart before calling `devUtilsApi.testRegexp`) — one format,
+      defined once, not duplicated across the two files that both need it.
+    - **Unlike `HashGeneratorPanel.tsx`'s toast-only error handling, a failed submit renders
+      inline in the Output panel** — the same treatment `DevUtilToolPanel.tsx` already
+      established, chosen deliberately (not copied by default) because an invalid-pattern error is
+      a common, expected outcome while actively typing a regex, not the rare edge case
+      `HashGeneratorOperation` practically never hits. Reuses the plain MUI `error.main`/
+      `error.light` theme tokens directly for the error box, rather than `DevUtilToolPanel.tsx`'s
+      own fixed-literal color constants — that panel needs fixed literals specifically because its
+      Output background is independently state-driven/theme-independent (a real code editor);
+      this panel's Output has no such scheme, so the plain theme tokens are actually the more
+      correct choice here, not a shortcut.
+    - **Two small extractions made in passing, once a 2nd occurrence of each turned up while
+      building this panel** (the same "extract once a real 2nd/3rd copy shows up" threshold this
+      feature's own earlier duplication-audit pass already established): new
+      `utils/downloadTextFile.ts`, pulled out of `DevUtilToolPanel.tsx`'s own previously
+      module-private helper so both files can share it instead of a second copy being written
+      here; and this panel reuses the existing `PanelHeader`/`useCopyFeedback`/
+      `HIDDEN_TEXT_FIELD_OUTLINE_SX` extractions from that same earlier pass directly, rather than
+      re-deriving any of the three.
+    - `config/operations.tsx` gained the `regexp-tester` entry (`group`/`category` `'Inspectors'`,
+      a new `FindReplaceOutlined` sidebar icon, the exact reported example as its placeholder —
+      built via `serializeRegexInput` itself, so it can never drift out of sync with what the
+      panel actually parses) and `api/devUtilsApi.ts` gained `testRegexp`. `DevUtilsPage.tsx`'s
+      own custom-layout dispatch grew a third `else if` branch, per that comment's own "extend
+      this the same way if a third one ever needs its own layout" note.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual pattern/flags/test-string editing, Test action, and inline error
+      rendering are all unverified in a real browser.
+  - **Follow-up: 1 new operation, "URL Parser," per request — the first operation to declare
+    `OperationGroup.WEB`.** Backs `POST /api/v1/dev-utils/url/parse`. **Needed no new GUI
+    capability at all** — unlike Hash Generator/Base64 Image/RegExp Tester, this operation's
+    output (protocol/hostname/port/pathname/search/query/hash/origin, mirroring the browser's own
+    `URL` object) is a single JSON string like any other, so it renders through the existing
+    shared `DevUtilToolPanel.tsx` unchanged. `config/operations.tsx` gained the `url-parser` entry
+    (`group`/`category` `'Web'` — the sidebar's own generic, group-agnostic bucketing renders that
+    section's headline for the first time, the same mechanism that already handled `'Inspectors'`
+    once `jwt-debugger` first landed), a new `PublicOutlined` sidebar icon (`LinkOutlined` was
+    already taken by `url-string`), and the exact reported example as its placeholder;
+    `outputLanguage: 'json'`/`supportsMinify: true` (this operation's JSON output genuinely has a
+    compact form to toggle, the same reasoning `jwt-debugger` already establishes).
+    `api/devUtilsApi.ts` gained `parseUrl`. The `OperationGroupName` doc comment above
+    `OPERATION_GROUP_ORDER` was corrected in passing again, for the same reason as the
+    `jwt-debugger` follow-up's own fix — now says `'Generators'` is the only group left fully
+    declared-ahead-of-use.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual sidebar/Parse-button/output rendering is unverified in a real
+      browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

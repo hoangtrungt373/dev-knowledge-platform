@@ -190,4 +190,12 @@ export const devUtilsApi = {
   testRegexp(pattern: string, flags: string, testText: string, showError?: ShowError): Promise<DevUtilsResponse> {
     return httpClient.post(`${BASE}/regexp/test`, { pattern, flags, testText }, showError);
   },
+
+  // The first WEB-group operation, added alongside dev-utils-service's own UrlParserOperation.
+  // Back to the plain (input, minify) shape every Formatters-group operation already shares — its
+  // output (protocol/hostname/port/etc., plus a parsed query object) is a single JSON string like
+  // any other, so it renders through the shared DevUtilToolPanel with no bespoke panel needed.
+  parseUrl(input: string, minify: boolean, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/url/parse`, { input, minify }, showError);
+  },
 };

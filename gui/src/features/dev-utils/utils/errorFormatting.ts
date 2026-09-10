@@ -57,7 +57,11 @@ const HEADLINE = 'Cannot be processed';
  * segment failed and, for an invalid-JSON segment specifically, already carries a clean
  * `"(line N, column M)"` suffix; the other two failure shapes (a wrong segment count, an invalid
  * Base64URL segment) carry no location at all, which `simplifyBackendMessage` already tolerates
- * (no match just means no suffix gets appended).
+ * (no match just means no suffix gets appended). `url-parser` takes the same fallback path for
+ * the same reason once more — its input is a URL string, not JSON, even though its output is; its
+ * own backend message (a raw `URISyntaxException` message, or a plain "must be an absolute URL
+ * with a scheme and host" sentence) never carries a location suffix at all either, the same
+ * no-location-to-tolerate case two of `jwt-debugger`'s own three failure shapes already are.
  */
 export function buildDevUtilError(input: string, isJsonInput: boolean, backendMessage: string): DevUtilError {
   if (isJsonInput) {

@@ -18,7 +18,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
  * {@link MockMvc} — verifies, end to end rather than by static reasoning alone, that this app
  * actually starts (the {@code GlobalExceptionHandler}/{@code spring-boot-starter-security}
  * classpath dependency reasoning in {@code security.SecurityConfig}'s own Javadoc holds up) and
- * that every one of the 29 operation endpoints is genuinely reachable with no
+ * that every one of the 30 operation endpoints is genuinely reachable with no
  * {@code Authorization} header at all.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -382,6 +382,26 @@ class DevUtilsServiceApplicationTests {
                         .content("{\"pattern\":\"[unclosed\",\"flags\":\"g\",\"testText\":\"anything\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_011")));
+    }
+
+    @Test
+    void parseUrlIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/url/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"https://vuicoding.me:443/tools/dev-utils?tab=json&from=homepage"
+                                + "#workspace\",\"minify\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("vuicoding.me")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("tab=json")));
+    }
+
+    @Test
+    void malformedUrlReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/url/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"/just/a/path\",\"minify\":false}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_013")));
     }
 
     @Test

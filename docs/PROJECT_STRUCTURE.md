@@ -2361,8 +2361,12 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 fulfilling that group's own "a JWT decoder" worked example
 │   │                                 (RegexTesterOperation itself wasn't the named example, but
 │   │                                 fits the same "reads/tests a value rather than transforming
-│   │                                 it" shape). WEB/GENERATORS remain fully declared-ahead-of-use,
-│   │                                 still with no operation of their own.
+│   │                                 it" shape). UrlParserOperation declares WEB — the first
+│   │                                 operation to actually land there (a URL is exactly the
+│   │                                 "inherently web-specific concept" that group's own Javadoc
+│   │                                 describes; its own named example was an HTTP header/
+│   │                                 user-agent parser, still unbuilt). GENERATORS remains fully
+│   │                                 declared-ahead-of-use, still with no operation of its own.
 │   └── impl/
 │       ├── JsonFormatOperation.java     — execute(String input, boolean minify); validates +
 │       │                                   pretty-prints (or, minified, compact-serializes) in one
@@ -2522,6 +2526,19 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   BusinessException wrapping INVALID_REGEX (DEVUTILS_011)
 │       │                                   on a pattern that fails to compile, or REGEX_TIMEOUT
 │       │                                   (DEVUTILS_012) on a timeout
+│       ├── UrlParserOperation.java     — execute(String input, boolean minify); the first
+│       │                                   operation to declare OperationGroup.WEB. Backed by
+│       │                                   java.net.URI (a real parser, not a hand-rolled split);
+│       │                                   field names/shapes mirror the browser's own URL object
+│       │                                   (protocol/username/password/hostname/port/pathname/
+│       │                                   search/hash/origin) plus a `query` field that object
+│       │                                   doesn't have (search parsed into a real JSON object).
+│       │                                   port/origin both normalize away a scheme's own default
+│       │                                   port (443 https, 80 http, etc.), matching every
+│       │                                   browser's own URL.port/URL.origin; origin is the opaque
+│       │                                   literal "null" for a non-network scheme. Throws
+│       │                                   BusinessException wrapping INVALID_URL (DEVUTILS_013)
+│       │                                   on a malformed URI or one with no scheme/host
 │       └── support/
 │           ├── CurlyBraceFormatter.java — beautify(String)/minify(String), static utility (not a
 │           │                               DevUtilOperation itself). Shared by Css/Less/Scss/
@@ -2615,7 +2632,8 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 every operation with a real minify concept (json/format,
 │   │                                 yaml-to-json, html/beautify, css/beautify, less/beautify,
 │   │                                 scss/beautify, js/beautify, erb/beautify, xml/beautify,
-│   │                                 csv-to-json, sql/format, php-to-json, json-to-php, jwt/debug)
+│   │                                 csv-to-json, sql/format, php-to-json, json-to-php, jwt/debug,
+│   │                                 url/parse)
 │   ├── TextRequest.java           — input only (same @Size cap); backs json-to-yaml/json-to-csv/
 │   │                                 string-case/convert, none of which has a minify concept
 │   │                                 (YAML/CSV/a case conversion all lack a distinct "compact"
@@ -2641,8 +2659,8 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
     │                                 url/decode,html-entity/encode,html-entity/decode,
     │                                 hash/generate,php-serialize/serialize,
     │                                 php-serialize/unserialize,hex/encode,hex/decode,
-    │                                 jwt/debug,regexp/test}. Every endpoint is public — no
-    │                                 @CurrentUserId, no authenticated principal at all.
+    │                                 jwt/debug,regexp/test,url/parse}. Every endpoint is public —
+    │                                 no @CurrentUserId, no authenticated principal at all.
     └── impl/DevUtilsController.java — implements DevUtilsApi; injects each operation by its
                                         concrete type (no enum-keyed registry — one fixed endpoint
                                         per operation leaves no runtime dispatch decision to make)

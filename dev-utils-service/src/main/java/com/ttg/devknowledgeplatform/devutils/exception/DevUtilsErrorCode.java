@@ -66,7 +66,12 @@ import lombok.Getter;
  * to evaluate against the given text (see that class's own Javadoc for why a public,
  * unauthenticated regex endpoint needs an explicit timeout guard against catastrophic
  * backtracking — confirmed as a real, not just theoretical, risk against this JDK's own
- * {@code java.util.regex} engine before this was built).
+ * {@code java.util.regex} engine before this was built). {@code INVALID_URL} backs
+ * {@code UrlParserOperation}'s own real failure path — a {@link java.net.URISyntaxException} from
+ * {@link java.net.URI}, or a syntactically valid URI reference that isn't absolute/has no host
+ * (e.g. a bare path, or a {@code mailto:} address) — genuinely distinct from
+ * {@code INVALID_URL_ENCODING} above, which is about percent-encoding syntax specifically, not a
+ * URL's overall structure.
  */
 @Getter
 public enum DevUtilsErrorCode implements ErrorCode {
@@ -82,7 +87,8 @@ public enum DevUtilsErrorCode implements ErrorCode {
     INVALID_HEX("DEVUTILS_009", "Invalid hex data: {0}", HttpStatus.BAD_REQUEST),
     INVALID_JWT("DEVUTILS_010", "Invalid JWT: {0}", HttpStatus.BAD_REQUEST),
     INVALID_REGEX("DEVUTILS_011", "Invalid regular expression: {0}", HttpStatus.BAD_REQUEST),
-    REGEX_TIMEOUT("DEVUTILS_012", "Regular expression evaluation timed out: {0}", HttpStatus.BAD_REQUEST);
+    REGEX_TIMEOUT("DEVUTILS_012", "Regular expression evaluation timed out: {0}", HttpStatus.BAD_REQUEST),
+    INVALID_URL("DEVUTILS_013", "Invalid URL: {0}", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

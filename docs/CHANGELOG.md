@@ -1227,6 +1227,36 @@ section again. Full unabridged entry-by-entry history for all three lives in
         `FindReplaceOutlined` icon) and `api/devUtilsApi.ts` gained `testRegexp`. Verified via a
         clean `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the
         actual on-screen result is unverified in a real browser.
+    - **Follow-up: 1 new operation, `UrlParserOperation`, per request ("URL Parser - Separate
+      components and query string") — the first operation to declare `OperationGroup.WEB`.**
+      Backs `POST /api/v1/dev-utils/url/parse`. Field names/shapes deliberately mirror the
+      browser's own `URL` object (protocol/username/password/hostname/port/pathname/search/hash/
+      origin), plus `query` (search parsed into a real JSON object, matching
+      `Object.fromEntries(new URLSearchParams(search))`'s own JS behavior — a duplicate key's last
+      value wins but keeps its first position). Backed by `java.net.URI`, a real parser — not
+      spec-identical to the browser's own WHATWG URL parser (stricter about what it accepts,
+      normalizes less), a documented gap the same way `RegexTesterOperation`'s own JS-flags-on-Java
+      translation already is; scheme/hostname casing is normalized to lowercase explicitly to
+      close that one gap. `port`/`origin` both normalize away a scheme's own default port (443
+      https, 80 http, etc.), matching every browser's own `URL.port`/`URL.origin` — confirmed via
+      harness against the exact reported example (`:443` on an `https://` URL resolves to `port:
+      ""`). **This also corrects the reported example's own expected value** — it showed a stray
+      Vietnamese placeholder (`"port": "mặc định"`) in an otherwise all-English field list, read as
+      an unintentional slip rather than a real requirement, so the standard empty-string convention
+      was implemented instead. `origin` is the opaque literal `"null"` for a non-network scheme.
+      New `DevUtilsErrorCode.INVALID_URL` (`DEVUTILS_013`) — deliberately distinct from the
+      existing `INVALID_URL_ENCODING`, which is about percent-encoding syntax, not URL structure.
+      13 new backend tests (254→269 — `UrlParserOperationTest`, including the exact reported
+      example byte-for-byte with the corrected port value, plus 2 new
+      `DevUtilsServiceApplicationTests` cases), verified via a real `mvn -pl dev-utils-service -am
+      test` run (JDK 21) — 269/269 passing.
+      - **`gui`**: needed no new capability at all — this operation's plain "text in, a minify
+        flag, JSON text out" shape already fits the shared `DevUtilToolPanel.tsx` exactly.
+        `config/operations.tsx` gained the `url-parser` entry (`'Web'` — rendering that sidebar
+        section for the first time, via the same generic bucketing that already handled
+        `'Inspectors'` — a new `PublicOutlined` icon) and `api/devUtilsApi.ts` gained `parseUrl`.
+        Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+        sandbox, so the actual on-screen result is unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.
