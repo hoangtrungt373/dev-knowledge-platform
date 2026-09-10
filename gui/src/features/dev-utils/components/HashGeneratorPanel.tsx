@@ -26,6 +26,16 @@ interface HashGeneratorPanelProps {
    * text, parsed back apart by `parseHashLines` below rather than threading a second, richer
    * response type down from `DevUtilsPage.tsx`. */
   onSubmit: (input: string, minify: boolean) => Promise<DevUtilsResponse>;
+  /** Height (px) computed by `DevUtilsPage.tsx` from the actual viewport — the same value the
+   * shared `DevUtilToolPanel`'s Input card and the sidebar both size themselves to. Applied as a
+   * `minHeight` **floor** on both columns here, not a fixed `height` and not paired with a resize/
+   * maximize feature — see this component's own doc comment for why: Input's own text can be long
+   * (up to the shared `MAX_INPUT_LENGTH`), but its `TextField` already autogrows/scrolls within a
+   * bounded row range, and Output is always exactly 4 short, fixed-length digests — neither side
+   * ever grows large enough to need `RegExpTesterPanel.tsx`'s/`TextDiffPanel.tsx`'s own
+   * resizable-split-plus-maximize treatment; the floor exists purely so this panel doesn't look
+   * visually short next to a tall sidebar when there's little content. */
+  availableHeight: number;
 }
 
 // One color per algorithm, so the four cards read as distinct at a glance rather than four
@@ -76,6 +86,12 @@ function parseHashLines(output: string): Array<{ label: string; value: string }>
  * name) and a monospace body (the digest itself), each with its own Copy button and independent
  * "Copied!" feedback — copying one digest out of a single concatenated block was the actual
  * problem this layout exists to fix.
+ *
+ * <p>Both columns carry a `minHeight: availableHeight` floor (not a fixed `height`, and not
+ * paired with a resizable split/maximize toggle) — see `availableHeight`'s own doc comment for
+ * why: this operation's result is always small and bounded, so there's no genuinely large-content
+ * case here the way `RegExpTesterPanel.tsx`'s match list or `TextDiffPanel.tsx`'s Diff view have;
+ * the floor is purely cosmetic, keeping this panel from looking short next to a tall sidebar.
  */
 export default function HashGeneratorPanel({
   input,
@@ -85,6 +101,7 @@ export default function HashGeneratorPanel({
   actionLabel,
   inputPlaceholder,
   onSubmit,
+  availableHeight,
 }: HashGeneratorPanelProps): JSX.Element {
   const { showError } = useNotification();
   const [saving, setSaving] = useState(false);
@@ -121,7 +138,7 @@ export default function HashGeneratorPanel({
 
   return (
     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start' }}>
-      <Paper variant="outlined" sx={{ flex: '1 1 45%', minWidth: 320 }}>
+      <Paper variant="outlined" sx={{ flex: '1 1 45%', minWidth: 320, minHeight: availableHeight }}>
         <PanelHeader title="Input">
           <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={handlePaste}>
             Paste
@@ -152,7 +169,7 @@ export default function HashGeneratorPanel({
         </Box>
       </Paper>
 
-      <Box sx={{ flex: '1 1 45%', minWidth: 320, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Box sx={{ flex: '1 1 45%', minWidth: 320, minHeight: availableHeight, display: 'flex', flexDirection: 'column', gap: 2 }}>
         {hashes.length === 0 ? (
           <Paper
             variant="outlined"

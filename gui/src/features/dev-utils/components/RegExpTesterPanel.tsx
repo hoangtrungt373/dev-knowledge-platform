@@ -5,16 +5,23 @@ import ContentPasteIcon from '@mui/icons-material/ContentPasteOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import PlayArrowIcon from '@mui/icons-material/PlayArrowOutlined';
+import OpenInFullIcon from '@mui/icons-material/OpenInFullOutlined';
+import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreenOutlined';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import CodeMirror from '@uiw/react-codemirror';
 import SubmitButton from '@shared/components/SubmitButton';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { DevUtilsResponse } from '../types';
 import { DevUtilError } from '../utils/errorFormatting';
 import { downloadTextFile } from '../utils/downloadTextFile';
 import { parseRegexInput, serializeRegexInput } from '../utils/regexInputFormat';
+import { editorChromeTheme } from '../config/codeMirrorConfig';
+import { GROWABLE_PANEL_MAX_HEIGHT } from '../config/panelSizing';
+import { useResizableSplit } from '../hooks/useResizableSplit';
+import { usePanelMaximize } from '../hooks/usePanelMaximize';
 import PanelHeader from './PanelHeader';
+import PanelResizeHandle from './PanelResizeHandle';
 import { useCopyFeedback } from '../hooks/useCopyFeedback';
-import { HIDDEN_TEXT_FIELD_OUTLINE_SX } from '../utils/textFieldStyles';
 
 interface RegExpTesterPanelProps {
   /** Controlled — same lifted `input`/`output`/`error` state `DevUtilsPage.tsx` already threads
@@ -38,6 +45,15 @@ interface RegExpTesterPanelProps {
   actionLabel: string;
   downloadFileName: string;
   onSubmit: (input: string, minify: boolean) => Promise<DevUtilsResponse>;
+  /** Height (px) computed by `DevUtilsPage.tsx` from the actual viewport — the same value the
+   * shared `DevUtilToolPanel`'s Input card and the sidebar both size themselves to (see that
+   * component's own doc comment for how). Applied to the whole left column (Pattern + Test String
+   * together, as a fixed `height`) and as a `minHeight` floor on the Output card, mirroring
+   * `DevUtilToolPanel.tsx`'s own Input-fixed/Output-floor split exactly — see this component's own
+   * doc comment for why a test string or a match list can each genuinely grow large enough to
+   * need it, unlike `HashGeneratorPanel.tsx`'s/`Base64ImagePanel.tsx`'s own inherently small
+   * results. */
+  availableHeight: number;
 }
 
 /**
@@ -51,11 +67,13 @@ interface RegExpTesterPanelProps {
  *
  * <p>Two Input cards, per the same shape `Base64ImagePanel.tsx` already uses for its own two-box
  * Input side: **Pattern** (the regex + flags, on one row, styled like a familiar
- * {@code /pattern/flags} literal) and **Test String** (a plain multiline box, with Paste and the
- * actual Test action in its own header). Both write into the same lifted `input` string via
- * `utils/regexInputFormat.ts`'s serialize/parse pair, so Sample/Clear (and a bookmarked/shared
- * hash link) keep working exactly like every other operation's — see that file's own doc comment
- * for the exact format and why it's safe to round-trip.
+ * {@code /pattern/flags} literal) and **Test String** (a real CodeMirror 6 editor — see this
+ * file's own line-numbers/fill-height paragraph below for why, over the plain `TextField` this
+ * card used before — with Paste and the actual Test action in its own header). Both write into
+ * the same lifted `input` string via `utils/regexInputFormat.ts`'s serialize/parse pair, so
+ * Sample/Clear (and a bookmarked/shared hash link) keep working exactly like every other
+ * operation's — see that file's own doc comment for the exact format and why it's safe to
+ * round-trip.
  *
  * <p>The **Output** card is a plain read-only text block (no CodeMirror — matches are a short
  * list of extracted strings, not code to syntax-highlight, the same "much simpler than the shared
@@ -63,6 +81,27 @@ interface RegExpTesterPanelProps {
  * backend returns them (a match can itself contain a newline, so no separator at all would make
  * two matches indistinguishable from one). Copy/Download act on the whole block, mirroring the
  * shared panel's own Output header actions.
+ *
+ * <p>**A test string against a large body of text can produce a genuinely large match list** —
+ * unlike `HashGeneratorPanel.tsx`'s/`Base64ImagePanel.tsx`'s own inherently small, fixed-size
+ * results, this operation's own input/output sizes track `DevUtilToolPanel.tsx`'s own Input/
+ * Output more closely than either of those two. This panel was brought up to that same viewport-
+ * relative sizing as a result: **Test String** is a real CodeMirror editor (not the plain
+ * `TextField` it used before) so it can actually fill the left column's own fixed
+ * `availableHeight` — the exact same `position: 'relative'` + CodeMirror's own `position:
+ * 'absolute', inset: 0` trick `DevUtilToolPanel.tsx`'s Input editor already relies on, reused
+ * here rather than the older, more fragile `TextField`-with-`!important`-height-override this
+ * feature used before that component migrated onto CodeMirror. **Output** floors at
+ * `availableHeight` (never looks shorter than Pattern+Test String/the sidebar for a short match
+ * list) and grows past it for a long one, capped by `config/panelSizing.ts`'s own shared
+ * `GROWABLE_PANEL_MAX_HEIGHT` (the same cap `DevUtilToolPanel.tsx`'s Output uses) rather than the
+ * arbitrary fixed `600`px this card capped at before.
+ *
+ * <p>**Both sides can now also be resized/maximized**, via the same `hooks/useResizableSplit.ts`/
+ * `hooks/usePanelMaximize.ts`/`components/PanelResizeHandle.tsx` extraction
+ * `DevUtilToolPanel.tsx`'s own original inline implementation was pulled into — see each of
+ * those files' own doc comments for the mechanism itself (unchanged here, just reused). The split
+ * persists under its own `localStorage` key, independent of the shared panel's own ratio.
  */
 export default function RegExpTesterPanel({
   input,
@@ -74,12 +113,30 @@ export default function RegExpTesterPanel({
   actionLabel,
   downloadFileName,
   onSubmit,
+  availableHeight,
 }: RegExpTesterPanelProps): JSX.Element {
   const { showError } = useNotification();
   const [saving, setSaving] = useState(false);
   const { copiedKey, copy } = useCopyFeedback();
 
   const { pattern, flags, testText } = parseRegexInput(input);
+
+  const { maximizedPanel, toggle: toggleMaximize } = usePanelMaximize<'left' | 'right'>();
+  const toggleMaximizeLeft = useCallback(() => toggleMaximize('left'), [toggleMaximize]);
+  const toggleMaximizeRight = useCallback(() => toggleMaximize('right'), [toggleMaximize]);
+
+  const {
+    rowRef,
+    splitPercent,
+    resizing,
+    minPercent,
+    maxPercent,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerUp,
+    handleDoubleClick,
+    handleKeyDown,
+  } = useResizableSplit({ storageKey: 'devUtilsRegexPanelSplitPercent' });
 
   const updateField = useCallback(
     (field: 'pattern' | 'flags' | 'testText', value: string) => {
@@ -123,9 +180,21 @@ export default function RegExpTesterPanel({
   }, [output, downloadFileName]);
 
   return (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start' }}>
-      <Box sx={{ flex: '1 1 45%', minWidth: 320, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Paper variant="outlined">
+    // `position: 'relative'` anchors PanelResizeHandle; no `gap` between the two sides — both
+    // columns' own flex-basis percentages sum to 100%, mirroring DevUtilToolPanel.tsx's row.
+    <Box ref={rowRef} sx={{ position: 'relative', display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      <Box
+        sx={{
+          flex: maximizedPanel === 'left' ? '1 1 100%' : `1 1 ${splitPercent}%`,
+          minWidth: 320,
+          height: availableHeight,
+          display: maximizedPanel === 'right' ? 'none' : 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          overflow: 'hidden',
+        }}
+      >
+        <Paper variant="outlined" sx={{ flexShrink: 0 }}>
           <PanelHeader title="Pattern" />
           <Box sx={{ p: 2 }}>
             <Stack direction="row" alignItems="center" spacing={0.5}>
@@ -153,7 +222,7 @@ export default function RegExpTesterPanel({
           </Box>
         </Paper>
 
-        <Paper variant="outlined">
+        <Paper variant="outlined" sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <PanelHeader title="Test String">
             <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={handlePasteTestText}>
               Paste
@@ -166,26 +235,41 @@ export default function RegExpTesterPanel({
               onClick={handleTest}
               disabled={!pattern.trim() || !testText.trim()}
             />
+            <Tooltip title={maximizedPanel === 'left' ? 'Restore split view' : 'Maximize Test String'}>
+              <IconButton size="small" onClick={toggleMaximizeLeft}>
+                {maximizedPanel === 'left' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
           </PanelHeader>
-          <Box sx={{ p: 2 }}>
-            <TextField
+          {/* `position: 'relative'` + CodeMirror's own `position: 'absolute', inset: 0` (via
+              `style`) — the same trick DevUtilToolPanel.tsx's Input editor already relies on to
+              fill an ancestor whose own size was arrived at through flex layout rather than a
+              plain CSS percentage height, which that component's own history found unreliable in
+              practice for this exact "editor fills its flex-sized parent" shape. */}
+          <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>
+            <CodeMirror
               value={testText}
-              onChange={e => updateField('testText', e.target.value)}
+              onChange={value => updateField('testText', value)}
               placeholder={'hello@vuicoding.me\nsupport@example.com\nnot-an-email'}
-              multiline
-              minRows={10}
-              maxRows={20}
-              fullWidth
-              sx={{
-                '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85rem' },
-                ...HIDDEN_TEXT_FIELD_OUTLINE_SX,
-              }}
+              theme="light"
+              extensions={[editorChromeTheme]}
+              height="100%"
+              style={{ position: 'absolute', inset: 0 }}
             />
           </Box>
         </Paper>
       </Box>
 
-      <Paper variant="outlined" sx={{ flex: '1 1 45%', minWidth: 320, display: 'flex', flexDirection: 'column' }}>
+      <Paper
+        variant="outlined"
+        sx={{
+          flex: maximizedPanel === 'right' ? '1 1 100%' : `1 1 ${100 - splitPercent}%`,
+          minWidth: 320,
+          minHeight: availableHeight,
+          display: maximizedPanel === 'left' ? 'none' : 'flex',
+          flexDirection: 'column',
+        }}
+      >
         <PanelHeader title="Output">
           <Button
             size="small"
@@ -203,8 +287,13 @@ export default function RegExpTesterPanel({
               </IconButton>
             </span>
           </Tooltip>
+          <Tooltip title={maximizedPanel === 'right' ? 'Restore split view' : 'Maximize Output'}>
+            <IconButton size="small" onClick={toggleMaximizeRight}>
+              {maximizedPanel === 'right' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
         </PanelHeader>
-        <Box sx={{ p: 2, flex: 1, minHeight: 240, maxHeight: 600, overflow: 'auto' }}>
+        <Box sx={{ p: 2, flex: 1, minHeight: 0, maxHeight: GROWABLE_PANEL_MAX_HEIGHT, overflow: 'auto' }}>
           {error !== null ? (
             <Stack
               direction="row"
@@ -246,6 +335,20 @@ export default function RegExpTesterPanel({
           )}
         </Box>
       </Paper>
+
+      <PanelResizeHandle
+        ariaLabel="Resize Pattern/Test String and Output panels"
+        splitPercent={splitPercent}
+        minPercent={minPercent}
+        maxPercent={maxPercent}
+        resizing={resizing}
+        hidden={maximizedPanel !== null}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onDoubleClick={handleDoubleClick}
+        onKeyDown={handleKeyDown}
+      />
     </Box>
   );
 }

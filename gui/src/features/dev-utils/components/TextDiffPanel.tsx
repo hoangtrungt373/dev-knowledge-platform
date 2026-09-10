@@ -5,6 +5,8 @@ import ContentPasteIcon from '@mui/icons-material/ContentPasteOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import PlayArrowIcon from '@mui/icons-material/PlayArrowOutlined';
+import OpenInFullIcon from '@mui/icons-material/OpenInFullOutlined';
+import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreenOutlined';
 import CodeMirror from '@uiw/react-codemirror';
 import SubmitButton from '@shared/components/SubmitButton';
 import { useNotification } from '@shared/contexts/NotificationContext';
@@ -13,21 +15,12 @@ import { DiffLine, TextDiffResponse } from '../types';
 import { downloadTextFile } from '../utils/downloadTextFile';
 import { parseTextDiffInput, serializeTextDiffInput } from '../utils/textDiffInputFormat';
 import { editorChromeTheme } from '../config/codeMirrorConfig';
+import { GROWABLE_PANEL_MAX_HEIGHT } from '../config/panelSizing';
+import { useResizableSplit } from '../hooks/useResizableSplit';
+import { usePanelMaximize } from '../hooks/usePanelMaximize';
 import PanelHeader from './PanelHeader';
+import PanelResizeHandle from './PanelResizeHandle';
 import { useCopyFeedback } from '../hooks/useCopyFeedback';
-
-// Original/Updated are real CodeMirror 6 editors (`@uiw/react-codemirror`), not plain `TextField`s
-// — switched specifically so both get a real line-number gutter for free via CodeMirror's own
-// default `basicSetup`, matching the ask to show line numbers here. No language extension is
-// passed (the diffed text is arbitrary, not one known language), so this is plain-text
-// highlighting only, same as `DevUtilToolPanel.tsx`'s own `erb`/`csv`/`text` fallback case.
-// `editorChromeTheme` (shared with that component) keeps the same 16px inset/0.8rem font/no-focus-
-// outline treatment, so these two editors don't look out of place next to every other editor in
-// this feature. A fixed pixel `height` (not `minRows`/`maxRows` autogrow, the old `TextField`
-// pair's own behavior) — simpler than `DevUtilToolPanel.tsx`'s own `position: absolute, inset: 0`
-// trick, which exists there only to fill an ambiently-sized flex parent; these two boxes have no
-// such parent, so a plain fixed height resolves with no percentage-height pitfall to route around.
-const EDITOR_HEIGHT_PX = 240;
 
 /** GitHub-style old/new line-number gutter widths for the Diff panel below — wide enough for a
  * comfortable 4-digit line count (this operation caps input at 2000 lines each side, see
@@ -78,6 +71,15 @@ interface TextDiffPanelProps {
   onInputChange: (value: string) => void;
   actionLabel: string;
   downloadFileName: string;
+  /** Height (px) computed by `DevUtilsPage.tsx` from the actual viewport — the same value the
+   * shared `DevUtilToolPanel`'s Input card and the sidebar both size themselves to (see that
+   * component's own doc comment for how). Applied to the whole left column (Original + Updated
+   * together, as a fixed `height`, each editor sharing half via `flex: 1`) and as a `minHeight`
+   * floor on the Diff card — mirroring `DevUtilToolPanel.tsx`'s own Input-fixed/Output-floor split,
+   * since a diffed file can genuinely be as large as this operation's own 2000-line cap on each
+   * side (see `dev-utils-service/CLAUDE.md`'s `TextDiffOperation` note), not the small, fixed-size
+   * result `HashGeneratorPanel.tsx`/`Base64ImagePanel.tsx` each produce. */
+  availableHeight: number;
 }
 
 /** GitHub-style subtle backgrounds for added/removed lines — theme tokens, not fixed literals,
@@ -131,20 +133,58 @@ function formatUnifiedDiffText(lines: DiffLine[]): string {
  * result is still directly usable as a plain-text diff outside this page.
  *
  * <p>**All three panels show line numbers, per request.** Original/Updated are real CodeMirror 6
- * editors (see this file's own `EDITOR_HEIGHT_PX` comment for why, over keeping the old plain
- * `TextField` pair) — line numbers come for free from CodeMirror's own default `basicSetup`. The
- * Diff panel gets a GitHub-style **two-column** old/new gutter instead of one running count, since
- * an `ADDED`/`REMOVED` line only ever exists on one side — `buildDiffLineRows` derives both
- * numbers from the response's own `type` sequence, since `TextDiffResponse` carries no line-number
- * field itself.
+ * editors — line numbers come for free from CodeMirror's own default `basicSetup`. The Diff panel
+ * gets a GitHub-style **two-column** old/new gutter instead of one running count, since an
+ * `ADDED`/`REMOVED` line only ever exists on one side — `buildDiffLineRows` derives both numbers
+ * from the response's own `type` sequence, since `TextDiffResponse` carries no line-number field
+ * itself.
+ *
+ * <p>**A diffed file can genuinely be as large as this operation's own 2000-line cap on each
+ * side** (`dev-utils-service/CLAUDE.md`'s own `TextDiffOperation` note), unlike
+ * `HashGeneratorPanel.tsx`'s/`Base64ImagePanel.tsx`'s own small, fixed-size results — so this
+ * panel was brought up to the same viewport-relative sizing/resize/maximize treatment
+ * `DevUtilToolPanel.tsx` already gives its own Input/Output. Original/Updated each fill half of
+ * the left column's own fixed `availableHeight` (`flex: 1` each, both CodeMirror instances using
+ * the same `position: 'relative'` wrapper + CodeMirror's own `position: 'absolute', inset: 0`
+ * trick that component's Input editor already relies on); Diff floors at `availableHeight` and
+ * grows past it, capped by `config/panelSizing.ts`'s own shared `GROWABLE_PANEL_MAX_HEIGHT`
+ * (replacing the old fixed `minHeight: 240`/`maxHeight: 600` this card used before, both arbitrary
+ * pixel numbers unrelated to the viewport). The resizable divider and maximize toggles both reuse
+ * `hooks/useResizableSplit.ts`/`hooks/usePanelMaximize.ts`/`components/PanelResizeHandle.tsx` —
+ * the same extraction `RegExpTesterPanel.tsx` also reuses, pulled out of
+ * `DevUtilToolPanel.tsx`'s own original inline implementation. This panel's own split persists
+ * under its own `localStorage` key, independent of the other two panels' ratios.
  */
-export default function TextDiffPanel({ input, onInputChange, actionLabel, downloadFileName }: TextDiffPanelProps): JSX.Element {
+export default function TextDiffPanel({
+  input,
+  onInputChange,
+  actionLabel,
+  downloadFileName,
+  availableHeight,
+}: TextDiffPanelProps): JSX.Element {
   const { showError } = useNotification();
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<TextDiffResponse | null>(null);
   const { copiedKey, copy } = useCopyFeedback();
 
   const { original, updated } = parseTextDiffInput(input);
+
+  const { maximizedPanel, toggle: toggleMaximize } = usePanelMaximize<'left' | 'right'>();
+  const toggleMaximizeLeft = useCallback(() => toggleMaximize('left'), [toggleMaximize]);
+  const toggleMaximizeRight = useCallback(() => toggleMaximize('right'), [toggleMaximize]);
+
+  const {
+    rowRef,
+    splitPercent,
+    resizing,
+    minPercent,
+    maxPercent,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerUp,
+    handleDoubleClick,
+    handleKeyDown,
+  } = useResizableSplit({ storageKey: 'devUtilsTextDiffPanelSplitPercent' });
 
   const updateField = useCallback(
     (field: 'original' | 'updated', value: string) => {
@@ -206,25 +246,43 @@ export default function TextDiffPanel({ input, onInputChange, actionLabel, downl
   }, [unifiedText, downloadFileName]);
 
   return (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start' }}>
-      <Box sx={{ flex: '1 1 45%', minWidth: 320, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Paper variant="outlined">
+    // `position: 'relative'` anchors PanelResizeHandle; no `gap` between the two sides — both
+    // columns' own flex-basis percentages sum to 100%, mirroring DevUtilToolPanel.tsx's row.
+    <Box ref={rowRef} sx={{ position: 'relative', display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      <Box
+        sx={{
+          flex: maximizedPanel === 'left' ? '1 1 100%' : `1 1 ${splitPercent}%`,
+          minWidth: 320,
+          height: availableHeight,
+          display: maximizedPanel === 'right' ? 'none' : 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          overflow: 'hidden',
+        }}
+      >
+        <Paper variant="outlined" sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <PanelHeader title="Original">
             <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={() => handlePaste('original')}>
               Paste
             </Button>
           </PanelHeader>
-          <CodeMirror
-            value={original}
-            onChange={value => updateField('original', value)}
-            placeholder={"const ship = () => 'today';\nconsole.log(ship());"}
-            theme="light"
-            extensions={[editorChromeTheme]}
-            height={`${EDITOR_HEIGHT_PX}px`}
-          />
+          {/* `position: 'relative'` + CodeMirror's own `position: 'absolute', inset: 0` (via
+              `style`) — the same trick DevUtilToolPanel.tsx's Input editor already relies on to
+              fill an ancestor whose own size was arrived at through flex layout. */}
+          <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>
+            <CodeMirror
+              value={original}
+              onChange={value => updateField('original', value)}
+              placeholder={"const ship = () => 'today';\nconsole.log(ship());"}
+              theme="light"
+              extensions={[editorChromeTheme]}
+              height="100%"
+              style={{ position: 'absolute', inset: 0 }}
+            />
+          </Box>
         </Paper>
 
-        <Paper variant="outlined">
+        <Paper variant="outlined" sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <PanelHeader title="Updated">
             <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={() => handlePaste('updated')}>
               Paste
@@ -236,19 +294,36 @@ export default function TextDiffPanel({ input, onInputChange, actionLabel, downl
               startIcon={<PlayArrowIcon fontSize="small" />}
               onClick={handleCompare}
             />
+            <Tooltip title={maximizedPanel === 'left' ? 'Restore split view' : 'Maximize Original/Updated'}>
+              <IconButton size="small" onClick={toggleMaximizeLeft}>
+                {maximizedPanel === 'left' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
           </PanelHeader>
-          <CodeMirror
-            value={updated}
-            onChange={value => updateField('updated', value)}
-            placeholder={"const ship = () => 'production';\nconsole.log(ship());\nconsole.log('Done 🚀');"}
-            theme="light"
-            extensions={[editorChromeTheme]}
-            height={`${EDITOR_HEIGHT_PX}px`}
-          />
+          <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>
+            <CodeMirror
+              value={updated}
+              onChange={value => updateField('updated', value)}
+              placeholder={"const ship = () => 'production';\nconsole.log(ship());\nconsole.log('Done 🚀');"}
+              theme="light"
+              extensions={[editorChromeTheme]}
+              height="100%"
+              style={{ position: 'absolute', inset: 0 }}
+            />
+          </Box>
         </Paper>
       </Box>
 
-      <Paper variant="outlined" sx={{ flex: '1 1 45%', minWidth: 320, display: 'flex', flexDirection: 'column' }}>
+      <Paper
+        variant="outlined"
+        sx={{
+          flex: maximizedPanel === 'right' ? '1 1 100%' : `1 1 ${100 - splitPercent}%`,
+          minWidth: 320,
+          minHeight: availableHeight,
+          display: maximizedPanel === 'left' ? 'none' : 'flex',
+          flexDirection: 'column',
+        }}
+      >
         <PanelHeader title="Diff">
           {result !== null && (
             <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mr: 1 }}>
@@ -276,8 +351,13 @@ export default function TextDiffPanel({ input, onInputChange, actionLabel, downl
               </IconButton>
             </span>
           </Tooltip>
+          <Tooltip title={maximizedPanel === 'right' ? 'Restore split view' : 'Maximize Diff'}>
+            <IconButton size="small" onClick={toggleMaximizeRight}>
+              {maximizedPanel === 'right' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
         </PanelHeader>
-        <Box sx={{ flex: 1, minHeight: 240, maxHeight: 600, overflow: 'auto' }}>
+        <Box sx={{ flex: 1, minHeight: 0, maxHeight: GROWABLE_PANEL_MAX_HEIGHT, overflow: 'auto' }}>
           {result === null ? (
             <Box sx={{ p: 2 }}>
               <Typography variant="body2" color="text.secondary">
@@ -352,6 +432,20 @@ export default function TextDiffPanel({ input, onInputChange, actionLabel, downl
           )}
         </Box>
       </Paper>
+
+      <PanelResizeHandle
+        ariaLabel="Resize Original/Updated and Diff panels"
+        splitPercent={splitPercent}
+        minPercent={minPercent}
+        maxPercent={maxPercent}
+        resizing={resizing}
+        hidden={maximizedPanel !== null}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onDoubleClick={handleDoubleClick}
+        onKeyDown={handleKeyDown}
+      />
     </Box>
   );
 }

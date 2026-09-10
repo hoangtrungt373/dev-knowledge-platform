@@ -4079,6 +4079,62 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
         sandbox, so the actual on-screen line numbers (both editors' gutters, and the Diff panel's
         two-column old/new numbers) are unverified in a real browser.
+    - **Follow-up: a full audit of every custom-layout panel (`HashGeneratorPanel`/
+      `Base64ImagePanel`/`RegExpTesterPanel`/`TextDiffPanel`) against 3 checks from the shared
+      `DevUtilToolPanel.tsx`, per direct request — "recheck all operation[s] to see if any
+      customize Panel need: 1. autogrow height based on content, 2. minHeight = height of sidebar,
+      3. resizable/maximize feature like the default Input/Output panel."** Landed on a
+      per-panel judgment call, not a blanket "add all 3 everywhere" — the deciding factor each
+      time was whether that panel's own result can genuinely grow large the way
+      `DevUtilToolPanel.tsx`'s own Input/Output can, or is inherently small/bounded.
+      - **Extracted first, since the answer for 2 of the 4 panels was "yes, give it the full
+        `DevUtilToolPanel.tsx` treatment," which would otherwise have meant a 3rd/4th copy of that
+        component's own resizable-split-plus-maximize logic**: new `hooks/useResizableSplit.ts`
+        (the drag-to-resize state/persistence, hand-rolled with Pointer Events — see that file's
+        own doc comment for why, over the already-installed `react-resizable-panels`),
+        `hooks/usePanelMaximize.ts` (the plain, non-persisted "maximize this side" toggle), and
+        `components/PanelResizeHandle.tsx` (the presentational overlay divider) — all three pulled
+        out of `DevUtilToolPanel.tsx`'s own original inline implementation, which now consumes
+        them instead of its own copy (behavior unchanged; verified via a clean `tsc --noEmit` and
+        a successful `vite build`, same as every other change in this feature). New
+        `config/panelSizing.ts` (`GROWABLE_PANEL_MAX_LINES`/`_LINE_HEIGHT_PX`/`_MAX_HEIGHT`)
+        extracts that component's own `OUTPUT_MAX_LINES`/`OUTPUT_LINE_HEIGHT_PX`/`OUTPUT_MAX_HEIGHT`
+        constants for the same reason — a growable-output cap now shared by 3 files, not
+        redefined a 2nd/3rd time.
+      - **`RegExpTesterPanel.tsx` and `TextDiffPanel.tsx` both got the full treatment** — a match
+        list against a large test string, or a diff of a file at this feature's own 2000-line cap
+        (see `dev-utils-service/CLAUDE.md`'s `TextDiffOperation` note), can each genuinely grow as
+        large as `DevUtilToolPanel.tsx`'s own Input/Output. Both gained a new `availableHeight`
+        prop (from `DevUtilsPage.tsx`'s existing `panelHeight`, the same value the shared panel's
+        Input card and the sidebar already size to): the left column (Pattern+Test String, or
+        Original+Updated) is now a fixed `height: availableHeight`, and the growable side
+        (Output, or Diff) floors at `minHeight: availableHeight` and grows past it up to
+        `GROWABLE_PANEL_MAX_HEIGHT` before scrolling internally — replacing `RegExpTesterPanel`'s
+        own old fixed `minHeight: 240`/`maxHeight: 600` (arbitrary pixel numbers with no
+        relationship to the viewport) and `TextDiffPanel`'s identical old constants.
+        `RegExpTesterPanel.tsx`'s **Test String** switched from a plain `TextField` to a real
+        CodeMirror editor specifically so it can reliably fill the fixed-height left column (the
+        same `position: 'relative'` + CodeMirror's own `position: 'absolute', inset: 0` trick
+        `DevUtilToolPanel.tsx`'s own Input editor already relies on, rather than reintroducing the
+        more fragile `TextField`-with-`!important`-height-override approach this feature moved
+        away from when that component itself migrated onto CodeMirror);
+        `TextDiffPanel.tsx`'s Original/Updated (already CodeMirror, from the line-numbers
+        follow-up above) each now take `flex: 1` of the left column instead of a fixed
+        `EDITOR_HEIGHT_PX`, splitting the available height evenly via the same trick. Both panels
+        also gained a resizable divider (their own independent `localStorage` split ratio) and a
+        maximize toggle on each side, via the extracted hooks/component above.
+      - **`HashGeneratorPanel.tsx` got only a cosmetic `minHeight: availableHeight` floor on both
+        columns, no resize/maximize** — its result is always exactly 4 short, fixed-length
+        digests, so there's no genuinely large-content case to size for; the floor exists purely
+        so the panel doesn't look visually short next to a tall sidebar when there's little
+        content.
+      - **`Base64ImagePanel.tsx` needed no change** — its Preview card already had this exact
+        `availableHeight`-as-fixed-`height` treatment from before this audit, and a single bounded
+        image (capped client-side at 5 MB, displayed at `maxHeight: 400`) has no resize/maximize
+        use case either; confirmed by re-reading it, not assumed.
+      - Verified via a clean `tsc --noEmit` and a successful `vite build` only across every file
+        touched — no Docker in this sandbox, so the actual on-screen resize-drag/maximize-toggle/
+        autogrow behavior on all 4 panels is unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

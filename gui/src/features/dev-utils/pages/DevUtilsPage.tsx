@@ -132,11 +132,29 @@ const PANEL_HEIGHT_FALLBACK = 500;
  *
  * <p>**The Output panel deliberately does *not* use `panelHeight`/`availableHeight` at all,
  * per a follow-up request reverting that part of this design** — it grows with its own content
- * instead, up to a much larger, line-count-based cap (see `DevUtilToolPanel.tsx`'s own
- * `OUTPUT_MAX_HEIGHT`), so a long response can genuinely make Output taller than Input/the
+ * instead, up to a much larger, line-count-based cap (see `config/panelSizing.ts`'s own
+ * `GROWABLE_PANEL_MAX_HEIGHT`), so a long response can genuinely make Output taller than Input/the
  * sidebar. That's why `sidebarHeight` above is computed directly from the viewport rather than
  * measured off the main column's own rendered height — it must stay pinned to `panelHeight`
  * regardless of how tall Output's own content happens to grow it.
+ *
+ * <p>**Every one of this page's custom-layout panels (`HashGeneratorPanel`/`Base64ImagePanel`/
+ * `RegExpTesterPanel`/`TextDiffPanel`) also receives `panelHeight` as its own `availableHeight`
+ * prop, per a follow-up audit** ("recheck all operations to see if any customize Panel need
+ * autogrow/minHeight-matches-sidebar/resizable+maximize") — not because every one of them needs
+ * the full treatment, but because each panel decides for itself how to use (or deliberately not
+ * use) that one shared number. `RegExpTesterPanel.tsx`/`TextDiffPanel.tsx` — whose own results can
+ * genuinely grow as large as `DevUtilToolPanel.tsx`'s own Input/Output — got the *full* parity
+ * treatment: a fixed-height left column, a floor-plus-cap Output/Diff side, and the same
+ * resizable-split-plus-maximize mechanism, via the shared `hooks/useResizableSplit.ts`/
+ * `hooks/usePanelMaximize.ts`/`components/PanelResizeHandle.tsx` extraction (pulled out of this
+ * file's own `DevUtilToolPanel.tsx`, which now consumes that same extraction instead of its
+ * original inline implementation). `HashGeneratorPanel.tsx`'s result is always exactly 4 short,
+ * fixed-length digests — it only takes a cosmetic `minHeight` floor, no resize/maximize, since
+ * there's no genuinely large-content case to size for. `Base64ImagePanel.tsx` already had this
+ * (its Preview card's own fixed-`height: availableHeight` treatment predates this audit) and
+ * needed no further change — a single bounded image has no resize/maximize use case either. See
+ * each panel's own doc comment for its specific reasoning.
  */
 export default function DevUtilsPage(): JSX.Element {
   const location = useLocation();
@@ -449,6 +467,7 @@ export default function DevUtilsPage(): JSX.Element {
                 // Non-null: every operation except `base64-image` (which never reaches this
                 // branch) supplies `onSubmit` — see `OperationConfig.onSubmit`'s own doc comment.
                 onSubmit={activeOperation.onSubmit!}
+                availableHeight={panelHeight}
               />
             ) : activeOperation.key === 'base64-image' ? (
               <Base64ImagePanel
@@ -472,6 +491,7 @@ export default function DevUtilsPage(): JSX.Element {
                 // Non-null: every operation rendered through this branch supplies `onSubmit` —
                 // see `OperationConfig.onSubmit`'s own doc comment.
                 onSubmit={activeOperation.onSubmit!}
+                availableHeight={panelHeight}
               />
             ) : activeOperation.key === 'text-diff-checker' ? (
               <TextDiffPanel
@@ -480,6 +500,7 @@ export default function DevUtilsPage(): JSX.Element {
                 onInputChange={setInput}
                 actionLabel={activeOperation.actionLabel}
                 downloadFileName={activeOperation.downloadFileName}
+                availableHeight={panelHeight}
               />
             ) : (
               <DevUtilToolPanel

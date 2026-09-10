@@ -1,12 +1,4 @@
-import {
-  KeyboardEvent as ReactKeyboardEvent,
-  PointerEvent as ReactPointerEvent,
-  useCallback,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, IconButton, Paper, Stack, Tooltip, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import ContentPasteIcon from '@mui/icons-material/ContentPasteOutlined';
@@ -29,7 +21,11 @@ import { DevUtilsResponse } from '../types';
 import { buildDevUtilError, DevUtilError } from '../utils/errorFormatting';
 import { OUTPUT_LANGUAGE_INFO, OutputLanguage } from '../config/outputLanguages';
 import { editorChromeTheme, getCodeMirrorExtensions } from '../config/codeMirrorConfig';
+import { GROWABLE_PANEL_MAX_HEIGHT } from '../config/panelSizing';
+import { useResizableSplit } from '../hooks/useResizableSplit';
+import { usePanelMaximize } from '../hooks/usePanelMaximize';
 import PanelHeader from './PanelHeader';
+import PanelResizeHandle from './PanelResizeHandle';
 import { useCopyFeedback } from '../hooks/useCopyFeedback';
 import { downloadTextFile } from '../utils/downloadTextFile';
 
@@ -117,76 +113,6 @@ const OUTPUT_FILENAME_COLOR = '#6e7681';
 // states too.
 const OUTPUT_LINE_COLOR = '#3c3c3c';
 
-// The Output panel grows with its own content instead of being pinned to `availableHeight`, per a
-// direct follow-up request reverting that part of the earlier viewport-relative change — capped by
-// *lines*, not an arbitrary pixel number, so content at or under the cap just grows the box (and
-// lets the page scroll for it) while content over the cap scrolls internally instead of growing
-// forever. OUTPUT_LINE_HEIGHT_PX is an eyeballed estimate of the Output editor's own rendered line
-// height at its configured font size — not measured in a real browser, same caveat every other
-// hand-tuned constant in this feature carries.
-const OUTPUT_MAX_LINES = 1000;
-const OUTPUT_LINE_HEIGHT_PX = 20;
-const OUTPUT_MAX_HEIGHT = OUTPUT_MAX_LINES * OUTPUT_LINE_HEIGHT_PX;
-
-// A resizable divider between Input/Output, per a follow-up request — hand-rolled with plain
-// Pointer Events rather than reusing @tasks/components/ResizeHandle.tsx's react-resizable-panels-
-// based one. That library's own `Group` container defaults to `height: '100%'`/`overflow: 'hidden'`
-// (confirmed by reading node_modules/react-resizable-panels/dist/react-resizable-panels.js
-// directly, not assumed from its own docs) — it assumes it fills a bounded, already-known-height
-// parent, which is fundamentally incompatible with Output's own "can grow past the viewport for a
-// long response, lets the *page* scroll instead" design (the whole point of the partial revert two
-// turns of this same feature already went through — see this component's own doc comment). Forcing
-// this row into a `Group` would very likely reintroduce one of the two regressions just fixed, in a
-// library-internal way that's much harder to reason about than this row's own plain flexbox. A
-// fixed-basis split driven by a small styled divider needs no such assumption — only the two
-// Papers' own `flex-basis` percentages change; each side's `height`/`minHeight` (set elsewhere)
-// is completely unaffected by dragging this handle.
-const SPLIT_STORAGE_KEY = 'devUtilsPanelSplitPercent';
-const DEFAULT_SPLIT_PERCENT = 50;
-const MIN_SPLIT_PERCENT = 25;
-const MAX_SPLIT_PERCENT = 75;
-const SPLIT_KEYBOARD_STEP = 5;
-// The two Papers touch directly — no `gap` between them at all, per a follow-up request ("remove
-// the gap... so the user can directly hold the Input border right/Output border left") — so their
-// own `flex-basis` percentages need no calc()/overhead subtraction, unlike an earlier version of
-// this feature that reserved a visible, always-present handle column between them. The resize
-// handle instead **overlays** the shared border as an absolutely positioned strip (`position:
-// 'absolute'`, `left: ${splitPercent}%` against the row's own `position: 'relative'`), wide enough
-// to be a comfortable hit target/`cursor: 'col-resize'` zone, but rendering no visible line at all
-// at rest — only on hover/focus/drag (an `opacity` fade on its own `::after`, not a width change,
-// since there's nothing to widen from at rest). This is deliberately a wider *hit target* than the
-// *visible* line it reveals: a bare 1-2px seam is a poor target to land a mouse on precisely (the
-// same reasoning `react-resizable-panels`' own `resizeTargetMinimumSize` docs and Apple's HIG make
-// for a real handle), so SPLIT_HANDLE_HIT_WIDTH_PX stays generous even though nothing that wide is
-// ever actually drawn.
-const SPLIT_HANDLE_HIT_WIDTH_PX = 16;
-
-function clampSplitPercent(value: number): number {
-  return Math.min(MAX_SPLIT_PERCENT, Math.max(MIN_SPLIT_PERCENT, value));
-}
-
-// A standing preference (like the sidebar's own collapse state), not per-session UI state, so it's
-// persisted to localStorage the same way. Wrapped in try/catch — a private window or blocked
-// storage should degrade to the default split, never throw.
-function readStoredSplitPercent(): number {
-  try {
-    const stored = window.localStorage.getItem(SPLIT_STORAGE_KEY);
-    const parsed = stored === null ? NaN : Number(stored);
-    return Number.isFinite(parsed) ? clampSplitPercent(parsed) : DEFAULT_SPLIT_PERCENT;
-  } catch {
-    return DEFAULT_SPLIT_PERCENT;
-  }
-}
-
-function persistSplitPercent(value: number): void {
-  try {
-    window.localStorage.setItem(SPLIT_STORAGE_KEY, String(value));
-  } catch {
-    // Best-effort only — a private window or blocked storage just means the split isn't
-    // remembered next time, not a real failure worth surfacing.
-  }
-}
-
 /** The Input/Output split panel every /dev-utils tool renders — each side is its own bordered
  * card, per request, with its action buttons on the same line as its own title ("Input   [Paste]
  * [<actionLabel>] [Minify]" / "Output   [Copy] [Download]") rather than a separate toolbar row.
@@ -218,10 +144,10 @@ function persistSplitPercent(value: number): void {
  * on success or `onErrorChange` on failure instead of local setters). Every other piece of state
  * here (`minify`/`saving`/`copied`) stays local — `DevUtilsPage.tsx` still remounts this component
  * on tool switch (`key={...}`) to reset those, independently of the parent's own `input`/`output`/
- * `error` reset. `splitPercent` (the resizable divider's own share of the row, below) is
- * deliberately **not** reset on tool switch — a standing per-viewer layout preference (persisted
- * to `localStorage`, see `SPLIT_STORAGE_KEY`), not something specific to whichever tool happens to
- * be selected right now.
+ * `error` reset. `splitPercent` (from `useResizableSplit`, the resizable divider's own share of
+ * the row, below) is deliberately **not** reset on tool switch — a standing per-viewer layout
+ * preference (persisted to `localStorage` under that hook's own `storageKey`), not something
+ * specific to whichever tool happens to be selected right now.
  *
  * <p>A submit failure is **not** surfaced via the header notification (`showNotification`/
  * `showError`) at all anymore, per a direct request — `onSubmit`'s own `devUtilsApi.*` calls are
@@ -274,14 +200,15 @@ function persistSplitPercent(value: number): void {
  *
  * <p>**Either panel can be "maximized"** (a header `IconButton`, `OpenInFullIcon`/
  * `CloseFullscreenIcon`), per request — for reading/scrolling a large result without the other
- * side sharing the row's width. See `maximizedPanel`'s own comment for why it's plain component
- * state (resets on tool switch, not a standing `localStorage` preference like `splitPercent`) and
- * why the un-maximized side is hidden via `display: 'none'` rather than unmounted. Width-only,
- * deliberately — Output's own height already grows independently of Input (floor at
- * `availableHeight`, capped at `OUTPUT_MAX_HEIGHT`, both already documented above), so maximizing
- * doesn't need its own separate height story on top of that; it only ever changes which Paper gets
- * the row's full width via `flex-basis`. The resize handle hides too while either panel is
- * maximized — nothing to drag when one side isn't rendered.
+ * side sharing the row's width. See `usePanelMaximize`'s own doc comment for why it's plain
+ * component state (resets on tool switch, not a standing `localStorage` preference like
+ * `useResizableSplit`'s own ratio) and why the un-maximized side is hidden via `display: 'none'`
+ * rather than unmounted. Width-only, deliberately — Output's own height already grows
+ * independently of Input (floor at `availableHeight`, capped at `GROWABLE_PANEL_MAX_HEIGHT`, both
+ * already documented above), so maximizing doesn't need its own separate height story on top of
+ * that; it only ever changes which Paper gets the row's full width via `flex-basis`. The resize
+ * handle hides too while either panel is maximized — nothing to drag when one side isn't
+ * rendered.
  *
  * <p>**A second, independent action button** (`secondaryAction`) is how an operation with two
  * genuinely different actions over the same input — Base64's own "Encode"/"Decode" pair is the
@@ -329,83 +256,29 @@ export default function DevUtilToolPanel({
   const inputExtensions = useMemo(() => getCodeMirrorExtensions(inputFormat), [inputFormat]);
   const outputExtensions = useMemo(() => getCodeMirrorExtensions(outputLanguage), [outputLanguage]);
 
-  // "Maximize this panel" — per request, for the case where someone just wants to read/scroll a
-  // large result without Input sharing the row's width. Deliberately plain component state, not
-  // persisted to `localStorage` the way `splitPercent`/the sidebar's own collapse state are — this
-  // reads as a momentary focus mode (like a video call's "pin this speaker"), not a standing
-  // layout preference, so it resets to the normal split view on every tool switch (this component
-  // remounts via `key={...}` in DevUtilsPage.tsx) rather than following the admin from tool to
-  // tool. The other panel is hidden via `display: 'none'`, not left unmounted — a conditional
-  // `{!hidden && <Paper>...}` would tear down and rebuild its CodeMirror instance on every
-  // maximize/restore, losing that editor's own cursor position/scroll offset/undo history for no
-  // reason; `display: 'none'` keeps it mounted and simply invisible.
-  const [maximizedPanel, setMaximizedPanel] = useState<'input' | 'output' | null>(null);
+  // "Maximize this panel" and the resizable Input/Output split are both extracted into shared
+  // hooks now (`usePanelMaximize`/`useResizableSplit`) — this component was their original
+  // implementation, moved out once `RegExpTesterPanel.tsx`/`TextDiffPanel.tsx` needed the
+  // identical mechanisms for their own Input/Output-shaped pair. See each hook's own doc comment
+  // for the full reasoning (why maximize is plain component state but the split ratio is
+  // persisted, why the split is hand-rolled with Pointer Events rather than
+  // `react-resizable-panels`, etc.) — unchanged here, just no longer inlined.
+  const { maximizedPanel, toggle: toggleMaximize } = usePanelMaximize<'input' | 'output'>();
+  const toggleMaximizeInput = useCallback(() => toggleMaximize('input'), [toggleMaximize]);
+  const toggleMaximizeOutput = useCallback(() => toggleMaximize('output'), [toggleMaximize]);
 
-  const toggleMaximizeInput = useCallback(() => {
-    setMaximizedPanel(prev => (prev === 'input' ? null : 'input'));
-  }, []);
-
-  const toggleMaximizeOutput = useCallback(() => {
-    setMaximizedPanel(prev => (prev === 'output' ? null : 'output'));
-  }, []);
-
-  // The resizable Input/Output split — see SPLIT_STORAGE_KEY's own comment for why this is
-  // hand-rolled rather than built on react-resizable-panels. `rowRef` anchors the drag math (the
-  // handle's own pointer position is only meaningful relative to the row's own bounding box).
-  const rowRef = useRef<HTMLDivElement | null>(null);
-  const [splitPercent, setSplitPercent] = useState<number>(readStoredSplitPercent);
-  const [resizing, setResizing] = useState(false);
-
-  // `setPointerCapture` routes every subsequent pointer event to this same element regardless of
-  // where the cursor actually moves (even outside the handle's own bounds) until pointerup/cancel
-  // — this is what lets onPointerMove/onPointerUp below stay plain React props on the handle
-  // itself, with no window-level listener to attach/clean up by hand.
-  const handleResizePointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    setResizing(true);
-  }, []);
-
-  const handleResizePointerMove = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>) => {
-      if (!resizing || !rowRef.current) {
-        return;
-      }
-      const rect = rowRef.current.getBoundingClientRect();
-      const rawPercent = ((e.clientX - rect.left) / rect.width) * 100;
-      setSplitPercent(clampSplitPercent(rawPercent));
-    },
-    [resizing]
-  );
-
-  const handleResizePointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    e.currentTarget.releasePointerCapture(e.pointerId);
-    setResizing(false);
-    // Persisted only on release (mirroring react-resizable-panels' own onLayoutChanged, "not
-    // called until the pointer has been released" — the recommended point to save to storage),
-    // not on every pointermove, so a mid-drag position never gets written dozens of times.
-    setSplitPercent(current => {
-      persistSplitPercent(current);
-      return current;
-    });
-  }, []);
-
-  const handleResizeDoubleClick = useCallback(() => {
-    setSplitPercent(DEFAULT_SPLIT_PERCENT);
-    persistSplitPercent(DEFAULT_SPLIT_PERCENT);
-  }, []);
-
-  const handleResizeKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') {
-      return;
-    }
-    e.preventDefault();
-    const delta = e.key === 'ArrowLeft' ? -SPLIT_KEYBOARD_STEP : SPLIT_KEYBOARD_STEP;
-    setSplitPercent(prev => {
-      const next = clampSplitPercent(prev + delta);
-      persistSplitPercent(next);
-      return next;
-    });
-  }, []);
+  const {
+    rowRef,
+    splitPercent,
+    resizing,
+    minPercent: minSplitPercent,
+    maxPercent: maxSplitPercent,
+    handlePointerDown: handleResizePointerDown,
+    handlePointerMove: handleResizePointerMove,
+    handlePointerUp: handleResizePointerUp,
+    handleDoubleClick: handleResizeDoubleClick,
+    handleKeyDown: handleResizeKeyDown,
+  } = useResizableSplit({ storageKey: 'devUtilsPanelSplitPercent' });
 
   // Output's own header row + (conditionally) the info row sit above the code area inside the
   // same Paper — measured together here as one real pixel value, rather than assumed, so the
@@ -479,7 +352,7 @@ export default function DevUtilToolPanel({
     // explicit `height: availableHeight`; Output instead carries `minHeight: availableHeight` (a
     // floor, not a fixed size — see this component's own doc comment for why Output needs its own
     // floor at all: it must never look shorter than Input for a short response, but still needs to
-    // grow taller than that for a long one, up to OUTPUT_MAX_HEIGHT). `flex-start` keeps each
+    // grow taller than that for a long one, up to GROWABLE_PANEL_MAX_HEIGHT). `flex-start` keeps each
     // card's own sizing fully self-contained — under the default `stretch`, cross-item resizing
     // would *probably* land on the same end result here (the row's cross size ends up the max of
     // both items' hypothetical sizes either way), but only by relying on a genuinely more subtle
@@ -489,7 +362,7 @@ export default function DevUtilToolPanel({
     // that, so each card's rendered height is a direct function of its own sx alone.
     // `position: 'relative'` anchors the resize handle below, which overlays the shared border
     // between the two Papers rather than sitting between them as its own flex item — see
-    // SPLIT_HANDLE_HIT_WIDTH_PX's own comment. No `gap` at all: the two Papers touch directly.
+    // PanelResizeHandle's own comment. No `gap` at all: the two Papers touch directly.
     <Box ref={rowRef} sx={{ position: 'relative', display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start' }}>
       <Paper
         variant="outlined"
@@ -591,9 +464,9 @@ export default function DevUtilToolPanel({
         // measured value — see `outputChromeHeight`'s own comment for why this Paper's own
         // `minHeight` alone wasn't a reliable enough mechanism on its own); long content just grows
         // the Paper past it instead (min-height puts no ceiling on that), scrolling internally only
-        // past OUTPUT_MAX_HEIGHT (via the Output editor's own `maxHeight` prop). Maximized (either
-        // panel), this Paper takes the full row width regardless of `splitPercent` — see
-        // `maximizedPanel`'s own comment; `display: 'none'`, not conditional rendering, when
+        // past GROWABLE_PANEL_MAX_HEIGHT (via the Output editor's own `maxHeight` prop). Maximized
+        // (either panel), this Paper takes the full row width regardless of `splitPercent` — see
+        // `usePanelMaximize`'s own comment; `display: 'none'`, not conditional rendering, when
         // *Input* is the maximized one, for the same "keep CodeMirror mounted" reason Input's own
         // Paper documents.
         sx={{
@@ -651,7 +524,7 @@ export default function DevUtilToolPanel({
         </Box>
 
         {error !== null ? (
-          <Box sx={{ p: 2, flex: 1, minHeight: 0, maxHeight: OUTPUT_MAX_HEIGHT, overflow: 'auto', bgcolor: OUTPUT_BG_LIGHT }}>
+          <Box sx={{ p: 2, flex: 1, minHeight: 0, maxHeight: GROWABLE_PANEL_MAX_HEIGHT, overflow: 'auto', bgcolor: OUTPUT_BG_LIGHT }}>
             <Stack
               direction="row"
               spacing={1.5}
@@ -695,7 +568,7 @@ export default function DevUtilToolPanel({
           // CodeMirror is deterministic instead: the editor's own dimension theme sets it straight
           // on `.cm-editor`, no reliance on how flex-grow happens to distribute this Paper's free
           // space. `maxHeight` (not an external `sx.maxHeight` + `overflow: 'auto'`) is what caps
-          // growth past OUTPUT_MAX_HEIGHT — together, `minHeight`/`maxHeight` are the exact same
+          // growth past GROWABLE_PANEL_MAX_HEIGHT — together, `minHeight`/`maxHeight` are the exact same
           // "floor, then hard cap" shape the Paper's own `minHeight: availableHeight` above
           // establishes, just enforced directly by the editor instead of inferred from its
           // surrounding flex layout. `style={{flex: 1, minHeight: 0}}` still lets this element grow
@@ -712,7 +585,7 @@ export default function DevUtilToolPanel({
             theme={vscodeDark}
             extensions={[editorChromeTheme, ...outputExtensions]}
             minHeight={`${Math.max(0, availableHeight - outputChromeHeight)}px`}
-            maxHeight={`${OUTPUT_MAX_HEIGHT}px`}
+            maxHeight={`${GROWABLE_PANEL_MAX_HEIGHT}px`}
             style={{ flex: 1, minHeight: 0 }}
           />
         ) : (
@@ -730,62 +603,22 @@ export default function DevUtilToolPanel({
         )}
       </Paper>
 
-      {/* Overlays the shared border between the two Papers above (position: 'absolute', not a
-          flex item of its own) rather than reserving a visible column between them — the two
-          Papers touch directly, with this only becoming visible on hover/focus/drag. `left:
-          ${splitPercent}%` against the row's own `position: 'relative'` lands exactly on that
-          border, since both Papers' own flex-basis percentages (above) sum to 100% with no gap to
-          throw the math off. Hidden below `md` — on a narrow viewport this row wraps Input/Output
-          onto separate full-width lines, where a horizontal drag handle wouldn't mean anything —
-          and hidden whenever either panel is maximized, for the same reason: there's nothing to
-          resize when one side is `display: 'none'`. `top: 0, bottom: 0` (not a percentage
-          `height`) stretches it across the row's own already-resolved height (whichever of Input/
-          Output ends up taller) regardless of that height itself being auto-sized — the standard
-          way an absolutely positioned child fills an auto-height positioned ancestor. */}
-      <Box
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize Input/Output panels"
-        aria-valuenow={Math.round(splitPercent)}
-        aria-valuemin={MIN_SPLIT_PERCENT}
-        aria-valuemax={MAX_SPLIT_PERCENT}
-        tabIndex={0}
+      {/* Extracted into the shared PanelResizeHandle — see that component's own doc comment for
+          why it's overlaid on the shared border between the two Papers (`position: 'absolute'`,
+          not a flex item), why it renders no visible line at rest, and why it's hidden below `md`/
+          whenever either panel is maximized. */}
+      <PanelResizeHandle
+        ariaLabel="Resize Input/Output panels"
+        splitPercent={splitPercent}
+        minPercent={minSplitPercent}
+        maxPercent={maxSplitPercent}
+        resizing={resizing}
+        hidden={maximizedPanel !== null}
         onPointerDown={handleResizePointerDown}
         onPointerMove={handleResizePointerMove}
         onPointerUp={handleResizePointerUp}
         onDoubleClick={handleResizeDoubleClick}
         onKeyDown={handleResizeKeyDown}
-        sx={{
-          display: maximizedPanel !== null ? 'none' : { xs: 'none', md: 'block' },
-          position: 'absolute',
-          top: 0,
-          bottom: 0,
-          left: `${splitPercent}%`,
-          transform: 'translateX(-50%)',
-          width: SPLIT_HANDLE_HIT_WIDTH_PX,
-          zIndex: 1,
-          cursor: 'col-resize',
-          outline: 'none',
-          // No visible line at rest at all — the two Papers' own adjacent borders already read as
-          // a single seam where they touch. A fade-in `opacity`, not a width change from 0 (there's
-          // nothing to widen from), reveals a highlighted line only on hover/focus/drag.
-          '&::after': {
-            content: '""',
-            position: 'absolute',
-            top: 0,
-            bottom: 0,
-            left: '50%',
-            width: 2,
-            transform: 'translateX(-50%)',
-            bgcolor: 'primary.main',
-            opacity: 0,
-            transition: 'opacity 0.1s',
-          },
-          '&:hover::after, &:focus-visible::after': { opacity: 1 },
-          ...(resizing && {
-            '&::after': { opacity: 1 },
-          }),
-        }}
       />
     </Box>
   );

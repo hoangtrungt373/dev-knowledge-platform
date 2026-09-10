@@ -1348,6 +1348,24 @@ section again. Full unabridged entry-by-entry history for all three lives in
         the comparison, so a single running count can't represent both). Verified via a clean
         `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the
         actual on-screen line numbers are unverified in a real browser.
+      - **Follow-up: a `gui`-only audit of every custom-layout panel (`HashGeneratorPanel`/
+        `Base64ImagePanel`/`RegExpTesterPanel`/`TextDiffPanel`) against 3 checks from the shared
+        `DevUtilToolPanel.tsx`** — autogrow-with-content, `minHeight` matching the sidebar, and a
+        resizable-split-plus-maximize feature — per direct request, no backend change needed.
+        Extracted `hooks/useResizableSplit.ts`/`hooks/usePanelMaximize.ts`/
+        `components/PanelResizeHandle.tsx` out of `DevUtilToolPanel.tsx`'s own original inline
+        implementation (which now consumes them instead) and a shared `config/panelSizing.ts`
+        (`GROWABLE_PANEL_MAX_HEIGHT`, etc.), then gave `RegExpTesterPanel.tsx`/`TextDiffPanel.tsx`
+        the full treatment (both can genuinely produce a large result, unlike the other two) — a
+        viewport-relative `availableHeight` prop, a fixed-height input side, a floor-plus-cap
+        output side, and the resizable/maximize mechanism; `RegExpTesterPanel.tsx`'s Test String
+        also switched from a plain `TextField` to a real CodeMirror editor so it can reliably
+        fill that fixed height. `HashGeneratorPanel.tsx` only gained a cosmetic `minHeight` floor
+        (its result is always 4 small, fixed-length digests); `Base64ImagePanel.tsx` needed no
+        change, having already had this treatment on its own Preview card before this audit.
+        Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+        sandbox, so the actual on-screen resize/maximize/autogrow behavior is unverified in a real
+        browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.
