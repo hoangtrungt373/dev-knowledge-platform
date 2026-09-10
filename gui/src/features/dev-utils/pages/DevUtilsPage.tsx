@@ -23,6 +23,7 @@ import { DevUtilError } from '../utils/errorFormatting';
 import DevUtilToolPanel from '../components/DevUtilToolPanel';
 import HashGeneratorPanel from '../components/HashGeneratorPanel';
 import Base64ImagePanel from '../components/Base64ImagePanel';
+import RegExpTesterPanel from '../components/RegExpTesterPanel';
 import DevUtilSidebarItem from '../components/DevUtilSidebarItem';
 import { OPERATION_GROUP_ORDER, OPERATIONS, TabKey, tabFromHash } from '../config/operations';
 
@@ -426,12 +427,14 @@ export default function DevUtilsPage(): JSX.Element {
               one shared JSX call site renders every tool. */}
           <Box ref={toolPanelRef}>
             {/* Some operations render their own bespoke layout instead of the shared
-                DevUtilToolPanel — Hash Generator's result (four independent digests) and Base64
-                Image's own file-upload/live-preview shape both don't fit that component's plain
-                Input/Output editor pair at all. A direct key check per operation, not a lookup
-                table/registry — there are only two custom-layout operations today; extend this
-                the same way (one more `else if`) if a third one ever needs its own layout too,
-                rather than building plugin infrastructure for a hypothetical N ahead of time. */}
+                DevUtilToolPanel — Hash Generator's result (four independent digests), Base64
+                Image's own file-upload/live-preview shape, and RegExp Tester's own 3-field input
+                (pattern/flags/test text, not one string with a minify flag) all don't fit that
+                component's plain Input/Output editor pair at all. A direct key check per
+                operation, not a lookup table/registry — there are only three custom-layout
+                operations today; extend this the same way (one more `else if`) if a fourth one
+                ever needs its own layout too, rather than building plugin infrastructure for a
+                hypothetical N ahead of time. */}
             {activeOperation.key === 'hash-generator' ? (
               <HashGeneratorPanel
                 key={activeOperation.key}
@@ -452,6 +455,21 @@ export default function DevUtilsPage(): JSX.Element {
                 onInputChange={setInput}
                 inputPlaceholder={activeOperation.inputPlaceholder}
                 availableHeight={panelHeight}
+              />
+            ) : activeOperation.key === 'regexp-tester' ? (
+              <RegExpTesterPanel
+                key={activeOperation.key}
+                input={input}
+                onInputChange={setInput}
+                output={output}
+                onOutputChange={setOutput}
+                error={error}
+                onErrorChange={setError}
+                actionLabel={activeOperation.actionLabel}
+                downloadFileName={activeOperation.downloadFileName}
+                // Non-null: every operation rendered through this branch supplies `onSubmit` —
+                // see `OperationConfig.onSubmit`'s own doc comment.
+                onSubmit={activeOperation.onSubmit!}
               />
             ) : (
               <DevUtilToolPanel

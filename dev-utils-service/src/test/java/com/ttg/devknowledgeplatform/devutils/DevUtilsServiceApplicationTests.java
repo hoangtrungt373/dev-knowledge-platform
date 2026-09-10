@@ -18,7 +18,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
  * {@link MockMvc} — verifies, end to end rather than by static reasoning alone, that this app
  * actually starts (the {@code GlobalExceptionHandler}/{@code spring-boot-starter-security}
  * classpath dependency reasoning in {@code security.SecurityConfig}'s own Javadoc holds up) and
- * that every one of the 28 operation endpoints is genuinely reachable with no
+ * that every one of the 29 operation endpoints is genuinely reachable with no
  * {@code Authorization} header at all.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -362,6 +362,26 @@ class DevUtilsServiceApplicationTests {
                         .content("{\"input\":\"only.two\",\"minify\":false}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_010")));
+    }
+
+    @Test
+    void testRegexpIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/regexp/test")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pattern\":\"[\\\\w.+-]+@[\\\\w.-]+\\\\.[a-zA-Z]{2,}\",\"flags\":\"gi\","
+                                + "\"testText\":\"hello@vuicoding.me\\nsupport@example.com\\nnot-an-email\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("hello@vuicoding.me")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("support@example.com")));
+    }
+
+    @Test
+    void malformedRegexReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/regexp/test")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pattern\":\"[unclosed\",\"flags\":\"g\",\"testText\":\"anything\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_011")));
     }
 
     @Test

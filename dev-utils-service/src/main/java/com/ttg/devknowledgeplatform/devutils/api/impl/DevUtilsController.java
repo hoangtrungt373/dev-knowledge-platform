@@ -7,6 +7,7 @@ import com.ttg.devknowledgeplatform.devutils.api.DevUtilsApi;
 import com.ttg.devknowledgeplatform.devutils.dto.DevUtilResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.HashResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
+import com.ttg.devknowledgeplatform.devutils.dto.RegexTestRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.TextRequest;
 import com.ttg.devknowledgeplatform.devutils.service.impl.AsciiToHexOperation;
@@ -30,6 +31,7 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.LessOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.PhpSerializeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.PhpToJsonOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.PhpUnserializeOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.RegexTesterOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.ScssOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.SqlFormatOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.StringCaseOperation;
@@ -78,6 +80,7 @@ public class DevUtilsController implements DevUtilsApi {
     private final AsciiToHexOperation asciiToHexOperation;
     private final HexToAsciiOperation hexToAsciiOperation;
     private final JwtDebuggerOperation jwtDebuggerOperation;
+    private final RegexTesterOperation regexTesterOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -217,5 +220,11 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<DevUtilResponse> debugJwt(MinifiableTextRequest request) {
         return ResponseEntity.ok(new DevUtilResponse(jwtDebuggerOperation.execute(request.input(), request.minify())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> testRegexp(RegexTestRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(
+                regexTesterOperation.execute(request.pattern(), request.flags(), request.testText())));
     }
 }

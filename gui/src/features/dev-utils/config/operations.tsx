@@ -12,10 +12,12 @@ import FingerprintIcon from '@mui/icons-material/FingerprintOutlined';
 import HexIcon from '@mui/icons-material/HexagonOutlined';
 import ImageIcon from '@mui/icons-material/ImageOutlined';
 import TokenIcon from '@mui/icons-material/TokenOutlined';
+import RegexIcon from '@mui/icons-material/FindReplaceOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
 import { OutputLanguage } from './outputLanguages';
+import { parseRegexInput, serializeRegexInput } from '../utils/regexInputFormat';
 
 export type TabKey =
   | 'json-format'
@@ -41,7 +43,8 @@ export type TabKey =
   | 'php-serializer'
   | 'hex-ascii'
   | 'base64-image'
-  | 'jwt-debugger';
+  | 'jwt-debugger'
+  | 'regexp-tester';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -68,6 +71,7 @@ export const TAB_KEYS: TabKey[] = [
   'hex-ascii',
   'base64-image',
   'jwt-debugger',
+  'regexp-tester',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -675,5 +679,44 @@ export const OPERATIONS: OperationConfig[] = [
     supportsMinify: true,
     downloadFileName: 'jwt-debug.json',
     onSubmit: devUtilsApi.debugJwt,
+  },
+  {
+    key: 'regexp-tester',
+    // The second INSPECTORS-group operation. Renders through its own bespoke
+    // components/RegExpTesterPanel.tsx, not the shared DevUtilToolPanel — this operation's input
+    // is genuinely 3 distinct fields (pattern, flags, test text), not one string with a minify
+    // flag, the same "some operations need a genuinely different layout" precedent
+    // hash-generator/base64-image already established.
+    group: 'Inspectors',
+    category: 'Inspectors',
+    label: 'RegExp Tester',
+    description: 'Try regular expressions immediately',
+    icon: <RegexIcon fontSize="small" />,
+    actionLabel: 'Test',
+    // The exact reported example, run through the same serialize/parse pair
+    // RegExpTesterPanel.tsx itself uses — one source of truth for the "/pattern/flags\n\ntestText"
+    // shape, so this placeholder can never drift out of sync with what that component actually
+    // parses.
+    inputPlaceholder: serializeRegexInput({
+      pattern: '[\\w.+-]+@[\\w.-]+\\.[a-zA-Z]{2,}',
+      flags: 'gi',
+      testText: 'hello@vuicoding.me\nsupport@example.com\nnot-an-email',
+    }),
+    // `inputFormat`/`outputLanguage`/`supportsMinify` are all unused by RegExpTesterPanel (it
+    // renders no CodeMirror editor and reads no minify flag) but still filled in with reasonable
+    // values to satisfy `OperationConfig`'s shared shape — the same "present but inert for this
+    // operation" treatment `hash-generator`'s own equivalent fields already get.
+    inputFormat: 'text',
+    outputLanguage: 'text',
+    supportsMinify: false,
+    downloadFileName: 'regexp-matches.txt',
+    // Decomposes the single lifted `input` string back into pattern/flags/testText before calling
+    // the backend — RegExpTesterPanel.tsx's own onSubmit call only ever passes the generic
+    // `(input, minify)` shape every operation's config entry shares; this is the one place that
+    // shape gets translated into the operation's own real 3-argument backend call.
+    onSubmit: async input => {
+      const { pattern, flags, testText } = parseRegexInput(input);
+      return devUtilsApi.testRegexp(pattern, flags, testText);
+    },
   },
 ];

@@ -8,7 +8,10 @@ A stateless developer-utility API: JSON format/validate, YAML↔JSON conversion,
 JS/ERB beautify+minify, XML validate/beautify+minify, JSON↔CSV conversion, SQL format+minify,
 PHP↔JSON conversion, String Case Converter, Base64 encode/decode, URL encode/decode, HTML entity
 encode/decode, Hash Generator (SHA-1/256/384/512), PHP Serializer (JSON ↔ PHP's own serialize()
-format), ASCII↔Hex conversion. Package root: `com.ttg.devknowledgeplatform.devutils.*`.
+format), ASCII↔Hex conversion, JWT Debugger (read a JWT's header/payload, no signature
+verification), RegExp Tester (test a pattern against text, real matches only — see
+`RegexTesterOperation`'s own Javadoc for its ReDoS-timeout guard). Package root:
+`com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike
 `ecommerce-service`/`identity-service`/`task-service`/`social-service`/`content-service`/
@@ -416,7 +419,7 @@ caller.** Every operation is a pure text-in/text-out transform:
   `/csv-to-json`, `/sql/format`, `/php-to-json`, `/json-to-php`, `/string-case/convert`,
   `/base64/encode`, `/base64/decode`, `/url/encode`, `/url/decode`, `/html-entity/encode`,
   `/html-entity/decode`, `/hash/generate`, `/php-serialize/serialize`,
-  `/php-serialize/unserialize`, `/hex/encode`, `/hex/decode`, `/jwt/debug`. The
+  `/php-serialize/unserialize`, `/hex/encode`, `/hex/decode`, `/jwt/debug`, `/regexp/test`. The
   controller injects each operation by its concrete type rather than dispatching through an
   enum-keyed registry — with one fixed REST endpoint per operation, there's no runtime "which
   operation" decision left to make (see `DevUtilOperation`'s own Javadoc).
@@ -1060,7 +1063,7 @@ the request named them as two operations.
 `Base64DecodeOperationTest`, `UrlEncodeOperationTest`, `UrlDecodeOperationTest`,
 `HtmlEntityEncodeOperationTest`, `HtmlEntityDecodeOperationTest`, `HashGeneratorOperationTest`,
 `PhpSerializeOperationTest`, `PhpUnserializeOperationTest`, `AsciiToHexOperationTest`,
-`HexToAsciiOperationTest`, `JwtDebuggerOperationTest`), plus `service/impl/support/
+`HexToAsciiOperationTest`, `JwtDebuggerOperationTest`, `RegexTesterOperationTest`), plus `service/impl/support/
 CurlyBraceFormatterTest` (the shared CSS/LESS/SCSS/JS reformatter — brace nesting, already-
 multiline selector lists, comment/string-literal protection, the JS ASI-safety guarantee,
 never-throws-on-unterminated-input), `service/impl/support/SqlFormatterTest` (clause-keyword line
@@ -1083,32 +1086,37 @@ real parse/serialize behavior (pretty vs. minified output, malformed-input rejec
 structural equality via `readTree`, jsoup's lenient-parsing/indent behavior, and — for
 `XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation` — real JAXP/CSV/PHP parsing and rejection
 behavior). Plus `DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)`
-+ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all twenty-eight endpoints
++ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all twenty-nine endpoints
 with **no** `Authorization` header through the real filter chain, confirming end to end (not just
 by static reasoning) that the app actually starts and every endpoint is genuinely public. This is
 exactly the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also
 covers the `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the
 latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP/
-Base64/URL-encoding/PHP-serialized-data/hex/JWT all return `400` with
+Base64/URL-encoding/PHP-serialized-data/hex/JWT/regex all return `400` with
 `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005`/`DEVUTILS_006`/`DEVUTILS_007`/`DEVUTILS_008`/
-`DEVUTILS_009`/`DEVUTILS_010` respectively through the shared `GlobalExceptionHandler` —
-`html-entity/encode`/`decode`, `hash/generate`, `php-serialize/serialize`, and `hex/encode` have no
-matching case here, since none of those five ever throws (see `DevUtilsErrorCode`'s own updated
-Javadoc). Plus
+`DEVUTILS_009`/`DEVUTILS_010`/`DEVUTILS_011` respectively through the shared
+`GlobalExceptionHandler` — `html-entity/encode`/`decode`, `hash/generate`,
+`php-serialize/serialize`, and `hex/encode` have no matching case here, since none of those five
+ever throws (see `DevUtilsErrorCode`'s own updated Javadoc); `regexp/test`'s own second failure
+mode (`DEVUTILS_012`, a timeout) has no dedicated `DevUtilsServiceApplicationTests` case either —
+deliberately, so this fast-running end-to-end suite doesn't also have to eat
+`RegexTesterOperation`'s own real ~2-second timeout a second time; that path is already covered
+directly in `RegexTesterOperationTest`. Plus
 `service/impl/support/
 ConventionalJsonPrettyPrinterTest` (the one support class in this module with its own dedicated
 test file rather than only being exercised indirectly through an operation's own tests — see that
-class's own note above for why). 243 tests total (161 as of the seventh follow-up above, plus 8 new
+class's own note above for why). 254 tests total (161 as of the seventh follow-up above, plus 8 new
 Base64 unit tests and 3 new `DevUtilsServiceApplicationTests` cases from the eighth follow-up, 7 new
 URL unit tests and 3 more `DevUtilsServiceApplicationTests` cases from the ninth, 9 new HTML entity
 unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the tenth, 4 new Hash
 Generator unit tests plus 1 more `DevUtilsServiceApplicationTests` case from the eleventh, 21
 new PHP Serializer unit tests plus 3 more `DevUtilsServiceApplicationTests` cases from the
 twelfth (the thirteenth follow-up added no tests, a pure group reclassification), 10 new
-ASCII/Hex unit tests plus 3 more `DevUtilsServiceApplicationTests` cases from the fourteenth, and
+ASCII/Hex unit tests plus 3 more `DevUtilsServiceApplicationTests` cases from the fourteenth,
 6 new JWT Debugger unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the
-sixteenth (the fifteenth follow-up added no new test, a duplication-only refactor) — see each
-follow-up's own note for the full breakdown), verified via a real
+sixteenth (the fifteenth follow-up added no new test, a duplication-only refactor), and 9 new
+RegExp Tester unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the seventeenth
+— see each follow-up's own note for the full breakdown), verified via a real
 `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 **Fifteenth follow-up — a second code-quality analysis pass (mirroring the first one above and the
@@ -1206,6 +1214,72 @@ not a genuinely richer shape the way `StringCaseResponse`/`HashResponse` needed.
   header, and a malformed token returning `400` with `DEVUTILS_010` through the shared
   `GlobalExceptionHandler`). Test suite grew from 235 to 243, verified via a real
   `mvn -pl dev-utils-service -am test` run (JDK 21).
+
+**Seventeenth follow-up — 1 new operation (`RegexTesterOperation`), the second to declare
+`OperationGroup.INSPECTORS`**, per direct request: "RegExp Tester - Try regular expressions
+immediately." Backs `POST /api/v1/dev-utils/regexp/test`. The first operation in this module whose
+input is genuinely 3 separate fields (`pattern`/`flags`/`testText`) rather than "text in, a minify
+flag" — new `dto.RegexTestRequest`, the concrete realization of the "Unix Time Converter/Number
+Base Converter" hypothetical `DevUtilOperation`'s own Javadoc already used to justify never forcing
+every operation through one shared request shape.
+
+- **`flags` follows JS regex-literal convention** (`i`/`m`/`s`/`g`/etc.), not Java's own `Pattern`
+  flag constants — translated by a private `toJavaFlags` helper (`i` → `CASE_INSENSITIVE` +
+  `UNICODE_CASE`, `m` → `MULTILINE`, `s` → `DOTALL`, `u` → `UNICODE_CASE` again as the closest
+  one-flag approximation Java has for JS's own full-Unicode mode). `g` (global) isn't a compile
+  flag at all — it's a loop-vs-single-match decision handled directly where matches are collected,
+  matching how JS itself treats it. Every other character (JS-only `y`/`d`/`v`, or a typo) is
+  silently ignored rather than rejected — this operation is meant to feel like pasting a familiar
+  `/pattern/flags` literal, not to validate that literal's own flag syntax.
+- **Every match returned blank-line separated** (`String.join("\n\n", matches)`), not one match
+  per line with no separator — a match can itself contain a real newline (multiline `testText`
+  matched by an `s`-flagged, `.`-heavy pattern), which a bare newline separator would make
+  indistinguishable from a second match. `"No matches found."` when the pattern compiles but
+  matches nothing — a normal, expected outcome while iterating on a pattern, not a
+  `BusinessException`.
+- **Real, exploitable ReDoS (Regular Expression Denial of Service) risk on this fully public,
+  unauthenticated endpoint — confirmed via a real standalone Java harness before writing any
+  production code, not assumed away.** `java.util.regex` has no built-in cancellation once
+  `Matcher.find()` starts, so an unbounded match attempt against attacker-controlled `pattern` +
+  up to `DevUtilsLimits.MAX_INPUT_LENGTH` characters of `testText` would let one request pin a CPU
+  core indefinitely. The harness first swept the textbook "evil regex" tutorials
+  (`(a+)+$`/`(a|aa)+$` against up to 200 repeated characters) and found none of them reproduce
+  reliably on this JDK anymore — all resolved in single-digit milliseconds, suggesting a real
+  engine-level mitigation for that specific nested-single-quantifier shape landed in a more recent
+  JDK than when those tutorials were written. A genuinely different shape did reproduce, though:
+  `^(.*)(.*)(.*)(.*)=x$` against 200 non-matching characters took over 4.5 seconds and was still
+  running when the harness gave up waiting — confirming the risk is real, just not where the
+  classic examples say to look.
+  - **Mitigation: the actual match loop runs on a dedicated virtual-thread `ExecutorService` with a
+    2-second timeout via `Future#get(long, TimeUnit)`**; a `TimeoutException` throws the new
+    `DevUtilsErrorCode.REGEX_TIMEOUT` (`DEVUTILS_012`) instead of hanging the calling request
+    thread. **Known, accepted limitation, stated plainly rather than overclaimed**: `java.util.regex`
+    offers no cooperative cancellation, so `Future#cancel(true)` only detaches the caller from the
+    runaway task — it doesn't actually stop a CPU-bound loop that never checks
+    `Thread#isInterrupted()`. This bounds *response time* per request (the real goal: no request
+    can hang a caller forever), not total CPU spent by an abusive caller; fully closing that gap
+    would mean switching regex engines entirely (e.g. Google's RE2/RE2J, a linear-time engine
+    immune to catastrophic backtracking by construction) — a materially bigger change than this
+    operation's own scope, not undertaken here. The executor is a singleton-bean-owned field with
+    a `@PreDestroy` shutdown hook (cheap correctness, not load-bearing for the mitigation itself).
+- **A pattern that fails to compile at all** gets the new `DevUtilsErrorCode.INVALID_REGEX`
+  (`DEVUTILS_011`), backed directly by `PatternSyntaxException#getMessage()` (already specific
+  about the exact character/position, e.g. "Unclosed character class") — the same "real parse,
+  real invalid-input error" shape `XmlOperation`/`PhpToJsonOperation` already establish.
+- `gui`'s own `/dev-utils` page needed a second bespoke panel component for this operation, the
+  same "some operations need a genuinely different layout" precedent Hash Generator/Base64 Image
+  already established — see `gui/CLAUDE.md`'s own dev-utils section for the full GUI-side detail
+  (`components/RegExpTesterPanel.tsx`, `utils/regexInputFormat.ts`).
+- 9 new tests in `RegexTesterOperationTest` (the exact reported example including the blank-line
+  separator between matches; global vs. non-global; case-insensitive on/off; multiline anchors;
+  the no-match message; an unrecognized flag character tolerated; a syntax error rejected; and a
+  real, ~2-second timeout test against the harness-confirmed catastrophic pattern above — not
+  mocked or shortened, an actually-slow test proving the guard fires), plus 2 new
+  `DevUtilsServiceApplicationTests` cases (the new endpoint's reachability with no `Authorization`
+  header, and a malformed pattern returning `400` with `DEVUTILS_011`). Test suite grew from 243
+  to 254, verified via a real `mvn -pl dev-utils-service -am test` run (JDK 21) — the
+  `RegexTesterOperationTest` class itself took ~2.0s of that run, consistent with the timeout test
+  actually exercising the real 2-second guard rather than mocking around it.
 
 ## Rules specific to this module
 

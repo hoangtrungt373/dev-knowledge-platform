@@ -1185,6 +1185,48 @@ section again. Full unabridged entry-by-entry history for all three lives in
         `hex-ascii` already use it. `api/devUtilsApi.ts` gained `debugJwt`. Verified via a clean
         `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the
         actual on-screen result is unverified in a real browser.
+    - **Follow-up: 1 new operation, `RegexTesterOperation`, per request ("RegExp Tester - Try
+      regular expressions immediately") — the second operation to declare
+      `OperationGroup.INSPECTORS`.** Backs `POST /api/v1/dev-utils/regexp/test`. The first
+      operation whose input is genuinely 3 separate fields (pattern/flags/testText) rather than
+      "text in, a minify flag" — new `dto.RegexTestRequest`. `flags` follows JS regex-literal
+      convention (`i`/`m`/`s`/`g`/etc.), translated to Java's own `Pattern` constants; `g` isn't a
+      compile flag at all — it's a loop-vs-single-match decision. Every match returned blank-line
+      separated (a match can itself contain a newline, so a bare newline separator would be
+      ambiguous); `"No matches found."` when the pattern compiles but matches nothing.
+      **Real, confirmed-exploitable ReDoS risk on this fully public endpoint** — `java.util.regex`
+      has no built-in cancellation, and a real standalone Java harness (run before any production
+      code was written) found that while the textbook "evil regex" tutorials
+      (`(a+)+$`/`(a|aa)+$`) no longer reproduce reliably on a modern JDK, a different shape
+      (`^(.*)(.*)(.*)(.*)=x$` against 200 non-matching characters) still took over 4.5 seconds and
+      climbing. Mitigated by running the actual match loop on a dedicated virtual-thread executor
+      with a 2-second timeout (`Future#get`); a timeout throws the new
+      `DevUtilsErrorCode.REGEX_TIMEOUT` (`DEVUTILS_012`) instead of hanging the request thread —
+      a known, stated limitation: `Future#cancel` can't actually stop a non-cooperative
+      `java.util.regex` loop, so this bounds response time per request, not total CPU an abusive
+      caller could still burn (fully closing that would mean switching regex engines entirely,
+      e.g. to RE2/RE2J — out of scope here). New `DevUtilsErrorCode.INVALID_REGEX`
+      (`DEVUTILS_011`) backs the ordinary "pattern doesn't compile" case
+      (`PatternSyntaxException`). 9 new backend tests (243→254 — `RegexTesterOperationTest`,
+      including a real ~2-second test against the harness-confirmed catastrophic pattern, plus 2
+      new `DevUtilsServiceApplicationTests` cases), verified via a real
+      `mvn -pl dev-utils-service -am test` run (JDK 21) — 254/254 passing.
+      - **`gui`**: needed a second bespoke panel (`components/RegExpTesterPanel.tsx`) — this
+        operation's 3-field input doesn't fit the shared `DevUtilToolPanel.tsx` at all. A new
+        `utils/regexInputFormat.ts` (`serializeRegexInput`/`parseRegexInput`) encodes all 3 fields
+        into the one lifted `input` string `DevUtilsPage.tsx`'s Sample/Clear buttons already
+        operate on (`/pattern/flags\n\ntestText`), shared between the panel and
+        `config/operations.tsx`'s own `onSubmit` (which decomposes it back apart before calling
+        `devUtilsApi.testRegexp`). Unlike `HashGeneratorPanel.tsx`'s toast-only error handling,
+        a failed submit renders inline (an invalid pattern is a common, expected outcome while
+        typing, not a rare edge case). Two small extractions made along the way, once a 2nd
+        occurrence of each turned up: `utils/downloadTextFile.ts` (out of `DevUtilToolPanel.tsx`'s
+        own previously-local helper) and reuse of the existing `PanelHeader`/`useCopyFeedback`/
+        `HIDDEN_TEXT_FIELD_OUTLINE_SX` extractions from the earlier dev-utils audit pass.
+        `config/operations.tsx` gained the `regexp-tester` entry (`'Inspectors'`, a new
+        `FindReplaceOutlined` icon) and `api/devUtilsApi.ts` gained `testRegexp`. Verified via a
+        clean `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the
+        actual on-screen result is unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

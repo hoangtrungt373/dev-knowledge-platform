@@ -60,6 +60,13 @@ import lombok.Getter;
  * {@link java.util.Base64.Decoder} (URL-safe alphabet) and this module's own JSON parser for the
  * header/payload segments; the one operation in this enum whose failure message can come from
  * either of two genuinely different validators depending on which segment/step actually failed.
+ * {@code INVALID_REGEX}/{@code REGEX_TIMEOUT} back {@code RegexTesterOperation}'s own two
+ * distinct failure modes — a pattern that fails to compile at all (a genuine
+ * {@link java.util.regex.PatternSyntaxException}), vs. one that compiles fine but takes too long
+ * to evaluate against the given text (see that class's own Javadoc for why a public,
+ * unauthenticated regex endpoint needs an explicit timeout guard against catastrophic
+ * backtracking — confirmed as a real, not just theoretical, risk against this JDK's own
+ * {@code java.util.regex} engine before this was built).
  */
 @Getter
 public enum DevUtilsErrorCode implements ErrorCode {
@@ -73,7 +80,9 @@ public enum DevUtilsErrorCode implements ErrorCode {
     INVALID_URL_ENCODING("DEVUTILS_007", "Invalid URL encoding: {0}", HttpStatus.BAD_REQUEST),
     INVALID_PHP_SERIALIZED("DEVUTILS_008", "Invalid PHP serialized data: {0}", HttpStatus.BAD_REQUEST),
     INVALID_HEX("DEVUTILS_009", "Invalid hex data: {0}", HttpStatus.BAD_REQUEST),
-    INVALID_JWT("DEVUTILS_010", "Invalid JWT: {0}", HttpStatus.BAD_REQUEST);
+    INVALID_JWT("DEVUTILS_010", "Invalid JWT: {0}", HttpStatus.BAD_REQUEST),
+    INVALID_REGEX("DEVUTILS_011", "Invalid regular expression: {0}", HttpStatus.BAD_REQUEST),
+    REGEX_TIMEOUT("DEVUTILS_012", "Regular expression evaluation timed out: {0}", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

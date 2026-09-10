@@ -31,6 +31,7 @@ import { OUTPUT_LANGUAGE_INFO, OutputLanguage } from '../config/outputLanguages'
 import { editorChromeTheme, getCodeMirrorExtensions } from '../config/codeMirrorConfig';
 import PanelHeader from './PanelHeader';
 import { useCopyFeedback } from '../hooks/useCopyFeedback';
+import { downloadTextFile } from '../utils/downloadTextFile';
 
 interface DevUtilToolPanelProps {
   /** Controlled — lifted up to `DevUtilsPage.tsx` so its own headline row's Sample/Clear buttons
@@ -184,16 +185,6 @@ function persistSplitPercent(value: number): void {
     // Best-effort only — a private window or blocked storage just means the split isn't
     // remembered next time, not a real failure worth surfacing.
   }
-}
-
-function downloadTextFile(fileName: string, content: string): void {
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 /** The Input/Output split panel every /dev-utils tool renders — each side is its own bordered

@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import com.ttg.devknowledgeplatform.devutils.dto.DevUtilResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.HashResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
+import com.ttg.devknowledgeplatform.devutils.dto.RegexTestRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.TextRequest;
 
@@ -317,4 +318,16 @@ public interface DevUtilsApi {
      */
     @PostMapping("/jwt/debug")
     ResponseEntity<DevUtilResponse> debugJwt(@Valid @RequestBody MinifiableTextRequest request);
+
+    /**
+     * Tests {@code request.pattern()} (with {@code request.flags()}) against
+     * {@code request.testText()} and returns every match found, blank-line separated, or
+     * {@code "No matches found."} when none match.
+     *
+     * @return {@code 200} with the match results, or {@code 400} if {@code request.pattern()}
+     *         doesn't compile, or if evaluating it against {@code request.testText()} times out
+     *         (see {@code RegexTesterOperation}'s own Javadoc for both)
+     */
+    @PostMapping("/regexp/test")
+    ResponseEntity<DevUtilResponse> testRegexp(@Valid @RequestBody RegexTestRequest request);
 }

@@ -2356,10 +2356,13 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 HashGeneratorOperation (moved here from INSPECTORS per direct
 │   │                                 request — a hash digest reads as a one-way encoding of a
 │   │                                 value more than an "inspection" of one).
-│   │                                 JwtDebuggerOperation declares INSPECTORS — the first operation
-│   │                                 to actually land there, fulfilling that group's own "a JWT
-│   │                                 decoder" worked example. WEB/GENERATORS remain fully
-│   │                                 declared-ahead-of-use, still with no operation of their own.
+│   │                                 JwtDebuggerOperation/RegexTesterOperation both declare
+│   │                                 INSPECTORS — the first two operations to actually land there,
+│   │                                 fulfilling that group's own "a JWT decoder" worked example
+│   │                                 (RegexTesterOperation itself wasn't the named example, but
+│   │                                 fits the same "reads/tests a value rather than transforming
+│   │                                 it" shape). WEB/GENERATORS remain fully declared-ahead-of-use,
+│   │                                 still with no operation of their own.
 │   └── impl/
 │       ├── JsonFormatOperation.java     — execute(String input, boolean minify); validates +
 │       │                                   pretty-prints (or, minified, compact-serializes) in one
@@ -2501,6 +2504,24 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   INVALID_JWT (DEVUTILS_010) on the wrong segment count,
 │       │                                   an invalid-Base64URL segment, or a segment that decodes
 │       │                                   to invalid JSON
+│       ├── RegexTesterOperation.java   — execute(String pattern, String flags, String testText);
+│       │                                   the second operation to declare
+│       │                                   OperationGroup.INSPECTORS. Compiles pattern (translating
+│       │                                   JS-style flags to Java's own Pattern constants; "g" is
+│       │                                   handled separately as a loop-vs-single-match decision,
+│       │                                   not a compile flag), then runs the actual match loop on
+│       │                                   a dedicated virtual-thread executor with a 2-second
+│       │                                   timeout (Future#get) — java.util.regex has no built-in
+│       │                                   cancellation, and a confirmed-real (not theoretical)
+│       │                                   ReDoS risk on this fully public endpoint needed an
+│       │                                   explicit guard; see this class's own Javadoc for the
+│       │                                   harness that found a genuinely exploitable pattern once
+│       │                                   the textbook "evil regex" examples turned out not to
+│       │                                   reproduce on a modern JDK. Every match returned
+│       │                                   blank-line separated, or "No matches found." Throws
+│       │                                   BusinessException wrapping INVALID_REGEX (DEVUTILS_011)
+│       │                                   on a pattern that fails to compile, or REGEX_TIMEOUT
+│       │                                   (DEVUTILS_012) on a timeout
 │       └── support/
 │           ├── CurlyBraceFormatter.java — beautify(String)/minify(String), static utility (not a
 │           │                               DevUtilOperation itself). Shared by Css/Less/Scss/
@@ -2594,11 +2615,15 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 every operation with a real minify concept (json/format,
 │   │                                 yaml-to-json, html/beautify, css/beautify, less/beautify,
 │   │                                 scss/beautify, js/beautify, erb/beautify, xml/beautify,
-│   │                                 csv-to-json, sql/format, php-to-json, json-to-php)
+│   │                                 csv-to-json, sql/format, php-to-json, json-to-php, jwt/debug)
 │   ├── TextRequest.java           — input only (same @Size cap); backs json-to-yaml/json-to-csv/
 │   │                                 string-case/convert, none of which has a minify concept
 │   │                                 (YAML/CSV/a case conversion all lack a distinct "compact"
 │   │                                 form)
+│   ├── RegexTestRequest.java      — pattern/flags/testText (@Size(max=16) on flags, @NotBlank
+│   │                                 @Size(max=MAX_INPUT_LENGTH) on the other two) — the first
+│   │                                 request DTO with 3 genuinely separate fields rather than
+│   │                                 "text in, a minify flag"; backs regexp/test only
 │   ├── DevUtilResponse.java       — output; shared by every single-string-output operation, not a
 │   │                                 rule going forward
 │   ├── StringCaseResponse.java    — camelCase/pascalCase/snakeCase/kebabCase/constantCase/
@@ -2616,8 +2641,8 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
     │                                 url/decode,html-entity/encode,html-entity/decode,
     │                                 hash/generate,php-serialize/serialize,
     │                                 php-serialize/unserialize,hex/encode,hex/decode,
-    │                                 jwt/debug}. Every endpoint is public — no @CurrentUserId, no
-    │                                 authenticated principal at all.
+    │                                 jwt/debug,regexp/test}. Every endpoint is public — no
+    │                                 @CurrentUserId, no authenticated principal at all.
     └── impl/DevUtilsController.java — implements DevUtilsApi; injects each operation by its
                                         concrete type (no enum-keyed registry — one fixed endpoint
                                         per operation leaves no runtime dispatch decision to make)

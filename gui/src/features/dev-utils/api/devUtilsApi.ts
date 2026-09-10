@@ -182,4 +182,12 @@ export const devUtilsApi = {
   debugJwt(input: string, minify: boolean, showError?: ShowError): Promise<DevUtilsResponse> {
     return httpClient.post(`${BASE}/jwt/debug`, { input, minify }, showError);
   },
+
+  // The second INSPECTORS-group operation, added alongside dev-utils-service's own
+  // RegexTesterOperation. Genuinely 3 separate fields, not `input`/`minify` — see that backend
+  // operation's own `RegexTestRequest` DTO Javadoc for why this needed its own dedicated shape
+  // rather than being bent into the (input, minify) convention every method above shares.
+  testRegexp(pattern: string, flags: string, testText: string, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/regexp/test`, { pattern, flags, testText }, showError);
+  },
 };
