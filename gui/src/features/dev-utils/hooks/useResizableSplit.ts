@@ -15,6 +15,15 @@ export interface UseResizableSplitOptions {
   minPercent?: number;
   maxPercent?: number;
   keyboardStep?: number;
+  /** `'horizontal'` (default) drags left/right, tracking the pointer's `clientX` against the
+   * row's own width — every original consumer's shape (`DevUtilToolPanel.tsx`'s Input/Output,
+   * `RegExpTesterPanel.tsx`, `TextDiffPanel.tsx`'s left column vs. Diff). `'vertical'` drags
+   * up/down, tracking `clientY` against the row's own height instead — added once
+   * `Base64ImagePanel.tsx` needed a top/bottom split between its own stacked Upload/Image Data
+   * URL cards, not a left/right one. Only affects `handlePointerMove`'s own axis and which arrow
+   * keys `handleKeyDown` reacts to (Left/Right vs. Up/Down) — everything else (persistence,
+   * clamping, the double-click reset) is orientation-agnostic. */
+  orientation?: 'horizontal' | 'vertical';
 }
 
 export interface UseResizableSplit {
@@ -57,6 +66,7 @@ export function useResizableSplit({
   minPercent = 25,
   maxPercent = 75,
   keyboardStep = 5,
+  orientation = 'horizontal',
 }: UseResizableSplitOptions): UseResizableSplit {
   const rowRef = useRef<HTMLDivElement | null>(null);
   const [resizing, setResizing] = useState(false);
@@ -100,10 +110,13 @@ export function useResizableSplit({
         return;
       }
       const rect = rowRef.current.getBoundingClientRect();
-      const rawPercent = ((e.clientX - rect.left) / rect.width) * 100;
+      const rawPercent =
+        orientation === 'vertical'
+          ? ((e.clientY - rect.top) / rect.height) * 100
+          : ((e.clientX - rect.left) / rect.width) * 100;
       setSplitPercent(clamp(rawPercent));
     },
-    [resizing, clamp]
+    [resizing, clamp, orientation]
   );
 
   const handlePointerUp = useCallback(
@@ -125,18 +138,20 @@ export function useResizableSplit({
 
   const handleKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLDivElement>) => {
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') {
+      const decreaseKey = orientation === 'vertical' ? 'ArrowUp' : 'ArrowLeft';
+      const increaseKey = orientation === 'vertical' ? 'ArrowDown' : 'ArrowRight';
+      if (e.key !== decreaseKey && e.key !== increaseKey) {
         return;
       }
       e.preventDefault();
-      const delta = e.key === 'ArrowLeft' ? -keyboardStep : keyboardStep;
+      const delta = e.key === decreaseKey ? -keyboardStep : keyboardStep;
       setSplitPercent(prev => {
         const next = clamp(prev + delta);
         persist(next);
         return next;
       });
     },
-    [keyboardStep, clamp, persist]
+    [keyboardStep, clamp, persist, orientation]
   );
 
   return {

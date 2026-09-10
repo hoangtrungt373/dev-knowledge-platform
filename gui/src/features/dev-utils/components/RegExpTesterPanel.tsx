@@ -51,8 +51,7 @@ interface RegExpTesterPanelProps {
    * together, as a fixed `height`) and as a `minHeight` floor on the Output card, mirroring
    * `DevUtilToolPanel.tsx`'s own Input-fixed/Output-floor split exactly — see this component's own
    * doc comment for why a test string or a match list can each genuinely grow large enough to
-   * need it, unlike `HashGeneratorPanel.tsx`'s/`Base64ImagePanel.tsx`'s own inherently small
-   * results. */
+   * need it, unlike `HashGeneratorPanel.tsx`'s own inherently small results. */
   availableHeight: number;
 }
 
@@ -83,25 +82,32 @@ interface RegExpTesterPanelProps {
  * shared panel's own Output header actions.
  *
  * <p>**A test string against a large body of text can produce a genuinely large match list** —
- * unlike `HashGeneratorPanel.tsx`'s/`Base64ImagePanel.tsx`'s own inherently small, fixed-size
- * results, this operation's own input/output sizes track `DevUtilToolPanel.tsx`'s own Input/
- * Output more closely than either of those two. This panel was brought up to that same viewport-
- * relative sizing as a result: **Test String** is a real CodeMirror editor (not the plain
- * `TextField` it used before) so it can actually fill the left column's own fixed
- * `availableHeight` — the exact same `position: 'relative'` + CodeMirror's own `position:
- * 'absolute', inset: 0` trick `DevUtilToolPanel.tsx`'s Input editor already relies on, reused
- * here rather than the older, more fragile `TextField`-with-`!important`-height-override this
- * feature used before that component migrated onto CodeMirror. **Output** floors at
- * `availableHeight` (never looks shorter than Pattern+Test String/the sidebar for a short match
- * list) and grows past it for a long one, capped by `config/panelSizing.ts`'s own shared
- * `GROWABLE_PANEL_MAX_HEIGHT` (the same cap `DevUtilToolPanel.tsx`'s Output uses) rather than the
- * arbitrary fixed `600`px this card capped at before.
+ * unlike `HashGeneratorPanel.tsx`'s own inherently small, fixed-size results, this operation's own
+ * input/output sizes track `DevUtilToolPanel.tsx`'s own Input/Output more closely. This panel was
+ * brought up to that same viewport-relative sizing: **Test String** is a real CodeMirror editor
+ * (not the plain `TextField` it used before) so it can fill its own share of the left column's
+ * fixed `availableHeight` — the exact same `position: 'relative'` + CodeMirror's own `position:
+ * 'absolute', inset: 0` trick `DevUtilToolPanel.tsx`'s Input editor already relies on. **Output**
+ * floors at `availableHeight` and grows past it for a long match list, capped by
+ * `config/panelSizing.ts`'s own shared `GROWABLE_PANEL_MAX_HEIGHT`.
  *
- * <p>**Both sides can now also be resized/maximized**, via the same `hooks/useResizableSplit.ts`/
- * `hooks/usePanelMaximize.ts`/`components/PanelResizeHandle.tsx` extraction
- * `DevUtilToolPanel.tsx`'s own original inline implementation was pulled into — see each of
- * those files' own doc comments for the mechanism itself (unchanged here, just reused). The split
- * persists under its own `localStorage` key, independent of the shared panel's own ratio.
+ * <p>**All 3 panels can be resized/maximized, per a follow-up request extending
+ * `Base64ImagePanel.tsx`'s own "same approach" to this operation.** Two independent splits, both
+ * via `hooks/useResizableSplit.ts`: a **horizontal** one (default orientation) between the left
+ * column and Output, and a **vertical** one (`orientation: 'vertical'`, defaulting 25%/75%)
+ * between Pattern and Test String inside that column — Pattern only ever needs a small,
+ * single-line-plus-caption amount of room, so it starts noticeably smaller than Test String, the
+ * same "smaller side defaults smaller" reasoning `Base64ImagePanel.tsx`'s own Upload/Image Data
+ * URL split already established. Both handles are the shared `components/PanelResizeHandle.tsx`,
+ * each persisted under its own `localStorage` key.
+ *
+ * <p>`maximizedPanel` is a **3-way exclusive toggle** (`'pattern' | 'testString' | 'output'`, via
+ * `hooks/usePanelMaximize.ts`) — not a 2-way "column vs. Output" toggle, since Pattern and Test
+ * String are each independently maximizable now that they have their own resizable split.
+ * Maximizing any one hides the *other two* entirely: maximizing Output hides the whole left
+ * column (both handles hide too, nothing left to drag); maximizing Pattern or Test String hides
+ * Output *and* the sibling card within the left column. Width-only, the same convention every
+ * other panel's maximize already establishes.
  */
 export default function RegExpTesterPanel({
   input,
@@ -121,22 +127,45 @@ export default function RegExpTesterPanel({
 
   const { pattern, flags, testText } = parseRegexInput(input);
 
-  const { maximizedPanel, toggle: toggleMaximize } = usePanelMaximize<'left' | 'right'>();
-  const toggleMaximizeLeft = useCallback(() => toggleMaximize('left'), [toggleMaximize]);
-  const toggleMaximizeRight = useCallback(() => toggleMaximize('right'), [toggleMaximize]);
+  const { maximizedPanel, toggle: toggleMaximize } = usePanelMaximize<'pattern' | 'testString' | 'output'>();
+  const toggleMaximizePattern = useCallback(() => toggleMaximize('pattern'), [toggleMaximize]);
+  const toggleMaximizeTestString = useCallback(() => toggleMaximize('testString'), [toggleMaximize]);
+  const toggleMaximizeOutput = useCallback(() => toggleMaximize('output'), [toggleMaximize]);
 
+  // Horizontal: the left column (Pattern + Test String together) vs. Output.
   const {
     rowRef,
-    splitPercent,
-    resizing,
-    minPercent,
-    maxPercent,
-    handlePointerDown,
-    handlePointerMove,
-    handlePointerUp,
-    handleDoubleClick,
-    handleKeyDown,
-  } = useResizableSplit({ storageKey: 'devUtilsRegexPanelSplitPercent' });
+    splitPercent: horizontalSplit,
+    resizing: horizontalResizing,
+    minPercent: horizontalMin,
+    maxPercent: horizontalMax,
+    handlePointerDown: handleHorizontalPointerDown,
+    handlePointerMove: handleHorizontalPointerMove,
+    handlePointerUp: handleHorizontalPointerUp,
+    handleDoubleClick: handleHorizontalDoubleClick,
+    handleKeyDown: handleHorizontalKeyDown,
+  } = useResizableSplit({ storageKey: 'devUtilsRegexPanelHorizontalSplitPercent' });
+
+  // Vertical: Pattern vs. Test String, stacked inside the left column — defaults 25%/75%, the
+  // same "smaller side starts smaller" reasoning Base64ImagePanel.tsx's own Upload/Image Data URL
+  // split already established (30%/70%), just a bit smaller here since Pattern's own content — a
+  // single row of 2 fields plus a caption — needs even less room than a drop-zone does.
+  const {
+    rowRef: columnRef,
+    splitPercent: verticalSplit,
+    resizing: verticalResizing,
+    minPercent: verticalMin,
+    maxPercent: verticalMax,
+    handlePointerDown: handleVerticalPointerDown,
+    handlePointerMove: handleVerticalPointerMove,
+    handlePointerUp: handleVerticalPointerUp,
+    handleDoubleClick: handleVerticalDoubleClick,
+    handleKeyDown: handleVerticalKeyDown,
+  } = useResizableSplit({
+    storageKey: 'devUtilsRegexPanelVerticalSplitPercent',
+    orientation: 'vertical',
+    defaultPercent: 25,
+  });
 
   const updateField = useCallback(
     (field: 'pattern' | 'flags' | 'testText', value: string) => {
@@ -179,23 +208,44 @@ export default function RegExpTesterPanel({
     downloadTextFile(downloadFileName, output);
   }, [output, downloadFileName]);
 
+  const patternHidden = maximizedPanel === 'testString' || maximizedPanel === 'output';
+  const testStringHidden = maximizedPanel === 'pattern' || maximizedPanel === 'output';
+  const leftColumnHidden = maximizedPanel === 'output';
+  const outputHidden = maximizedPanel === 'pattern' || maximizedPanel === 'testString';
+
   return (
     // `position: 'relative'` anchors PanelResizeHandle; no `gap` between the two sides — both
     // columns' own flex-basis percentages sum to 100%, mirroring DevUtilToolPanel.tsx's row.
     <Box ref={rowRef} sx={{ position: 'relative', display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start' }}>
       <Box
+        ref={columnRef}
         sx={{
-          flex: maximizedPanel === 'left' ? '1 1 100%' : `1 1 ${splitPercent}%`,
+          position: 'relative',
+          flex: maximizedPanel === 'pattern' || maximizedPanel === 'testString' ? '1 1 100%' : `1 1 ${horizontalSplit}%`,
           minWidth: 320,
           height: availableHeight,
-          display: maximizedPanel === 'right' ? 'none' : 'flex',
+          display: leftColumnHidden ? 'none' : 'flex',
           flexDirection: 'column',
-          gap: 2,
           overflow: 'hidden',
         }}
       >
-        <Paper variant="outlined" sx={{ flexShrink: 0 }}>
-          <PanelHeader title="Pattern" />
+        <Paper
+          variant="outlined"
+          sx={{
+            flex: maximizedPanel === 'pattern' ? '1 1 100%' : `1 1 ${verticalSplit}%`,
+            minHeight: 0,
+            display: patternHidden ? 'none' : 'flex',
+            flexDirection: 'column',
+            overflow: 'auto',
+          }}
+        >
+          <PanelHeader title="Pattern">
+            <Tooltip title={maximizedPanel === 'pattern' ? 'Restore split view' : 'Maximize Pattern'}>
+              <IconButton size="small" onClick={toggleMaximizePattern}>
+                {maximizedPanel === 'pattern' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          </PanelHeader>
           <Box sx={{ p: 2 }}>
             <Stack direction="row" alignItems="center" spacing={0.5}>
               <Typography sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>/</Typography>
@@ -222,7 +272,31 @@ export default function RegExpTesterPanel({
           </Box>
         </Paper>
 
-        <Paper variant="outlined" sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <PanelResizeHandle
+          ariaLabel="Resize Pattern/Test String panels"
+          orientation="vertical"
+          splitPercent={verticalSplit}
+          minPercent={verticalMin}
+          maxPercent={verticalMax}
+          resizing={verticalResizing}
+          hidden={maximizedPanel !== null}
+          onPointerDown={handleVerticalPointerDown}
+          onPointerMove={handleVerticalPointerMove}
+          onPointerUp={handleVerticalPointerUp}
+          onDoubleClick={handleVerticalDoubleClick}
+          onKeyDown={handleVerticalKeyDown}
+        />
+
+        <Paper
+          variant="outlined"
+          sx={{
+            flex: maximizedPanel === 'testString' ? '1 1 100%' : `1 1 ${100 - verticalSplit}%`,
+            minHeight: 0,
+            display: testStringHidden ? 'none' : 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
           <PanelHeader title="Test String">
             <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={handlePasteTestText}>
               Paste
@@ -235,9 +309,9 @@ export default function RegExpTesterPanel({
               onClick={handleTest}
               disabled={!pattern.trim() || !testText.trim()}
             />
-            <Tooltip title={maximizedPanel === 'left' ? 'Restore split view' : 'Maximize Test String'}>
-              <IconButton size="small" onClick={toggleMaximizeLeft}>
-                {maximizedPanel === 'left' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+            <Tooltip title={maximizedPanel === 'testString' ? 'Restore split view' : 'Maximize Test String'}>
+              <IconButton size="small" onClick={toggleMaximizeTestString}>
+                {maximizedPanel === 'testString' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
               </IconButton>
             </Tooltip>
           </PanelHeader>
@@ -260,13 +334,27 @@ export default function RegExpTesterPanel({
         </Paper>
       </Box>
 
+      <PanelResizeHandle
+        ariaLabel="Resize Pattern/Test String and Output panels"
+        splitPercent={horizontalSplit}
+        minPercent={horizontalMin}
+        maxPercent={horizontalMax}
+        resizing={horizontalResizing}
+        hidden={maximizedPanel !== null}
+        onPointerDown={handleHorizontalPointerDown}
+        onPointerMove={handleHorizontalPointerMove}
+        onPointerUp={handleHorizontalPointerUp}
+        onDoubleClick={handleHorizontalDoubleClick}
+        onKeyDown={handleHorizontalKeyDown}
+      />
+
       <Paper
         variant="outlined"
         sx={{
-          flex: maximizedPanel === 'right' ? '1 1 100%' : `1 1 ${100 - splitPercent}%`,
+          flex: maximizedPanel === 'output' ? '1 1 100%' : `1 1 ${100 - horizontalSplit}%`,
           minWidth: 320,
           minHeight: availableHeight,
-          display: maximizedPanel === 'left' ? 'none' : 'flex',
+          display: outputHidden ? 'none' : 'flex',
           flexDirection: 'column',
         }}
       >
@@ -287,9 +375,9 @@ export default function RegExpTesterPanel({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title={maximizedPanel === 'right' ? 'Restore split view' : 'Maximize Output'}>
-            <IconButton size="small" onClick={toggleMaximizeRight}>
-              {maximizedPanel === 'right' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+          <Tooltip title={maximizedPanel === 'output' ? 'Restore split view' : 'Maximize Output'}>
+            <IconButton size="small" onClick={toggleMaximizeOutput}>
+              {maximizedPanel === 'output' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
             </IconButton>
           </Tooltip>
         </PanelHeader>
@@ -335,20 +423,6 @@ export default function RegExpTesterPanel({
           )}
         </Box>
       </Paper>
-
-      <PanelResizeHandle
-        ariaLabel="Resize Pattern/Test String and Output panels"
-        splitPercent={splitPercent}
-        minPercent={minPercent}
-        maxPercent={maxPercent}
-        resizing={resizing}
-        hidden={maximizedPanel !== null}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onDoubleClick={handleDoubleClick}
-        onKeyDown={handleKeyDown}
-      />
     </Box>
   );
 }

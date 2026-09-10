@@ -141,20 +141,40 @@ const PANEL_HEIGHT_FALLBACK = 500;
  * <p>**Every one of this page's custom-layout panels (`HashGeneratorPanel`/`Base64ImagePanel`/
  * `RegExpTesterPanel`/`TextDiffPanel`) also receives `panelHeight` as its own `availableHeight`
  * prop, per a follow-up audit** ("recheck all operations to see if any customize Panel need
- * autogrow/minHeight-matches-sidebar/resizable+maximize") — not because every one of them needs
- * the full treatment, but because each panel decides for itself how to use (or deliberately not
- * use) that one shared number. `RegExpTesterPanel.tsx`/`TextDiffPanel.tsx` — whose own results can
- * genuinely grow as large as `DevUtilToolPanel.tsx`'s own Input/Output — got the *full* parity
- * treatment: a fixed-height left column, a floor-plus-cap Output/Diff side, and the same
- * resizable-split-plus-maximize mechanism, via the shared `hooks/useResizableSplit.ts`/
- * `hooks/usePanelMaximize.ts`/`components/PanelResizeHandle.tsx` extraction (pulled out of this
- * file's own `DevUtilToolPanel.tsx`, which now consumes that same extraction instead of its
- * original inline implementation). `HashGeneratorPanel.tsx`'s result is always exactly 4 short,
- * fixed-length digests — it only takes a cosmetic `minHeight` floor, no resize/maximize, since
- * there's no genuinely large-content case to size for. `Base64ImagePanel.tsx` already had this
- * (its Preview card's own fixed-`height: availableHeight` treatment predates this audit) and
- * needed no further change — a single bounded image has no resize/maximize use case either. See
- * each panel's own doc comment for its specific reasoning.
+ * autogrow/minHeight-matches-sidebar/resizable+maximize", later extended to "apply the same
+ * approach" to the other two 3-panel operations) — not because every one of them needs the full
+ * treatment, but because each panel decides for itself how to use (or deliberately not use) that
+ * one shared number.
+ *
+ * <p>**`Base64ImagePanel.tsx`/`RegExpTesterPanel.tsx`/`TextDiffPanel.tsx` — every custom panel
+ * with 3 cards instead of 2 — now share the identical shape**: a fixed-`height` left column
+ * (its own two cards stacked, split by a **vertical** resizable divider) plus a horizontal split
+ * between that column and the third, growable card (Preview/Output/Diff — each floors at
+ * `availableHeight` and grows past it, capped by `config/panelSizing.ts`'s own shared
+ * `GROWABLE_PANEL_MAX_HEIGHT`, except Preview which stays a fixed `height` since one bounded
+ * image never needs to grow). `maximizedPanel` is a **3-way exclusive toggle** on every one of
+ * these 3 panels (not a 2-way "column vs. third card" toggle) — maximizing any single card hides
+ * the *other two* entirely, including the sibling within the same column. Both the vertical and
+ * horizontal splits, and the maximize toggle, all reuse the same
+ * `hooks/useResizableSplit.ts`/`hooks/usePanelMaximize.ts`/`components/PanelResizeHandle.tsx`
+ * extraction (pulled out of this file's own `DevUtilToolPanel.tsx`, which now consumes that same
+ * extraction instead of its original inline implementation) —
+ * `hooks/useResizableSplit.ts`'s/`components/PanelResizeHandle.tsx`'s `orientation: 'vertical'`
+ * option exists specifically for the stacked-column case, first added for
+ * `Base64ImagePanel.tsx` and then reused as-is by the other two. Each panel's vertical split
+ * defaults differently, based on whether one of its two stacked cards is inherently smaller: 30%/
+ * 70% (Upload/Image Data URL — a drop-zone needs less room), 25%/75% (Pattern/Test String — a
+ * single input row needs even less), and an even 50%/50% (Original/Updated — neither is smaller
+ * than the other). See each panel's own doc comment for its specific reasoning.
+ *
+ * <p>`HashGeneratorPanel.tsx`'s result is always exactly 4 short, fixed-length digests, and it
+ * only has 2 cards (not 3 — there's no second stacked card to divide with a vertical split), so
+ * neither side has any genuinely large-content case to size for: both keep a cosmetic `minHeight`
+ * floor rather than a fixed `height`. It still gained the same horizontal-split-plus-2-way-
+ * maximize mechanism `DevUtilToolPanel.tsx` itself uses, per a direct follow-up request — "this
+ * operation does not need those features ... but I think we should still apply it to make all
+ * the panels stay aligned to each other." Purely for cross-panel structural/visual consistency,
+ * not because either column's own height story needs it.
  */
 export default function DevUtilsPage(): JSX.Element {
   const location = useLocation();

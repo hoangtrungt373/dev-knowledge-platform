@@ -4,10 +4,15 @@ import ContentPasteIcon from '@mui/icons-material/ContentPasteOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import CheckIcon from '@mui/icons-material/CheckOutlined';
 import PlayArrowIcon from '@mui/icons-material/PlayArrowOutlined';
+import OpenInFullIcon from '@mui/icons-material/OpenInFullOutlined';
+import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreenOutlined';
 import SubmitButton from '@shared/components/SubmitButton';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { DevUtilsResponse } from '../types';
+import { useResizableSplit } from '../hooks/useResizableSplit';
+import { usePanelMaximize } from '../hooks/usePanelMaximize';
 import PanelHeader from './PanelHeader';
+import PanelResizeHandle from './PanelResizeHandle';
 import { useCopyFeedback } from '../hooks/useCopyFeedback';
 import { HIDDEN_TEXT_FIELD_OUTLINE_SX } from '../utils/textFieldStyles';
 
@@ -28,13 +33,15 @@ interface HashGeneratorPanelProps {
   onSubmit: (input: string, minify: boolean) => Promise<DevUtilsResponse>;
   /** Height (px) computed by `DevUtilsPage.tsx` from the actual viewport — the same value the
    * shared `DevUtilToolPanel`'s Input card and the sidebar both size themselves to. Applied as a
-   * `minHeight` **floor** on both columns here, not a fixed `height` and not paired with a resize/
-   * maximize feature — see this component's own doc comment for why: Input's own text can be long
-   * (up to the shared `MAX_INPUT_LENGTH`), but its `TextField` already autogrows/scrolls within a
-   * bounded row range, and Output is always exactly 4 short, fixed-length digests — neither side
-   * ever grows large enough to need `RegExpTesterPanel.tsx`'s/`TextDiffPanel.tsx`'s own
-   * resizable-split-plus-maximize treatment; the floor exists purely so this panel doesn't look
-   * visually short next to a tall sidebar when there's little content. */
+   * `minHeight` **floor** on both columns here, not a fixed `height` — see this component's own
+   * doc comment for why: Input's own text can be long (up to the shared `MAX_INPUT_LENGTH`), but
+   * its `TextField` already autogrows/scrolls within a bounded row range, and Output is always
+   * exactly 4 short, fixed-length digests, so neither side ever *needs* to grow the way
+   * `RegExpTesterPanel.tsx`'s match list or `TextDiffPanel.tsx`'s Diff view can — the floor
+   * exists purely so this panel doesn't look visually short next to a tall sidebar when there's
+   * little content. The resizable-split-plus-maximize mechanism below is present anyway, purely
+   * for cross-panel visual consistency, not because either column's own height story needs it —
+   * see this component's own doc comment. */
   availableHeight: number;
 }
 
@@ -87,11 +94,28 @@ function parseHashLines(output: string): Array<{ label: string; value: string }>
  * "Copied!" feedback — copying one digest out of a single concatenated block was the actual
  * problem this layout exists to fix.
  *
- * <p>Both columns carry a `minHeight: availableHeight` floor (not a fixed `height`, and not
- * paired with a resizable split/maximize toggle) — see `availableHeight`'s own doc comment for
- * why: this operation's result is always small and bounded, so there's no genuinely large-content
- * case here the way `RegExpTesterPanel.tsx`'s match list or `TextDiffPanel.tsx`'s Diff view have;
- * the floor is purely cosmetic, keeping this panel from looking short next to a tall sidebar.
+ * <p>Both columns carry a `minHeight: availableHeight` floor (not a fixed `height`) — see
+ * `availableHeight`'s own doc comment for why: this operation's result is always small and
+ * bounded, so there's no genuinely large-content case here the way `RegExpTesterPanel.tsx`'s
+ * match list or `TextDiffPanel.tsx`'s Diff view have; the floor is purely cosmetic, keeping this
+ * panel from looking short next to a tall sidebar.
+ *
+ * <p>**Still gained the same resizable-split-plus-maximize mechanism every other custom panel in
+ * this feature now has, per direct request** — "this operation does not need those features
+ * ... but I think we should still apply it to make all the panels stay aligned to each other."
+ * Purely for structural/visual consistency, not because either side ever actually needs to grow:
+ * a single horizontal split (`hooks/useResizableSplit.ts`'s default orientation, no vertical
+ * split — unlike `Base64ImagePanel.tsx`/`RegExpTesterPanel.tsx`/`TextDiffPanel.tsx`, this
+ * operation only ever has 2 panels, not 3, so there's no second stacked card to divide) between
+ * Input and Output, plus a 2-way `usePanelMaximize<'input' | 'output'>()` toggle — the same
+ * 2-panel shape `DevUtilToolPanel.tsx` itself uses. The Output side needed a real structural
+ * change to carry this: it used to be a bare `Box` of stacked hash-result cards with no header
+ * row of its own at all; it's now wrapped in its own bordered `Paper` with a real "Output"
+ * `PanelHeader` (carrying the Maximize toggle), matching every other panel's own "one bordered
+ * card per side" shape — the individual white per-algorithm cards render *inside* that new outer
+ * Paper unchanged. Width-only, the same convention every other panel's maximize already
+ * establishes — dragging the divider or maximizing either side never changes either column's own
+ * `minHeight` floor.
  */
 export default function HashGeneratorPanel({
   input,
@@ -108,6 +132,23 @@ export default function HashGeneratorPanel({
   // `useCopyFeedback`'s own `key` param is what gives each card its own independent "Copied!"
   // feedback — keyed by label here, so copying one digest never shows "Copied!" on another card.
   const { copiedKey, copy } = useCopyFeedback();
+
+  const { maximizedPanel, toggle: toggleMaximize } = usePanelMaximize<'input' | 'output'>();
+  const toggleMaximizeInput = useCallback(() => toggleMaximize('input'), [toggleMaximize]);
+  const toggleMaximizeOutput = useCallback(() => toggleMaximize('output'), [toggleMaximize]);
+
+  const {
+    rowRef,
+    splitPercent,
+    resizing,
+    minPercent,
+    maxPercent,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerUp,
+    handleDoubleClick,
+    handleKeyDown,
+  } = useResizableSplit({ storageKey: 'devUtilsHashPanelSplitPercent' });
 
   const handleGenerate = useCallback(async () => {
     setSaving(true);
@@ -135,10 +176,22 @@ export default function HashGeneratorPanel({
   const handleCopyValue = useCallback((label: string, value: string) => copy(value, label), [copy]);
 
   const hashes = output !== null ? parseHashLines(output) : [];
+  const inputHidden = maximizedPanel === 'output';
+  const outputHidden = maximizedPanel === 'input';
 
   return (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start' }}>
-      <Paper variant="outlined" sx={{ flex: '1 1 45%', minWidth: 320, minHeight: availableHeight }}>
+    // `position: 'relative'` anchors PanelResizeHandle; no `gap` — both sides' own flex-basis
+    // percentages sum to 100%, mirroring every other resizable split in this feature.
+    <Box ref={rowRef} sx={{ position: 'relative', display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      <Paper
+        variant="outlined"
+        sx={{
+          flex: maximizedPanel === 'input' ? '1 1 100%' : `1 1 ${splitPercent}%`,
+          minWidth: 320,
+          minHeight: availableHeight,
+          display: inputHidden ? 'none' : 'block',
+        }}
+      >
         <PanelHeader title="Input">
           <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={handlePaste}>
             Paste
@@ -151,6 +204,11 @@ export default function HashGeneratorPanel({
             onClick={handleGenerate}
             disabled={!input.trim()}
           />
+          <Tooltip title={maximizedPanel === 'input' ? 'Restore split view' : 'Maximize Input'}>
+            <IconButton size="small" onClick={toggleMaximizeInput}>
+              {maximizedPanel === 'input' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
         </PanelHeader>
         <Box sx={{ p: 2 }}>
           <TextField
@@ -169,56 +227,88 @@ export default function HashGeneratorPanel({
         </Box>
       </Paper>
 
-      <Box sx={{ flex: '1 1 45%', minWidth: 320, minHeight: availableHeight, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {hashes.length === 0 ? (
-          <Paper
-            variant="outlined"
-            sx={{ p: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.paper' }}
-          >
-            <Typography variant="body2" color="text.secondary">
-              Generated hashes will appear here.
-            </Typography>
-          </Paper>
-        ) : (
-          hashes.map(({ label, value }) => (
-            <Paper key={label} variant="outlined" sx={{ p: 2, bgcolor: '#ffffff' }}>
-              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                {/* Per-algorithm color (HASH_LABEL_COLORS), not the semantic `text.primary`
-                    token — this card's own background is a fixed `#ffffff` regardless of the
-                    app's light/dark mode, but `text.primary` itself flips to a light color in
-                    dark mode, which would be nearly invisible against a background that never
-                    follows it. Fixed hex literals stay legible (and distinct per algorithm)
-                    against this card's own always-white background either way. */}
-                <Typography variant="subtitle2" fontWeight={700} sx={{ color: HASH_LABEL_COLORS[label] ?? 'grey.900' }}>
-                  {label}
-                </Typography>
-                <Tooltip title={copiedKey === label ? 'Copied!' : 'Copy'}>
-                  <IconButton size="small" onClick={() => handleCopyValue(label, value)}>
-                    {copiedKey === label ? (
-                      <CheckIcon fontSize="small" color="success" />
-                    ) : (
-                      <ContentCopyIcon fontSize="small" />
-                    )}
-                  </IconButton>
-                </Tooltip>
-              </Stack>
-              <Typography
-                component="pre"
-                sx={{
-                  m: 0,
-                  color: 'grey.800',
-                  fontFamily: 'monospace',
-                  fontSize: '0.8rem',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-all',
-                }}
-              >
-                {value}
+      <PanelResizeHandle
+        ariaLabel="Resize Input/Output panels"
+        splitPercent={splitPercent}
+        minPercent={minPercent}
+        maxPercent={maxPercent}
+        resizing={resizing}
+        hidden={maximizedPanel !== null}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onDoubleClick={handleDoubleClick}
+        onKeyDown={handleKeyDown}
+      />
+
+      <Paper
+        variant="outlined"
+        sx={{
+          flex: maximizedPanel === 'output' ? '1 1 100%' : `1 1 ${100 - splitPercent}%`,
+          minWidth: 320,
+          minHeight: availableHeight,
+          display: outputHidden ? 'none' : 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <PanelHeader title="Output">
+          <Tooltip title={maximizedPanel === 'output' ? 'Restore split view' : 'Maximize Output'}>
+            <IconButton size="small" onClick={toggleMaximizeOutput}>
+              {maximizedPanel === 'output' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
+        </PanelHeader>
+        <Box sx={{ p: 2, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {hashes.length === 0 ? (
+            <Paper
+              variant="outlined"
+              sx={{ p: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.paper' }}
+            >
+              <Typography variant="body2" color="text.secondary">
+                Generated hashes will appear here.
               </Typography>
             </Paper>
-          ))
-        )}
-      </Box>
+          ) : (
+            hashes.map(({ label, value }) => (
+              <Paper key={label} variant="outlined" sx={{ p: 2, bgcolor: '#ffffff' }}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                  {/* Per-algorithm color (HASH_LABEL_COLORS), not the semantic `text.primary`
+                      token — this card's own background is a fixed `#ffffff` regardless of the
+                      app's light/dark mode, but `text.primary` itself flips to a light color in
+                      dark mode, which would be nearly invisible against a background that never
+                      follows it. Fixed hex literals stay legible (and distinct per algorithm)
+                      against this card's own always-white background either way. */}
+                  <Typography variant="subtitle2" fontWeight={700} sx={{ color: HASH_LABEL_COLORS[label] ?? 'grey.900' }}>
+                    {label}
+                  </Typography>
+                  <Tooltip title={copiedKey === label ? 'Copied!' : 'Copy'}>
+                    <IconButton size="small" onClick={() => handleCopyValue(label, value)}>
+                      {copiedKey === label ? (
+                        <CheckIcon fontSize="small" color="success" />
+                      ) : (
+                        <ContentCopyIcon fontSize="small" />
+                      )}
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+                <Typography
+                  component="pre"
+                  sx={{
+                    m: 0,
+                    color: 'grey.800',
+                    fontFamily: 'monospace',
+                    fontSize: '0.8rem',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-all',
+                  }}
+                >
+                  {value}
+                </Typography>
+              </Paper>
+            ))
+          )}
+        </Box>
+      </Paper>
     </Box>
   );
 }

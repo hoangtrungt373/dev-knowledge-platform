@@ -141,19 +141,36 @@ function formatUnifiedDiffText(lines: DiffLine[]): string {
  *
  * <p>**A diffed file can genuinely be as large as this operation's own 2000-line cap on each
  * side** (`dev-utils-service/CLAUDE.md`'s own `TextDiffOperation` note), unlike
- * `HashGeneratorPanel.tsx`'s/`Base64ImagePanel.tsx`'s own small, fixed-size results — so this
- * panel was brought up to the same viewport-relative sizing/resize/maximize treatment
- * `DevUtilToolPanel.tsx` already gives its own Input/Output. Original/Updated each fill half of
- * the left column's own fixed `availableHeight` (`flex: 1` each, both CodeMirror instances using
- * the same `position: 'relative'` wrapper + CodeMirror's own `position: 'absolute', inset: 0`
- * trick that component's Input editor already relies on); Diff floors at `availableHeight` and
- * grows past it, capped by `config/panelSizing.ts`'s own shared `GROWABLE_PANEL_MAX_HEIGHT`
- * (replacing the old fixed `minHeight: 240`/`maxHeight: 600` this card used before, both arbitrary
- * pixel numbers unrelated to the viewport). The resizable divider and maximize toggles both reuse
+ * `HashGeneratorPanel.tsx`'s own small, fixed-size results — so this panel was brought up to the
+ * same viewport-relative sizing/resize/maximize treatment `DevUtilToolPanel.tsx` already gives
+ * its own Input/Output. Diff floors at `availableHeight` and grows past it, capped by
+ * `config/panelSizing.ts`'s own shared `GROWABLE_PANEL_MAX_HEIGHT` (replacing the old fixed
+ * `minHeight: 240`/`maxHeight: 600` this card used before, both arbitrary pixel numbers unrelated
+ * to the viewport).
+ *
+ * <p>**Two independent resizable splits, plus a 3-way maximize, per a follow-up request
+ * extending `Base64ImagePanel.tsx`'s/`RegExpTesterPanel.tsx`'s own "same approach" to this
+ * operation.** A **horizontal** split (default orientation) between the left column (Original +
+ * Updated together) and Diff — the same shape every custom panel in this feature now uses — plus
+ * a **vertical** split (`orientation: 'vertical'`) between Original and Updated inside that
+ * column, defaulting an even 50%/50% (unlike `Base64ImagePanel.tsx`'s 30%/70% or
+ * `RegExpTesterPanel.tsx`'s 25%/75% — neither Original nor Updated is inherently smaller than
+ * the other the way an Upload drop-zone or a Pattern row is, so there's no reason to default one
+ * of them larger). Both CodeMirror instances still fill their own share of the left column's
+ * fixed `availableHeight` via the same `position: 'relative'` wrapper + CodeMirror's own
+ * `position: 'absolute', inset: 0` trick, now sized by the vertical split's own flex-basis
+ * instead of a flat `flex: 1` each. All 3 handles/toggles reuse
  * `hooks/useResizableSplit.ts`/`hooks/usePanelMaximize.ts`/`components/PanelResizeHandle.tsx` —
- * the same extraction `RegExpTesterPanel.tsx` also reuses, pulled out of
- * `DevUtilToolPanel.tsx`'s own original inline implementation. This panel's own split persists
- * under its own `localStorage` key, independent of the other two panels' ratios.
+ * the same extraction `RegExpTesterPanel.tsx`/`Base64ImagePanel.tsx` also reuse, pulled out of
+ * `DevUtilToolPanel.tsx`'s own original inline implementation. Both of this panel's own splits
+ * persist under their own `localStorage` keys, independent of every other panel's ratios.
+ *
+ * <p>`maximizedPanel` is a **3-way exclusive toggle** (`'original' | 'updated' | 'diff'`) — not
+ * a 2-way "column vs. Diff" toggle, since Original and Updated are each independently
+ * maximizable now that they have their own resizable split. Maximizing any one hides the *other
+ * two* entirely: maximizing Diff hides the whole left column (both handles hide too); maximizing
+ * Original or Updated hides Diff *and* the sibling editor within the left column. Width-only,
+ * the same convention every other panel's maximize already establishes.
  */
 export default function TextDiffPanel({
   input,
@@ -169,22 +186,40 @@ export default function TextDiffPanel({
 
   const { original, updated } = parseTextDiffInput(input);
 
-  const { maximizedPanel, toggle: toggleMaximize } = usePanelMaximize<'left' | 'right'>();
-  const toggleMaximizeLeft = useCallback(() => toggleMaximize('left'), [toggleMaximize]);
-  const toggleMaximizeRight = useCallback(() => toggleMaximize('right'), [toggleMaximize]);
+  const { maximizedPanel, toggle: toggleMaximize } = usePanelMaximize<'original' | 'updated' | 'diff'>();
+  const toggleMaximizeOriginal = useCallback(() => toggleMaximize('original'), [toggleMaximize]);
+  const toggleMaximizeUpdated = useCallback(() => toggleMaximize('updated'), [toggleMaximize]);
+  const toggleMaximizeDiff = useCallback(() => toggleMaximize('diff'), [toggleMaximize]);
 
+  // Horizontal: the left column (Original + Updated together) vs. Diff.
   const {
     rowRef,
-    splitPercent,
-    resizing,
-    minPercent,
-    maxPercent,
-    handlePointerDown,
-    handlePointerMove,
-    handlePointerUp,
-    handleDoubleClick,
-    handleKeyDown,
-  } = useResizableSplit({ storageKey: 'devUtilsTextDiffPanelSplitPercent' });
+    splitPercent: horizontalSplit,
+    resizing: horizontalResizing,
+    minPercent: horizontalMin,
+    maxPercent: horizontalMax,
+    handlePointerDown: handleHorizontalPointerDown,
+    handlePointerMove: handleHorizontalPointerMove,
+    handlePointerUp: handleHorizontalPointerUp,
+    handleDoubleClick: handleHorizontalDoubleClick,
+    handleKeyDown: handleHorizontalKeyDown,
+  } = useResizableSplit({ storageKey: 'devUtilsTextDiffPanelHorizontalSplitPercent' });
+
+  // Vertical: Original vs. Updated, stacked inside the left column — an even 50%/50% default,
+  // since neither side is inherently smaller the way Base64ImagePanel.tsx's Upload or
+  // RegExpTesterPanel.tsx's Pattern is.
+  const {
+    rowRef: columnRef,
+    splitPercent: verticalSplit,
+    resizing: verticalResizing,
+    minPercent: verticalMin,
+    maxPercent: verticalMax,
+    handlePointerDown: handleVerticalPointerDown,
+    handlePointerMove: handleVerticalPointerMove,
+    handlePointerUp: handleVerticalPointerUp,
+    handleDoubleClick: handleVerticalDoubleClick,
+    handleKeyDown: handleVerticalKeyDown,
+  } = useResizableSplit({ storageKey: 'devUtilsTextDiffPanelVerticalSplitPercent', orientation: 'vertical' });
 
   const updateField = useCallback(
     (field: 'original' | 'updated', value: string) => {
@@ -245,26 +280,46 @@ export default function TextDiffPanel({
     downloadTextFile(downloadFileName, unifiedText);
   }, [unifiedText, downloadFileName]);
 
+  const originalHidden = maximizedPanel === 'updated' || maximizedPanel === 'diff';
+  const updatedHidden = maximizedPanel === 'original' || maximizedPanel === 'diff';
+  const leftColumnHidden = maximizedPanel === 'diff';
+  const diffHidden = maximizedPanel === 'original' || maximizedPanel === 'updated';
+
   return (
     // `position: 'relative'` anchors PanelResizeHandle; no `gap` between the two sides — both
     // columns' own flex-basis percentages sum to 100%, mirroring DevUtilToolPanel.tsx's row.
     <Box ref={rowRef} sx={{ position: 'relative', display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start' }}>
       <Box
+        ref={columnRef}
         sx={{
-          flex: maximizedPanel === 'left' ? '1 1 100%' : `1 1 ${splitPercent}%`,
+          position: 'relative',
+          flex: maximizedPanel === 'original' || maximizedPanel === 'updated' ? '1 1 100%' : `1 1 ${horizontalSplit}%`,
           minWidth: 320,
           height: availableHeight,
-          display: maximizedPanel === 'right' ? 'none' : 'flex',
+          display: leftColumnHidden ? 'none' : 'flex',
           flexDirection: 'column',
-          gap: 2,
           overflow: 'hidden',
         }}
       >
-        <Paper variant="outlined" sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <Paper
+          variant="outlined"
+          sx={{
+            flex: maximizedPanel === 'original' ? '1 1 100%' : `1 1 ${verticalSplit}%`,
+            minHeight: 0,
+            display: originalHidden ? 'none' : 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
           <PanelHeader title="Original">
             <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={() => handlePaste('original')}>
               Paste
             </Button>
+            <Tooltip title={maximizedPanel === 'original' ? 'Restore split view' : 'Maximize Original'}>
+              <IconButton size="small" onClick={toggleMaximizeOriginal}>
+                {maximizedPanel === 'original' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
           </PanelHeader>
           {/* `position: 'relative'` + CodeMirror's own `position: 'absolute', inset: 0` (via
               `style`) — the same trick DevUtilToolPanel.tsx's Input editor already relies on to
@@ -282,7 +337,31 @@ export default function TextDiffPanel({
           </Box>
         </Paper>
 
-        <Paper variant="outlined" sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <PanelResizeHandle
+          ariaLabel="Resize Original/Updated panels"
+          orientation="vertical"
+          splitPercent={verticalSplit}
+          minPercent={verticalMin}
+          maxPercent={verticalMax}
+          resizing={verticalResizing}
+          hidden={maximizedPanel !== null}
+          onPointerDown={handleVerticalPointerDown}
+          onPointerMove={handleVerticalPointerMove}
+          onPointerUp={handleVerticalPointerUp}
+          onDoubleClick={handleVerticalDoubleClick}
+          onKeyDown={handleVerticalKeyDown}
+        />
+
+        <Paper
+          variant="outlined"
+          sx={{
+            flex: maximizedPanel === 'updated' ? '1 1 100%' : `1 1 ${100 - verticalSplit}%`,
+            minHeight: 0,
+            display: updatedHidden ? 'none' : 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
           <PanelHeader title="Updated">
             <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={() => handlePaste('updated')}>
               Paste
@@ -294,9 +373,9 @@ export default function TextDiffPanel({
               startIcon={<PlayArrowIcon fontSize="small" />}
               onClick={handleCompare}
             />
-            <Tooltip title={maximizedPanel === 'left' ? 'Restore split view' : 'Maximize Original/Updated'}>
-              <IconButton size="small" onClick={toggleMaximizeLeft}>
-                {maximizedPanel === 'left' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+            <Tooltip title={maximizedPanel === 'updated' ? 'Restore split view' : 'Maximize Updated'}>
+              <IconButton size="small" onClick={toggleMaximizeUpdated}>
+                {maximizedPanel === 'updated' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
               </IconButton>
             </Tooltip>
           </PanelHeader>
@@ -314,13 +393,27 @@ export default function TextDiffPanel({
         </Paper>
       </Box>
 
+      <PanelResizeHandle
+        ariaLabel="Resize Original/Updated and Diff panels"
+        splitPercent={horizontalSplit}
+        minPercent={horizontalMin}
+        maxPercent={horizontalMax}
+        resizing={horizontalResizing}
+        hidden={maximizedPanel !== null}
+        onPointerDown={handleHorizontalPointerDown}
+        onPointerMove={handleHorizontalPointerMove}
+        onPointerUp={handleHorizontalPointerUp}
+        onDoubleClick={handleHorizontalDoubleClick}
+        onKeyDown={handleHorizontalKeyDown}
+      />
+
       <Paper
         variant="outlined"
         sx={{
-          flex: maximizedPanel === 'right' ? '1 1 100%' : `1 1 ${100 - splitPercent}%`,
+          flex: maximizedPanel === 'diff' ? '1 1 100%' : `1 1 ${100 - horizontalSplit}%`,
           minWidth: 320,
           minHeight: availableHeight,
-          display: maximizedPanel === 'left' ? 'none' : 'flex',
+          display: diffHidden ? 'none' : 'flex',
           flexDirection: 'column',
         }}
       >
@@ -351,9 +444,9 @@ export default function TextDiffPanel({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title={maximizedPanel === 'right' ? 'Restore split view' : 'Maximize Diff'}>
-            <IconButton size="small" onClick={toggleMaximizeRight}>
-              {maximizedPanel === 'right' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+          <Tooltip title={maximizedPanel === 'diff' ? 'Restore split view' : 'Maximize Diff'}>
+            <IconButton size="small" onClick={toggleMaximizeDiff}>
+              {maximizedPanel === 'diff' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
             </IconButton>
           </Tooltip>
         </PanelHeader>
@@ -432,20 +525,6 @@ export default function TextDiffPanel({
           )}
         </Box>
       </Paper>
-
-      <PanelResizeHandle
-        ariaLabel="Resize Original/Updated and Diff panels"
-        splitPercent={splitPercent}
-        minPercent={minPercent}
-        maxPercent={maxPercent}
-        resizing={resizing}
-        hidden={maximizedPanel !== null}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onDoubleClick={handleDoubleClick}
-        onKeyDown={handleKeyDown}
-      />
     </Box>
   );
 }

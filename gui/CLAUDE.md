@@ -4128,13 +4128,111 @@ slice" benefit without that cost — revisit only if a genuine second deployable
         digests, so there's no genuinely large-content case to size for; the floor exists purely
         so the panel doesn't look visually short next to a tall sidebar when there's little
         content.
-      - **`Base64ImagePanel.tsx` needed no change** — its Preview card already had this exact
-        `availableHeight`-as-fixed-`height` treatment from before this audit, and a single bounded
-        image (capped client-side at 5 MB, displayed at `maxHeight: 400`) has no resize/maximize
-        use case either; confirmed by re-reading it, not assumed.
+      - **`Base64ImagePanel.tsx` was left unchanged in this first pass** — its Preview card
+        already had this exact `availableHeight`-as-fixed-`height` treatment from before this
+        audit, and a single bounded image (capped client-side at 5 MB, displayed at `maxHeight:
+        400`) has no resize/maximize use case either; confirmed by re-reading it, not assumed.
+        **Superseded by a direct follow-up immediately after** — see below.
       - Verified via a clean `tsc --noEmit` and a successful `vite build` only across every file
         touched — no Docker in this sandbox, so the actual on-screen resize-drag/maximize-toggle/
         autogrow behavior on all 4 panels is unverified in a real browser.
+    - **Follow-up: `Base64ImagePanel.tsx` revisited, per direct request — "shall we make 'Upload
+      Image' panel height + 'Image Data Url' panel height = sidebar height (split
+      30%/70%)?" and "Preview/ImageDataUrl/UploadImage panel should have the resizable/maximum
+      features too?"** The first-pass audit's "already fine" verdict for this panel only ever
+      considered its Preview card in isolation; this follow-up brought the left column (Upload +
+      Image Data URL) up to the same treatment.
+      - **`hooks/useResizableSplit.ts`/`components/PanelResizeHandle.tsx` both gained an
+        `orientation?: 'horizontal' | 'vertical'` option** (default `'horizontal'`, so every
+        existing consumer — `DevUtilToolPanel.tsx`/`RegExpTesterPanel.tsx`/`TextDiffPanel.tsx` —
+        is unaffected) — `'vertical'` tracks the pointer's `clientY`/height instead of
+        `clientX`/width, reacts to Up/Down arrow keys instead of Left/Right, draws a top/bottom
+        divider (`cursor: 'row-resize'`, a horizontal highlight line) instead of left/right, and
+        skips the `{ xs: 'none', md: 'block' }` breakpoint hiding entirely (that hiding exists
+        because a horizontal split's two sides *wrap* onto separate lines at a narrow viewport,
+        which never happens for two siblings that are already stacked at every width).
+        `Base64ImagePanel.tsx` is the first, so far only, consumer of `'vertical'`.
+      - **The left column (Upload Image + Image Data URL) now takes a fixed `height:
+        availableHeight`** (matching Preview's own pre-existing convention, and the other 2
+        panels' own left columns) — it used to keep its own natural, content-driven height,
+        unmatched to the sidebar. Split between the two cards via a new **vertical** resizable
+        divider, **defaulting 30%/70%** exactly as asked (Upload/Image Data URL), persisted under
+        its own `localStorage` key independent of the horizontal split below. The Upload drop-zone
+        `Box` itself gained `flex: 1` (was a fixed `p: 4` block with no flex-grow) so it actually
+        fills whatever height the vertical split/maximize gives its card, rather than leaving
+        blank space below a small drop-zone inside a now-much-taller `Paper`. Image Data URL's own
+        `TextField` gained the older `!important`-override fill-height technique
+        (`rows={1}` + `'& .MuiInputBase-inputMultiline': { height: '100% !important', overflow:
+        'auto !important' }`) this feature's own `DevUtilToolPanel.tsx` used *before* it migrated
+        onto CodeMirror — **deliberately not** converted to CodeMirror the way
+        `RegExpTesterPanel.tsx`'s Test String was in the previous follow-up: this box has a real,
+        already-working image-paste-detection feature built on a plain `<textarea>`'s native paste
+        semantics (`preventDefault()` on the same event a native textarea would otherwise use to
+        insert the pasted text), and CodeMirror 6 doesn't defer to that native behavior at all (it
+        manages its own document model via its own event handling) — reproducing the identical
+        interception would need CodeMirror's own `EditorView.domEventHandlers` extension API, a
+        real rewrite of already-working logic for no benefit relevant to this ask.
+      - **A second, independent horizontal split** (the same shape `RegExpTesterPanel.tsx`/
+        `TextDiffPanel.tsx` already use) now sits between that whole left column and Preview,
+        replacing the fixed, unsplit `flex: '1 1 45%'` both sides used before.
+      - **Maximize is a 3-way exclusive toggle** (`usePanelMaximize<'upload' | 'dataUrl' |
+        'preview'>()`), not the 2-way toggle every other panel in this feature uses — the first
+        operation with 3 panels instead of 2. Maximizing any one hides the *other two* entirely
+        (not just "the other side of one split"): maximizing Preview hides the whole left column
+        (both resize handles hide too, nothing left to drag); maximizing Upload or Image Data URL
+        hides Preview *and* the sibling card within the left column. Width-only, the same
+        convention every other panel's maximize already establishes — never changes the fixed
+        `availableHeight` any of these 3 cards render at.
+      - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+        sandbox, so the actual on-screen vertical-drag, 3-way maximize, and Upload drop-zone
+        fill-height behavior are all unverified in a real browser.
+    - **Follow-up: the identical "same approach" extended to `RegExpTesterPanel.tsx`/
+      `TextDiffPanel.tsx`, per direct request** ("Can you apply the same approach for
+      TextDiffChecker, RegexpTester") — both already had *a* horizontal split + 2-way maximize
+      (column vs. Output/Diff) from the earlier audit, but their own left column's two stacked
+      cards (Pattern/Test String, Original/Updated) still weren't independently resizable or
+      maximizable; this pass brought both up to exactly `Base64ImagePanel.tsx`'s own shape.
+      - **`RegExpTesterPanel.tsx`**: gained a **vertical** split between Pattern and Test String,
+        defaulting **25%/75%** — even smaller than `Base64ImagePanel.tsx`'s own 30%/70% Upload
+        share, since Pattern's content (2 single-line fields + a caption) needs even less room
+        than a drop-zone. `maximizedPanel` widened from a 2-way `'left' | 'right'` to a 3-way
+        `'pattern' | 'testString' | 'output'` — Pattern's own header gained a Maximize toggle it
+        never had before (it had no header actions at all previously).
+      - **`TextDiffPanel.tsx`**: gained a **vertical** split between Original and Updated,
+        defaulting an even **50%/50%** — unlike the other two panels' splits, neither side is
+        inherently smaller here, so there was no reason to default one of them larger.
+        `maximizedPanel` widened from `'left' | 'right'` to `'original' | 'updated' | 'diff'` —
+        Original's own header gained a Maximize toggle (it only had a Paste button before).
+      - Both panels' own left-column `Box` also gained `position: 'relative'` (anchoring the new
+        vertical `PanelResizeHandle`, mirroring `Base64ImagePanel.tsx`'s `columnRef`), and their
+        `gap: 2` between the two stacked cards was removed — matching every other resizable split
+        in this feature's own "no gap, the handle overlays the shared border" convention.
+      - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+        sandbox, so the actual on-screen vertical-drag and 3-way maximize behavior on both panels
+        is unverified in a real browser.
+    - **Follow-up: `HashGeneratorPanel.tsx` gained the same mechanism too, per direct request —
+      explicitly *not* because it needs it** ("this operation does not need those features
+      (resizable, maximum) but I think we should still apply it to make all the panel stay align
+      to each others"). Only a **horizontal** split (`hooks/useResizableSplit.ts`'s default
+      orientation) between Input and Output, plus a **2-way** `usePanelMaximize<'input' |
+      'output'>()` toggle — not the 3-way toggle/vertical split the other 3 custom panels have,
+      since this operation only ever has 2 cards, not 3 (there's no second stacked card to
+      divide) — the same 2-panel shape `DevUtilToolPanel.tsx` itself uses.
+      - **Output needed a real structural change to carry this**: it used to be a bare `Box` of
+        stacked white per-algorithm result cards with no header row of its own at all (unlike
+        every other panel's own "one bordered `Paper` per side, each with a `PanelHeader`"
+        shape). It's now wrapped in its own outlined `Paper` with a real "Output" `PanelHeader`
+        (carrying the Maximize toggle) — the individual hash-result cards render *inside* that
+        new outer `Paper` unchanged, nested-`Paper`-in-`Paper` the same way
+        `Base64ImagePanel.tsx`'s own Preview card nests its `<img>` inside an outer bordered card.
+      - Both columns kept their existing `minHeight: availableHeight` **floor** (not switched to
+        a fixed `height`) — dragging the divider or maximizing either side only ever changes
+        width-share, the same "width-only" convention every other panel's maximize already
+        establishes; it doesn't change either column's own height story, which still doesn't
+        need one.
+      - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+        sandbox, so the actual on-screen resize-drag/maximize-toggle behavior is unverified in a
+        real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

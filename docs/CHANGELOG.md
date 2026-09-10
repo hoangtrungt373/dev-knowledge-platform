@@ -1366,6 +1366,41 @@ section again. Full unabridged entry-by-entry history for all three lives in
         Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
         sandbox, so the actual on-screen resize/maximize/autogrow behavior is unverified in a real
         browser.
+      - **Follow-up: `Base64ImagePanel.tsx` revisited, per direct request** — the audit's own
+        "already fine" verdict for this panel only considered its Preview card; this brought the
+        left column (Upload Image + Image Data URL) up to the same treatment.
+        `hooks/useResizableSplit.ts`/`components/PanelResizeHandle.tsx` both gained an
+        `orientation?: 'horizontal' | 'vertical'` option (default `'horizontal'`, every existing
+        consumer unaffected) so the left column's own Upload/Image Data URL split could be a
+        **vertical** (top/bottom) divider, defaulting 30%/70% as asked, independent of a second,
+        new **horizontal** split between that whole column and Preview. Maximize became a 3-way
+        exclusive toggle (`'upload' | 'dataUrl' | 'preview'`) — the first operation with 3 panels
+        instead of 2, so maximizing any one hides the other two. Image Data URL's `TextField`
+        deliberately did **not** follow `RegExpTesterPanel.tsx`'s Test String onto CodeMirror —
+        it has a real, already-working image-paste-detection feature built on a plain
+        `<textarea>`'s native paste semantics that CodeMirror 6 doesn't defer to at all; it
+        instead reused the older `!important`-override fill-height technique
+        `DevUtilToolPanel.tsx` itself used before its own CodeMirror migration. Verified via a
+        clean `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so
+        the actual on-screen vertical-drag/3-way-maximize behavior is unverified in a real
+        browser.
+      - **Follow-up: the identical "same approach" extended to `RegExpTesterPanel.tsx`/
+        `TextDiffPanel.tsx`, per direct request.** Both gained a **vertical** resizable split
+        between their own left column's two stacked cards (Pattern/Test String defaulting
+        25%/75%; Original/Updated defaulting an even 50%/50%, since neither side is inherently
+        smaller there), and their `maximizedPanel` widened from a 2-way `'left' | 'right'` toggle
+        to a 3-way one (`'pattern' | 'testString' | 'output'`; `'original' | 'updated' | 'diff'`)
+        — Pattern's and Original's own headers each gained a Maximize toggle they never had
+        before. Verified via a clean `tsc --noEmit` and a successful `vite build` only — no
+        Docker in this sandbox, so the actual on-screen behavior is unverified in a real browser.
+      - **Follow-up: `HashGeneratorPanel.tsx` gained the same mechanism too, per direct request —
+        explicitly for cross-panel consistency, not because it needs it.** Only a horizontal
+        split + 2-way `'input' | 'output'` maximize (this operation has 2 cards, not 3 — no
+        vertical split to add). Output's own bare `Box` of stacked result cards is now wrapped in
+        a real bordered `Paper` with its own "Output" `PanelHeader`, matching every other panel's
+        "one card per side" shape; both columns kept their existing `minHeight` floor unchanged.
+        Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in
+        this sandbox, so the actual on-screen behavior is unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.
