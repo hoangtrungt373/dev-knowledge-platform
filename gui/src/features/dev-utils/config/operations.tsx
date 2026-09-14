@@ -16,12 +16,14 @@ import RegexIcon from '@mui/icons-material/FindReplaceOutlined';
 import UrlParserIcon from '@mui/icons-material/PublicOutlined';
 import CronParserIcon from '@mui/icons-material/ScheduleOutlined';
 import TextDiffIcon from '@mui/icons-material/DifferenceOutlined';
+import UnixTimeConverterIcon from '@mui/icons-material/AccessTimeOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
 import { OutputLanguage } from './outputLanguages';
 import { parseRegexInput, serializeRegexInput } from '../utils/regexInputFormat';
 import { serializeTextDiffInput } from '../utils/textDiffInputFormat';
+import { serializeUnixTimeInput } from '../utils/unixTimeInputFormat';
 
 export type TabKey =
   | 'json-format'
@@ -51,7 +53,8 @@ export type TabKey =
   | 'regexp-tester'
   | 'url-parser'
   | 'cron-parser'
-  | 'text-diff-checker';
+  | 'text-diff-checker'
+  | 'unix-time-converter';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -82,6 +85,7 @@ export const TAB_KEYS: TabKey[] = [
   'url-parser',
   'cron-parser',
   'text-diff-checker',
+  'unix-time-converter',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -802,5 +806,45 @@ export const OPERATIONS: OperationConfig[] = [
     // establishes (a real loss of per-line type information to force it through a formatted
     // string and back), so TextDiffPanel.tsx calls `devUtilsApi.compareTextDiff` directly instead
     // — see that component's own doc comment for the full reasoning.
+  },
+  {
+    key: 'unix-time-converter',
+    // Back in 'Formatters'/'Converters' — the same descriptively-named-bidirectional-pair shape
+    // yaml-to-json/php-to-json already establish, not 'Encoders/Decoders' (see
+    // OperationGroup.java's own updated Javadoc for why "encode"/"decode" doesn't read naturally
+    // for "convert a date into a timestamp" the way it does for Base64/URL/hex).
+    group: 'Formatters',
+    category: 'Converters',
+    label: 'Unix Time Converter',
+    description: 'Convert between date/time and Unix timestamps — local, UTC, ISO 8601, and more',
+    icon: <UnixTimeConverterIcon fontSize="small" />,
+    actionLabel: 'Convert',
+    // Run through the same serializeUnixTimeInput UnixTimeConverterPanel.tsx itself uses, so this
+    // placeholder can never drift out of sync with what that component actually parses — the
+    // exact instant on both sides (2024-01-01T00:00:00 UTC = Unix 1704067200), the same
+    // "same real-world moment on both sides" demo TextDiffOperationTest itself uses to verify the
+    // backend's own equivalent-seconds/millis test.
+    inputPlaceholder: serializeUnixTimeInput({
+      dateTime: '2024-01-01T00:00:00',
+      dateTimeZoneId: '',
+      timestamp: '1704067200',
+      timestampZoneId: '',
+    }),
+    // `inputFormat`/`outputLanguage`/`supportsMinify`/`downloadFileName` are all unused by
+    // UnixTimeConverterPanel (it renders no CodeMirror editor, reads no minify flag, and offers
+    // no single-file download — every field has its own Copy button instead) but still filled in
+    // with reasonable values to satisfy `OperationConfig`'s shared shape — the same
+    // "present but inert for this operation" treatment `hash-generator`/`base64-image`/
+    // `regexp-tester`/`text-diff-checker` already get.
+    inputFormat: 'text',
+    outputLanguage: 'text',
+    supportsMinify: false,
+    downloadFileName: 'unix-time.txt',
+    // No `onSubmit` — this operation calls 2 genuinely different backend endpoints
+    // (devUtilsApi.dateTimeToUnix/unixToDateTime) depending on which of its own 2 cards submitted,
+    // neither of which fits the shared `(input, minify) => Promise<DevUtilsResponse>` shape (both
+    // return a genuinely richer type, not DevUtilsResponse) — the same "omitted, not a dead
+    // placeholder" treatment `text-diff-checker`'s own entry already establishes for the
+    // identical underlying reason.
   },
 ];

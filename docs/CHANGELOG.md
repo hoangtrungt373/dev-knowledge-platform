@@ -1401,6 +1401,60 @@ section again. Full unabridged entry-by-entry history for all three lives in
         "one card per side" shape; both columns kept their existing `minHeight` floor unchanged.
         Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in
         this sandbox, so the actual on-screen behavior is unverified in a real browser.
+    - **Follow-up: 1 new operation covering 2 directions, `DateTimeToUnixOperation`/
+      `UnixToDateTimeOperation`, per request ("Unix Time Converter - Convert Timestamp and Day
+      time").** Declares `OperationGroup.FORMATTERS` (category "Converters"), not
+      `OperationGroup.ENCODERS_DECODERS` — "encode"/"decode" doesn't read naturally for "convert a
+      date into a timestamp," so this follows `PhpToJsonOperation`/`JsonToPhpOperation`'s own
+      descriptively-named-pair precedent instead; this is also the concrete
+      "timestamp+timezone+format" example `DevUtilOperation`'s own Javadoc named ahead of use back
+      when its shared `execute(...)` signature was first generalized away, now landed for real.
+      `dateTime` is accepted in `DateTimeFormatter.ISO_LOCAL_DATE_TIME` shape — exactly the value
+      an HTML `<input type="datetime-local">` produces, so `gui` needs no reformatting.
+      `timestamp`'s own unit (seconds vs. milliseconds) is auto-detected by magnitude
+      (`< 10,000,000,000` → seconds, else milliseconds), the standard heuristic every comparable
+      tool uses, rather than a caller-supplied flag. `UnixToDateTimeOperation` renders one
+      resolved instant 7 different ways at once (local/UTC/ISO 8601/RFC 1123/SQL/relative/
+      day-of-week, plus the resolved epoch in both units) — a real departure from every other
+      operation's single-representation output. New shared `service.impl.support.TimeZones`
+      (blank/null zone id defaults to UTC — this module has no persisted user/timezone context of
+      any kind, a fully public stateless endpoint) and a small bucketed relative-time formatter
+      (package-private for direct test access, not a new library dependency). New
+      `DevUtilsErrorCode.INVALID_DATE_TIME`/`INVALID_TIMESTAMP`/`INVALID_TIME_ZONE`
+      (`DEVUTILS_016`/`017`/`018`). 19 new backend tests (300→324 — including a genuinely
+      surprising, harness-confirmed finding: `Asia/Ho_Chi_Minh` was actually UTC+8, not today's
+      +7, for a 1970 date, per IANA tzdata's own record of Vietnam's 1975 zone change), verified
+      via a real `mvn -pl dev-utils-service -am test` run (JDK 21) — 324/324 passing.
+      - **`gui`**: recommended and built a fifth bespoke panel (`components/
+        UnixTimeConverterPanel.tsx`), the same "some operations need a genuinely different
+        layout" precedent Hash Generator/Base64 Image/RegExp Tester/Text Diff Checker already
+        established — 2 converter cards (Date/Time → Unix, Unix → Date/Time), each with its own
+        value + IANA-zone-id fields (pre-filled with the browser's own detected zone via `Intl`,
+        never forced), plus a live, entirely client-side "Now" bar (no backend call — `Date.now()`
+        already gives the current instant for free) with "Use now" buttons feeding either card.
+        Reused `HashGeneratorPanel.tsx`'s own newly-established resizable-split-plus-maximize/
+        `minHeight`-floor treatment for cross-panel visual alignment, since this operation's own
+        2 cards are small and bounded, the same reasoning that treatment was built for. New
+        `utils/unixTimeInputFormat.ts` serializes the panel's 4 fields into the single lifted
+        `input` string via plain `JSON.stringify` (not a custom delimiter, unlike
+        `regexInputFormat.ts`/`textDiffInputFormat.ts` — none of these 4 fields can ever contain a
+        character JSON needs to escape, so there's no real separator-collision risk to design
+        around). No `onSubmit` on the `config/operations.tsx` entry — this operation calls 2
+        genuinely different backend endpoints depending on which card submitted, neither of which
+        fits the shared `(input, minify) => Promise<DevUtilsResponse>` shape. Verified via a clean
+        `tsc --noEmit` and a successful `vite build` only — no Docker in this sandbox, so the
+        actual on-screen result (both converter flows, the live Now bar, zone auto-detection) is
+        unverified in a real browser.
+      - **Follow-up: both zone-id fields became a searchable dropdown, per direct request** — a
+        `gui`-only change, no backend change needed. New `utils/timeZones.ts` lists every real
+        IANA zone id via `Intl.supportedValuesOf('timeZone')` (~400 entries, with a small curated
+        fallback for the rare browser without that API), and both zone `TextField`s became an MUI
+        `Autocomplete` (`freeSolo`, `inputValue`-controlled — the same "suggested but freely
+        editable" shape `@ecommerce/components/ProductVariantDialog.tsx`'s own attribute-value
+        picker already establishes) so a zone the list doesn't suggest, or a blank field, both
+        still work exactly as before. Verified via a clean `tsc --noEmit` and a successful
+        `vite build` only — no Docker in this sandbox, so the actual dropdown behavior is
+        unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

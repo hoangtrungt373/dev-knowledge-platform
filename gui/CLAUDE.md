@@ -4233,6 +4233,78 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
         sandbox, so the actual on-screen resize-drag/maximize-toggle behavior is unverified in a
         real browser.
+  - **Follow-up: 1 new operation, "Unix Time Converter," per request ("Convert Timestamp and Day
+    time") — the fifth `OperationGroup.FORMATTERS` operation and the fifth custom-layout
+    operation overall.** Backs 2 new endpoints, `POST /api/v1/dev-utils/datetime-to-timestamp`
+    and `POST /api/v1/dev-utils/timestamp-to-datetime`. Built a new `components/
+    UnixTimeConverterPanel.tsx` — this operation's input is genuinely 2 directions, each with its
+    own 2-field input (a value plus an IANA zone id) and a real multi-field output, none of which
+    fits `DevUtilToolPanel.tsx`'s single-code-editor pair — the same "some operations need a
+    genuinely different layout" precedent Hash Generator/Base64 Image/RegExp Tester/Text Diff
+    Checker already established.
+    - **A live "Now" bar sits above the converter row, entirely client-side — no backend call at
+      all**: the current instant is exactly what `Date.now()` already gives for free, the same
+      "the browser already does this, round-tripping it would only add latency" reasoning
+      `Base64ImagePanel.tsx`'s own `FileReader` conversion already establishes. Ticks every second
+      via a plain `setInterval` (cleared on unmount); its own "Use now" buttons freeze the live
+      value into the adjacent converter's own input field at the moment of the click, not a live
+      binding.
+    - **Both zone-id fields are pre-filled with the browser's own detected zone**
+      (`Intl.DateTimeFormat().resolvedOptions().timeZone`, wrapped in a `detectBrowserZone()`
+      helper that never throws), not left blank — this module has no persisted user/timezone
+      context of any kind (a fully public, stateless backend), so the browser is the only thing
+      that actually knows the caller's real zone; leaving the field blank would silently default
+      to UTC server-side, rarely what someone converting "their own" date/time actually wants.
+      The detected zone is only ever a pre-filled *value* (via each `TextField`'s own
+      `placeholder`, not a forced value) — either field can still be edited/cleared freely.
+    - **Both converter cards got the exact resizable-split-plus-maximize/`minHeight`-floor
+      treatment `HashGeneratorPanel.tsx`'s own follow-up already established** for a 2-panel,
+      small-and-bounded-result operation like this one, reusing the same `hooks/
+      useResizableSplit.ts`/`hooks/usePanelMaximize.ts`/`components/PanelResizeHandle.tsx`
+      extraction — no new split/maximize code needed, purely composition of what already existed.
+    - New `utils/unixTimeInputFormat.ts` serializes the panel's 4 fields (`dateTime`/
+      `dateTimeZoneId`/`timestamp`/`timestampZoneId`) into the single lifted `input` string
+      `DevUtilsPage.tsx`'s Sample/Clear buttons already operate on — via plain `JSON.stringify`,
+      not a custom delimiter line like `utils/regexInputFormat.ts`/`utils/textDiffInputFormat.ts`
+      use for their own free-text fields: none of these 4 fields can ever contain a newline or any
+      other character JSON needs to escape (a `datetime-local` value, an IANA zone id, a numeric
+      timestamp string), so there's no real separator-collision risk here to design around, and
+      JSON is simpler than inventing one.
+    - **No `onSubmit` on `config/operations.tsx`'s `unix-time-converter` entry** — this operation
+      calls 2 genuinely different backend endpoints (`devUtilsApi.dateTimeToUnix`/
+      `unixToDateTime`) depending on which of its own 2 cards submitted, neither of which fits the
+      shared `(input, minify) => Promise<DevUtilsResponse>` shape (both return a genuinely richer
+      type) — the same "omitted, not a dead placeholder" treatment `text-diff-checker`'s own entry
+      already establishes for the identical underlying reason. `types.ts` gained
+      `TimestampResponse`/`DateTimeResponse` mirroring the backend DTOs field-for-field;
+      `api/devUtilsApi.ts` gained `dateTimeToUnix`/`unixToDateTime`.
+    - A small local `LabeledCopyRow` helper (label + monospace value + its own Copy button, one
+      per output field) lives inside `UnixTimeConverterPanel.tsx` itself, not a new shared
+      `components/` file — both call sites (the 2 vs. 9 output rows) live in this same file;
+      extract only if a third, genuinely different panel ever needs the identical shape, the same
+      "extract on a real 2nd/3rd occurrence, not speculatively" rule this feature's own support-
+      class/hook extractions already follow.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual on-screen result (both converter flows, the live Now bar, zone
+      auto-detection/pre-fill, the resizable split/maximize on this operation) is unverified in a
+      real browser.
+    - **Follow-up: both zone-id fields became a searchable dropdown, per direct request
+      ("Add dropdown for user to select the timezone").** New `utils/timeZones.ts`
+      (`listSupportedTimeZones`) — `Intl.supportedValuesOf('timeZone')` (~400 real IANA ids,
+      sorted, memoized module-level since the browser's own ICU data can't change within a page
+      load), with a small curated fallback list for the rare browser without that API (Safari
+      < 15.4; every evergreen browser has supported it since early 2022). Cast through
+      `(Intl as unknown as {...})` rather than bumping this project's own `tsconfig.json` `lib`
+      target — `Intl.supportedValuesOf` isn't in the `ES2020` lib this project currently targets,
+      and a scoped cast for one call site was preferred over a project-wide `lib` change for a
+      single method. Both `TextField`s became an MUI `Autocomplete` (`freeSolo`,
+      `inputValue`/`onInputChange`-controlled — the exact same "suggested but freely editable"
+      shape `@ecommerce/components/ProductVariantDialog.tsx`'s own attribute-value picker already
+      establishes, copied rather than reinvented) — `freeSolo` keeps this genuinely optional/
+      free-text underneath the dropdown, so a zone the list doesn't happen to suggest, or a blank
+      field, both still work exactly as before. Verified via a clean `tsc --noEmit` and a
+      successful `vite build` only — no Docker in this sandbox, so the actual dropdown/search/
+      free-typing behavior is unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

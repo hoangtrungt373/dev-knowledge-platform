@@ -7,8 +7,14 @@ package com.ttg.devknowledgeplatform.devutils.service;
  * to read each operation's own description.
  *
  * <p>Most operations in this module are {@link #FORMATTERS} (JSON/YAML/HTML/CSS/LESS/SCSS/JS/ERB/
- * XML beautify+minify, JSON↔CSV, SQL format, PHP↔JSON, String Case Converter — every one of them
- * either reformats text in place or converts between two closely related text formats).
+ * XML beautify+minify, JSON↔CSV, SQL format, PHP↔JSON, String Case Converter, Date/Time↔Unix —
+ * every one of them either reformats text in place or converts between two closely related
+ * formats). The Unix Time Converter pair ({@code DateTimeToUnixOperation}/
+ * {@code UnixToDateTimeOperation}) landed here rather than {@link #ENCODERS_DECODERS} on
+ * purpose, even though it's structurally a bidirectional pair like that group's own Base64/URL/
+ * hex operations: "encode"/"decode" doesn't read naturally for "convert a date into a timestamp"
+ * the way it does for those, so it instead follows {@code PhpToJsonOperation}/
+ * {@code JsonToPhpOperation}'s own descriptively-named-pair precedent within this group.
  * {@link #ENCODERS_DECODERS} covers every operation that changes a value's own representation
  * rather than just its whitespace/casing — Base64/URL/HTML-entity encode-decode, PHP's own
  * serialize()/unserialize() wire format, and the Hash Generator (a one-way "encoding" into a

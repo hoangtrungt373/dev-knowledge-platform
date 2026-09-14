@@ -1,5 +1,5 @@
 import { httpClient } from '@shared/api/httpClient';
-import { DevUtilsResponse, HashResponse, StringCaseResponse, TextDiffResponse } from '../types';
+import { DateTimeResponse, DevUtilsResponse, HashResponse, StringCaseResponse, TextDiffResponse, TimestampResponse } from '../types';
 
 type ShowError = (message: string) => void;
 
@@ -213,5 +213,21 @@ export const devUtilsApi = {
   // testRegexp) with a genuinely different request shape.
   compareTextDiff(original: string, updated: string, showError?: ShowError): Promise<TextDiffResponse> {
     return httpClient.post(`${BASE}/text-diff/compare`, { original, updated }, showError);
+  },
+
+  // Unix Time Converter, added alongside dev-utils-service's own DateTimeToUnixOperation/
+  // UnixToDateTimeOperation — the fifth FORMATTERS-group "Converters" pair (after yamlToJson/
+  // jsonToYaml, jsonToCsv/csvToJson, phpToJson/jsonToPhp), named descriptively rather than
+  // "encode"/"decode" for the same reason those three are, per OperationGroup.java's own updated
+  // Javadoc. `zoneId` is never defaulted client-side in this file — components/
+  // UnixTimeConverterPanel.tsx is the one place that resolves "no zone picked yet" to the
+  // browser's own detected zone, so this file stays a thin pass-through like every other method
+  // here.
+  dateTimeToUnix(dateTime: string, zoneId: string, showError?: ShowError): Promise<TimestampResponse> {
+    return httpClient.post(`${BASE}/datetime-to-timestamp`, { dateTime, zoneId }, showError);
+  },
+
+  unixToDateTime(timestamp: string, zoneId: string, showError?: ShowError): Promise<DateTimeResponse> {
+    return httpClient.post(`${BASE}/timestamp-to-datetime`, { timestamp, zoneId }, showError);
   },
 };

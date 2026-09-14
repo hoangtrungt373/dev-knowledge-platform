@@ -15,10 +15,12 @@ package com.ttg.devknowledgeplatform.devutils.service;
  * implementation through {@code execute(String input, boolean minify): String} — reasonable while
  * every operation really was "text in, a minify flag, text out" (JSON format/validate, YAML↔JSON,
  * HTML beautify), but it broke down the moment a genuinely different-shaped operation was
- * discussed: a Unix Time Converter needs a timestamp + timezone + output format, a Number Base
- * Converter needs a value + two integer bases — neither fits "one string in, one bool flag, one
- * string out," and forcing either through that signature would mean packing multiple values into
- * one string and hand-parsing it back apart, worse in every way than a real typed parameter. A
+ * discussed: a Unix Time Converter needs a timestamp/date-time + timezone (now real —
+ * {@code DateTimeToUnixOperation}/{@code UnixToDateTimeOperation}, each with its own 2-argument
+ * {@code execute(...)}), a Number Base Converter would need a value + two integer bases — neither
+ * fits "one string in, one bool flag, one string out," and forcing either through that signature
+ * would mean packing multiple values into one string and hand-parsing it back apart, worse in
+ * every way than a real typed parameter. A
  * shared method contract only pays for itself when something calls through it polymorphically (a
  * registry, a {@code List<DevUtilOperation>} loop) — nothing here does for execution itself:
  * {@code api.impl.DevUtilsController} injects and calls each operation by its own concrete type,

@@ -5,6 +5,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 
+import com.ttg.devknowledgeplatform.devutils.dto.DateTimeResponse;
+import com.ttg.devknowledgeplatform.devutils.dto.DateTimeToTimestampRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.DevUtilResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.HashResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
@@ -13,6 +15,8 @@ import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.TextDiffRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.TextDiffResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.TextRequest;
+import com.ttg.devknowledgeplatform.devutils.dto.TimestampResponse;
+import com.ttg.devknowledgeplatform.devutils.dto.TimestampToDateTimeRequest;
 
 import jakarta.validation.Valid;
 
@@ -368,4 +372,29 @@ public interface DevUtilsApi {
      */
     @PostMapping("/text-diff/compare")
     ResponseEntity<TextDiffResponse> compareTextDiff(@Valid @RequestBody TextDiffRequest request);
+
+    /**
+     * Converts {@code request.dateTime()} (interpreted in {@code request.zoneId()}, or UTC if
+     * blank) into its Unix timestamp, both seconds and milliseconds at once (see
+     * {@code DateTimeToUnixOperation}'s own Javadoc).
+     *
+     * @return {@code 200} with the resolved timestamp, or {@code 400} if {@code request.dateTime()}
+     *         isn't a valid {@code ISO_LOCAL_DATE_TIME} string, or {@code request.zoneId()} is
+     *         non-blank but not a real IANA zone id
+     */
+    @PostMapping("/datetime-to-timestamp")
+    ResponseEntity<TimestampResponse> convertDateTimeToTimestamp(@Valid @RequestBody DateTimeToTimestampRequest request);
+
+    /**
+     * Converts {@code request.timestamp()} (seconds or milliseconds, auto-detected by magnitude)
+     * into 7 representations at once — local (in {@code request.zoneId()}, or UTC if blank), UTC,
+     * ISO 8601, RFC 1123, SQL, a relative phrase, and the day of week (see
+     * {@code UnixToDateTimeOperation}'s own Javadoc).
+     *
+     * @return {@code 200} with every representation, or {@code 400} if {@code request.timestamp()}
+     *         isn't a valid number (or is out of {@link java.time.Instant}'s representable
+     *         range), or {@code request.zoneId()} is non-blank but not a real IANA zone id
+     */
+    @PostMapping("/timestamp-to-datetime")
+    ResponseEntity<DateTimeResponse> convertTimestampToDateTime(@Valid @RequestBody TimestampToDateTimeRequest request);
 }

@@ -13,7 +13,10 @@ verification), RegExp Tester (test a pattern against text, real matches only —
 `RegexTesterOperation`'s own Javadoc for its ReDoS-timeout guard), URL Parser (protocol/hostname/
 port/pathname/search/query/hash/origin, mirroring the browser's own `URL` object), Cron Job Parser
 (a 5-field cron expression into a plain-English schedule), Text Diff Checker (a real LCS diff
-between two texts, line by line — "works like git diff"). Package root:
+between two texts, line by line — "works like git diff"), Unix Time Converter (Date/Time↔Unix
+timestamp, plus Local/UTC/ISO 8601/RFC 1123/SQL/relative/day-of-week renderings — the concrete
+"timestamp+timezone+format" example this module's own "Rules specific to this module" section
+named ahead of use, before it actually existed). Package root:
 `com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike
@@ -426,8 +429,18 @@ caller.** Every operation is a pure text-in/text-out transform:
   — exactly the scenario `DevUtilResponse`'s own Javadoc anticipated; `dto/TextDiffResponse`
   (`lines`/`addedCount`/`removedCount`/`unchangedCount`, with a nested `DiffLineType` enum and
   `DiffLine` record) is the second, for the same reason — a real line-by-line diff structure would
-  lose information if flattened into a plain string. See `DevUtilOperation`'s own Javadoc for the
-  full reasoning against one shared request/response pair.
+  lose information if flattened into a plain string. `dto/DateTimeToTimestampRequest`
+  (`dateTime`/`zoneId`) backs `datetime-to-timestamp` only, and `dto/TimestampToDateTimeRequest`
+  (`timestamp`/`zoneId`) backs `timestamp-to-datetime` only — both fields deliberately carry
+  **no** `@NotBlank` on `zoneId` (same "blank is a legitimate case, not an error" reasoning
+  `TextDiffRequest` already establishes), since blank defaults to UTC via
+  `service.impl.support.TimeZones#parse`. `dto/TimestampResponse` (`epochSeconds`/`epochMillis`)
+  and `dto/DateTimeResponse` (`local`/`utc`/`iso8601`/`rfc1123`/`sql`/`relative`/`dayOfWeek`/
+  `epochSeconds`/`epochMillis`) are the third and fourth response types whose output is genuinely
+  richer than a single string — `DateTimeResponse` in particular renders one resolved instant 7
+  different ways at once, a real, deliberate departure from every other operation's single-
+  representation output (see that record's own Javadoc). See `DevUtilOperation`'s own Javadoc for
+  the full reasoning against one shared request/response pair.
 - `api/DevUtilsApi` (+ `api/impl/DevUtilsController`) — `POST /api/v1/dev-utils/json/format`,
   `/yaml-to-json`, `/json-to-yaml`, `/html/beautify`, `/css/beautify`, `/less/beautify`,
   `/scss/beautify`, `/js/beautify`, `/erb/beautify`, `/xml/beautify`, `/json-to-csv`,
@@ -435,7 +448,8 @@ caller.** Every operation is a pure text-in/text-out transform:
   `/base64/encode`, `/base64/decode`, `/url/encode`, `/url/decode`, `/html-entity/encode`,
   `/html-entity/decode`, `/hash/generate`, `/php-serialize/serialize`,
   `/php-serialize/unserialize`, `/hex/encode`, `/hex/decode`, `/jwt/debug`, `/regexp/test`,
-  `/url/parse`, `/cron/parse`, `/text-diff/compare`. The controller injects each operation by its
+  `/url/parse`, `/cron/parse`, `/text-diff/compare`, `/datetime-to-timestamp`,
+  `/timestamp-to-datetime`. The controller injects each operation by its
   concrete type rather than dispatching through an enum-keyed registry — with one fixed REST
   endpoint per operation, there's no runtime "which
   operation" decision left to make (see `DevUtilOperation`'s own Javadoc).
@@ -1080,7 +1094,8 @@ the request named them as two operations.
 `HtmlEntityEncodeOperationTest`, `HtmlEntityDecodeOperationTest`, `HashGeneratorOperationTest`,
 `PhpSerializeOperationTest`, `PhpUnserializeOperationTest`, `AsciiToHexOperationTest`,
 `HexToAsciiOperationTest`, `JwtDebuggerOperationTest`, `RegexTesterOperationTest`,
-`UrlParserOperationTest`, `CronParserOperationTest`, `TextDiffOperationTest`), plus `service/impl/support/
+`UrlParserOperationTest`, `CronParserOperationTest`, `TextDiffOperationTest`,
+`DateTimeToUnixOperationTest`, `UnixToDateTimeOperationTest`), plus `service/impl/support/
 CurlyBraceFormatterTest` (the shared CSS/LESS/SCSS/JS reformatter — brace nesting, already-
 multiline selector lists, comment/string-literal protection, the JS ASI-safety guarantee,
 never-throws-on-unterminated-input), `service/impl/support/SqlFormatterTest` (clause-keyword line
@@ -1103,16 +1118,18 @@ real parse/serialize behavior (pretty vs. minified output, malformed-input rejec
 structural equality via `readTree`, jsoup's lenient-parsing/indent behavior, and — for
 `XmlOperation`/`CsvToJsonOperation`/`PhpToJsonOperation` — real JAXP/CSV/PHP parsing and rejection
 behavior). Plus `DevUtilsServiceApplicationTests` (`@SpringBootTest(webEnvironment = RANDOM_PORT)`
-+ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all thirty-two endpoints
++ `@AutoConfigureMockMvc`) — boots the real Spring context and hits all thirty-four endpoints
 with **no** `Authorization` header through the real filter chain, confirming end to end (not just
 by static reasoning) that the app actually starts and every endpoint is genuinely public. This is
 exactly the test that caught the `DataSourceAutoConfiguration` boot failure above, and it also
 covers the `MAX_INPUT_LENGTH` boundary (accepted at exactly the cap, rejected one over it — the
 latter caught by `@Size` before ever reaching an operation) and confirms malformed XML/CSV/PHP/
-Base64/URL-encoding/PHP-serialized-data/hex/JWT/regex/URL/cron/diff-input-too-large all return
+Base64/URL-encoding/PHP-serialized-data/hex/JWT/regex/URL/cron/diff-input-too-large/date-time/
+timestamp/time-zone all return
 `400` with
 `DEVUTILS_003`/`DEVUTILS_004`/`DEVUTILS_005`/`DEVUTILS_006`/`DEVUTILS_007`/`DEVUTILS_008`/
-`DEVUTILS_009`/`DEVUTILS_010`/`DEVUTILS_011`/`DEVUTILS_013`/`DEVUTILS_014`/`DEVUTILS_015`
+`DEVUTILS_009`/`DEVUTILS_010`/`DEVUTILS_011`/`DEVUTILS_013`/`DEVUTILS_014`/`DEVUTILS_015`/
+`DEVUTILS_016`/`DEVUTILS_017`/`DEVUTILS_018`
 respectively through
 the shared `GlobalExceptionHandler` — `html-entity/encode`/`decode`, `hash/generate`,
 `php-serialize/serialize`, and `hex/encode` have no matching case here, since none of those five
@@ -1122,11 +1139,14 @@ deliberately, so this fast-running end-to-end suite doesn't also have to eat
 `RegexTesterOperation`'s own real ~2-second timeout a second time; that path is already covered
 directly in `RegexTesterOperationTest`. `text-diff/compare` has no matching *invalid-input* case
 here (its `TextDiffRequest` has no `@NotBlank` to trip, and a genuinely malformed diff isn't a
-thing), only the `DEVUTILS_015` line-cap case above. Plus
+thing), only the `DEVUTILS_015` line-cap case above. `datetime-to-timestamp`/`timestamp-to-datetime`
+share one `DEVUTILS_018` (invalid time zone) case between them (both operations reuse the exact
+same `TimeZones#parse` failure path) alongside their own dedicated `DEVUTILS_016`/`DEVUTILS_017`
+cases. Plus
 `service/impl/support/
 ConventionalJsonPrettyPrinterTest` (the one support class in this module with its own dedicated
 test file rather than only being exercised indirectly through an operation's own tests — see that
-class's own note above for why). 300 tests total (161 as of the seventh follow-up above, plus 8 new
+class's own note above for why). 324 tests total (161 as of the seventh follow-up above, plus 8 new
 Base64 unit tests and 3 new `DevUtilsServiceApplicationTests` cases from the eighth follow-up, 7 new
 URL unit tests and 3 more `DevUtilsServiceApplicationTests` cases from the ninth, 9 new HTML entity
 unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the tenth, 4 new Hash
@@ -1140,8 +1160,10 @@ RegExp Tester unit tests plus 2 more `DevUtilsServiceApplicationTests` cases fro
 13 new URL Parser unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the
 eighteenth (the nineteenth follow-up added no new test, a pure group reclassification), 17 new
 Cron Job Parser unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from the twentieth,
-and 10 new Text Diff Checker unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from
-the twenty-first — see each follow-up's own note for the full breakdown), verified via a real
+10 new Text Diff Checker unit tests plus 2 more `DevUtilsServiceApplicationTests` cases from
+the twenty-first, and 19 new Unix Time Converter unit tests (6 `DateTimeToUnixOperationTest` + 13
+`UnixToDateTimeOperationTest`) plus 5 more `DevUtilsServiceApplicationTests` cases from the
+twenty-second — see each follow-up's own note for the full breakdown), verified via a real
 `mvn -pl dev-utils-service -am test` run (JDK 21).
 
 **Fifteenth follow-up — a second code-quality analysis pass (mirroring the first one above and the
@@ -1503,6 +1525,89 @@ shape `HashResponse`/`StringCaseResponse` already establish).
   with `DEVUTILS_015`). Test suite grew from 288 to 300, verified via a real
   `mvn -pl dev-utils-service -am test` run (JDK 21) — 300/300 passing.
 
+**Twenty-second follow-up — 1 new operation covering 2 directions, `DateTimeToUnixOperation`/
+`UnixToDateTimeOperation`, per request ("Unix Time Converter - Convert Timestamp and Day time").**
+Declares `OperationGroup.FORMATTERS` (category "Converters" on the GUI side), not
+`OperationGroup.ENCODERS_DECODERS` — see that enum's own updated Javadoc for why: "encode"/
+"decode" doesn't read naturally for "convert a date into a timestamp" the way it does for
+Base64/URL/hex, so this follows `PhpToJsonOperation`/`JsonToPhpOperation`'s own descriptively-
+named-pair precedent instead. This is also the concrete "timestamp+timezone+format" example
+`DevUtilOperation`'s own Javadoc (and this file's "Rules specific to this module" section) named
+ahead of use, back when this interface's shared `execute(String, boolean)` signature was first
+generalized away — now landed for real.
+
+- **Two operations, not one, mirroring every other bidirectional pair in this module**
+  (`Base64EncodeOperation`/`Base64DecodeOperation`, `PhpToJsonOperation`/`JsonToPhpOperation`,
+  etc.) — `DateTimeToUnixOperation.execute(String dateTime, String zoneId): TimestampResponse`
+  and `UnixToDateTimeOperation.execute(String timestamp, String zoneId): DateTimeResponse`, each
+  its own dedicated request DTO (`DateTimeToTimestampRequest`/`TimestampToDateTimeRequest`).
+- **`dateTime` is accepted in `DateTimeFormatter.ISO_LOCAL_DATE_TIME` shape** — exactly the value
+  an HTML `<input type="datetime-local">` already produces, so `gui`'s own panel needs no
+  reformatting before sending it. Parsed via `LocalDateTime.parse(...)`, then resolved against
+  `zoneId` via `.atZone(zone).toInstant()`.
+- **`timestamp`'s own unit (seconds vs. milliseconds) is auto-detected by magnitude, not a
+  caller-supplied flag** — the standard heuristic every comparable tool (epochconverter.com, etc.)
+  uses: `Math.abs(value) < 10_000_000_000L` (10 digits, everything up to roughly the year 2286 in
+  seconds) is treated as seconds; at or above that, milliseconds. Deliberately the simplest
+  possible rule — a caller who genuinely means a millisecond value under that threshold (a moment
+  within ~4 months of the epoch itself) is a vanishingly rare case not worth a whole extra request
+  field for.
+- **New `service.impl.support.TimeZones`** (`public`, not package-private — unlike
+  `TextScanning`/`ParserLocations`, it's called directly by operation classes one package up, the
+  same visibility `CurlyBraceFormatter`/`SqlFormatter` already have for the same reason) —
+  `parse(String zoneId): ZoneId`, blank/`null` defaults to UTC, a real IANA id resolves normally,
+  anything else throws. Extracted the moment the *second* call site landed (both operations need
+  the identical resolution), not pre-emptively for one — the same "extract on a real 2nd/3rd
+  occurrence" rule this module's own support classes already follow. This module has no
+  persisted user/timezone context of any kind (a fully public, stateless endpoint), so there is
+  no "the caller's own timezone" to default to server-side — `gui`'s own panel (which knows the
+  browser's own detected zone via the `Intl` API) is expected to supply `zoneId` explicitly, and
+  blank-defaults-to-UTC only covers a caller with no preference at all.
+- **`UnixToDateTimeOperation` renders one resolved instant 7 different ways at once**
+  (`DateTimeResponse.local`/`utc`/`iso8601`/`rfc1123`/`sql`/`relative`/`dayOfWeek`, plus the
+  resolved epoch value in both units) — a real, deliberate departure from every other operation's
+  single-representation output, since a timestamp converter's whole value proposition is showing
+  several representations side by side rather than making the caller pick one and round-trip for
+  the rest. `local`/`dayOfWeek` honor `zoneId`; every other field is always UTC-anchored
+  regardless of it. `rfc1123` uses `DateTimeFormatter.RFC_1123_DATE_TIME` — confirmed via a real
+  JDK 21 harness first, not assumed, that its day-of-month field is *not* zero-padded (`"Thu, 1
+  Jan 1970"`, not `"01 Jan"`), a genuinely surprising finding that shaped the corresponding test
+  assertion directly rather than a guessed one.
+- **The relative-time phrase (`"3 hours ago"`/`"in 2 days"`/`"just now"`) is a small, deliberately
+  simple bucketed algorithm** (seconds → minutes → hours → days → 30-day "months" → 365-day
+  "years", singular/plural-aware), not a library — this module has no relative-time-formatting
+  dependency and didn't need one for 6 buckets of arithmetic. `formatRelative(Instant target,
+  Instant reference)` is package-private (not private) specifically so
+  `UnixToDateTimeOperationTest` can exercise every bucket boundary directly against fixed
+  instants — the same "package-private for test visibility, not extracted to its own support-
+  class file" precedent `TextDiffOperation.MAX_LINES` already establishes, chosen over extraction
+  here since this logic has exactly one call site today (unlike `TimeZones`, which both
+  operations in this pair already call).
+- **New `DevUtilsErrorCode.INVALID_DATE_TIME`/`INVALID_TIMESTAMP`/`INVALID_TIME_ZONE`**
+  (`DEVUTILS_016`/`017`/`018`) — the first backing `DateTimeToUnixOperation`'s own parse failure,
+  the second backing `UnixToDateTimeOperation`'s (an unparseable number, or one whose resolved
+  millisecond value overflows/falls outside `Instant`'s representable range), the third shared by
+  both operations' `zoneId` field via `TimeZones#parse`.
+- **`gui`**: needed a fifth bespoke panel component, the same "some operations need a genuinely
+  different layout" precedent Hash Generator/Base64 Image/RegExp Tester/Text Diff Checker already
+  established — see `gui/CLAUDE.md`'s own dev-utils section for the full GUI-side detail
+  (`components/UnixTimeConverterPanel.tsx`, `utils/unixTimeInputFormat.ts`, a live client-side-only
+  "Now" bar, and the browser-zone auto-detection).
+- 19 new tests (6 `DateTimeToUnixOperationTest` — the epoch itself, a real-world known date
+  [`2024-01-01T00:00:00Z` = `1704067200`, confirmed via the same JDK 21 harness before writing the
+  assertion], a non-UTC zone offset [confirmed `Asia/Ho_Chi_Minh` was actually UTC+8, not today's
+  +7, for this specific 1970 date — IANA tzdata records Vietnam's move from +8 to +7 in June
+  1975, caught by the harness rather than assumed], both error cases; 13
+  `UnixToDateTimeOperationTest` — the epoch in UTC and in a real non-UTC zone confirming
+  `local`/`dayOfWeek` genuinely honor `zoneId` while every other field stays UTC-anchored, the
+  seconds/milliseconds auto-detection boundary on both sides, equivalent-seconds-and-milliseconds
+  inputs producing an identical response, both error cases, and 7 `formatRelative` tests covering
+  every bucket plus the future-vs-past phrasing, all against fixed instants), plus 5 new
+  `DevUtilsServiceApplicationTests` cases (both new endpoints' reachability with no
+  `Authorization` header, and the 3 failure modes returning `400` with `DEVUTILS_016`/`017`/
+  `018`). Test suite grew from 300 to 324, verified via a real `mvn -pl dev-utils-service -am
+  test` run (JDK 21) — 324/324 passing.
+
 ## Rules specific to this module
 
 - **Don't force a new operation's request/response shape (or its `execute(...)` signature) to
@@ -1511,9 +1616,12 @@ shape `HashResponse`/`StringCaseResponse` already establish).
   this was a real, corrected mistake: an earlier revision forced every operation through one
   shared `execute(String input, boolean minify): String` signature and one shared request/response
   DTO pair, which only looked reasonable because every operation at the time really was "text in, a
-  minify flag, text out." A future operation with a genuinely different shape (Unix Time Converter:
-  timestamp+timezone+format; Number Base Converter: value+two integer bases) gets its own request/
-  response type and its own `execute(...)` signature, not a bent version of an existing one.
+  minify flag, text out." A future operation with a genuinely different shape gets its own request/
+  response type and its own `execute(...)` signature, not a bent version of an existing one — the
+  Unix Time Converter (`DateTimeToUnixOperation`/`UnixToDateTimeOperation`) is exactly the
+  "timestamp+timezone+format" example this rule was originally written ahead of, now landed for
+  real; a Number Base Converter (value+two integer bases) remains a hypothetical future example of
+  the same rule.
 - **Depends only on `common` + `infra`.** Never add a Maven dependency on `gateway`,
   `ecommerce-service`, `identity-service`, `task-service`, `social-service`, `content-service`, or
   `ai-service` — and none of them may depend on this module either. A future operation that needs

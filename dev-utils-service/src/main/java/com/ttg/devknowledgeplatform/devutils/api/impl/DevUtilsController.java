@@ -4,6 +4,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.ttg.devknowledgeplatform.devutils.api.DevUtilsApi;
+import com.ttg.devknowledgeplatform.devutils.dto.DateTimeResponse;
+import com.ttg.devknowledgeplatform.devutils.dto.DateTimeToTimestampRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.DevUtilResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.HashResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
@@ -12,12 +14,15 @@ import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.TextDiffRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.TextDiffResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.TextRequest;
+import com.ttg.devknowledgeplatform.devutils.dto.TimestampResponse;
+import com.ttg.devknowledgeplatform.devutils.dto.TimestampToDateTimeRequest;
 import com.ttg.devknowledgeplatform.devutils.service.impl.AsciiToHexOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.Base64DecodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.Base64EncodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CronParserOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CssOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CsvToJsonOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.DateTimeToUnixOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.ErbOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HashGeneratorOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HexToAsciiOperation;
@@ -39,6 +44,7 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.ScssOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.SqlFormatOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.StringCaseOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.TextDiffOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.UnixToDateTimeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.UrlDecodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.UrlEncodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.UrlParserOperation;
@@ -89,6 +95,8 @@ public class DevUtilsController implements DevUtilsApi {
     private final UrlParserOperation urlParserOperation;
     private final CronParserOperation cronParserOperation;
     private final TextDiffOperation textDiffOperation;
+    private final DateTimeToUnixOperation dateTimeToUnixOperation;
+    private final UnixToDateTimeOperation unixToDateTimeOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -249,5 +257,15 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<TextDiffResponse> compareTextDiff(TextDiffRequest request) {
         return ResponseEntity.ok(textDiffOperation.execute(request.original(), request.updated()));
+    }
+
+    @Override
+    public ResponseEntity<TimestampResponse> convertDateTimeToTimestamp(DateTimeToTimestampRequest request) {
+        return ResponseEntity.ok(dateTimeToUnixOperation.execute(request.dateTime(), request.zoneId()));
+    }
+
+    @Override
+    public ResponseEntity<DateTimeResponse> convertTimestampToDateTime(TimestampToDateTimeRequest request) {
+        return ResponseEntity.ok(unixToDateTimeOperation.execute(request.timestamp(), request.zoneId()));
     }
 }

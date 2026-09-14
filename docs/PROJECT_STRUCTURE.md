@@ -2346,7 +2346,12 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   ├── OperationGroup.java        — enum (FORMATTERS/ENCODERS_DECODERS/INSPECTORS/WEB/GENERATORS),
 │   │                                 each with a Title-Case getLabel() (the GUI applies CSS
 │   │                                 text-transform, matching the existing "Tools" sidebar caption
-│   │                                 convention). 16 operations declare FORMATTERS; Base64Encode/
+│   │                                 convention). 18 operations declare FORMATTERS (16 original +
+│   │                                 DateTimeToUnixOperation/UnixToDateTimeOperation — a
+│   │                                 descriptively-named bidirectional pair like PhpToJson/
+│   │                                 JsonToPhp, not ENCODERS_DECODERS's encode/decode vocabulary,
+│   │                                 which doesn't read naturally for "convert a date into a
+│   │                                 timestamp"); Base64Encode/
 │   │                                 DecodeOperation, UrlEncode/DecodeOperation,
 │   │                                 HtmlEntityEncode/DecodeOperation, PhpSerialize/
 │   │                                 UnserializeOperation, and AsciiToHex/HexToAsciiOperation
@@ -2568,6 +2573,36 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │       │                                   knowable in advance the way input size is). Throws
 │       │                                   BusinessException wrapping DIFF_INPUT_TOO_LARGE
 │       │                                   (DEVUTILS_015) over that cap
+│       ├── DateTimeToUnixOperation.java — execute(String dateTime, String zoneId):
+│       │                                   TimestampResponse; declares OperationGroup.FORMATTERS
+│       │                                   (a descriptively-named pair with UnixToDateTimeOperation
+│       │                                   below, like PhpToJson/JsonToPhp, not
+│       │                                   ENCODERS_DECODERS). dateTime accepted in
+│       │                                   DateTimeFormatter.ISO_LOCAL_DATE_TIME shape — the exact
+│       │                                   value an HTML <input type="datetime-local"> already
+│       │                                   produces. zoneId resolved via
+│       │                                   support/TimeZones#parse (blank defaults to UTC). Throws
+│       │                                   BusinessException wrapping INVALID_DATE_TIME
+│       │                                   (DEVUTILS_016) on a malformed dateTime, or
+│       │                                   INVALID_TIME_ZONE (DEVUTILS_018) on an unrecognized
+│       │                                   zoneId
+│       ├── UnixToDateTimeOperation.java — execute(String timestamp, String zoneId):
+│       │                                   DateTimeResponse; declares OperationGroup.FORMATTERS.
+│       │                                   timestamp's own unit (seconds vs. milliseconds)
+│       │                                   auto-detected by magnitude (< 10,000,000,000 → seconds,
+│       │                                   else milliseconds) rather than a caller-supplied flag.
+│       │                                   Renders one resolved instant 7 different ways at once
+│       │                                   (local/UTC/ISO 8601/RFC 1123/SQL/relative/day-of-week)
+│       │                                   plus the resolved epoch in both units — a real
+│       │                                   departure from every other operation's single-
+│       │                                   representation output. The relative-time phrase (e.g.
+│       │                                   "3 hours ago") is a small bucketed algorithm
+│       │                                   (formatRelative, package-private for direct test
+│       │                                   access), not a library dependency. Throws
+│       │                                   BusinessException wrapping INVALID_TIMESTAMP
+│       │                                   (DEVUTILS_017) on an unparseable/out-of-range value, or
+│       │                                   INVALID_TIME_ZONE (DEVUTILS_018) on an unrecognized
+│       │                                   zoneId
 │       └── support/
 │           ├── CurlyBraceFormatter.java — beautify(String)/minify(String), static utility (not a
 │           │                               DevUtilOperation itself). Shared by Css/Less/Scss/
@@ -2648,11 +2683,20 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │           │                               string if it's never found" pair CurlyBraceFormatter/
 │           │                               SqlFormatter/PhpArrayParser had each defined
 │           │                               independently before this extraction
-│           └── ParserLocations.java     — locationSuffix(String, int): String, package-private —
-│                                           the "(line N, column M)" line/column-counting loop
-│                                           PhpArrayParser/PhpSerializeParser had each defined
-│                                           independently in their own errorAt before this
-│                                           extraction
+│           ├── ParserLocations.java     — locationSuffix(String, int): String, package-private —
+│           │                               the "(line N, column M)" line/column-counting loop
+│           │                               PhpArrayParser/PhpSerializeParser had each defined
+│           │                               independently in their own errorAt before this
+│           │                               extraction
+│           └── TimeZones.java           — parse(String zoneId): ZoneId, public (not package-
+│                                           private — called directly by DateTimeToUnixOperation/
+│                                           UnixToDateTimeOperation one package up, the same
+│                                           visibility CurlyBraceFormatter/SqlFormatter already
+│                                           have for the same reason). Blank/null defaults to UTC;
+│                                           a real IANA id resolves normally; anything else throws
+│                                           INVALID_TIME_ZONE (DEVUTILS_018). Extracted the moment
+│                                           the second call site landed (both operations need the
+│                                           identical resolution), not pre-emptively for one
 ├── dto/
 │   ├── DevUtilsLimits.java        — MAX_INPUT_LENGTH = 100_000, shared by every request DTO's
 │   │                                 @Size constraint — the one fully public, unauthenticated
@@ -2676,6 +2720,13 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 deliberately no @NotBlank on either — comparing against a
 │   │                                 blank/absent value is a legitimate, common diff); backs
 │   │                                 text-diff/compare only
+│   ├── DateTimeToTimestampRequest.java — dateTime/zoneId (dateTime @NotBlank @Size(max=64);
+│   │                                 zoneId @Size(max=64), deliberately no @NotBlank — blank
+│   │                                 defaults to UTC via support/TimeZones); backs
+│   │                                 datetime-to-timestamp only
+│   ├── TimestampToDateTimeRequest.java — timestamp/zoneId (timestamp @NotBlank @Size(max=32);
+│   │                                 zoneId same no-@NotBlank shape as above); backs
+│   │                                 timestamp-to-datetime only
 │   ├── DevUtilResponse.java       — output; shared by every single-string-output operation, not a
 │   │                                 rule going forward
 │   ├── StringCaseResponse.java    — camelCase/pascalCase/snakeCase/kebabCase/constantCase/
@@ -2684,13 +2735,21 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 instead of being forced into DevUtilResponse
 │   ├── HashResponse.java          — sha1/sha256/sha384/sha512, the second operation with a
 │   │                                 genuinely richer-than-one-string response
-│   └── TextDiffResponse.java      — lines (List<DiffLine>)/addedCount/removedCount/
-│                                     unchangedCount, with a nested DiffLineType enum
-│                                     (CONTEXT/ADDED/REMOVED) and DiffLine record (type/text) — the
-│                                     third operation with a genuinely richer-than-one-string
-│                                     response, needed here specifically to avoid lossily
-│                                     formatting a real line-by-line structure into a string only
-│                                     to re-parse it apart again on the GUI side
+│   ├── TextDiffResponse.java      — lines (List<DiffLine>)/addedCount/removedCount/
+│   │                                 unchangedCount, with a nested DiffLineType enum
+│   │                                 (CONTEXT/ADDED/REMOVED) and DiffLine record (type/text) — the
+│   │                                 third operation with a genuinely richer-than-one-string
+│   │                                 response, needed here specifically to avoid lossily
+│   │                                 formatting a real line-by-line structure into a string only
+│   │                                 to re-parse it apart again on the GUI side
+│   ├── TimestampResponse.java     — epochSeconds/epochMillis, the same real-world instant in both
+│   │                                 units at once
+│   └── DateTimeResponse.java      — local/utc/iso8601/rfc1123/sql/relative/dayOfWeek/
+│                                     epochSeconds/epochMillis — the fourth operation with a
+│                                     genuinely richer-than-one-string response, and a real
+│                                     departure from every other operation's single-representation
+│                                     output (one resolved instant rendered 7 different ways at
+│                                     once)
 └── api/
     ├── DevUtilsApi.java           — POST /api/v1/dev-utils/{json/format,yaml-to-json,
     │                                 json-to-yaml,html/beautify,css/beautify,less/beautify,
@@ -2701,7 +2760,8 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
     │                                 hash/generate,php-serialize/serialize,
     │                                 php-serialize/unserialize,hex/encode,hex/decode,
     │                                 jwt/debug,regexp/test,url/parse,cron/parse,
-    │                                 text-diff/compare}. Every endpoint
+    │                                 text-diff/compare,datetime-to-timestamp,
+    │                                 timestamp-to-datetime}. Every endpoint
     │                                 is public — no @CurrentUserId, no authenticated principal
     │                                 at all.
     └── impl/DevUtilsController.java — implements DevUtilsApi; injects each operation by its

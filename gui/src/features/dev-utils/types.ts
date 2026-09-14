@@ -45,3 +45,25 @@ export interface TextDiffResponse {
   removedCount: number;
   unchangedCount: number;
 }
+
+// Mirrors dev-utils-service's own dto.TimestampResponse field-for-field — DateTimeToUnixOperation's
+// own output (Date/Time → Unix).
+export interface TimestampResponse {
+  epochSeconds: number;
+  epochMillis: number;
+}
+
+// Mirrors dev-utils-service's own dto.DateTimeResponse field-for-field — UnixToDateTimeOperation's
+// own output (Unix → Date/Time), the fourth operation whose output is genuinely richer than a
+// single string.
+export interface DateTimeResponse {
+  local: string;
+  utc: string;
+  iso8601: string;
+  rfc1123: string;
+  sql: string;
+  relative: string;
+  dayOfWeek: string;
+  epochSeconds: number;
+  epochMillis: number;
+}

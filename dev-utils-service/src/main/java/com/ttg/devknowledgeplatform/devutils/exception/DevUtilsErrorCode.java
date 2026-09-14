@@ -82,7 +82,14 @@ import lombok.Getter;
  * own Javadoc for why this is a cleaner mitigation than {@code RegexTesterOperation}'s own
  * best-effort timeout — the input size here is known and cheap to check *before* doing the
  * expensive work, unlike a regex match, which can't be judged expensive without already running
- * it).
+ * it). {@code INVALID_DATE_TIME} backs {@code DateTimeToUnixOperation}'s own real failure path —
+ * a {@code dateTime} string that doesn't parse as {@link java.time.format.DateTimeFormatter#ISO_LOCAL_DATE_TIME}.
+ * {@code INVALID_TIMESTAMP} backs {@code UnixToDateTimeOperation}'s own real failure path — a
+ * {@code timestamp} string that isn't a valid {@code long}, or one whose resolved millisecond
+ * value overflows or falls outside the range {@link java.time.Instant} can represent.
+ * {@code INVALID_TIME_ZONE} backs both operations' shared {@code zoneId} field — a non-blank
+ * value that isn't a real IANA zone id (see {@code service.impl.support.TimeZones#parse}); blank
+ * itself is not an error for either field, it just defaults to UTC.
  */
 @Getter
 public enum DevUtilsErrorCode implements ErrorCode {
@@ -101,7 +108,10 @@ public enum DevUtilsErrorCode implements ErrorCode {
     REGEX_TIMEOUT("DEVUTILS_012", "Regular expression evaluation timed out: {0}", HttpStatus.BAD_REQUEST),
     INVALID_URL("DEVUTILS_013", "Invalid URL: {0}", HttpStatus.BAD_REQUEST),
     INVALID_CRON("DEVUTILS_014", "Invalid cron expression: {0}", HttpStatus.BAD_REQUEST),
-    DIFF_INPUT_TOO_LARGE("DEVUTILS_015", "Text is too large to diff: {0}", HttpStatus.BAD_REQUEST);
+    DIFF_INPUT_TOO_LARGE("DEVUTILS_015", "Text is too large to diff: {0}", HttpStatus.BAD_REQUEST),
+    INVALID_DATE_TIME("DEVUTILS_016", "Invalid date/time: {0}", HttpStatus.BAD_REQUEST),
+    INVALID_TIMESTAMP("DEVUTILS_017", "Invalid Unix timestamp: {0}", HttpStatus.BAD_REQUEST),
+    INVALID_TIME_ZONE("DEVUTILS_018", "Invalid time zone: {0}", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

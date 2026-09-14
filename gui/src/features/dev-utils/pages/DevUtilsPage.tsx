@@ -25,6 +25,7 @@ import HashGeneratorPanel from '../components/HashGeneratorPanel';
 import Base64ImagePanel from '../components/Base64ImagePanel';
 import RegExpTesterPanel from '../components/RegExpTesterPanel';
 import TextDiffPanel from '../components/TextDiffPanel';
+import UnixTimeConverterPanel from '../components/UnixTimeConverterPanel';
 import DevUtilSidebarItem from '../components/DevUtilSidebarItem';
 import { OPERATION_GROUP_ORDER, OPERATIONS, TabKey, tabFromHash } from '../config/operations';
 
@@ -468,13 +469,14 @@ export default function DevUtilsPage(): JSX.Element {
             {/* Some operations render their own bespoke layout instead of the shared
                 DevUtilToolPanel — Hash Generator's result (four independent digests), Base64
                 Image's own file-upload/live-preview shape, RegExp Tester's own 3-field input
-                (pattern/flags/test text, not one string with a minify flag), and Text Diff
-                Checker's own 2-field input plus real line-by-line output structure all don't fit
-                that component's plain Input/Output editor pair at all. A direct key check per
-                operation, not a lookup table/registry — there are only four custom-layout
-                operations today; extend this the same way (one more `else if`) if a fifth one
-                ever needs its own layout too, rather than building plugin infrastructure for a
-                hypothetical N ahead of time. */}
+                (pattern/flags/test text, not one string with a minify flag), Text Diff Checker's
+                own 2-field input plus real line-by-line output structure, and Unix Time
+                Converter's own 2-direction, 4-field input plus 2 genuinely different multi-field
+                outputs all don't fit that component's plain Input/Output editor pair at all. A
+                direct key check per operation, not a lookup table/registry — there are only five
+                custom-layout operations today; extend this the same way (one more `else if`) if
+                a sixth one ever needs its own layout too, rather than building plugin
+                infrastructure for a hypothetical N ahead of time. */}
             {activeOperation.key === 'hash-generator' ? (
               <HashGeneratorPanel
                 key={activeOperation.key}
@@ -520,6 +522,14 @@ export default function DevUtilsPage(): JSX.Element {
                 onInputChange={setInput}
                 actionLabel={activeOperation.actionLabel}
                 downloadFileName={activeOperation.downloadFileName}
+                availableHeight={panelHeight}
+              />
+            ) : activeOperation.key === 'unix-time-converter' ? (
+              <UnixTimeConverterPanel
+                key={activeOperation.key}
+                input={input}
+                onInputChange={setInput}
+                actionLabel={activeOperation.actionLabel}
                 availableHeight={panelHeight}
               />
             ) : (

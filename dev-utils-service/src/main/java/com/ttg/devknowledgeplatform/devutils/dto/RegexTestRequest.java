@@ -8,7 +8,9 @@ import jakarta.validation.constraints.Size;
  * differently-shaped fields rather than "text in, a minify flag" (see
  * {@code service.DevUtilOperation}'s own Javadoc for why this gets its own dedicated type instead
  * of being bent into {@link MinifiableTextRequest}/{@link TextRequest}, the same reasoning that
- * Javadoc already anticipates for a future Unix Time Converter/Number Base Converter).
+ * Javadoc anticipated for what's now a real operation, {@code DateTimeToTimestampRequest}/
+ * {@code TimestampToDateTimeRequest} — and still anticipates for a hypothetical future Number
+ * Base Converter).
  *
  * @param pattern  the regular expression itself, capped at {@link DevUtilsLimits#MAX_INPUT_LENGTH}
  *                 like every other text field in this module, even though a pattern this long

@@ -18,7 +18,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
  * {@link MockMvc} — verifies, end to end rather than by static reasoning alone, that this app
  * actually starts (the {@code GlobalExceptionHandler}/{@code spring-boot-starter-security}
  * classpath dependency reasoning in {@code security.SecurityConfig}'s own Javadoc holds up) and
- * that every one of the 32 operation endpoints is genuinely reachable with no
+ * that every one of the 34 operation endpoints is genuinely reachable with no
  * {@code Authorization} header at all.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -441,6 +441,51 @@ class DevUtilsServiceApplicationTests {
                         .content("{\"original\":\"" + tooManyLines + "\",\"updated\":\"a\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_015")));
+    }
+
+    @Test
+    void convertDateTimeToTimestampIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/datetime-to-timestamp")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"dateTime\":\"1970-01-01T00:00:00\",\"zoneId\":\"UTC\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"epochSeconds\":0")));
+    }
+
+    @Test
+    void malformedDateTimeReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/datetime-to-timestamp")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"dateTime\":\"not-a-date\",\"zoneId\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_016")));
+    }
+
+    @Test
+    void convertTimestampToDateTimeIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/timestamp-to-datetime")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"timestamp\":\"0\",\"zoneId\":\"UTC\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("1970-01-01")));
+    }
+
+    @Test
+    void malformedTimestampReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/timestamp-to-datetime")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"timestamp\":\"not-a-number\",\"zoneId\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_017")));
+    }
+
+    @Test
+    void unrecognizedTimeZoneReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/timestamp-to-datetime")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"timestamp\":\"0\",\"zoneId\":\"Not/AZone\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_018")));
     }
 
     @Test
