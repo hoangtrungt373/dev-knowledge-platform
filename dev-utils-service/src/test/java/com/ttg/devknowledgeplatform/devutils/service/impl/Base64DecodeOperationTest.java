@@ -14,20 +14,20 @@ class Base64DecodeOperationTest {
 
     @Test
     void decodesPlainAsciiText() {
-        assertThat(operation.execute("VnVpIENvZGluZw==")).isEqualTo("Vui Coding");
+        assertThat(operation.execute("RGV2S25vd2xlZGdl")).isEqualTo("DevKnowledge");
     }
 
     // The other direction of Base64EncodeOperationTest's own matching case — same "verified
     // against a real standalone Java harness first" discipline.
     @Test
     void decodesMultiByteUtf8TextIncludingAnEmoji() {
-        assertThat(operation.execute("SGVsbG8gZnJvbSBWdWkgQ29kaW5nIPCfkYs="))
-                .isEqualTo("Hello from Vui Coding 👋");
+        assertThat(operation.execute("SGVsbG8gZnJvbSBEZXZLbm93bGVkZ2Ug8J+Riw=="))
+                .isEqualTo("Hello from DevKnowledge 👋");
     }
 
     @Test
     void toleratesALeadingOrTrailingNewlineFromAPastedString() {
-        assertThat(operation.execute("\nVnVpIENvZGluZw==\n")).isEqualTo("Vui Coding");
+        assertThat(operation.execute("\nRGV2S25vd2xlZGdl\n")).isEqualTo("DevKnowledge");
     }
 
     @Test

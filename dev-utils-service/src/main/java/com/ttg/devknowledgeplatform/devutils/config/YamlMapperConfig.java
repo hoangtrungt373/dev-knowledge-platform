@@ -33,7 +33,7 @@ import org.springframework.context.annotation.Configuration;
  *   <li>{@code MINIMIZE_QUOTES} (default {@code false}) — Jackson quotes every string scalar by
  *       default (type-fidelity safety: an unquoted {@code true}/{@code 123} could round-trip back
  *       as a boolean/number instead of a string), even when the value is unambiguously safe to
- *       leave bare (e.g. {@code Vui Coding}). Enabled, so a plain string renders unquoted whenever
+ *       leave bare (e.g. {@code DevKnowledge}). Enabled, so a plain string renders unquoted whenever
  *       SnakeYAML can do so safely — the value that actually *needs* quoting (already ambiguous
  *       once parsed back, e.g. a string that's literally {@code "true"}) still gets it either way,
  *       this only removes quoting from values that never needed it.</li>

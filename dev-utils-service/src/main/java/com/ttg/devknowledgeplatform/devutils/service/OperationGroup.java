@@ -23,15 +23,20 @@ package com.ttg.devknowledgeplatform.devutils.service;
  * value rather than transforming it — a JWT decoder, a regular-expression tester, a URL parser
  * (the last two moved here per direct request; {@link OperationGroup} originally named "a future
  * JWT decoder" as this group's own worked example, before any of the three actually existed).
- * {@link #WEB} and {@link #GENERATORS} are still declared ahead of the operations that will
- * eventually use them, so the GUI's own group-by-{@link #getLabel()} sidebar rendering already has
- * a stable, complete set of sections to iterate whenever the first one lands, without needing a
- * second change then: {@link #WEB} (e.g. a future HTTP header/user-agent parser — a URL parser was
- * considered for this group too, given the same "inherently web-specific" reasoning, but landed in
- * {@link #INSPECTORS} instead per direct request, since reading structure out of a value is the
- * more specific/decisive shape here), {@link #GENERATORS} (e.g. a future UUID/Lorem Ipsum
- * generator — produces new content from little or no input, unlike every operation above, which
- * all transform an existing input).
+ * {@link #WEB} and {@link #GENERATORS} were originally declared ahead of the operations that would
+ * eventually use them, so the GUI's own group-by-{@link #getLabel()} sidebar rendering already had
+ * a stable, complete set of sections to iterate whenever the first one landed — both now do.
+ * {@link #WEB} covers {@code HtmlPreviewOperation}/{@code MarkdownPreviewOperation} (a live,
+ * sandboxed-preview rendering of HTML/Markdown), {@code HtmlToTsxOperation} (HTML → JSX-flavored
+ * markup), {@code ColorConverterOperation} (a color into every common representation at once), and
+ * {@code SvgToCssOperation} (SVG markup into a CSS {@code background-image} data URI rule) — a URL
+ * parser was considered for this group too, given the same "inherently web-specific" reasoning,
+ * but landed in {@link #INSPECTORS} instead per direct request, since reading structure out of a
+ * value is the more specific/decisive shape here. {@link #GENERATORS} covers
+ * {@code LoremIpsumGeneratorOperation} (1-20 paragraphs of classic placeholder text) — this
+ * group's own original worked example, landed for real; a client-side-only QR Code
+ * Reader/Generator also lives in this group on the GUI side, but has no backend operation class at
+ * all (see {@code gui/CLAUDE.md}'s own dev-utils section).
  */
 public enum OperationGroup {
     FORMATTERS("Formatters"),

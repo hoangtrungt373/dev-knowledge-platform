@@ -13,12 +13,12 @@ class PhpArrayParserTest {
     @Test
     @SuppressWarnings("unchecked")
     void parsesAnAssociativeArrayIntoALinkedHashMapPreservingOrder() {
-        Object result = PhpArrayParser.parse("['name' => 'Vui Coding', 'active' => true, 'tools' => ['JSON', 'JWT']]");
+        Object result = PhpArrayParser.parse("['name' => 'DevKnowledge', 'active' => true, 'tools' => ['JSON', 'JWT']]");
 
         assertThat(result).isInstanceOf(Map.class);
         Map<String, Object> map = (Map<String, Object>) result;
         assertThat(map.keySet()).containsExactly("name", "active", "tools");
-        assertThat(map.get("name")).isEqualTo("Vui Coding");
+        assertThat(map.get("name")).isEqualTo("DevKnowledge");
         assertThat(map.get("active")).isEqualTo(Boolean.TRUE);
         assertThat(map.get("tools")).isEqualTo(List.of("JSON", "JWT"));
     }

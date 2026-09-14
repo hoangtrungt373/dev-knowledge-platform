@@ -10,7 +10,7 @@ class Base64EncodeOperationTest {
 
     @Test
     void encodesPlainAsciiText() {
-        assertThat(operation.execute("Vui Coding")).isEqualTo("VnVpIENvZGluZw==");
+        assertThat(operation.execute("DevKnowledge")).isEqualTo("RGV2S25vd2xlZGdl");
     }
 
     // English text plus an emoji — the emoji alone is enough to exercise a genuinely multi-byte
@@ -21,8 +21,8 @@ class Base64EncodeOperationTest {
     // before writing this assertion, not assumed.
     @Test
     void encodesMultiByteUtf8TextIncludingAnEmoji() {
-        assertThat(operation.execute("Hello from Vui Coding 👋"))
-                .isEqualTo("SGVsbG8gZnJvbSBWdWkgQ29kaW5nIPCfkYs=");
+        assertThat(operation.execute("Hello from DevKnowledge 👋"))
+                .isEqualTo("SGVsbG8gZnJvbSBEZXZLbm93bGVkZ2Ug8J+Riw==");
     }
 
     @Test

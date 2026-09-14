@@ -45,13 +45,13 @@ class JsonToYamlOperationTest {
         // YamlMapperConfig's own Javadoc for the 3 ways YAMLMapper.builder().build()'s stock
         // defaults diverge from this (a real bug, reported directly against this exact payload,
         // not a style choice).
-        String input = "{\"project\":\"Vui Coding\",\"version\":2,"
+        String input = "{\"project\":\"DevKnowledge\",\"version\":2,"
                 + "\"features\":[\"tools\",\"launch board\"],\"active\":true}";
 
         String result = operation.execute(input);
 
         assertThat(result).isEqualTo(
-                "project: Vui Coding\n"
+                "project: DevKnowledge\n"
                         + "version: 2\n"
                         + "features:\n"
                         + "  - tools\n"

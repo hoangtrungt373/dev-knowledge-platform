@@ -10,15 +10,15 @@ class StringCaseConverterTest {
 
     @Test
     void convertsASpaceSeparatedSentenceIntoEveryCaseVariant() {
-        StringCaseResponse result = StringCaseConverter.convert("Build ship and share with Vui Coding");
+        StringCaseResponse result = StringCaseConverter.convert("Build ship and share with DevKnowledge");
 
-        assertThat(result.camelCase()).isEqualTo("buildShipAndShareWithVuiCoding");
-        assertThat(result.pascalCase()).isEqualTo("BuildShipAndShareWithVuiCoding");
-        assertThat(result.snakeCase()).isEqualTo("build_ship_and_share_with_vui_coding");
-        assertThat(result.kebabCase()).isEqualTo("build-ship-and-share-with-vui-coding");
-        assertThat(result.constantCase()).isEqualTo("BUILD_SHIP_AND_SHARE_WITH_VUI_CODING");
-        assertThat(result.titleCase()).isEqualTo("Build Ship And Share With Vui Coding");
-        assertThat(result.sentenceCase()).isEqualTo("Build ship and share with vui coding");
+        assertThat(result.camelCase()).isEqualTo("buildShipAndShareWithDevKnowledge");
+        assertThat(result.pascalCase()).isEqualTo("BuildShipAndShareWithDevKnowledge");
+        assertThat(result.snakeCase()).isEqualTo("build_ship_and_share_with_dev_knowledge");
+        assertThat(result.kebabCase()).isEqualTo("build-ship-and-share-with-dev-knowledge");
+        assertThat(result.constantCase()).isEqualTo("BUILD_SHIP_AND_SHARE_WITH_DEV_KNOWLEDGE");
+        assertThat(result.titleCase()).isEqualTo("Build Ship And Share With Dev Knowledge");
+        assertThat(result.sentenceCase()).isEqualTo("Build ship and share with dev knowledge");
     }
 
     @Test
@@ -45,7 +45,7 @@ class StringCaseConverterTest {
 
     @Test
     void roundTripsEachVariantBackToTheSameWords() {
-        StringCaseResponse original = StringCaseConverter.convert("Build ship and share with Vui Coding");
+        StringCaseResponse original = StringCaseConverter.convert("Build ship and share with DevKnowledge");
 
         assertThat(StringCaseConverter.convert(original.camelCase()).snakeCase())
                 .isEqualTo(original.snakeCase());

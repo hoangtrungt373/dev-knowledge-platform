@@ -96,11 +96,29 @@ public final class PhpSerializeParser {
         expect("d:");
         String digits = readUntil(';', "a double value");
         expect(";");
-        try {
-            return Double.parseDouble(digits);
-        } catch (NumberFormatException e) {
-            throw errorAt(pos, "Invalid double literal '" + digits + "'");
-        }
+        return parsePhpDoubleLiteral(digits);
+    }
+
+    /** PHP's own {@code serialize()} emits the bare literals {@code NAN}/{@code INF}/{@code -INF}
+     * for a non-finite double — real bug, found by audit rather than a failing test: these are
+     * PHP's own spellings, not Java's ({@code Double#parseDouble} only recognizes {@code NaN}/
+     * {@code Infinity}/{@code -Infinity}), so a real {@code serialize()} payload containing a
+     * non-finite float (e.g. from a PHP computation that produced {@code NAN}) used to be rejected
+     * as "invalid" even though it's genuinely valid PHP output. Checked before falling through to
+     * {@link Double#parseDouble} so every other numeric spelling still parses exactly as before. */
+    private Double parsePhpDoubleLiteral(String literal) {
+        return switch (literal) {
+            case "NAN" -> Double.NaN;
+            case "INF" -> Double.POSITIVE_INFINITY;
+            case "-INF" -> Double.NEGATIVE_INFINITY;
+            default -> {
+                try {
+                    yield Double.parseDouble(literal);
+                } catch (NumberFormatException e) {
+                    throw errorAt(pos, "Invalid double literal '" + literal + "'");
+                }
+            }
+        };
     }
 
     private String parseString() {

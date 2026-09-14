@@ -1,5 +1,7 @@
 package com.ttg.devknowledgeplatform.devutils;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -10,6 +12,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
 import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
 
@@ -20,13 +23,58 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
  * classpath dependency reasoning in {@code security.SecurityConfig}'s own Javadoc holds up) and
  * that every one of the 40 operation endpoints is genuinely reachable with no
  * {@code Authorization} header at all.
+ *
+ * <p>{@link #assertOk}/{@link #assertBadRequest} exist because nearly every one of the ~50 test
+ * methods below hand-rolled one of exactly two shapes — a real, found-by-audit duplication: ~30
+ * "reachable" tests all built the identical {@code perform(post(...)).andExpect(status().isOk())
+ * .andExpect(content().string(containsString(...)))} chain, and all 17 "malformed X returns 400"
+ * tests all built the identical {@code .andExpect(status().isBadRequest()).andExpect(content()
+ * .string(containsString("DEVUTILS_0NN")))} chain, differing only in the path/body/expected
+ * fragment(s). Both helpers also share one {@code post(BASE_PATH + path)} construction, so a
+ * future change to this module's own base path only needs updating in one place. Hamcrest's own
+ * {@code containsString}/{@code not} are statically imported now too (previously fully qualified
+ * on every one of ~56 uses) for the same "stop repeating what a single import already covers"
+ * reason.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
 class DevUtilsServiceApplicationTests {
 
+    private static final String BASE_PATH = "/api/v1/dev-utils";
+
     @Autowired
     private MockMvc mockMvc;
+
+    /**
+     * Posts {@code body} to {@code BASE_PATH + path} and asserts a {@code 200} response whose body
+     * contains every one of {@code expectedFragments} — the shape every "reachable with no
+     * Authorization header" test below shares. Returns the underlying {@link ResultActions} for
+     * the handful of call sites that need one extra assertion beyond a plain fragment match (e.g.
+     * asserting a fragment is <em>absent</em> via {@link org.hamcrest.Matchers#not}).
+     */
+    private ResultActions assertOk(String path, String body, String... expectedFragments) throws Exception {
+        ResultActions result = mockMvc.perform(post(BASE_PATH + path)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+        for (String fragment : expectedFragments) {
+            result.andExpect(content().string(containsString(fragment)));
+        }
+        return result;
+    }
+
+    /**
+     * Posts {@code body} to {@code BASE_PATH + path} and asserts a {@code 400} response whose body
+     * contains {@code errorCode} — the shape every "malformed X returns 400 through the shared
+     * GlobalExceptionHandler" test below shares.
+     */
+    private void assertBadRequest(String path, String body, String errorCode) throws Exception {
+        mockMvc.perform(post(BASE_PATH + path)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(containsString(errorCode)));
+    }
 
     @Test
     void contextLoads() {
@@ -34,528 +82,311 @@ class DevUtilsServiceApplicationTests {
 
     @Test
     void formatJsonIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/json/format")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"{}\",\"minify\":false}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("output")));
+        assertOk("/json/format", "{\"input\":\"{}\",\"minify\":false}", "output");
     }
 
     @Test
     void yamlToJsonIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/yaml-to-json")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"name: Alice\",\"minify\":true}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Alice")));
+        assertOk("/yaml-to-json", "{\"input\":\"name: Alice\",\"minify\":true}", "Alice");
     }
 
     @Test
     void jsonToYamlIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/json-to-yaml")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"{\\\"name\\\":\\\"Alice\\\"}\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Alice")));
+        assertOk("/json-to-yaml", "{\"input\":\"{\\\"name\\\":\\\"Alice\\\"}\"}", "Alice");
     }
 
     @Test
     void beautifyHtmlIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/html/beautify")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"<p>Hi</p>\",\"minify\":false}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Hi")));
+        assertOk("/html/beautify", "{\"input\":\"<p>Hi</p>\",\"minify\":false}", "Hi");
     }
 
     @Test
     void beautifyCssIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/css/beautify")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\".a{color:red;}\",\"minify\":false}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("color: red")));
+        assertOk("/css/beautify", "{\"input\":\".a{color:red;}\",\"minify\":false}", "color: red");
     }
 
     @Test
     void beautifyLessIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/less/beautify")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\".a{@width: 10px;}\",\"minify\":true}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("@width")));
+        assertOk("/less/beautify", "{\"input\":\".a{@width: 10px;}\",\"minify\":true}", "@width");
     }
 
     @Test
     void beautifyScssIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/scss/beautify")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\".a{$width: 10px;}\",\"minify\":true}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("$width")));
+        assertOk("/scss/beautify", "{\"input\":\".a{$width: 10px;}\",\"minify\":true}", "$width");
     }
 
     @Test
     void beautifyJsIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/js/beautify")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"function f(){return 1;}\",\"minify\":false}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("return 1")));
+        assertOk("/js/beautify", "{\"input\":\"function f(){return 1;}\",\"minify\":false}", "return 1");
     }
 
     @Test
     void beautifyErbIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/erb/beautify")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"<p><%= name %></p>\",\"minify\":false}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("<%= name %>")));
+        assertOk("/erb/beautify", "{\"input\":\"<p><%= name %></p>\",\"minify\":false}", "<%= name %>");
     }
 
     @Test
     void beautifyXmlIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/xml/beautify")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"<root><child>Hi</child></root>\",\"minify\":false}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Hi")));
+        assertOk("/xml/beautify", "{\"input\":\"<root><child>Hi</child></root>\",\"minify\":false}", "Hi");
     }
 
     @Test
     void malformedXmlReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/xml/beautify")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"<root><unclosed></root>\",\"minify\":false}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_003")));
+        assertBadRequest("/xml/beautify", "{\"input\":\"<root><unclosed></root>\",\"minify\":false}", "DEVUTILS_003");
     }
 
     @Test
     void jsonToCsvIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/json-to-csv")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"[{\\\"id\\\":1,\\\"name\\\":\\\"Alice\\\"}]\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Alice")));
+        assertOk("/json-to-csv", "{\"input\":\"[{\\\"id\\\":1,\\\"name\\\":\\\"Alice\\\"}]\"}", "Alice");
     }
 
     @Test
     void csvToJsonIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/csv-to-json")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"id,name\\n1,Alice\\n\",\"minify\":true}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Alice")));
+        assertOk("/csv-to-json", "{\"input\":\"id,name\\n1,Alice\\n\",\"minify\":true}", "Alice");
     }
 
     @Test
     void malformedCsvReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/csv-to-json")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"id,name\\n1,Alice,extra\\n\",\"minify\":true}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_004")));
+        assertBadRequest("/csv-to-json", "{\"input\":\"id,name\\n1,Alice,extra\\n\",\"minify\":true}", "DEVUTILS_004");
     }
 
     @Test
     void formatSqlIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/sql/format")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"select id from users\",\"minify\":false}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("SELECT")));
+        assertOk("/sql/format", "{\"input\":\"select id from users\",\"minify\":false}", "SELECT");
     }
 
     @Test
     void phpToJsonIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/php-to-json")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"['name' => 'Vui Coding']\",\"minify\":true}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Vui Coding")));
+        assertOk("/php-to-json", "{\"input\":\"['name' => 'DevKnowledge']\",\"minify\":true}", "DevKnowledge");
     }
 
     @Test
     void malformedPhpReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/php-to-json")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"['a', 'b'\",\"minify\":false}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_005")));
+        assertBadRequest("/php-to-json", "{\"input\":\"['a', 'b'\",\"minify\":false}", "DEVUTILS_005");
     }
 
     @Test
     void jsonToPhpIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/json-to-php")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"{\\\"name\\\":\\\"Vui Coding\\\"}\",\"minify\":true}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Vui Coding")));
+        assertOk("/json-to-php", "{\"input\":\"{\\\"name\\\":\\\"DevKnowledge\\\"}\",\"minify\":true}", "DevKnowledge");
     }
 
     @Test
     void convertStringCaseIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/string-case/convert")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"Vui Coding\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("vuiCoding")));
+        assertOk("/string-case/convert", "{\"input\":\"DevKnowledge\"}", "devKnowledge");
     }
 
     @Test
     void encodeBase64IsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/base64/encode")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"Vui Coding\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("VnVpIENvZGluZw==")));
+        assertOk("/base64/encode", "{\"input\":\"DevKnowledge\"}", "RGV2S25vd2xlZGdl");
     }
 
     @Test
     void decodeBase64IsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/base64/decode")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"VnVpIENvZGluZw==\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Vui Coding")));
+        assertOk("/base64/decode", "{\"input\":\"RGV2S25vd2xlZGdl\"}", "DevKnowledge");
     }
 
     @Test
     void malformedBase64Returns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/base64/decode")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"not valid base64!!\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_006")));
+        assertBadRequest("/base64/decode", "{\"input\":\"not valid base64!!\"}", "DEVUTILS_006");
     }
 
     @Test
     void encodeUrlIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/url/encode")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"Vui Coding & Co\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Vui%20Coding%20%26%20Co")));
+        assertOk("/url/encode", "{\"input\":\"DevKnowledge & Co\"}", "DevKnowledge%20%26%20Co");
     }
 
     @Test
     void decodeUrlIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/url/decode")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"Vui%20Coding%20%26%20Co\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Vui Coding & Co")));
+        assertOk("/url/decode", "{\"input\":\"DevKnowledge%20%26%20Co\"}", "DevKnowledge & Co");
     }
 
     @Test
     void malformedUrlEncodingReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/url/decode")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"100%\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_007")));
+        assertBadRequest("/url/decode", "{\"input\":\"100%\"}", "DEVUTILS_007");
     }
 
     @Test
     void encodeHtmlEntityIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/html-entity/encode")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"<b>Vui</b> & \\\"Coding\\\"\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("&lt;b&gt;Vui&lt;/b&gt; &amp; &quot;Coding&quot;")));
+        assertOk("/html-entity/encode", "{\"input\":\"<b>Dev</b> & \\\"Knowledge\\\"\"}",
+                "&lt;b&gt;Dev&lt;/b&gt; &amp; &quot;Knowledge&quot;");
     }
 
     @Test
     void decodeHtmlEntityIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/html-entity/decode")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"&lt;b&gt;Vui&lt;/b&gt; &amp; &quot;Coding&quot;\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("<b>Vui</b> & \\\"Coding\\\"")));
+        assertOk("/html-entity/decode", "{\"input\":\"&lt;b&gt;Dev&lt;/b&gt; &amp; &quot;Knowledge&quot;\"}",
+                "<b>Dev</b> & \\\"Knowledge\\\"");
     }
 
     @Test
     void generateHashIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/hash/generate")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"Vui Coding\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString(
-                        "2d1ed5c88f1825c1a74cf6fec2e5b61455d542e5")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString(
-                        "0b41e936e3341bc2ee9844992b5c6fbb69270b7a51877818d231ffd923aecbc9")));
+        assertOk("/hash/generate", "{\"input\":\"DevKnowledge\"}",
+                "35abd90ddf25c6b7ee67d7f5dfbbbc48332b5e87",
+                "f8bdef26435989071098c46c93337f649309bb63b00bd773a2abcbecfbfbc68a");
     }
 
     @Test
     void serializePhpIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/php-serialize/serialize")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"{\\\"name\\\":\\\"DevKnowledge\\\",\\\"active\\\":true,\\\"count\\\":47}\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString(
-                        "a:3:{s:4:\\\"name\\\";s:12:\\\"DevKnowledge\\\";s:6:\\\"active\\\";b:1;s:5:\\\"count\\\";i:47;}")));
+        assertOk("/php-serialize/serialize",
+                "{\"input\":\"{\\\"name\\\":\\\"DevKnowledge\\\",\\\"active\\\":true,\\\"count\\\":47}\"}",
+                "a:3:{s:4:\\\"name\\\";s:12:\\\"DevKnowledge\\\";s:6:\\\"active\\\";b:1;s:5:\\\"count\\\";i:47;}");
     }
 
     @Test
     void unserializePhpIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/php-serialize/unserialize")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"a:1:{s:4:\\\"name\\\";s:12:\\\"DevKnowledge\\\";}\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DevKnowledge")));
+        assertOk("/php-serialize/unserialize", "{\"input\":\"a:1:{s:4:\\\"name\\\";s:12:\\\"DevKnowledge\\\";}\"}",
+                "DevKnowledge");
     }
 
     @Test
     void malformedSerializedPhpReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/php-serialize/unserialize")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"a:1:{\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_008")));
+        assertBadRequest("/php-serialize/unserialize", "{\"input\":\"a:1:{\"}", "DEVUTILS_008");
     }
 
     @Test
     void encodeHexIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/hex/encode")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"Hi\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("48 69")));
+        assertOk("/hex/encode", "{\"input\":\"Hi\"}", "48 69");
     }
 
     @Test
     void decodeHexIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/hex/decode")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"48 69\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Hi")));
+        assertOk("/hex/decode", "{\"input\":\"48 69\"}", "Hi");
     }
 
     @Test
     void malformedHexReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/hex/decode")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"zz\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_009")));
+        assertBadRequest("/hex/decode", "{\"input\":\"zz\"}", "DEVUTILS_009");
     }
 
     @Test
     void debugJwtIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/jwt/debug")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
-                                + ".eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlZ1aSBDb2RpbmciLCJpYXQiOjE1MTYyMzkwMjJ9"
-                                + ".demo-signature\",\"minify\":false}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("HS256")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Vui Coding")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("demo-signature")));
+        assertOk("/jwt/debug",
+                "{\"input\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+                        + ".eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkRldktub3dsZWRnZSIsImlhdCI6MTUxNjIzOTAyMn0"
+                        + ".demo-signature\",\"minify\":false}",
+                "HS256", "DevKnowledge", "demo-signature");
     }
 
     @Test
     void malformedJwtReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/jwt/debug")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"only.two\",\"minify\":false}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_010")));
+        assertBadRequest("/jwt/debug", "{\"input\":\"only.two\",\"minify\":false}", "DEVUTILS_010");
     }
 
     @Test
     void testRegexpIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/regexp/test")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"pattern\":\"[\\\\w.+-]+@[\\\\w.-]+\\\\.[a-zA-Z]{2,}\",\"flags\":\"gi\","
-                                + "\"testText\":\"hello@vuicoding.me\\nsupport@example.com\\nnot-an-email\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("hello@vuicoding.me")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("support@example.com")));
+        assertOk("/regexp/test",
+                "{\"pattern\":\"[\\\\w.+-]+@[\\\\w.-]+\\\\.[a-zA-Z]{2,}\",\"flags\":\"gi\","
+                        + "\"testText\":\"hello@example.com\\nsupport@example.org\\nnot-an-email\"}",
+                "hello@example.com", "support@example.org");
     }
 
     @Test
     void malformedRegexReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/regexp/test")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"pattern\":\"[unclosed\",\"flags\":\"g\",\"testText\":\"anything\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_011")));
+        assertBadRequest("/regexp/test", "{\"pattern\":\"[unclosed\",\"flags\":\"g\",\"testText\":\"anything\"}", "DEVUTILS_011");
     }
 
     @Test
     void parseUrlIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/url/parse")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"https://vuicoding.me:443/tools/dev-utils?tab=json&from=homepage"
-                                + "#workspace\",\"minify\":false}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("vuicoding.me")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("tab=json")));
+        assertOk("/url/parse",
+                "{\"input\":\"https://devknowledge.io:443/tools/dev-utils?tab=json&from=homepage"
+                        + "#workspace\",\"minify\":false}",
+                "devknowledge.io", "tab=json");
     }
 
     @Test
     void malformedUrlReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/url/parse")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"/just/a/path\",\"minify\":false}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_013")));
+        assertBadRequest("/url/parse", "{\"input\":\"/just/a/path\",\"minify\":false}", "DEVUTILS_013");
     }
 
     @Test
     void parseCronIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/cron/parse")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"0 9 * * 1-5\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Monday through Friday")));
+        assertOk("/cron/parse", "{\"input\":\"0 9 * * 1-5\"}", "Monday through Friday");
     }
 
     @Test
     void malformedCronReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/cron/parse")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"0 9 * *\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_014")));
+        assertBadRequest("/cron/parse", "{\"input\":\"0 9 * *\"}", "DEVUTILS_014");
     }
 
     @Test
     void compareTextDiffIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/text-diff/compare")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"original\":\"a\\nb\",\"updated\":\"a\\nc\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"addedCount\":1")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"removedCount\":1")));
+        assertOk("/text-diff/compare", "{\"original\":\"a\\nb\",\"updated\":\"a\\nc\"}",
+                "\"addedCount\":1", "\"removedCount\":1");
     }
 
     @Test
     void tooManyDiffLinesReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
         String tooManyLines = "x\\n".repeat(2001);
 
-        mockMvc.perform(post("/api/v1/dev-utils/text-diff/compare")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"original\":\"" + tooManyLines + "\",\"updated\":\"a\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_015")));
+        assertBadRequest("/text-diff/compare", "{\"original\":\"" + tooManyLines + "\",\"updated\":\"a\"}", "DEVUTILS_015");
     }
 
     @Test
     void convertDateTimeToTimestampIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/datetime-to-timestamp")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"dateTime\":\"1970-01-01T00:00:00\",\"zoneId\":\"UTC\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"epochSeconds\":0")));
+        assertOk("/datetime-to-timestamp", "{\"dateTime\":\"1970-01-01T00:00:00\",\"zoneId\":\"UTC\"}",
+                "\"epochSeconds\":0");
     }
 
     @Test
     void malformedDateTimeReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/datetime-to-timestamp")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"dateTime\":\"not-a-date\",\"zoneId\":\"\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_016")));
+        assertBadRequest("/datetime-to-timestamp", "{\"dateTime\":\"not-a-date\",\"zoneId\":\"\"}", "DEVUTILS_016");
     }
 
     @Test
     void convertTimestampToDateTimeIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/timestamp-to-datetime")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"timestamp\":\"0\",\"zoneId\":\"UTC\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("1970-01-01")));
+        assertOk("/timestamp-to-datetime", "{\"timestamp\":\"0\",\"zoneId\":\"UTC\"}", "1970-01-01");
     }
 
     @Test
     void malformedTimestampReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/timestamp-to-datetime")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"timestamp\":\"not-a-number\",\"zoneId\":\"\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_017")));
+        assertBadRequest("/timestamp-to-datetime", "{\"timestamp\":\"not-a-number\",\"zoneId\":\"\"}", "DEVUTILS_017");
     }
 
     @Test
     void unrecognizedTimeZoneReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/timestamp-to-datetime")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"timestamp\":\"0\",\"zoneId\":\"Not/AZone\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_018")));
+        assertBadRequest("/timestamp-to-datetime", "{\"timestamp\":\"0\",\"zoneId\":\"Not/AZone\"}", "DEVUTILS_018");
     }
 
     @Test
     void previewHtmlIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/html/preview")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"<p>Hi</p><script>alert(1)</script>\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Hi")))
-                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("script"))));
+        assertOk("/html/preview", "{\"input\":\"<p>Hi</p><script>alert(1)</script>\"}", "Hi")
+                .andExpect(content().string(not(containsString("script"))));
     }
 
     @Test
     void previewMarkdownIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/markdown/preview")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"# Hi\\n\\n<script>alert(1)</script>\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("<h1>Hi</h1>")))
-                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("script"))));
+        assertOk("/markdown/preview", "{\"input\":\"# Hi\\n\\n<script>alert(1)</script>\"}", "<h1>Hi</h1>")
+                .andExpect(content().string(not(containsString("script"))));
     }
 
     @Test
     void convertHtmlToTsxIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/html/to-tsx")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"<div class=\\\"card\\\">Hi</div>\",\"minify\":true}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("className=\\\"card\\\"")));
+        assertOk("/html/to-tsx", "{\"input\":\"<div class=\\\"card\\\">Hi</div>\",\"minify\":true}",
+                "className=\\\"card\\\"");
     }
 
     @Test
     void convertColorIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/color/convert")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"#14B8A6\"}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("rgb(20, 184, 166)")));
+        assertOk("/color/convert", "{\"input\":\"#14B8A6\"}", "rgb(20, 184, 166)");
     }
 
     @Test
     void malformedColorReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/color/convert")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"not-a-color\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_019")));
+        assertBadRequest("/color/convert", "{\"input\":\"not-a-color\"}", "DEVUTILS_019");
     }
 
     @Test
     void convertSvgToCssIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/svg/to-css")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"<svg><rect/></svg>\",\"minify\":true}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString(".icon{background-image:url")));
+        assertOk("/svg/to-css", "{\"input\":\"<svg><rect/></svg>\",\"minify\":true}", ".icon{background-image:url");
     }
 
     @Test
     void generateLoremIpsumIsReachableWithNoAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/lorem-ipsum/generate")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"paragraphs\":3}"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Lorem ipsum dolor sit amet")));
+        assertOk("/lorem-ipsum/generate", "{\"paragraphs\":3}", "Lorem ipsum dolor sit amet");
     }
 
     @Test
     void paragraphCountOutOfRangeFailsBeanValidationWith400() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/lorem-ipsum/generate")
+        mockMvc.perform(post(BASE_PATH + "/lorem-ipsum/generate")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"paragraphs\":21}"))
                 .andExpect(status().isBadRequest());
@@ -563,16 +394,12 @@ class DevUtilsServiceApplicationTests {
 
     @Test
     void malformedJsonReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/json/format")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"not valid json\",\"minify\":false}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_001")));
+        assertBadRequest("/json/format", "{\"input\":\"not valid json\",\"minify\":false}", "DEVUTILS_001");
     }
 
     @Test
     void blankInputFailsBeanValidationWith400() throws Exception {
-        mockMvc.perform(post("/api/v1/dev-utils/json/format")
+        mockMvc.perform(post(BASE_PATH + "/json/format")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"input\":\"\",\"minify\":false}"))
                 .andExpect(status().isBadRequest());
@@ -582,7 +409,7 @@ class DevUtilsServiceApplicationTests {
     void inputOverTheSizeCapFailsBeanValidationWith400() throws Exception {
         String oversizedInput = "1".repeat(DevUtilsLimits.MAX_INPUT_LENGTH + 1);
 
-        mockMvc.perform(post("/api/v1/dev-utils/json/format")
+        mockMvc.perform(post(BASE_PATH + "/json/format")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"input\":\"" + oversizedInput + "\",\"minify\":false}"))
                 .andExpect(status().isBadRequest());
@@ -598,7 +425,7 @@ class DevUtilsServiceApplicationTests {
         String innerJson = "[\"" + "a".repeat(DevUtilsLimits.MAX_INPUT_LENGTH - 4) + "\"]";
         String escapedForRequestBody = innerJson.replace("\"", "\\\"");
 
-        mockMvc.perform(post("/api/v1/dev-utils/json/format")
+        mockMvc.perform(post(BASE_PATH + "/json/format")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"input\":\"" + escapedForRequestBody + "\",\"minify\":true}"))
                 .andExpect(status().isOk());

@@ -12,9 +12,9 @@ class StringCaseOperationTest {
 
     @Test
     void returnsEveryCaseVariant() {
-        StringCaseResponse result = operation.execute("Build ship and share with Vui Coding");
+        StringCaseResponse result = operation.execute("Build ship and share with DevKnowledge");
 
-        assertThat(result.camelCase()).isEqualTo("buildShipAndShareWithVuiCoding");
-        assertThat(result.constantCase()).isEqualTo("BUILD_SHIP_AND_SHARE_WITH_VUI_CODING");
+        assertThat(result.camelCase()).isEqualTo("buildShipAndShareWithDevKnowledge");
+        assertThat(result.constantCase()).isEqualTo("BUILD_SHIP_AND_SHARE_WITH_DEV_KNOWLEDGE");
     }
 }

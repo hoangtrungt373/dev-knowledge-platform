@@ -13,11 +13,14 @@ import com.ttg.devknowledgeplatform.devutils.exception.DevUtilsErrorCode;
 class JwtDebuggerOperationTest {
 
     // The exact reported example — header {"alg":"HS256","typ":"JWT"}, payload
-    // {"sub":"1234567890","name":"Vui Coding","iat":1516239022}, signature "demo-signature" (a
-    // dummy value, deliberately never decoded — see the operation's own Javadoc for why).
+    // {"sub":"1234567890","name":"DevKnowledge","iat":1516239022}, signature "demo-signature" (a
+    // dummy value, deliberately never decoded — see the operation's own Javadoc for why). The
+    // payload segment was re-encoded from the original "Vui Coding" name via a real Node harness
+    // (not hand-edited — a base64url segment isn't human-writable), matching the identical rename
+    // this feature's own GUI `jwt-debugger` placeholder already went through.
     private static final String EXAMPLE_JWT =
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
-                    + ".eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlZ1aSBDb2RpbmciLCJpYXQiOjE1MTYyMzkwMjJ9"
+                    + ".eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkRldktub3dsZWRnZSIsImlhdCI6MTUxNjIzOTAyMn0"
                     + ".demo-signature";
 
     private ObjectMapper objectMapper;
@@ -41,7 +44,7 @@ class JwtDebuggerOperationTest {
                         + "  },\n"
                         + "  \"payload\": {\n"
                         + "    \"sub\": \"1234567890\",\n"
-                        + "    \"name\": \"Vui Coding\",\n"
+                        + "    \"name\": \"DevKnowledge\",\n"
                         + "    \"iat\": 1516239022\n"
                         + "  },\n"
                         + "  \"signature\": \"demo-signature\"\n"

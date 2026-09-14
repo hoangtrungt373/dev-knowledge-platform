@@ -64,7 +64,7 @@ import jakarta.annotation.PreDestroy;
  * characters of text with no authentication at all, so an unbounded match attempt would let one
  * request pin a CPU core indefinitely — a real, exploitable denial-of-service vector, not a
  * hypothetical one. Guarded by running the actual match loop ({@link #findMatches}) on a
- * dedicated virtual-thread executor with a {@link #MATCH_TIMEOUT} via {@link Future#get(long,
+ * dedicated virtual-thread executor with a {@link #MATCH_TIMEOUT_SECONDS} via {@link Future#get(long,
  * TimeUnit)}; a timeout throws {@link DevUtilsErrorCode#REGEX_TIMEOUT} instead of hanging the
  * calling request thread. <b>Known, accepted limitation</b>: {@code java.util.regex} offers no
  * cooperative cancellation, so the runaway matching thread itself isn't actually stopped by this

@@ -1969,6 +1969,60 @@ section again. Full unabridged entry-by-entry history for all three lives in
   - Verified via a clean `tsc --noEmit` and a successful `vite build` after every step — no Docker
     in this sandbox, so the actual on-screen result (every panel's Paste/Copy/Download/Maximize
     buttons, the inline error boxes, and the corrected sample text) is unverified in a real browser.
+- **`dev-utils-service` — a third code-quality analysis pass, mirroring the `gui` pass immediately
+  above ("Apply the same check in backend side"), covering the entire module: 3 real bugs, 1
+  duplication extraction, 4 stale-Javadoc fixes, and the same English-text/branding normalization
+  applied on the backend side.**
+  - **Real bug: `HtmlEntityDecodeOperation`'s `ENTITY_PATTERN` was case-sensitive**, missing the
+    uppercase-hex spelling `&#X27;` — HTML5's numeric character reference grammar treats the `x`/`X`
+    prefix as case-insensitive (unlike a named reference like `&amp;`, which must stay
+    lowercase). Fixed by widening the regex to `&#[xX]27;` and adding the matching switch case,
+    with the class Javadoc updated to explain why the *whole* pattern isn't case-insensitive (named
+    entities must stay case-sensitive; only the hex-literal prefix isn't).
+  - **Real bug: `PhpSerializeParser#parseDouble()` couldn't parse PHP's own `NAN`/`INF`/`-INF`
+    literals** — `Double.parseDouble` only accepts Java's spelling (`NaN`/`Infinity`/
+    `-Infinity`), so a serialized PHP double holding a non-finite value threw an uncaught
+    `NumberFormatException` instead of the clean `400`/`INVALID_PHP_SERIALIZED` this parser exists
+    to produce. Fixed with a new `parsePhpDoubleLiteral` switch recognizing PHP's own 3 spellings
+    before falling back to `Double.parseDouble`. Confirmed via a real Jackson 2.19.2 harness that
+    the fix's output round-trips cleanly — non-finite `Double`s serialize as quoted strings
+    (`"NaN"`, `"Infinity"`, `"-Infinity"`) by default, so no downstream change was needed in
+    `PhpUnserializeOperation`.
+  - **Duplication extracted in `CronParserOperation`**: a new `invalidCron(String detail)` helper
+    collapsed 6 near-identical `BusinessException` throw sites into one, and a new
+    `parseIntOrThrow(String token, FieldSpec spec, String contextPrefix)` helper removed a
+    try/catch-`Integer.parseInt`-and-throw block duplicated between `parseStep`/`resolveValue`.
+  - **4 stale-Javadoc fixes**: `RegexTesterOperation` (a `{@link}` referencing a field renamed since
+    the link was written), `OperationGroup` (its own Javadoc still claimed `WEB`/`GENERATORS` had no
+    real operations yet, when 6 and 1 respectively had since landed), `MinifiableTextRequest`/
+    `TextRequest` (both missing several operations added to their own consumer lists since —
+    same "doc drift" pattern root `CLAUDE.md` already warns this project has hit before),
+    `DevUtilsServiceApplication` (its class Javadoc still enumerated ~9 of the module's 40
+    operations by name; rewritten to summarize by `OperationGroup` instead, with a note that this
+    summary is deliberately not re-derived on every future addition), `YamlMapperConfig` (a stray
+    `{@code Vui Coding}` in an unrelated Javadoc example), and `StringCaseResponse` (all 7 `@param`
+    examples still showed the old brand).
+  - **English-text/branding normalization** — the same "Vui Coding"/`vuicoding.me` sweep the `gui`
+    pass above already applied, mirrored onto every backend test fixture that encoded the old
+    brand: all values re-derived via real, compiled Java harnesses against this module's own
+    classes (Base64/SHA-1/SHA-256/SHA-384/SHA-512/URL-encoding/JWT-payload re-encoding/StringCase
+    variants), never hand-computed — matching this module's own established verification
+    discipline. Updated across 16 test files (`Base64EncodeOperationTest`,
+    `Base64DecodeOperationTest`, `HashGeneratorOperationTest`, `JsonToPhpOperationTest`,
+    `PhpToJsonOperationTest`, `JsonToYamlOperationTest`, `JwtDebuggerOperationTest`,
+    `RegexTesterOperationTest` (sample email domains switched to RFC 2606's `example.com`/
+    `example.org`, matching the `gui`-side `SAMPLE_EMAIL_TEST_TEXT` constant), `StringCaseOperationTest`,
+    `StringCaseConverterTest`, `PhpArrayParserTest`, `PhpArrayWriterTest`, `UrlEncodeOperationTest`,
+    `UrlDecodeOperationTest`, `UrlParserOperationTest` (hostname → `devknowledge.io`), and
+    `DevUtilsServiceApplicationTests`).
+  - **`DevUtilsServiceApplicationTests` also got its own duplication extraction** — new
+    `assertOk(path, body, expectedFragments...)`/`assertBadRequest(path, body, errorCode)` private
+    helpers collapsed the identical `mockMvc.perform(post(...)).andExpect(...)` chain ~50 test
+    methods had each hand-rolled, and Hamcrest's `containsString`/`not` are now statically imported
+    instead of fully qualified at ~56 call sites.
+  - Verified via a real `./mvnw -pl dev-utils-service -am test` run (JDK 21) — **395/395 tests
+    passing** (62 of them in `DevUtilsServiceApplicationTests` alone), confirming the bug fixes,
+    the duplication extraction, and every renamed fixture together.
 - **`dev-utils-service` — a second code-quality analysis pass, covering everything added since the
   first one below (Base64/URL/HTML-entity/Hash/PHP-serialize/ASCII-Hex operations and their
   support classes) — a real test-compile bug plus 2 exact-duplication extractions.**

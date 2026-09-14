@@ -13,7 +13,7 @@ import com.ttg.devknowledgeplatform.devutils.exception.DevUtilsErrorCode;
 class UrlParserOperationTest {
 
     private static final String EXAMPLE_URL =
-            "https://vuicoding.me:443/tools/dev-utils?tab=json&from=homepage#workspace";
+            "https://devknowledge.io:443/tools/dev-utils?tab=json&from=homepage#workspace";
 
     private ObjectMapper objectMapper;
     private UrlParserOperation operation;
@@ -28,15 +28,15 @@ class UrlParserOperationTest {
     void parsesTheExactReportedExample() {
         String result = operation.execute(EXAMPLE_URL, false);
 
-        // `port` is "" here, not the reported example's literal (non-English) placeholder text —
-        // 443 is https's own default port, so it's normalized away exactly like every browser's
-        // own `URL.port` already does; see this class's own note on `resolvePort`.
+        // `port` is "" here, not "443" — 443 is https's own default port, so it's normalized away
+        // exactly like every browser's own `URL.port` already does; see this class's own note on
+        // `resolvePort`.
         assertThat(result).isEqualTo(
                 "{\n"
                         + "  \"protocol\": \"https:\",\n"
                         + "  \"username\": \"\",\n"
                         + "  \"password\": \"\",\n"
-                        + "  \"hostname\": \"vuicoding.me\",\n"
+                        + "  \"hostname\": \"devknowledge.io\",\n"
                         + "  \"port\": \"\",\n"
                         + "  \"pathname\": \"/tools/dev-utils\",\n"
                         + "  \"search\": \"?tab=json&from=homepage\",\n"
@@ -45,7 +45,7 @@ class UrlParserOperationTest {
                         + "    \"from\": \"homepage\"\n"
                         + "  },\n"
                         + "  \"hash\": \"#workspace\",\n"
-                        + "  \"origin\": \"https://vuicoding.me\"\n"
+                        + "  \"origin\": \"https://devknowledge.io\"\n"
                         + "}"
         );
     }
@@ -55,7 +55,7 @@ class UrlParserOperationTest {
         String result = operation.execute(EXAMPLE_URL, true);
 
         assertThat(result).doesNotContain("\n");
-        assertThat(objectMapper.readTree(result).get("hostname").asText()).isEqualTo("vuicoding.me");
+        assertThat(objectMapper.readTree(result).get("hostname").asText()).isEqualTo("devknowledge.io");
         assertThat(objectMapper.readTree(result).get("query").get("tab").asText()).isEqualTo("json");
     }
 

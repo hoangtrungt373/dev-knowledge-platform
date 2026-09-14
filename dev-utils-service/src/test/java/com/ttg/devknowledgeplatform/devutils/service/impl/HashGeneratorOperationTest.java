@@ -31,19 +31,19 @@ class HashGeneratorOperationTest {
     // input above.
     @Test
     void computesAllFourDigestsForAPlainAsciiInput() {
-        HashResponse result = operation.execute("Vui Coding");
+        HashResponse result = operation.execute("DevKnowledge");
 
-        assertThat(result.sha1()).isEqualTo("2d1ed5c88f1825c1a74cf6fec2e5b61455d542e5");
-        assertThat(result.sha256()).isEqualTo("0b41e936e3341bc2ee9844992b5c6fbb69270b7a51877818d231ffd923aecbc9");
+        assertThat(result.sha1()).isEqualTo("35abd90ddf25c6b7ee67d7f5dfbbbc48332b5e87");
+        assertThat(result.sha256()).isEqualTo("f8bdef26435989071098c46c93337f649309bb63b00bd773a2abcbecfbfbc68a");
         assertThat(result.sha384())
-                .isEqualTo("7cce4214deeda3c602271db9a853116ae7fe94fc2a593bf954ff18248e1a57b1bd172a8f79f92911caf5423b3309f6a3");
+                .isEqualTo("748998218bfdaf4c38c68158a7ebe9dee9b33b7e28f7c682ed7a4c807679a8ae0d2fff661497b01515b6fc21bc038312");
         assertThat(result.sha512()).isEqualTo(
-                "632d814116da2b980f048a58fce2bf260297b0bd8072bc6360e06a29901046cc503346f018c1fa5e10cc451f170cc22c116b7732c88b1cdc0edd036d4b155b02");
+                "5699a38f9abbdee0e1604f63dc0c2feb0d0f000a45c53ef5f00294ba8326d52cfbb341bac07a26b3aeb0e6855225d8e7cac4f6165dd96fbab249acb107285364");
     }
 
     @Test
     void everyDigestIsLowercaseHexOfTheExpectedFixedLength() {
-        HashResponse result = operation.execute("Vui Coding");
+        HashResponse result = operation.execute("DevKnowledge");
 
         assertThat(result.sha1()).hasSize(40).matches("[0-9a-f]{40}");
         assertThat(result.sha256()).hasSize(64).matches("[0-9a-f]{64}");

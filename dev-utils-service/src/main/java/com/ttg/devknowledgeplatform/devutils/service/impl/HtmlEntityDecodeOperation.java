@@ -10,8 +10,14 @@ import com.ttg.devknowledgeplatform.devutils.service.OperationGroup;
 /**
  * Decodes {@link HtmlEntityEncodeOperation}'s own five character references (
  * {@code &amp; &lt; &gt; &quot; &#39;}) back into their literal characters — plus {@code &apos;}
- * and {@code &#x27;}, the two other conventional spellings for an escaped apostrophe this operation
- * tolerates on decode even though its own encode counterpart only ever emits {@code &#39;}. No
+ * and {@code &#x27;}/{@code &#X27;}, the other conventional spellings for an escaped apostrophe
+ * this operation tolerates on decode even though its own encode counterpart only ever emits
+ * {@code &#39;}. The hex form's own {@code x}/{@code X} prefix is matched case-insensitively — real
+ * bug, caught by request, not by a test: HTML5's numeric-character-reference grammar allows either
+ * case there (unlike the named references above, which stay case-sensitive per spec — {@code
+ * &AMP;} is not a valid entity the way {@code &#X27;} is a valid hex reference), so a scoped
+ * {@code [xX]} alternation covers just that one prefix rather than making the whole pattern
+ * case-insensitive, which would have wrongly started accepting {@code &AMP;}/{@code &LT;}/etc. No
  * broader named-entity table (e.g. {@code &copy;}, {@code &nbsp;}) is recognized — the same
  * "encode/decode are exact inverses of this one fixed set, not a general HTML-entity table"
  * scoping {@link HtmlEntityEncodeOperation}'s own Javadoc explains; any other {@code &...;}
@@ -30,7 +36,7 @@ import com.ttg.devknowledgeplatform.devutils.service.OperationGroup;
 @Component
 public class HtmlEntityDecodeOperation implements DevUtilOperation {
 
-    private static final Pattern ENTITY_PATTERN = Pattern.compile("&(amp|lt|gt|quot|apos|#39|#x27);");
+    private static final Pattern ENTITY_PATTERN = Pattern.compile("&(amp|lt|gt|quot|apos|#39|#[xX]27);");
 
     @Override
     public OperationGroup group() {
@@ -46,7 +52,7 @@ public class HtmlEntityDecodeOperation implements DevUtilOperation {
             case "lt" -> "<";
             case "gt" -> ">";
             case "quot" -> "\"";
-            case "apos", "#39", "#x27" -> "'";
+            case "apos", "#39", "#x27", "#X27" -> "'";
             default -> match.group();
         });
     }

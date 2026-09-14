@@ -13,7 +13,7 @@ class PhpArrayWriterTest {
 
     @Test
     void writesAJsonObjectAsAPrettyPrintedAssociativeArray() throws Exception {
-        JsonNode node = objectMapper.readTree("{\"name\":\"Vui Coding\",\"active\":true,\"tools\":[\"JSON\",\"JWT\"]}");
+        JsonNode node = objectMapper.readTree("{\"name\":\"DevKnowledge\",\"active\":true,\"tools\":[\"JSON\",\"JWT\"]}");
 
         String result = PhpArrayWriter.write(node, false);
 
@@ -24,7 +24,7 @@ class PhpArrayWriterTest {
                 "<?php\n"
                         + "\n"
                         + "return [\n"
-                        + "  'name' => 'Vui Coding',\n"
+                        + "  'name' => 'DevKnowledge',\n"
                         + "  'active' => true,\n"
                         + "  'tools' => [\n"
                         + "    'JSON',\n"
@@ -45,11 +45,11 @@ class PhpArrayWriterTest {
 
     @Test
     void minifyProducesACompactSingleLineForm() throws Exception {
-        JsonNode node = objectMapper.readTree("{\"name\":\"Vui Coding\",\"active\":true,\"tools\":[\"JSON\",\"JWT\"]}");
+        JsonNode node = objectMapper.readTree("{\"name\":\"DevKnowledge\",\"active\":true,\"tools\":[\"JSON\",\"JWT\"]}");
 
         String result = PhpArrayWriter.write(node, true);
 
-        assertThat(result).isEqualTo("<?php return ['name'=>'Vui Coding','active'=>true,'tools'=>['JSON','JWT']];");
+        assertThat(result).isEqualTo("<?php return ['name'=>'DevKnowledge','active'=>true,'tools'=>['JSON','JWT']];");
     }
 
     @Test
@@ -69,13 +69,13 @@ class PhpArrayWriterTest {
 
     @Test
     void roundTripsThroughPhpArrayParser() throws Exception {
-        JsonNode node = objectMapper.readTree("{\"name\":\"Vui Coding\",\"active\":true,\"tools\":[\"JSON\",\"JWT\"]}");
+        JsonNode node = objectMapper.readTree("{\"name\":\"DevKnowledge\",\"active\":true,\"tools\":[\"JSON\",\"JWT\"]}");
 
         String phpSource = PhpArrayWriter.write(node, false);
         Object parsedBack = PhpArrayParser.parse(phpSource);
 
         assertThat(parsedBack).isEqualTo(java.util.Map.of(
-                "name", "Vui Coding",
+                "name", "DevKnowledge",
                 "active", true,
                 "tools", java.util.List.of("JSON", "JWT")
         ));

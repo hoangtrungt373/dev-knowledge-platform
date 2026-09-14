@@ -18,10 +18,10 @@ class PhpToJsonOperationTest {
     @Test
     void convertsAnAssociativeArrayToPrettyPrintedJson() throws Exception {
         String result = operation.execute(
-                "['name' => 'Vui Coding', 'active' => true, 'tools' => ['JSON', 'JWT']]", false);
+                "['name' => 'DevKnowledge', 'active' => true, 'tools' => ['JSON', 'JWT']]", false);
 
         JsonNode node = objectMapper.readTree(result);
-        assertThat(node.get("name").asText()).isEqualTo("Vui Coding");
+        assertThat(node.get("name").asText()).isEqualTo("DevKnowledge");
         assertThat(node.get("active").asBoolean()).isTrue();
         assertThat(node.get("tools").get(0).asText()).isEqualTo("JSON");
         assertThat(result).contains("\n");
@@ -29,9 +29,9 @@ class PhpToJsonOperationTest {
 
     @Test
     void producesCompactJsonWhenMinified() {
-        String result = operation.execute("['name' => 'Vui Coding']", true);
+        String result = operation.execute("['name' => 'DevKnowledge']", true);
 
-        assertThat(result).isEqualTo("{\"name\":\"Vui Coding\"}");
+        assertThat(result).isEqualTo("{\"name\":\"DevKnowledge\"}");
     }
 
     @Test

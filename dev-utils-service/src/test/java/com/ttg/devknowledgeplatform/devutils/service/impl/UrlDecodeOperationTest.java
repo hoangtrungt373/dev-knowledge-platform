@@ -14,16 +14,16 @@ class UrlDecodeOperationTest {
 
     @Test
     void decodesAUrlWithReservedDelimiters() {
-        assertThat(operation.execute("https%3A%2F%2Ftranslate.google.com%2F%3Fhl%3Dvi%26sl%3Dvi%26tl%3Den%26op%3Dtranslate"))
-                .isEqualTo("https://translate.google.com/?hl=vi&sl=vi&tl=en&op=translate");
+        assertThat(operation.execute("https%3A%2F%2Fdevknowledge.io%2Fsearch%3Fq%3Ddev%20tools%26sort%3Dstars%20desc"))
+                .isEqualTo("https://devknowledge.io/search?q=dev tools&sort=stars desc");
     }
 
     // Matches UrlEncodeOperation's own '%20' output, and also tolerates a literal '+' the way
     // conventional query-string decoding does (URLDecoder's own behavior).
     @Test
     void decodesPercentTwentyAndPlusBackIntoASpace() {
-        assertThat(operation.execute("Vui%20Coding")).isEqualTo("Vui Coding");
-        assertThat(operation.execute("Vui+Coding")).isEqualTo("Vui Coding");
+        assertThat(operation.execute("Dev%20Knowledge")).isEqualTo("Dev Knowledge");
+        assertThat(operation.execute("Dev+Knowledge")).isEqualTo("Dev Knowledge");
     }
 
     @Test

@@ -12,10 +12,15 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
 
 /**
  * Entry point for the standalone {@code dev-utils-service} application — a stateless developer
- * utility belt (JSON format/validate, YAML&harr;JSON conversion, HTML/CSS/LESS/SCSS/JS/ERB/XML
- * beautify+minify, JSON&harr;CSV conversion, SQL format, PHP&harr;JSON conversion, String Case
- * Converter) alongside this reactor's other six standalone services. See root {@code CLAUDE.md}'s
- * module table and this module's own {@code CLAUDE.md} for the full picture.
+ * utility belt now spanning all five {@link com.ttg.devknowledgeplatform.devutils.service.OperationGroup}
+ * categories (Formatters: JSON/YAML/HTML/CSS/LESS/SCSS/JS/ERB/XML/SQL/CSV/PHP-array/String-Case/
+ * Unix-Time; Encoders/Decoders: Base64/URL/HTML-entity/PHP-serialize/ASCII-Hex/Hash; Inspectors:
+ * JWT Debugger/RegExp Tester/URL Parser/Cron Parser/Text Diff; Web: HTML &amp; Markdown Preview/
+ * HTML to TSX/Color Converter/SVG to CSS; Generators: Lorem Ipsum) alongside this reactor's other
+ * six standalone services — see this module's own {@code CLAUDE.md} for the full, current
+ * operation list (this summary is deliberately not re-derived here on every addition; check
+ * {@code service/impl/*Operation.java} directly if this drifts). See root {@code CLAUDE.md}'s
+ * module table for the full picture.
  *
  * <p>The one deployable in this reactor with genuinely nothing to persist: every operation is a
  * pure text-in/text-out transform, so unlike every other service here there is **no JPA/Postgres

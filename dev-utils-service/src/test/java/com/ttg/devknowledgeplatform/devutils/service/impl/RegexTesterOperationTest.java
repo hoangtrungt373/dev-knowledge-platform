@@ -12,14 +12,18 @@ class RegexTesterOperationTest {
 
     private final RegexTesterOperation operation = new RegexTesterOperation();
 
+    // testText mirrors the GUI's own shared SAMPLE_EMAIL_TEST_TEXT constant
+    // (utils/regexInputFormat.ts) — two IANA-reserved example domains (RFC 2606), not a made-up
+    // one, since this is exactly the sample every real regex tester's own docs use for this kind of
+    // demo.
     @Test
     void matchesTheExactReportedExample() {
         String result = operation.execute(
                 "[\\w.+-]+@[\\w.-]+\\.[a-zA-Z]{2,}",
                 "gi",
-                "hello@vuicoding.me\nsupport@example.com\nnot-an-email");
+                "hello@example.com\nsupport@example.org\nnot-an-email");
 
-        assertThat(result).isEqualTo("hello@vuicoding.me\n\nsupport@example.com");
+        assertThat(result).isEqualTo("hello@example.com\n\nsupport@example.org");
     }
 
     @Test
@@ -27,9 +31,9 @@ class RegexTesterOperationTest {
         String result = operation.execute(
                 "[\\w.+-]+@[\\w.-]+\\.[a-zA-Z]{2,}",
                 "i",
-                "hello@vuicoding.me\nsupport@example.com\nnot-an-email");
+                "hello@example.com\nsupport@example.org\nnot-an-email");
 
-        assertThat(result).isEqualTo("hello@vuicoding.me");
+        assertThat(result).isEqualTo("hello@example.com");
     }
 
     @Test

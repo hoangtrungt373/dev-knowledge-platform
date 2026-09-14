@@ -113,8 +113,7 @@ public class CronParserOperation implements DevUtilOperation {
     public String execute(String input) {
         String[] fields = input.strip().split("\\s+");
         if (fields.length != 5) {
-            throw new BusinessException(DevUtilsErrorCode.INVALID_CRON, (Object) (
-                    "expected 5 fields (minute hour day-of-month month day-of-week), found " + fields.length));
+            throw invalidCron("expected 5 fields (minute hour day-of-month month day-of-week), found " + fields.length);
         }
 
         SortedSet<Integer> minutes = parseField(fields[0], MINUTE);
@@ -154,8 +153,7 @@ public class CronParserOperation implements DevUtilOperation {
         SortedSet<Integer> result = new TreeSet<>();
         for (String term : raw.split(",")) {
             if (term.isEmpty()) {
-                throw new BusinessException(DevUtilsErrorCode.INVALID_CRON, (Object) (
-                        "empty term in " + spec.name() + " field"));
+                throw invalidCron("empty term in " + spec.name() + " field");
             }
             String base = term;
             int step = 1;
@@ -185,16 +183,9 @@ public class CronParserOperation implements DevUtilOperation {
     }
 
     private static int parseStep(String token, FieldSpec spec) {
-        int step;
-        try {
-            step = Integer.parseInt(token);
-        } catch (NumberFormatException e) {
-            throw new BusinessException(DevUtilsErrorCode.INVALID_CRON, (Object) (
-                    "step is not a number: \"" + token + "\" in " + spec.name() + " field"));
-        }
+        int step = parseIntOrThrow(token, spec, "step is not a number:");
         if (step <= 0) {
-            throw new BusinessException(DevUtilsErrorCode.INVALID_CRON, (Object) (
-                    "step must be positive in " + spec.name() + " field, found " + step));
+            throw invalidCron("step must be positive in " + spec.name() + " field, found " + step);
         }
         return step;
     }
@@ -218,9 +209,8 @@ public class CronParserOperation implements DevUtilOperation {
         }
         for (int v : result) {
             if (v < spec.min() || v > spec.max()) {
-                throw new BusinessException(DevUtilsErrorCode.INVALID_CRON, (Object) (
-                        "value " + v + " is out of range for " + spec.name()
-                                + " (expected " + spec.min() + "-" + spec.max() + ")"));
+                throw invalidCron("value " + v + " is out of range for " + spec.name()
+                        + " (expected " + spec.min() + "-" + spec.max() + ")");
             }
         }
     }
@@ -230,12 +220,25 @@ public class CronParserOperation implements DevUtilOperation {
         if (alias != null) {
             return alias;
         }
+        return parseIntOrThrow(token, spec, "not a number:");
+    }
+
+    /** Shared by {@link #parseStep}/{@link #resolveValue} — both parse a token as a plain integer
+     * and throw the identical {@link DevUtilsErrorCode#INVALID_CRON} shape on failure, differing
+     * only in the message's own leading phrase ({@code contextPrefix}). */
+    private static int parseIntOrThrow(String token, FieldSpec spec, String contextPrefix) {
         try {
             return Integer.parseInt(token);
         } catch (NumberFormatException e) {
-            throw new BusinessException(DevUtilsErrorCode.INVALID_CRON, (Object) (
-                    "not a number: \"" + token + "\" in " + spec.name() + " field"));
+            throw invalidCron(contextPrefix + " \"" + token + "\" in " + spec.name() + " field");
         }
+    }
+
+    /** Shared by every throw site in this class — collapses the repeated
+     * {@code new BusinessException(DevUtilsErrorCode.INVALID_CRON, (Object) detail)} construction
+     * (6 near-identical call sites before this extraction) to one line each. */
+    private static BusinessException invalidCron(String detail) {
+        return new BusinessException(DevUtilsErrorCode.INVALID_CRON, (Object) detail);
     }
 
     private static FieldValue classify(SortedSet<Integer> values, int min, int max) {
