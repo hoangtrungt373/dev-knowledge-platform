@@ -17,6 +17,7 @@ import UrlParserIcon from '@mui/icons-material/PublicOutlined';
 import CronParserIcon from '@mui/icons-material/ScheduleOutlined';
 import TextDiffIcon from '@mui/icons-material/DifferenceOutlined';
 import UnixTimeConverterIcon from '@mui/icons-material/AccessTimeOutlined';
+import HtmlPreviewIcon from '@mui/icons-material/PreviewOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
@@ -54,7 +55,8 @@ export type TabKey =
   | 'url-parser'
   | 'cron-parser'
   | 'text-diff-checker'
-  | 'unix-time-converter';
+  | 'unix-time-converter'
+  | 'html-preview';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -86,6 +88,7 @@ export const TAB_KEYS: TabKey[] = [
   'cron-parser',
   'text-diff-checker',
   'unix-time-converter',
+  'html-preview',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -97,13 +100,13 @@ export function tabFromHash(hash: string): TabKey {
 
 /** Mirrors the backend's own `service.OperationGroup` enum (`dev-utils-service`) — a much broader
  * clustering than `OperationConfig.category` below, meant to span the whole page rather than one
- * operation's own headline card. `'Formatters'`/`'Encoders/Decoders'`/`'Inspectors'` all have real
- * operations today; `'Web'`/`'Generators'` are both still declared ahead of the operation that will
- * eventually use them (`'Web'`'s own URL Parser example moved to `'Inspectors'` instead, per direct
- * request — see the backend enum's own Javadoc for the full reasoning; `'Generators'` is still
- * awaiting its own first operation, e.g. a future UUID/Lorem Ipsum generator), so
+ * operation's own headline card. `'Formatters'`/`'Encoders/Decoders'`/`'Inspectors'`/`'Web'` all
+ * have real operations today (`'Web'`'s own URL Parser example moved to `'Inspectors'` instead, per
+ * direct request, but HTML Preview — see the `html-preview` entry below — landed there afterward,
+ * so the group is no longer merely declared ahead of use); `'Generators'` is the one group still
+ * awaiting its own first operation (e.g. a future UUID/Lorem Ipsum generator), so
  * `OPERATION_GROUP_ORDER`/`groupOperationsByGroup` below already have a stable, complete section
- * order to render from day one. */
+ * order to render whenever it lands too. */
 export type OperationGroupName = 'Formatters' | 'Encoders/Decoders' | 'Inspectors' | 'Web' | 'Generators';
 
 /** Fixed rendering order for the sidebar's own group headlines — mirrors the backend enum's own
@@ -846,5 +849,36 @@ export const OPERATIONS: OperationConfig[] = [
     // return a genuinely richer type, not DevUtilsResponse) — the same "omitted, not a dead
     // placeholder" treatment `text-diff-checker`'s own entry already establishes for the
     // identical underlying reason.
+  },
+  {
+    key: 'html-preview',
+    // The second WEB-group operation, and the sixth custom-layout one overall (after
+    // hash-generator/base64-image/regexp-tester/text-diff-checker) — its Output is a live,
+    // rendered preview (a sandboxed iframe), not a text block the shared DevUtilToolPanel could
+    // syntax-highlight. Renders through components/HtmlPreviewPanel.tsx.
+    group: 'Web',
+    category: 'Web',
+    label: 'HTML Preview',
+    description: 'Render sanitized HTML live in a sandboxed preview — scripts never run',
+    icon: <HtmlPreviewIcon fontSize="small" />,
+    actionLabel: 'Preview',
+    inputPlaceholder:
+      '<div style="font-family: sans-serif; padding: 16px;"><h2>Vui Coding</h2><p>Online: <strong>true</strong></p>' +
+      '<ul><li>JSON</li><li>Base64</li><li>JWT</li></ul></div>',
+    // 'html' — the input genuinely is HTML, but HtmlPreviewOperation never throws (same lenient
+    // jsoup-Cleaner-never-fails shape html-beautify already establishes), so this is honest but
+    // effectively inert — errorFormatting.ts's own fallback path is never actually reached for
+    // this operation either way.
+    inputFormat: 'html',
+    // Unused by HtmlPreviewPanel (it renders a live iframe, never a syntax-highlighted text
+    // block) but still filled in with a reasonable value to satisfy `OperationConfig`'s shared
+    // shape — the same "present but inert for this operation" treatment `hash-generator`/
+    // `base64-image`/etc. already get.
+    outputLanguage: 'markup',
+    // No minify option — sanitized markup meant to be rendered has no distinct "compact form" to
+    // toggle, same reasoning every Encoders/Decoders pair already establishes.
+    supportsMinify: false,
+    downloadFileName: 'preview.html',
+    onSubmit: input => devUtilsApi.previewHtml(input),
   },
 ];

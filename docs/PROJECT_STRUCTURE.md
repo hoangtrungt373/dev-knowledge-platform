@@ -2263,7 +2263,13 @@ for the rules this module follows.
 
 A stateless developer-utility API — JSON format/validate, YAML↔JSON conversion, HTML/CSS/LESS/SCSS/
 JS/ERB beautify+minify, XML validate/beautify+minify, JSON↔CSV conversion, SQL format+minify,
-PHP↔JSON conversion, String Case Converter.
+PHP↔JSON conversion, String Case Converter, Base64/URL/HTML-entity/PHP-serialize/ASCII↔Hex
+encode/decode, Hash Generator, JWT Debugger, RegExp Tester, URL Parser, Cron Job Parser, Text Diff
+Checker, Unix Time Converter, and HTML Preview (`HtmlPreviewOperation` — sanitizes raw HTML via
+jsoup's own `Cleaner`/`Safelist` so it's safe to render live in the GUI's sandboxed preview
+iframe; the first `OperationGroup.WEB` operation to land there for good). This list has grown well
+past this file's own ASCII tree below in places — re-derive the exact current operation set from
+`service/impl/*Operation.java` rather than trusting this tree's own completeness for every entry.
 **A standalone Spring Boot application built directly as standalone, not an extraction** — unlike
 every module in the six sections above, this one never lived inside `gateway` at all, so there was
 nothing to pull out (see root `CLAUDE.md`'s Long-term direction section). It's also the one

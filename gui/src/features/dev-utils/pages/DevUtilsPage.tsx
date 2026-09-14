@@ -26,6 +26,7 @@ import Base64ImagePanel from '../components/Base64ImagePanel';
 import RegExpTesterPanel from '../components/RegExpTesterPanel';
 import TextDiffPanel from '../components/TextDiffPanel';
 import UnixTimeConverterPanel from '../components/UnixTimeConverterPanel';
+import HtmlPreviewPanel from '../components/HtmlPreviewPanel';
 import DevUtilSidebarItem from '../components/DevUtilSidebarItem';
 import { OPERATION_GROUP_ORDER, OPERATIONS, TabKey, tabFromHash } from '../config/operations';
 
@@ -470,13 +471,14 @@ export default function DevUtilsPage(): JSX.Element {
                 DevUtilToolPanel — Hash Generator's result (four independent digests), Base64
                 Image's own file-upload/live-preview shape, RegExp Tester's own 3-field input
                 (pattern/flags/test text, not one string with a minify flag), Text Diff Checker's
-                own 2-field input plus real line-by-line output structure, and Unix Time
+                own 2-field input plus real line-by-line output structure, Unix Time
                 Converter's own 2-direction, 4-field input plus 2 genuinely different multi-field
-                outputs all don't fit that component's plain Input/Output editor pair at all. A
-                direct key check per operation, not a lookup table/registry — there are only five
-                custom-layout operations today; extend this the same way (one more `else if`) if
-                a sixth one ever needs its own layout too, rather than building plugin
-                infrastructure for a hypothetical N ahead of time. */}
+                outputs, and HTML Preview's own live, rendered iframe Output all don't fit that
+                component's plain Input/Output editor pair at all. A direct key check per
+                operation, not a lookup table/registry — there are six custom-layout operations
+                today; extend this the same way (one more `else if`) if a seventh one ever needs
+                its own layout too, rather than building plugin infrastructure for a hypothetical
+                N ahead of time. */}
             {activeOperation.key === 'hash-generator' ? (
               <HashGeneratorPanel
                 key={activeOperation.key}
@@ -530,6 +532,19 @@ export default function DevUtilsPage(): JSX.Element {
                 input={input}
                 onInputChange={setInput}
                 actionLabel={activeOperation.actionLabel}
+                availableHeight={panelHeight}
+              />
+            ) : activeOperation.key === 'html-preview' ? (
+              <HtmlPreviewPanel
+                key={activeOperation.key}
+                input={input}
+                onInputChange={setInput}
+                inputPlaceholder={activeOperation.inputPlaceholder}
+                actionLabel={activeOperation.actionLabel}
+                downloadFileName={activeOperation.downloadFileName}
+                // Non-null: every operation rendered through this branch supplies `onSubmit` —
+                // see `OperationConfig.onSubmit`'s own doc comment.
+                onSubmit={activeOperation.onSubmit!}
                 availableHeight={panelHeight}
               />
             ) : (

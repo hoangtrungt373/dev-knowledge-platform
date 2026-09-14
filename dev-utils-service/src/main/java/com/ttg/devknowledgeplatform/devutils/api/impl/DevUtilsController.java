@@ -29,6 +29,7 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.HexToAsciiOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlBeautifyOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlEntityDecodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlEntityEncodeOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlPreviewOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonFormatOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToCsvOperation;
@@ -97,6 +98,7 @@ public class DevUtilsController implements DevUtilsApi {
     private final TextDiffOperation textDiffOperation;
     private final DateTimeToUnixOperation dateTimeToUnixOperation;
     private final UnixToDateTimeOperation unixToDateTimeOperation;
+    private final HtmlPreviewOperation htmlPreviewOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -267,5 +269,10 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<DateTimeResponse> convertTimestampToDateTime(TimestampToDateTimeRequest request) {
         return ResponseEntity.ok(unixToDateTimeOperation.execute(request.timestamp(), request.zoneId()));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> previewHtml(TextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(htmlPreviewOperation.execute(request.input())));
     }
 }

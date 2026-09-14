@@ -397,4 +397,15 @@ public interface DevUtilsApi {
      */
     @PostMapping("/timestamp-to-datetime")
     ResponseEntity<DateTimeResponse> convertTimestampToDateTime(@Valid @RequestBody TimestampToDateTimeRequest request);
+
+    /**
+     * Sanitizes raw HTML down to markup safe to render as a live preview (see
+     * {@code HtmlPreviewOperation}'s own Javadoc for the exact Safelist/limitations). No minify
+     * option — see {@link TextRequest}'s own Javadoc for why; there is no "compact form" of
+     * sanitized markup to toggle.
+     *
+     * @return {@code 200} with the sanitized HTML
+     */
+    @PostMapping("/html/preview")
+    ResponseEntity<DevUtilResponse> previewHtml(@Valid @RequestBody TextRequest request);
 }

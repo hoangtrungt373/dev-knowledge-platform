@@ -230,4 +230,11 @@ export const devUtilsApi = {
   unixToDateTime(timestamp: string, zoneId: string, showError?: ShowError): Promise<DateTimeResponse> {
     return httpClient.post(`${BASE}/timestamp-to-datetime`, { timestamp, zoneId }, showError);
   },
+
+  // The second WEB-group operation, added alongside dev-utils-service's own HtmlPreviewOperation.
+  // No `minify` field — see TextRequest's own Javadoc for why; sanitized markup meant to be
+  // rendered has no distinct "compact form" to toggle.
+  previewHtml(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/html/preview`, { input }, showError);
+  },
 };

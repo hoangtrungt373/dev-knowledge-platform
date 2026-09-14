@@ -69,10 +69,13 @@
             <artifactId>jackson-dataformat-csv</artifactId>
         </dependency>
 
-        <!-- jsoup — HTML parsing/pretty-printing for the beautify operation. Not the same use case
-             as ecommerce-service's owasp-java-html-sanitizer (that one strips unsafe markup from
-             admin-authored content before persisting it; this one only reformats whitespace/
-             indentation — nothing here is ever persisted or rendered as trusted HTML). -->
+        <!-- jsoup — HTML parsing/pretty-printing for the beautify operation, and (via its own
+             org.jsoup.safety.Cleaner/Safelist, no extra dependency needed) real sanitization for
+             HtmlPreviewOperation. The beautify operation's own output is never rendered as trusted
+             HTML (nothing here is persisted); HtmlPreviewOperation is the one exception — its
+             whole purpose is producing markup the GUI actually renders in a preview iframe, closer
+             to ecommerce-service's own owasp-java-html-sanitizer use case than to beautify's — see
+             HtmlPreviewOperation's own Javadoc. -->
         <dependency>
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>

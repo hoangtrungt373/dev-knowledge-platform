@@ -1455,6 +1455,34 @@ section again. Full unabridged entry-by-entry history for all three lives in
         still work exactly as before. Verified via a clean `tsc --noEmit` and a successful
         `vite build` only — no Docker in this sandbox, so the actual dropdown behavior is
         unverified in a real browser.
+    - **Follow-up: new `HtmlPreviewOperation`, per request ("Implement new operation in Web
+      Group: HTML Preview") — the second `OperationGroup.WEB` operation** (after `UrlParserOperation`,
+      which has since moved to `INSPECTORS` — see that class's own note), and the first genuinely
+      new `WEB` operation to land there since. Sanitizes raw HTML with jsoup's own
+      `org.jsoup.safety.Cleaner`/`Safelist` (no new Maven dependency — jsoup already ships both,
+      previously only used for `HtmlBeautifyOperation`'s whitespace-only reformatting) so the
+      result is safe to render, not just reformat: every `<script>` tag, every `on*` event-handler
+      attribute, and every non-http(s)/data/mailto URL is stripped. Built on `Safelist.relaxed()`
+      plus `style`/`class`/`id` attributes on every element and the `data:` protocol on
+      `<img src>`; a `<style>` block is deliberately stripped (known limitation — jsoup's `Cleaner`
+      has no clean way to preserve a safelisted element's raw, non-escaped text content). Never
+      throws — same lenient-parser shape `HtmlBeautifyOperation` already establishes. New
+      `POST /api/v1/dev-utils/html/preview` (`TextRequest` → `DevUtilResponse`, no `minify` option
+      — sanitized markup has no distinct "compact form"). 8 new backend tests, verified via a real
+      `mvn -pl dev-utils-service -am test` run (JDK 21).
+      - **`gui`**: recommended and built a sixth bespoke panel (`components/HtmlPreviewPanel.tsx`)
+        rather than the shared `DevUtilToolPanel` — this operation's Output is a live, rendered
+        page, not a syntax-highlighted text block. Input is a real CodeMirror 6 editor (HTML
+        highlighting); Output is a sandboxed `<iframe srcdoc={...}>` with **no `allow-scripts`
+        permission at all**, per direct request — even a `<script>` that somehow survived
+        server-side sanitization still could not execute, the client-side half of the same
+        defense-in-depth the backend operation's own Javadoc describes. Toast-only error handling
+        on a failed submit (the operation never throws server-side, so the only realistic failure
+        is a network/technical one) — same reasoning `HashGeneratorPanel.tsx`'s own toast-only
+        handling already established. Same resizable-split-plus-2-way-maximize mechanism every
+        other 2-panel custom panel in this feature shares. Verified via a clean `tsc --noEmit` and
+        a successful `vite build` only — no Docker in this sandbox, so the actual live-preview
+        rendering is unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.
