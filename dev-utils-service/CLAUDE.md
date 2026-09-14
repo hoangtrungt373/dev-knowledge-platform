@@ -27,7 +27,13 @@ etc., with no sanitization at all since its output is plain text a human pastes 
 never rendered anywhere; "TSX" is a naming/file-extension choice only — this operation never emits
 TypeScript-specific syntax, since it only ever sees a markup fragment with no props/component
 boundary to type; see that class's own Javadoc for the full reasoning, renamed from "HTML to JSX"
-per direct follow-up request). The three `OperationGroup.WEB` operations. Package root:
+per direct follow-up request), and Color Converter (`ColorConverterOperation`/
+`service.impl.support.ColorConverter` — a hex color, an `rgb(...)`/`rgba(...)`, or an
+`hsl(...)`/`hsla(...)` function (all 3 accepted as input, per direct follow-up request; originally
+hex-only) into HEX/RGB/HSL/a fixed-name `--color` CSS variable/Swift's `UIColor`/Android's
+`Color.rgb` all at once; the one `OperationGroup.WEB` operation with a real invalid-input failure
+path, `DevUtilsErrorCode.INVALID_COLOR`, unlike its 3 lenient siblings). The four `OperationGroup.WEB`
+operations. Package root:
 `com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike

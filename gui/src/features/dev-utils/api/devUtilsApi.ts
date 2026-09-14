@@ -1,5 +1,13 @@
 import { httpClient } from '@shared/api/httpClient';
-import { DateTimeResponse, DevUtilsResponse, HashResponse, StringCaseResponse, TextDiffResponse, TimestampResponse } from '../types';
+import {
+  ColorConversionResponse,
+  DateTimeResponse,
+  DevUtilsResponse,
+  HashResponse,
+  StringCaseResponse,
+  TextDiffResponse,
+  TimestampResponse,
+} from '../types';
 
 type ShowError = (message: string) => void;
 
@@ -252,5 +260,15 @@ export const devUtilsApi = {
   // (never rendered), so it has a genuine pretty/compact distinction to toggle.
   convertHtmlToTsx(input: string, minify: boolean, showError?: ShowError): Promise<DevUtilsResponse> {
     return httpClient.post(`${BASE}/html/to-tsx`, { input, minify }, showError);
+  },
+
+  // The fifth WEB-group operation, added alongside dev-utils-service's own
+  // ColorConverterOperation. Returns ColorConversionResponse, not DevUtilsResponse — the fifth
+  // operation whose output is genuinely richer than a single string. No `minify` field — see
+  // TextRequest's own Javadoc for why; none of the six representations has a distinct "compact
+  // form" to toggle. Unlike html-preview/markdown-preview/html-to-tsx, this one has a real
+  // invalid-input failure path (not every hex-shaped string is a valid 3/6-digit hex color).
+  convertColor(input: string, showError?: ShowError): Promise<ColorConversionResponse> {
+    return httpClient.post(`${BASE}/color/convert`, { input }, showError);
   },
 };

@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 
+import com.ttg.devknowledgeplatform.devutils.dto.ColorConversionResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.DateTimeResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.DateTimeToTimestampRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.DevUtilResponse;
@@ -431,4 +432,16 @@ public interface DevUtilsApi {
      */
     @PostMapping("/html/to-tsx")
     ResponseEntity<DevUtilResponse> convertHtmlToTsx(@Valid @RequestBody MinifiableTextRequest request);
+
+    /**
+     * Converts a hex color into every {@link ColorConversionResponse} representation at once
+     * (HEX/RGB/HSL/CSS variable/Swift/Android) — see {@code ColorConverter}'s own Javadoc for the
+     * full parsing rules. No minify option — see {@link TextRequest}'s own Javadoc for why; none
+     * of the six representations has a distinct "compact form" to toggle.
+     *
+     * @return {@code 200} with every representation, or {@code 400} if {@code request.input()}
+     *         isn't a valid 3- or 6-digit hex color
+     */
+    @PostMapping("/color/convert")
+    ResponseEntity<ColorConversionResponse> convertColor(@Valid @RequestBody TextRequest request);
 }

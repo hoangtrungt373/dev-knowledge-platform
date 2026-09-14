@@ -89,7 +89,15 @@ import lombok.Getter;
  * value overflows or falls outside the range {@link java.time.Instant} can represent.
  * {@code INVALID_TIME_ZONE} backs both operations' shared {@code zoneId} field — a non-blank
  * value that isn't a real IANA zone id (see {@code service.impl.support.TimeZones#parse}); blank
- * itself is not an error for either field, it just defaults to UTC.
+ * itself is not an error for either field, it just defaults to UTC. {@code INVALID_COLOR} backs
+ * {@code ColorConverterOperation}'s own real failure path — an input that doesn't match any of
+ * the 3 accepted shapes (a 3-/6-digit hex color, with or without a leading {@code #}; an
+ * {@code rgb(...)} function; an {@code hsl(...)} function), or a channel/component that's out of
+ * its valid numeric range. Deliberately its own code, not a reuse of
+ * {@code INVALID_HEX} above — that one is about a generic hex-encoded byte string
+ * ({@code HexToAsciiOperation}'s own input), a genuinely different concept from a {@code #RRGGBB}
+ * color despite both being "hex," and conflating the two would produce a confusing error message
+ * for either operation's own real failure case.
  */
 @Getter
 public enum DevUtilsErrorCode implements ErrorCode {
@@ -111,7 +119,8 @@ public enum DevUtilsErrorCode implements ErrorCode {
     DIFF_INPUT_TOO_LARGE("DEVUTILS_015", "Text is too large to diff: {0}", HttpStatus.BAD_REQUEST),
     INVALID_DATE_TIME("DEVUTILS_016", "Invalid date/time: {0}", HttpStatus.BAD_REQUEST),
     INVALID_TIMESTAMP("DEVUTILS_017", "Invalid Unix timestamp: {0}", HttpStatus.BAD_REQUEST),
-    INVALID_TIME_ZONE("DEVUTILS_018", "Invalid time zone: {0}", HttpStatus.BAD_REQUEST);
+    INVALID_TIME_ZONE("DEVUTILS_018", "Invalid time zone: {0}", HttpStatus.BAD_REQUEST),
+    INVALID_COLOR("DEVUTILS_019", "Invalid color: {0}", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

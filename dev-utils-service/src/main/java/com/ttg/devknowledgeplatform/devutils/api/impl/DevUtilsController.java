@@ -4,6 +4,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.ttg.devknowledgeplatform.devutils.api.DevUtilsApi;
+import com.ttg.devknowledgeplatform.devutils.dto.ColorConversionResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.DateTimeResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.DateTimeToTimestampRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.DevUtilResponse;
@@ -19,6 +20,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.TimestampToDateTimeRequest;
 import com.ttg.devknowledgeplatform.devutils.service.impl.AsciiToHexOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.Base64DecodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.Base64EncodeOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.ColorConverterOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CronParserOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CssOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.CsvToJsonOperation;
@@ -103,6 +105,7 @@ public class DevUtilsController implements DevUtilsApi {
     private final HtmlPreviewOperation htmlPreviewOperation;
     private final MarkdownPreviewOperation markdownPreviewOperation;
     private final HtmlToTsxOperation htmlToTsxOperation;
+    private final ColorConverterOperation colorConverterOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -288,5 +291,10 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<DevUtilResponse> convertHtmlToTsx(MinifiableTextRequest request) {
         return ResponseEntity.ok(new DevUtilResponse(htmlToTsxOperation.execute(request.input(), request.minify())));
+    }
+
+    @Override
+    public ResponseEntity<ColorConversionResponse> convertColor(TextRequest request) {
+        return ResponseEntity.ok(colorConverterOperation.execute(request.input()));
     }
 }

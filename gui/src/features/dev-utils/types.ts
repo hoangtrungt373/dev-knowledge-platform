@@ -67,3 +67,15 @@ export interface DateTimeResponse {
   epochSeconds: number;
   epochMillis: number;
 }
+
+// Mirrors dev-utils-service's own dto.ColorConversionResponse field-for-field —
+// ColorConverterOperation's own six representations of one color at once, the fifth operation
+// whose output is genuinely richer than a single string.
+export interface ColorConversionResponse {
+  hex: string;
+  rgb: string;
+  hsl: string;
+  cssVariable: string;
+  swift: string;
+  android: string;
+}

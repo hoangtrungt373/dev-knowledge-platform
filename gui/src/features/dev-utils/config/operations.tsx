@@ -20,6 +20,7 @@ import UnixTimeConverterIcon from '@mui/icons-material/AccessTimeOutlined';
 import HtmlPreviewIcon from '@mui/icons-material/PreviewOutlined';
 import MarkdownPreviewIcon from '@mui/icons-material/ArticleOutlined';
 import HtmlToTsxIcon from '@mui/icons-material/TransformOutlined';
+import ColorConverterIcon from '@mui/icons-material/PaletteOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
@@ -60,7 +61,8 @@ export type TabKey =
   | 'unix-time-converter'
   | 'html-preview'
   | 'markdown-preview'
-  | 'html-to-tsx';
+  | 'html-to-tsx'
+  | 'color-converter';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -95,6 +97,7 @@ export const TAB_KEYS: TabKey[] = [
   'html-preview',
   'markdown-preview',
   'html-to-tsx',
+  'color-converter',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -955,5 +958,36 @@ export const OPERATIONS: OperationConfig[] = [
     supportsMinify: true,
     downloadFileName: 'converted.tsx',
     onSubmit: devUtilsApi.convertHtmlToTsx,
+  },
+  {
+    key: 'color-converter',
+    // The fifth WEB-group operation, and the seventh custom-layout one overall (after
+    // hash-generator/base64-image/regexp-tester/text-diff-checker/unix-time-converter/
+    // — html-preview/markdown-preview/html-to-tsx all reuse existing panels, not new ones) — its
+    // Input is a hex field + a native color picker, not a code editor, and its Output is 6 named
+    // representations at once, neither of which fits the shared DevUtilToolPanel. Renders through
+    // components/ColorConverterPanel.tsx.
+    group: 'Web',
+    category: 'Web',
+    label: 'Color Converter',
+    description: 'Convert a hex, RGB, or HSL color to RGB, HSL, a CSS variable, Swift, and Android',
+    icon: <ColorConverterIcon fontSize="small" />,
+    actionLabel: 'Convert',
+    inputPlaceholder: '#14B8A6',
+    // `inputFormat`/`outputLanguage`/`supportsMinify`/`downloadFileName` are all unused by
+    // ColorConverterPanel (it renders no CodeMirror editor, reads no minify flag, and offers no
+    // single-file download — every result card has its own Copy button instead) but still filled
+    // in with reasonable values to satisfy `OperationConfig`'s shared shape — the same
+    // "present but inert for this operation" treatment `hash-generator`/`text-diff-checker`/etc.
+    // already get.
+    inputFormat: 'text',
+    outputLanguage: 'text',
+    supportsMinify: false,
+    downloadFileName: 'color.txt',
+    // No `onSubmit` — ColorConverterOperation's own ColorConversionResponse doesn't fit the shared
+    // `(input, minify) => Promise<DevUtilsResponse>` shape every other operation's `onSubmit`
+    // establishes, the same "omitted, not a dead placeholder" treatment `text-diff-checker`'s own
+    // entry already establishes for the identical underlying reason — ColorConverterPanel.tsx
+    // calls `devUtilsApi.convertColor` directly instead.
   },
 ];

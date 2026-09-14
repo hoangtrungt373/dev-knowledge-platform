@@ -18,7 +18,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.DevUtilsLimits;
  * {@link MockMvc} — verifies, end to end rather than by static reasoning alone, that this app
  * actually starts (the {@code GlobalExceptionHandler}/{@code spring-boot-starter-security}
  * classpath dependency reasoning in {@code security.SecurityConfig}'s own Javadoc holds up) and
- * that every one of the 37 operation endpoints is genuinely reachable with no
+ * that every one of the 38 operation endpoints is genuinely reachable with no
  * {@code Authorization} header at all.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -515,6 +515,24 @@ class DevUtilsServiceApplicationTests {
                         .content("{\"input\":\"<div class=\\\"card\\\">Hi</div>\",\"minify\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("className=\\\"card\\\"")));
+    }
+
+    @Test
+    void convertColorIsReachableWithNoAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/color/convert")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"#14B8A6\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("rgb(20, 184, 166)")));
+    }
+
+    @Test
+    void malformedColorReturns400ThroughTheSharedGlobalExceptionHandler() throws Exception {
+        mockMvc.perform(post("/api/v1/dev-utils/color/convert")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"not-a-color\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEVUTILS_019")));
     }
 
     @Test

@@ -1630,6 +1630,92 @@ section again. Full unabridged entry-by-entry history for all three lives in
         `HtmlToTsxConverterTest` case (the exact reported example, this time with `minify: false`,
         asserting `<input>`/`Email` each land on their own indented line). Verified via a real
         `mvn -pl dev-utils-service -am test` run (JDK 21) — 359/359 passing.
+    - **Follow-up: new `ColorConverterOperation`, per request ("Color Converter - Convert
+      HEX/RGB/HSL") — the fifth `OperationGroup.WEB` operation, and the first one with a real
+      invalid-input failure path (unlike its 3 lenient siblings).** New
+      `service.impl.support.ColorConverter` — parses a 3- or 6-digit hex color (with or without a
+      leading `#`, either case; the 3-digit shorthand expanded per CSS's own doubling rule) and
+      renders all 6 requested representations at once: HEX (normalized `#RRGGBB`, uppercase),
+      RGB (`rgb(R, G, B)`), HSL (the standard CSS Color Module RGB→HSL algorithm, each component
+      rounded to the nearest integer), a CSS custom property (`--color: #RRGGBB;` — a **fixed,
+      generic variable name**, confirmed via a direct design discussion: the reported example's
+      own `--color-brand` name isn't derivable from a hex value alone, and an editable
+      variable-name field was the rejected alternative, in favor of keeping this operation's
+      "one input, N derived outputs" shape simple), Swift (`UIColor(red:green:blue:alpha:)`, each
+      channel scaled to `0.0`–`1.0` and rounded to 3 decimal places via `Locale.ROOT` — a real,
+      easy-to-miss bug class avoided deliberately, since a locale-default `String.format` would
+      emit a comma decimal separator on a non-English JVM), and Android
+      (`android.graphics.Color.rgb(int, int, int)`). Verified the exact reported example
+      (`#14B8A6` → `hsl(173, 80%, 40%)`/`UIColor(red: 0.078, green: 0.722, blue: 0.651, alpha: 1)`)
+      byte-for-byte before relying on the formula. New `DevUtilsErrorCode.INVALID_COLOR`
+      (`DEVUTILS_019`) — deliberately not a reuse of the existing `INVALID_HEX`
+      (`HexToAsciiOperation`'s own code for a generic hex-encoded byte string, a different concept
+      from a `#RRGGBB` color despite both being "hex"). New `dto.ColorConversionResponse` (the
+      fifth operation whose output is genuinely richer than a single string). New
+      `POST /api/v1/dev-utils/color/convert` (`TextRequest` → `ColorConversionResponse`, no
+      `minify` option — none of the 6 representations has a distinct "compact form"). 10 new
+      backend tests (`ColorConverterTest`/`ColorConverterOperationTest` + 2
+      `DevUtilsServiceApplicationTests` cases), verified via a real `mvn -pl dev-utils-service -am
+      test` run (JDK 21) — 371/371 passing.
+      - **`gui`**: recommended and built a seventh bespoke panel
+        (`components/ColorConverterPanel.tsx`) after the user asked directly whether a custom
+        layout was needed — confirmed yes, for two reasons: the Input side is a hex `TextField`
+        plus a native `<input type="color">` picker (not a code editor), and the Output side is 6
+        named representations at once (not a syntax-highlighted text block). The picker and the
+        text field share the same lifted `input` string (the same "two input methods, one shared
+        state" pattern `Base64ImagePanel.tsx`'s own Upload/Data-URL pair already established) —
+        the picker's own `value` is derived via a local `toPickerValue` (falls back to black for
+        anything not yet a valid hex color, since the browser's own color input silently ignores a
+        `value` that isn't a real `#rrggbb` string). Output renders 6 named cards (mirroring
+        `HashGeneratorPanel.tsx`'s own per-algorithm-card shape exactly, each with its own Copy
+        button) below a large swatch showing the resolved color. A failed convert (a malformed hex
+        string) renders inline in the Output panel — the same treatment `RegExpTesterPanel.tsx`
+        already established, since a malformed hex value while actively typing is a common,
+        expected outcome, not a rare edge case a toast's own disappearing act would be an
+        acceptable loss for. Same resizable-split-plus-2-way-maximize mechanism every other
+        2-panel custom panel in this feature shares. No `onSubmit` on the `config/operations.tsx`
+        entry — `ColorConversionResponse` doesn't fit the shared
+        `(input, minify) => Promise<DevUtilsResponse>` shape, the same "omitted, not a dead
+        placeholder" treatment `text-diff-checker`'s own entry already establishes; the panel
+        calls `devUtilsApi.convertColor` directly instead. Verified via a clean `tsc --noEmit` and
+        a successful `vite build` only — no Docker in this sandbox, so the actual color
+        picker/swatch/card rendering is unverified in a real browser.
+      - **Follow-up, 3 items reported/requested together.**
+        1. **Real bug fixed: "the Output content does not clear when I click Clear."** Root
+           cause: `ColorConverterPanel.tsx`'s own `result`/`error` are local state (can't be lifted
+           into `DevUtilsPage.tsx`'s plain `output: string | null` — that page's Clear button only
+           ever reset the lifted `input` back to `''`), the identical gap `TextDiffPanel.tsx`
+           already hit and fixed. Fixed the same way: a `useEffect` watching `input` clears both
+           local pieces of state the instant it goes blank.
+        2. **Border added for the hex/RGB/HSL `TextField` and the native color picker, "customized
+           for this operation," per direct request.** The text field's border was previously
+           hidden (this feature's usual `HIDDEN_TEXT_FIELD_OUTLINE_SX` convention, dropped here on
+           purpose) — both controls now share one `inputBorderColor`: the actual resolved color
+           (client-side `resolveToHex`, a mirror of the backend's own parsing used only for this
+           preview) while `input` is valid, `error.main` while non-blank but unparseable, `divider`
+           while blank — so the border doubles as a live validity indicator, not just decoration.
+        3. **RGB (`rgb(20, 184, 166)`)/HSL (`hsl(173, 80%, 40%)`) accepted as input too, per direct
+           request** — originally hex-only. `ColorConverter`'s own `convert` was restructured:
+           `parseToRgb` now tries hex, then `rgb(...)`/`rgba(...)`, then `hsl(...)`/`hsla(...)`
+           (alpha, if present, is parsed but ignored — this operation's own output has no alpha
+           channel), each range-checked (RGB channels 0-255, hue 0-360, saturation/lightness
+           0-100) before a shared `buildResponse(r, g, b)` computes all 6 representations —
+           regardless of which of the 3 shapes was given, every representation is always freshly
+           derived from the resolved `(r, g, b)` triple, never echoed from the input verbatim (an
+           `hsl(...)` input still gets its own HSL representation re-derived, not copied, so
+           non-canonical input comes back normalized). New `hslToRgb` (the CSS Color Module's own
+           algorithm, the exact inverse of the existing `toHsl`). 9 new backend tests — including a
+           documented, **expected** precision-loss case: `hsl(173, 80%, 40%)` does not round-trip
+           byte-for-byte back to `rgb(20, 184, 166)` (comes back `rgb(20, 184, 165)` instead),
+           since the *display* HSL is already rounded to integer degrees/percent before ever being
+           parsed back — confirmed via a real test run rather than assumed to round-trip exactly.
+           `gui`: `ColorConverterPanel.tsx` gained client-side `rgbToHex`/`hslToHex`/`resolveToHex`
+           (mirroring the backend's own parsing) so the picker swatch and the new border preview
+           stay in sync no matter which of the 3 formats is typed; the caption below the input
+           updated to name all 3 accepted shapes. Verified via a real `mvn -pl dev-utils-service
+           -am test` run (JDK 21) — 379/379 passing — and a clean `tsc --noEmit` + successful
+           `vite build` on the `gui` side; no Docker in this sandbox, so the actual border/picker
+           behavior in a real browser is unverified.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.
