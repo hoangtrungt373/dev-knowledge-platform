@@ -19,6 +19,7 @@ import TextDiffIcon from '@mui/icons-material/DifferenceOutlined';
 import UnixTimeConverterIcon from '@mui/icons-material/AccessTimeOutlined';
 import HtmlPreviewIcon from '@mui/icons-material/PreviewOutlined';
 import MarkdownPreviewIcon from '@mui/icons-material/ArticleOutlined';
+import HtmlToTsxIcon from '@mui/icons-material/TransformOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
@@ -58,7 +59,8 @@ export type TabKey =
   | 'text-diff-checker'
   | 'unix-time-converter'
   | 'html-preview'
-  | 'markdown-preview';
+  | 'markdown-preview'
+  | 'html-to-tsx';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -92,6 +94,7 @@ export const TAB_KEYS: TabKey[] = [
   'unix-time-converter',
   'html-preview',
   'markdown-preview',
+  'html-to-tsx',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -928,5 +931,29 @@ export const OPERATIONS: OperationConfig[] = [
     supportsMinify: false,
     downloadFileName: 'preview.html',
     onSubmit: input => devUtilsApi.previewMarkdown(input),
+  },
+  {
+    key: 'html-to-tsx',
+    // The fourth WEB-group operation — genuinely different from its 3 Web-group siblings: this
+    // one's Output is plain converted markup text, never rendered anywhere, so it renders through
+    // the shared DevUtilToolPanel (like every Formatters-group beautify/convert operation) rather
+    // than a bespoke sandboxed-iframe panel. Branded "HTML to TSX" per direct request — the
+    // converted text is plain JSX syntax either way (this operation never emits type annotations/
+    // interfaces/generics), "TSX" is just the file-extension/label choice; see
+    // HtmlToTsxConverter's own Javadoc (backend) for the full reasoning.
+    group: 'Web',
+    category: 'Web',
+    label: 'HTML to TSX',
+    description: 'Convert HTML markup into TSX — className, htmlFor, style objects, and more',
+    icon: <HtmlToTsxIcon fontSize="small" />,
+    actionLabel: 'Convert',
+    inputPlaceholder:
+      '<label class="field" for="email" style="color: teal; font-weight: 700">' +
+      '<input tabindex="0" autocomplete="email" />Email</label>',
+    inputFormat: 'html',
+    outputLanguage: 'tsx',
+    supportsMinify: true,
+    downloadFileName: 'converted.tsx',
+    onSubmit: devUtilsApi.convertHtmlToTsx,
   },
 ];

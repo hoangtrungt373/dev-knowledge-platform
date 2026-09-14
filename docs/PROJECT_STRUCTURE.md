@@ -2265,11 +2265,14 @@ A stateless developer-utility API — JSON format/validate, YAML↔JSON conversi
 JS/ERB beautify+minify, XML validate/beautify+minify, JSON↔CSV conversion, SQL format+minify,
 PHP↔JSON conversion, String Case Converter, Base64/URL/HTML-entity/PHP-serialize/ASCII↔Hex
 encode/decode, Hash Generator, JWT Debugger, RegExp Tester, URL Parser, Cron Job Parser, Text Diff
-Checker, Unix Time Converter, HTML Preview, and Markdown Preview (`HtmlPreviewOperation`/
-`MarkdownPreviewOperation` — sanitize raw HTML, or Markdown converted to HTML via commonmark-java,
-via a shared `service.impl.support.HtmlSanitizer` (jsoup's own `Cleaner`/`Safelist`) so either is
-safe to render live in the GUI's sandboxed preview iframe; the two `OperationGroup.WEB` operations).
-This list has grown well
+Checker, Unix Time Converter, HTML Preview, Markdown Preview, and HTML to TSX
+(`HtmlPreviewOperation`/`MarkdownPreviewOperation` — sanitize raw HTML, or Markdown converted to
+HTML via commonmark-java, via a shared `service.impl.support.HtmlSanitizer` (jsoup's own
+`Cleaner`/`Safelist`) so either is safe to render live in the GUI's sandboxed preview iframe;
+`HtmlToTsxOperation`/`service.impl.support.HtmlToTsxConverter` — converts HTML into JSX-flavored
+markup (branded "TSX," its own file-extension/naming choice — see that class's own Javadoc), no
+sanitization, since its output is plain text, never rendered; the three `OperationGroup.WEB`
+operations). This list has grown well
 past this file's own ASCII tree below in places — re-derive the exact current operation set from
 `service/impl/*Operation.java` rather than trusting this tree's own completeness for every entry.
 **A standalone Spring Boot application built directly as standalone, not an extraction** — unlike

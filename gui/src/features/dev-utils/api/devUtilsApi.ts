@@ -243,4 +243,14 @@ export const devUtilsApi = {
   previewMarkdown(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
     return httpClient.post(`${BASE}/markdown/preview`, { input }, showError);
   },
+
+  // The fourth WEB-group operation, added alongside dev-utils-service's own HtmlToTsxOperation
+  // (branded "HTML to TSX" per direct request — see that class's own Javadoc for why "TSX" is a
+  // naming/file-extension choice, not a different output shape, from the JSX syntax it actually
+  // produces). Back to the plain (input, minify) shape every Formatters-group beautify operation
+  // shares — unlike previewHtml/previewMarkdown, this operation's output is plain converted text
+  // (never rendered), so it has a genuine pretty/compact distinction to toggle.
+  convertHtmlToTsx(input: string, minify: boolean, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/html/to-tsx`, { input, minify }, showError);
+  },
 };

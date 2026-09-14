@@ -67,6 +67,12 @@ const LANGUAGE_EXTENSIONS: Record<string, () => Extension[]> = {
   scss: () => [sass()],
   javascript: () => [javascript()],
   js: () => [javascript()],
+  // HTML to TSX's own output — TSX is JSX syntax under a TypeScript file extension (see
+  // HtmlToTsxConverter's own Javadoc for why this operation never actually emits TS-specific
+  // syntax), so the same @codemirror/lang-javascript package covers it via its own jsx/typescript
+  // options (a separate @codemirror/lang-jsx or @codemirror/lang-tsx package doesn't exist — both
+  // are modes of this one).
+  tsx: () => [javascript({ jsx: true, typescript: true })],
   erb: () => [],
   xml: () => [xml()],
   csv: () => [],

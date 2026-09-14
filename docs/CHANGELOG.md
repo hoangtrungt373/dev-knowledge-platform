@@ -1496,12 +1496,16 @@ section again. Full unabridged entry-by-entry history for all three lives in
         original inline `Safelist` into a shared static utility (`sanitize(String): String`) so
         this operation can reuse the identical sanitization pass over the HTML its own Markdown
         conversion produces, rather than a second, drifting copy of the same `Safelist`.
-        `HtmlPreviewOperation` itself is now a thin pass-through to it. Gained one addition beyond
+        `HtmlPreviewOperation` itself is now a thin pass-through to it. Gained two additions beyond
         what `HtmlPreviewOperation` alone needed: a safelisted bare `<input type="checkbox">`
         (restricted to `type`/`checked`/`disabled` — no `<form>` tag exists to submit it to, and
         none of the 3 attributes can carry a URL/script), so `MarkdownPreviewOperation`'s own GFM
         task-list-items extension survives sanitization with its checkboxes still visible instead
-        of silently vanishing the way a stripped tag otherwise would.
+        of silently vanishing the way a stripped tag otherwise would; and `<del>` (no attributes)
+        — a **real bug caught by a failing test**: `Safelist.relaxed()`'s own built-in tag list
+        already has the older `<strike>` but not `<del>`, and the GFM strikethrough extension
+        always renders `<del>` per the GFM spec, so `~~gone~~` sanitized down to plain, unstruck
+        text, silently dropping the formatting entirely rather than merely reformatting it.
       - **New Maven dependency: commonmark-java** (`org.commonmark:commonmark` +
         `commonmark-ext-gfm-tables`/`commonmark-ext-gfm-strikethrough`/
         `commonmark-ext-task-list-items`, version-managed in the root `pom.xml` the same way jsoup
@@ -1537,6 +1541,95 @@ section again. Full unabridged entry-by-entry history for all three lives in
         can never drift apart again. Verified via a clean `tsc --noEmit` and a successful
         `vite build` only — no Docker in this sandbox, so the actual live-preview rendering (GFM
         tables/strikethrough/task-list checkboxes included) is unverified in a real browser.
+    - **Follow-up: new `HtmlToTsxOperation`, per request ("Add new operation in Web group: HTML to
+      JSX", then renamed to "HTML to TSX" per a direct follow-up — see the naming note below) —
+      the fourth `OperationGroup.WEB` operation, and genuinely different from its 3
+      siblings: this one's output is plain converted markup text, never rendered anywhere (no
+      sandboxed iframe, no `HtmlSanitizer` — an `onclick`/`<script>` in the input is data to
+      convert, not a live-rendering risk), so it renders through the shared `DevUtilToolPanel`
+      like every Formatters-group beautify operation, not a bespoke panel.** New
+      `service.impl.support.HtmlToTsxConverter` — `class`→`className`, `for`→`htmlFor`, a fixed
+      lookup table of ~50 more HTML attributes whose JSX/DOM-property name differs (`tabindex`→
+      `tabIndex`, `autocomplete`→`autoComplete`, `readonly`→`readOnly`, etc.), every `on*`
+      event-handler attribute→its camelCase JSX name (`onclick`→`onClick`, `onmouseover`→
+      `onMouseOver`, ~65-entry lookup table, falling back to a "capitalize the next letter"
+      heuristic for an unrecognized one), an inline `style="..."` string→a real JS object literal
+      (`style={{ prop: "value" }}`, CSS properties camelCased, a leading `--custom-property` kept
+      verbatim), and every void element (`<br>`, `<img>`, `<input>`, ...) force-closed with a
+      trailing `/>` (JSX, unlike HTML, has no notion of a void element that can be left
+      syntactically unclosed). `data-*`/`aria-*` attributes are deliberately left untouched — React
+      keeps both kebab-case.
+      - **Three separate jsoup behaviors this needed to work around, each confirmed empirically
+        via a standalone harness against the actual resolved jsoup 1.17.2 jar before relying on
+        them, not assumed**: (1) jsoup's default parser lowercases every attribute key — including
+        one freshly set via `Element.attr(...)` *after* parsing, not just the original ones —
+        because `.attr()` itself re-normalizes the key through the owning document's own
+        `ParseSettings`; fixed by parsing with `ParseSettings.preserveCase` instead of the default.
+        (2) Neither jsoup output `Syntax` self-closes what's actually needed: `html` syntax never
+        emits `/>` for a void element (correct, standard HTML5 serialization), and `xml` syntax
+        renders a boolean-style attribute (bare `disabled`) as `disabled=""` instead of the bare
+        JSX-shorthand form (XML has no boolean-attribute concept) — `html` syntax is used for the
+        base serialization (correct boolean attributes), and void-element self-closing is added
+        back via a targeted regex post-process instead. (3) There is no jsoup `Attribute` shape for
+        "an unquoted, raw JS object literal value" — the `style` object is written as a normal
+        (quoted, HTML-escaped) attribute value first, then unwrapped/unescaped by a second targeted
+        regex post-process once serialization is done.
+      - **Known, deliberate limitations, not chased further** (documented in the class's own
+        Javadoc): an attribute value containing a literal `&`/`"` comes back HTML-entity-escaped
+        by jsoup's own serializer rather than unescaped into the literal character a real JS string
+        would use (only `style`'s own object-literal value is unescaped, since that one is
+        mechanically required to produce syntactically valid JSX at all); an unrecognized `on*`
+        event name's fallback heuristic is only correct for a single-word event; SVG's own distinct
+        camelCased attribute set (e.g. `viewBox`) isn't covered; a bare top-level comment with no
+        other markup around it is lost entirely (jsoup's own HTML tree builder attaches it outside
+        `<body>`) — a comment nested inside real markup (the overwhelmingly common shape) converts
+        to `{/* ... */}` correctly.
+      - New `POST /api/v1/dev-utils/html/to-tsx` (`MinifiableTextRequest` → `DevUtilResponse` — a
+        genuine pretty/compact distinction unlike the other 2 Web-group preview operations, the
+        same reasoning `html-beautify` already establishes). Never throws — same lenient-parser
+        shape `HtmlBeautifyOperation`/`HtmlSanitizer` already establish. 12 new
+        `HtmlToTsxConverterTest` cases (including the exact reported example, byte-for-byte) + 2
+        `HtmlToTsxOperationTest` cases, verified via a real `mvn -pl dev-utils-service -am test`
+        run (JDK 21).
+      - **`gui`**: renders through the existing shared `DevUtilToolPanel` — no new panel component
+        needed. New `tsx` `OutputLanguage` entry (`config/outputLanguages.ts`, React's own brand
+        cyan `#61dafb`) and a matching `config/codeMirrorConfig.ts` extension —
+        `javascript({ jsx: true, typescript: true })` from the already-installed
+        `@codemirror/lang-javascript` (JSX/TSX support are both modes of that one package, not
+        separate `@codemirror/lang-jsx`/`@codemirror/lang-tsx` packages, neither of which exists).
+        Verified via a clean `tsc --noEmit` and a successful `vite build` only —
+        no Docker in this sandbox, so the actual on-screen result is unverified in a real browser.
+      - **Follow-up: renamed "HTML to JSX" → "HTML to TSX" everywhere, per direct request/
+        discussion.** Asked first whether TSX output would actually differ from JSX output — it
+        doesn't: this converter never adds type annotations/interfaces/generics (it only ever sees
+        a markup fragment, no props/component boundary to type), so the converted text is valid,
+        byte-identical, in either a `.jsx` or `.tsx` file. "TSX" is purely a naming/file-extension
+        choice, landed on since virtually every modern React project is TypeScript-only today — see
+        `HtmlToTsxConverter`'s own Javadoc for the full reasoning (it still says "JSX" wherever the
+        prose is actually about JSX syntax mechanics, e.g. "JSX shorthand," since that's the
+        accurate term for what's being described; only the operation's own public identity is
+        TSX-branded). Renamed throughout: `HtmlToJsxOperation`/`HtmlToJsxConverter` →
+        `HtmlToTsxOperation`/`HtmlToTsxConverter` (classes, files, tests),
+        `POST /api/v1/dev-utils/html/to-jsx` → `/html/to-tsx`, `gui`'s `devUtilsApi.convertHtmlToJsx`
+        → `convertHtmlToTsx`, the `html-to-jsx` operation key/label/description/`downloadFileName`
+        → `html-to-tsx`/"HTML to TSX"/`converted.tsx`, and `outputLanguages.ts`'s `jsx` entry →
+        `tsx` (same color). Re-verified via a real `mvn -pl dev-utils-service -am test` run (JDK
+        21, all `HtmlToTsx*` tests green) and a clean `tsc --noEmit` + successful `vite build` on
+        the `gui` side.
+      - **Follow-up bug fix, reported directly ("the result is inline even though we do not choose
+        Minify") — `HtmlToTsxConverter.convert`'s pretty-print mode still rendered
+        `<label>`/`<input>` on one single line.** Root cause: jsoup's own pretty-printer only
+        breaks a *block*-level tag (`Tag.isBlock()`) onto its own line by default —
+        `<label>`/`<input>` are both HTML5 *inline* tags, so plain `prettyPrint(true)` alone
+        deferred to that HTML inline/block distinction regardless of `minify`, correct for
+        rendering HTML in a browser but not what a human reading generated JSX/TSX source wants
+        (JSX has no "inline element" concept at all). Fixed with `OutputSettings.outline(true)` —
+        forces every element onto its own indented line unconditionally — confirmed via the same
+        standalone-harness-against-the-real-jsoup-1.17.2-jar discipline this class's other 3
+        documented jsoup quirks already establish, before relying on it. 1 new
+        `HtmlToTsxConverterTest` case (the exact reported example, this time with `minify: false`,
+        asserting `<input>`/`Email` each land on their own indented line). Verified via a real
+        `mvn -pl dev-utils-service -am test` run (JDK 21) — 359/359 passing.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

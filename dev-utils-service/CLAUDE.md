@@ -20,8 +20,14 @@ named ahead of use, before it actually existed), HTML Preview and Markdown Previ
 HTML, or Markdown converted to HTML via commonmark-java, via a shared
 `service.impl.support.HtmlSanitizer` — `org.jsoup.safety.Cleaner`/`Safelist`, not just a
 reformat the way `HtmlBeautifyOperation` does — so the GUI can render either live in a sandboxed
-preview iframe; the two `OperationGroup.WEB` operations, see `HtmlPreviewOperation`'s/
-`MarkdownPreviewOperation`'s own Javadoc). Package root:
+preview iframe; see `HtmlPreviewOperation`'s/`MarkdownPreviewOperation`'s own Javadoc), and HTML to
+TSX (`HtmlToTsxOperation`/`service.impl.support.HtmlToTsxConverter` — converts HTML into
+JSX-flavored markup, `class`→`className`/`style`→a JS object literal/void elements force-closed/
+etc., with no sanitization at all since its output is plain text a human pastes into a `.tsx` file,
+never rendered anywhere; "TSX" is a naming/file-extension choice only — this operation never emits
+TypeScript-specific syntax, since it only ever sees a markup fragment with no props/component
+boundary to type; see that class's own Javadoc for the full reasoning, renamed from "HTML to JSX"
+per direct follow-up request). The three `OperationGroup.WEB` operations. Package root:
 `com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike

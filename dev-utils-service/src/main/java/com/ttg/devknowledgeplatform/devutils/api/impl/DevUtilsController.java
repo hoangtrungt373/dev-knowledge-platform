@@ -30,6 +30,7 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlBeautifyOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlEntityDecodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlEntityEncodeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlPreviewOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlToTsxOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.MarkdownPreviewOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonFormatOperation;
@@ -101,6 +102,7 @@ public class DevUtilsController implements DevUtilsApi {
     private final UnixToDateTimeOperation unixToDateTimeOperation;
     private final HtmlPreviewOperation htmlPreviewOperation;
     private final MarkdownPreviewOperation markdownPreviewOperation;
+    private final HtmlToTsxOperation htmlToTsxOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -281,5 +283,10 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<DevUtilResponse> previewMarkdown(TextRequest request) {
         return ResponseEntity.ok(new DevUtilResponse(markdownPreviewOperation.execute(request.input())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> convertHtmlToTsx(MinifiableTextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(htmlToTsxOperation.execute(request.input(), request.minify())));
     }
 }

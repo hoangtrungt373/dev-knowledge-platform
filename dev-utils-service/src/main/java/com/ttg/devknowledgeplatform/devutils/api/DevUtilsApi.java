@@ -420,4 +420,15 @@ public interface DevUtilsApi {
      */
     @PostMapping("/markdown/preview")
     ResponseEntity<DevUtilResponse> previewMarkdown(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Converts raw HTML into JSX-flavored (TSX-branded — see {@code HtmlToTsxConverter}'s own
+     * Javadoc for why) markup ({@code class}→{@code className}, {@code style="..."}→a real object
+     * literal, void elements force-closed with {@code />}, and so on), pretty-printed or, with
+     * {@code request.minify()}, jsoup's own unformatted output mode.
+     *
+     * @return {@code 200} with the converted markup
+     */
+    @PostMapping("/html/to-tsx")
+    ResponseEntity<DevUtilResponse> convertHtmlToTsx(@Valid @RequestBody MinifiableTextRequest request);
 }

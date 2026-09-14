@@ -35,6 +35,7 @@ export const OUTPUT_LANGUAGE_INFO = {
   csv: { label: 'CSV', color: '#8bc34a' },
   sql: { label: 'SQL', color: '#dcb67a' },
   php: { label: 'PHP', color: '#8892bf' },
+  tsx: { label: 'TSX', color: '#61dafb' },
   text: { label: 'TEXT', color: '#cccccc' },
 } as const satisfies Record<string, { label: string; color: string }>;
 
