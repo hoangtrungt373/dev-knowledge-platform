@@ -4352,6 +4352,39 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
       sandbox, so the actual generate/upload/drag-drop/paste/decode flow is unverified in a real
       browser.
+  - **Follow-up: "Lorem Ipsum Generator," per request ("Allow user to input amount of paragraph
+    (1, 3, 5, ... 20)") — the second `OperationGroup.GENERATORS` operation, and unlike `qr-code`,
+    backed by a real `dev-utils-service` endpoint** (`LoremIpsumGeneratorOperation` — see that
+    module's own `CLAUDE.md` for the backend detail).
+    - New `components/LoremIpsumPanel.tsx` — this operation's own Input isn't free text at all, so
+      the shared `DevUtilToolPanel.tsx`'s CodeMirror editor would be the wrong control; a discrete
+      MUI `Slider` (1-20, marked at 1/5/10/15/20) is the one control instead, the same reasoning a
+      quantity stepper (not a free-text box) is used for a shopping-cart quantity elsewhere in this
+      app. Deliberately the simpler `HashGeneratorPanel.tsx`-style 2-card shape (Generate | Output,
+      a single horizontal `useResizableSplit`, a 2-way `usePanelMaximize<'generate' |
+      'output'>()` toggle) rather than `RegExpTesterPanel.tsx`'s 3-card one — there's only ever
+      this one control, no second stacked card to divide with a vertical split.
+    - **`input` doubles as the serialized paragraph count** — a plain numeric string (e.g. `"5"`),
+      not a richer serialized shape the way `utils/regexInputFormat.ts`/`utils/textDiffInputFormat.ts`
+      need, since there's only ever this one field to carry; `parseParagraphs` falls back to a
+      default of 3 when `input` is blank (nothing picked yet, or just Cleared) or unparseable.
+      **`output`/`onOutputChange` are lifted into `DevUtilsPage.tsx` from the start, not local
+      component state** — avoiding the "Clear doesn't blank the Output panel" bug
+      `ColorConverterPanel.tsx` originally had to be fixed for after the fact (see that
+      component's own history), rather than repeating it here.
+    - This operation never fails once the count itself is valid (client-side, the slider can't
+      produce an out-of-range value in the first place) — a submit failure surfaces via a plain
+      `showError` toast, the same treatment `HashGeneratorPanel.tsx` already uses for the identical
+      reason, rather than `RegExpTesterPanel.tsx`'s own inline error box (which exists specifically
+      for an *expected*, common failure mode this operation doesn't have).
+    - `config/operations.tsx` gained the `lorem-ipsum` entry (`group`/`category` `'Generators'`, a
+      new `TextSnippetOutlined` sidebar icon, `inputPlaceholder: '5'`) — no `onSubmit` (this
+      operation's request shape, a plain paragraph count, doesn't fit the shared `(input, minify)`
+      signature every other operation's `onSubmit` establishes; `LoremIpsumPanel.tsx` calls
+      `devUtilsApi.generateLoremIpsum` directly instead). `api/devUtilsApi.ts` gained
+      `generateLoremIpsum(paragraphs)`.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual slider/generate/copy/download flow is unverified in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

@@ -2276,9 +2276,14 @@ sanitization, since its output is plain text, never rendered; `ColorConverterOpe
 variable/Swift/Android at once, the one `OperationGroup.WEB` operation with a real invalid-input
 failure path (`DevUtilsErrorCode.INVALID_COLOR`); `SvgToCssOperation` — SVG markup into a
 `background-image: url("data:image/svg+xml,...")` CSS rule, percent-encoded via the same technique
-`UrlEncodeOperation` uses; the six `OperationGroup.WEB` operations). This list has grown well
-past this file's own ASCII tree below in places — re-derive the exact current operation set from
-`service/impl/*Operation.java` rather than trusting this tree's own completeness for every entry.
+`UrlEncodeOperation` uses; the six `OperationGroup.WEB` operations), and Lorem Ipsum Generator
+(`LoremIpsumGeneratorOperation` — 1-20 paragraphs of classic placeholder text, always opening with
+the traditional "Lorem ipsum dolor sit amet, consectetur adipiscing elit." sentence; the first
+`OperationGroup.GENERATORS` operation with a real backend component — a client-side-only QR Code
+Reader/Generator also lives in this group on the GUI side, with no operation class here at all).
+This list has grown well past this file's own ASCII tree below in places — re-derive the exact
+current operation set from `service/impl/*Operation.java` rather than trusting this tree's own
+completeness for every entry.
 **A standalone Spring Boot application built directly as standalone, not an extraction** — unlike
 every module in the six sections above, this one never lived inside `gateway` at all, so there was
 nothing to pull out (see root `CLAUDE.md`'s Long-term direction section). It's also the one
@@ -2381,9 +2386,15 @@ dev-utils-service/src/main/java/com/ttg/devknowledgeplatform/devutils/
 │   │                                 INSPECTORS — reads/tests a value rather than transforming it,
 │   │                                 fulfilling that group's own "a JWT decoder" worked example
 │   │                                 (UrlParserOperation originally declared WEB, moved here per
-│   │                                 direct request; the other four were never WEB). WEB/
-│   │                                 GENERATORS both remain fully declared-ahead-of-use, still with
-│   │                                 no operation of their own.
+│   │                                 direct request; the other four were never WEB). HtmlPreview/
+│   │                                 MarkdownPreview/HtmlToTsx/ColorConverter/SvgToCssOperation all
+│   │                                 declare WEB (see this file's own dev-utils-service intro
+│   │                                 paragraph above). GENERATORS now has
+│   │                                 LoremIpsumGeneratorOperation, its own worked example
+│   │                                 ("a future UUID/Lorem Ipsum generator") landing for real — the
+│   │                                 GUI also has a client-side-only QR Code Reader/Generator in
+│   │                                 this same group, but that one has no backend operation class
+│   │                                 at all (see gui/CLAUDE.md's own dev-utils section).
 │   └── impl/
 │       ├── JsonFormatOperation.java     — execute(String input, boolean minify); validates +
 │       │                                   pretty-prints (or, minified, compact-serializes) in one

@@ -10,6 +10,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.DateTimeResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.DateTimeToTimestampRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.DevUtilResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.HashResponse;
+import com.ttg.devknowledgeplatform.devutils.dto.LoremIpsumRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.RegexTestRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
@@ -455,4 +456,15 @@ public interface DevUtilsApi {
      */
     @PostMapping("/svg/to-css")
     ResponseEntity<DevUtilResponse> convertSvgToCss(@Valid @RequestBody MinifiableTextRequest request);
+
+    /**
+     * Generates {@code request.paragraphs()} paragraphs of classic Lorem Ipsum placeholder text
+     * (see {@code LoremIpsumGeneratorOperation}'s own Javadoc), separated by a blank line. Never
+     * fails once validation passes — there's no notion of "invalid" placeholder text.
+     *
+     * @return {@code 200} with the generated text, or {@code 400} if
+     *         {@code request.paragraphs()} isn't between 1 and 20
+     */
+    @PostMapping("/lorem-ipsum/generate")
+    ResponseEntity<DevUtilResponse> generateLoremIpsum(@Valid @RequestBody LoremIpsumRequest request);
 }

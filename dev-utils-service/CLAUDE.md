@@ -37,8 +37,12 @@ path, `DevUtilsErrorCode.INVALID_COLOR`, unlike its other lenient siblings), and
 url("data:image/svg+xml,...") ... }` CSS rule, percent-encoded via the exact same technique
 `UrlEncodeOperation` already uses; never throws, makes no attempt to validate `input` is actually
 well-formed SVG/XML). The six `OperationGroup.WEB`
-operations. Package root:
-`com.ttg.devknowledgeplatform.devutils.*`.
+operations. Lorem Ipsum Generator (`LoremIpsumGeneratorOperation` — generates classic placeholder
+text, 1-20 paragraphs, always opening with the traditional "Lorem ipsum dolor sit amet,
+consectetur adipiscing elit." sentence; the first `OperationGroup.GENERATORS` operation with a real
+backend component — a client-side-only QR Code Reader/Generator also lives in this group on the GUI
+side, but has no operation class here at all, see `gui/CLAUDE.md`'s own dev-utils section). Package
+root: `com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike
 `ecommerce-service`/`identity-service`/`task-service`/`social-service`/`content-service`/

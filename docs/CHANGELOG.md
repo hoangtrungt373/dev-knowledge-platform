@@ -1796,6 +1796,62 @@ section again. Full unabridged entry-by-entry history for all three lives in
       - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
         sandbox, so the actual generate/upload/drag-drop/paste/decode flow is unverified in a real
         browser.
+    - **Follow-up: new `LoremIpsumGeneratorOperation`, per request ("Lorem Ipsum Generator - Allow
+      user to input amount of paragraph (1, 3, 5, ... 20)") — the second `OperationGroup.GENERATORS`
+      operation, and unlike `qr-code`, a real backend operation** (generating placeholder text has
+      no browser-native API to lean on the way `Base64Image`'s `FileReader`/`qr-code`'s
+      `qrcode`/`jsqr` libraries do, so this one is a genuine Java `DevUtilOperation`, the same
+      Strategy-per-operation shape every `FORMATTERS`/`ENCODERS_DECODERS`/`INSPECTORS`/`WEB`
+      operation already follows).
+      - **New `dto.LoremIpsumRequest`** (`@Min(1) @Max(20) int paragraphs`) — this operation takes
+        no text `input` at all (it *produces* content, unlike every operation above it), so it gets
+        its own single-field request instead of reusing `TextRequest`/`MinifiableTextRequest`,
+        neither of which has a paragraph-count concept; bounded 1-20 per the request's own example
+        range, the same finite-but-generous reasoning `DevUtilsLimits.MAX_INPUT_LENGTH` already
+        applies to text length. Out-of-range values fail plain Jakarta Bean Validation (`400`, no
+        new `DevUtilsErrorCode` needed) — the same "bean validation alone is enough" shape
+        `blankInputFailsBeanValidationWith400`/`inputOverTheSizeCapFailsBeanValidationWith400`
+        already establish for `TextRequest`'s own `@NotBlank`/`@Size`.
+      - **New `service.impl.support.LoremIpsumWords`** — a fixed pool of ~160 genuine Latin filler
+        words drawn from the traditional "Lorem Ipsum" passage (the same source text every real
+        Lorem Ipsum generator, lipsum.com included, draws its own vocabulary from), so the output
+        reads as recognizable placeholder Latin rather than random syllables.
+      - **`LoremIpsumGeneratorOperation.execute(int paragraphs)`** — the very first sentence is
+        always the traditional "Lorem ipsum dolor sit amet, consectetur adipiscing elit." opening
+        (the universal convention every real generator uses, so the output is immediately
+        recognizable as placeholder text), with every sentence after that (3-7 sentences per
+        paragraph, 6-18 words per sentence, both ranges deliberately matching a real paragraph's own
+        shape rather than either extreme) freshly assembled from `LoremIpsumWords` via plain
+        `SecureRandom` — not seeded, since this operation makes no correctness claim about
+        reproducing a specific output, only about shape; see `LoremIpsumGeneratorOperationTest`'s
+        own doc comment for why its own assertions check paragraph count/sentence structure, not
+        exact wording. Paragraphs are blank-line separated, the same plain-text convention
+        `formatHashResult`/`formatStringCaseResult` already establish on the GUI side.
+      - New `POST /api/v1/dev-utils/lorem-ipsum/generate` (`LoremIpsumRequest` → `DevUtilResponse`)
+        — the 40th operation endpoint. 6 new `LoremIpsumGeneratorOperationTest` cases (group
+        declaration, exact paragraph count across the full 1/3/5/10/20 range, the classic opening
+        sentence, every sentence ending in a period with an uppercase first letter, subsequent
+        paragraphs never repeating the opening) plus 2 new `DevUtilsServiceApplicationTests` cases
+        (reachability with no `Authorization` header, an out-of-range count failing bean
+        validation). Test suite grew to 409, verified via a real `mvn -pl dev-utils-service -am
+        test` run (JDK 21) — 409/409 passing.
+      - **`gui`**: needed its own bespoke panel — this operation's own Input isn't free text at all
+        (a bounded paragraph count, not something a `TextField`/CodeMirror editor fits), so
+        `components/LoremIpsumPanel.tsx` renders a discrete MUI `Slider` (1-20, marked at
+        1/5/10/15/20) instead, the same "some operations need a genuinely different layout"
+        precedent `HashGeneratorPanel.tsx`/`Base64ImagePanel.tsx`/etc. already established.
+        Deliberately the simpler `HashGeneratorPanel.tsx`-style 2-card shape (Generate | Output,
+        single horizontal split, 2-way maximize) rather than `RegExpTesterPanel.tsx`'s 3-card one —
+        there's only ever this one control, no second stacked card to split. `output`/
+        `onOutputChange` are lifted into `DevUtilsPage.tsx` from the start (not local state),
+        avoiding the "Clear doesn't blank the Output panel" bug `ColorConverterPanel.tsx` had to be
+        fixed for after the fact. `config/operations.tsx` gained the `lorem-ipsum` entry
+        (`group`/`category` `'Generators'`, a new `TextSnippetOutlined` sidebar icon) — no
+        `onSubmit` (this operation's request shape, a plain paragraph count, doesn't fit the shared
+        `(input, minify)` signature every other operation's `onSubmit` establishes;
+        `LoremIpsumPanel.tsx` calls `devUtilsApi.generateLoremIpsum` directly instead).
+        Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+        sandbox, so the actual slider/generate/copy/download flow is unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.

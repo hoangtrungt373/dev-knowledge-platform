@@ -9,6 +9,7 @@ import com.ttg.devknowledgeplatform.devutils.dto.DateTimeResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.DateTimeToTimestampRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.DevUtilResponse;
 import com.ttg.devknowledgeplatform.devutils.dto.HashResponse;
+import com.ttg.devknowledgeplatform.devutils.dto.LoremIpsumRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.MinifiableTextRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.RegexTestRequest;
 import com.ttg.devknowledgeplatform.devutils.dto.StringCaseResponse;
@@ -42,6 +43,7 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToPhpOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToYamlOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JwtDebuggerOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.LessOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.LoremIpsumGeneratorOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.PhpSerializeOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.PhpToJsonOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.PhpUnserializeOperation;
@@ -108,6 +110,7 @@ public class DevUtilsController implements DevUtilsApi {
     private final HtmlToTsxOperation htmlToTsxOperation;
     private final ColorConverterOperation colorConverterOperation;
     private final SvgToCssOperation svgToCssOperation;
+    private final LoremIpsumGeneratorOperation loremIpsumGeneratorOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -303,5 +306,10 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<DevUtilResponse> convertSvgToCss(MinifiableTextRequest request) {
         return ResponseEntity.ok(new DevUtilResponse(svgToCssOperation.execute(request.input(), request.minify())));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> generateLoremIpsum(LoremIpsumRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(loremIpsumGeneratorOperation.execute(request.paragraphs())));
     }
 }

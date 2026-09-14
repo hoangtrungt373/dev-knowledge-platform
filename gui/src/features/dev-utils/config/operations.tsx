@@ -23,6 +23,7 @@ import HtmlToTsxIcon from '@mui/icons-material/TransformOutlined';
 import ColorConverterIcon from '@mui/icons-material/PaletteOutlined';
 import SvgToCssIcon from '@mui/icons-material/WallpaperOutlined';
 import QrCodeIcon from '@mui/icons-material/QrCode2Outlined';
+import LoremIpsumIcon from '@mui/icons-material/TextSnippetOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
@@ -66,7 +67,8 @@ export type TabKey =
   | 'html-to-tsx'
   | 'color-converter'
   | 'svg-to-css'
-  | 'qr-code';
+  | 'qr-code'
+  | 'lorem-ipsum';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -104,6 +106,7 @@ export const TAB_KEYS: TabKey[] = [
   'color-converter',
   'svg-to-css',
   'qr-code',
+  'lorem-ipsum',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -1046,5 +1049,39 @@ export const OPERATIONS: OperationConfig[] = [
     downloadFileName: 'qr-code.png',
     // No `onSubmit` — like `base64-image`, this operation makes no backend call at all;
     // QrCodePanel.tsx calls `QRCode.toDataURL`/`jsQR` directly instead.
+  },
+  {
+    key: 'lorem-ipsum',
+    // The second GENERATORS-group operation, added alongside dev-utils-service's own
+    // LoremIpsumGeneratorOperation — that group's own worked example, named directly in
+    // OperationGroup.java's own Javadoc ("a future UUID/Lorem Ipsum generator"). Renders through
+    // its own bespoke components/LoremIpsumPanel.tsx, not the shared DevUtilToolPanel — this
+    // operation's own Input isn't free text at all (a bounded paragraph count, 1-20, picked via a
+    // slider), and neither a CodeMirror editor nor a minify flag makes sense for it.
+    group: 'Generators',
+    category: 'Generators',
+    label: 'Lorem Ipsum Generator',
+    description: 'Generate placeholder Lorem Ipsum paragraphs — pick a count from 1 to 20',
+    icon: <LoremIpsumIcon fontSize="small" />,
+    actionLabel: 'Generate',
+    // A plain numeric string — LoremIpsumPanel.tsx parses this back into its own paragraph-count
+    // slider value (see that component's own `parseParagraphs`), the same "input doubles as the
+    // one serialized field" trick `qr-code`'s own shared-text-field reuse establishes, just for a
+    // single number instead of two directions of the same string.
+    inputPlaceholder: '5',
+    // `inputFormat`/`outputLanguage`/`supportsMinify` are all unused by LoremIpsumPanel (it
+    // renders no CodeMirror editor and reads no minify flag) but still filled in with reasonable
+    // values to satisfy `OperationConfig`'s shared shape — the same "present but inert for this
+    // operation" treatment `hash-generator`/`qr-code`/etc. already get. `downloadFileName` *is*
+    // read by this panel's own Download button, unlike those inert fields.
+    inputFormat: 'text',
+    outputLanguage: 'text',
+    supportsMinify: false,
+    downloadFileName: 'lorem-ipsum.txt',
+    // No `onSubmit` — this operation's request shape (a plain paragraph count, not `(input,
+    // minify)`) doesn't fit the shared signature every other operation's `onSubmit` establishes;
+    // LoremIpsumPanel.tsx calls `devUtilsApi.generateLoremIpsum` directly instead, the same
+    // "omitted, not a dead placeholder" treatment `text-diff-checker`/`color-converter` already
+    // establish for the identical underlying reason.
   },
 ];

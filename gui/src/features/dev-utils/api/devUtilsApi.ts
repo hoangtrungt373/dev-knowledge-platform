@@ -278,4 +278,13 @@ export const devUtilsApi = {
   convertSvgToCss(input: string, minify: boolean, showError?: ShowError): Promise<DevUtilsResponse> {
     return httpClient.post(`${BASE}/svg/to-css`, { input, minify }, showError);
   },
+
+  // The first GENERATORS-group operation, added alongside dev-utils-service's own
+  // LoremIpsumGeneratorOperation — that group's own worked example, and the first operation in
+  // this file that *produces* content rather than transforming an existing `input` string, so its
+  // one parameter is a paragraph count instead. No `minify` field — placeholder text has no
+  // distinct "compact form" to toggle.
+  generateLoremIpsum(paragraphs: number, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/lorem-ipsum/generate`, { paragraphs }, showError);
+  },
 };
