@@ -473,12 +473,15 @@ export default function DevUtilsPage(): JSX.Element {
                 (pattern/flags/test text, not one string with a minify flag), Text Diff Checker's
                 own 2-field input plus real line-by-line output structure, Unix Time
                 Converter's own 2-direction, 4-field input plus 2 genuinely different multi-field
-                outputs, and HTML Preview's own live, rendered iframe Output all don't fit that
-                component's plain Input/Output editor pair at all. A direct key check per
-                operation, not a lookup table/registry — there are six custom-layout operations
-                today; extend this the same way (one more `else if`) if a seventh one ever needs
-                its own layout too, rather than building plugin infrastructure for a hypothetical
-                N ahead of time. */}
+                outputs, and HTML Preview/Markdown Preview's own live, rendered iframe Output all
+                don't fit that component's plain Input/Output editor pair at all. HTML Preview and
+                Markdown Preview are two operations sharing one component (`HtmlPreviewPanel`,
+                see its own doc comment) — the check below routes both keys to it, differing only
+                in a `codeMirrorLanguage` prop. A direct key check per operation, not a lookup
+                table/registry — there are six custom-layout components today; extend this the
+                same way (one more `else if`, or another key routed to an existing branch like
+                Markdown Preview was) if a new operation ever needs its own layout too, rather than
+                building plugin infrastructure for a hypothetical N ahead of time. */}
             {activeOperation.key === 'hash-generator' ? (
               <HashGeneratorPanel
                 key={activeOperation.key}
@@ -534,12 +537,15 @@ export default function DevUtilsPage(): JSX.Element {
                 actionLabel={activeOperation.actionLabel}
                 availableHeight={panelHeight}
               />
-            ) : activeOperation.key === 'html-preview' ? (
+            ) : activeOperation.key === 'html-preview' || activeOperation.key === 'markdown-preview' ? (
               <HtmlPreviewPanel
                 key={activeOperation.key}
                 input={input}
                 onInputChange={setInput}
                 inputPlaceholder={activeOperation.inputPlaceholder}
+                // The one thing that differs between the two operations sharing this panel — see
+                // HtmlPreviewPanel.tsx's own doc comment.
+                codeMirrorLanguage={activeOperation.key === 'markdown-preview' ? 'markdown' : 'html'}
                 actionLabel={activeOperation.actionLabel}
                 downloadFileName={activeOperation.downloadFileName}
                 // Non-null: every operation rendered through this branch supplies `onSubmit` —

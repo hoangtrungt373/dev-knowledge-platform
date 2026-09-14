@@ -16,10 +16,12 @@ port/pathname/search/query/hash/origin, mirroring the browser's own `URL` object
 between two texts, line by line — "works like git diff"), Unix Time Converter (Date/Time↔Unix
 timestamp, plus Local/UTC/ISO 8601/RFC 1123/SQL/relative/day-of-week renderings — the concrete
 "timestamp+timezone+format" example this module's own "Rules specific to this module" section
-named ahead of use, before it actually existed), HTML Preview (sanitizes raw HTML via jsoup's own
-`org.jsoup.safety.Cleaner`/`Safelist` — not just reformats it, unlike `HtmlBeautifyOperation` — so
-the GUI can render it live in a sandboxed preview iframe; the first `OperationGroup.WEB` operation
-to actually stick there, see `HtmlPreviewOperation`'s own Javadoc). Package root:
+named ahead of use, before it actually existed), HTML Preview and Markdown Preview (sanitize raw
+HTML, or Markdown converted to HTML via commonmark-java, via a shared
+`service.impl.support.HtmlSanitizer` — `org.jsoup.safety.Cleaner`/`Safelist`, not just a
+reformat the way `HtmlBeautifyOperation` does — so the GUI can render either live in a sandboxed
+preview iframe; the two `OperationGroup.WEB` operations, see `HtmlPreviewOperation`'s/
+`MarkdownPreviewOperation`'s own Javadoc). Package root:
 `com.ttg.devknowledgeplatform.devutils.*`.
 
 **A standalone Spring Boot application from day one — not an extraction from anything.** Unlike

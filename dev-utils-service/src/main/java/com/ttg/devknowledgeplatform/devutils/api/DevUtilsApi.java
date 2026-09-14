@@ -408,4 +408,16 @@ public interface DevUtilsApi {
      */
     @PostMapping("/html/preview")
     ResponseEntity<DevUtilResponse> previewHtml(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Converts raw Markdown (GFM tables/strikethrough/task-list-items) to sanitized HTML safe to
+     * render as a live preview (see {@code MarkdownPreviewOperation}'s own Javadoc for why
+     * sanitization applies here too, and for the exact Safelist/limitations it shares with
+     * {@link #previewHtml}). No minify option — see {@link TextRequest}'s own Javadoc for why;
+     * there is no "compact form" of sanitized markup to toggle.
+     *
+     * @return {@code 200} with the sanitized HTML rendering of {@code request.input()}
+     */
+    @PostMapping("/markdown/preview")
+    ResponseEntity<DevUtilResponse> previewMarkdown(@Valid @RequestBody TextRequest request);
 }

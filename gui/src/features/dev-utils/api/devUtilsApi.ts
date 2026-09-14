@@ -237,4 +237,10 @@ export const devUtilsApi = {
   previewHtml(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
     return httpClient.post(`${BASE}/html/preview`, { input }, showError);
   },
+
+  // The third WEB-group operation, added alongside dev-utils-service's own
+  // MarkdownPreviewOperation — previewHtml's direct sibling, same no-`minify` reasoning.
+  previewMarkdown(input: string, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/markdown/preview`, { input }, showError);
+  },
 };

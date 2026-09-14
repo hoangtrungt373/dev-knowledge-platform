@@ -18,6 +18,7 @@ import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import SubmitButton from '@shared/components/SubmitButton';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { DevUtilsResponse } from '../types';
+import { OperationConfig } from '../config/operations';
 import { buildDevUtilError, DevUtilError } from '../utils/errorFormatting';
 import { OUTPUT_LANGUAGE_INFO, OutputLanguage } from '../config/outputLanguages';
 import { editorChromeTheme, getCodeMirrorExtensions } from '../config/codeMirrorConfig';
@@ -50,8 +51,11 @@ interface DevUtilToolPanelProps {
    * CodeMirror language extension (`config/codeMirrorConfig.ts#getCodeMirrorExtensions`); every
    * other value otherwise just takes `buildDevUtilError`'s own doc comment for exactly which
    * operations' backend can genuinely reject their input (and therefore ever actually populate its
-   * fallback path). */
-  inputFormat: 'json' | 'yaml' | 'html' | 'css' | 'less' | 'scss' | 'js' | 'erb' | 'xml' | 'csv' | 'sql' | 'php' | 'text';
+   * fallback path). Reuses `OperationConfig`'s own field type directly rather than a second,
+   * independently-maintained copy of the same union — the two drifting out of sync (this
+   * component's own copy missing a value `OperationConfig` had just gained) is exactly the bug a
+   * shared type reference avoids. */
+  inputFormat: OperationConfig['inputFormat'];
   /** Language id for the Output editor's own syntax highlighting — also the key into
    * `config/outputLanguages.ts#OUTPUT_LANGUAGE_INFO` for this panel's own info-row badge, and into
    * `config/codeMirrorConfig.ts#getCodeMirrorExtensions` for its CodeMirror language extension. */

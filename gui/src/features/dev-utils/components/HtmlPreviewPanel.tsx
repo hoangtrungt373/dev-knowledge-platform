@@ -26,10 +26,16 @@ interface HtmlPreviewPanelProps {
   input: string;
   onInputChange: (value: string) => void;
   inputPlaceholder: string;
+  /** The Input editor's own CodeMirror language id (`'html'`/`'markdown'`) — see
+   * `config/codeMirrorConfig.ts#getCodeMirrorExtensions`. The only thing that actually
+   * differs between `html-preview`'s and `markdown-preview`'s use of this shared panel, besides
+   * which backend endpoint `onSubmit` calls. */
+  codeMirrorLanguage: string;
   actionLabel: string;
   downloadFileName: string;
   /** Same `Promise<DevUtilsResponse>` contract every operation's `onSubmit` returns — `output` is
-   * `HtmlPreviewOperation`'s own sanitized HTML, handed to the preview iframe as `srcdoc`. */
+   * sanitized HTML (from `HtmlPreviewOperation` or `MarkdownPreviewOperation`, whichever operation
+   * is active), handed to the preview iframe as `srcdoc`. */
   onSubmit: (input: string, minify: boolean) => Promise<DevUtilsResponse>;
   /** Height (px) computed by `DevUtilsPage.tsx` from the actual viewport — the same value the
    * shared `DevUtilToolPanel`'s Input card and the sidebar both size themselves to. Applied as a
@@ -41,32 +47,40 @@ interface HtmlPreviewPanelProps {
 }
 
 /**
- * HTML Preview's own bespoke Input/Output layout — a dedicated component, not a mode grafted onto
- * the shared `DevUtilToolPanel.tsx`, per direct request: this operation's Output is a live,
- * rendered page (a sandboxed iframe), not a syntax-highlighted text block, which doesn't fit that
- * component's plain-text Output design at all — the same "some operations need a genuinely
- * different layout" precedent `HashGeneratorPanel.tsx`/`Base64ImagePanel.tsx`/
- * `RegExpTesterPanel.tsx`/`TextDiffPanel.tsx` already established. `DevUtilsPage.tsx` renders this
- * in place of `DevUtilToolPanel` for exactly this one operation.
+ * Shared bespoke Input/Output layout for **both** `html-preview` and `markdown-preview` — a
+ * dedicated component, not a mode grafted onto the shared `DevUtilToolPanel.tsx`, per direct
+ * request: both operations' Output is a live, rendered page (a sandboxed iframe), not a
+ * syntax-highlighted text block, which doesn't fit that component's plain-text Output design at
+ * all — the same "some operations need a genuinely different layout" precedent
+ * `HashGeneratorPanel.tsx`/`Base64ImagePanel.tsx`/`RegExpTesterPanel.tsx`/`TextDiffPanel.tsx`
+ * already established. `DevUtilsPage.tsx` renders this in place of `DevUtilToolPanel` for both
+ * operations. **Originally built for `html-preview` alone** (this file's own name is a leftover
+ * of that); generalized once `markdown-preview` needed the identical Input-editor/sandboxed-iframe
+ * shape, differing only in which CodeMirror language highlights the Input
+ * (`codeMirrorLanguage` prop) and which backend endpoint `onSubmit` calls — not renamed, since
+ * every reference to this component elsewhere in this feature would need updating for a purely
+ * cosmetic gain.
  *
- * <p>**Input** is a real CodeMirror 6 editor (HTML highlighting, same `getCodeMirrorExtensions`
- * every operation's own Input editor already uses) with Paste and the "Preview" action in its own
- * header. **Output** is a sandboxed `<iframe srcdoc={...}>` rendering `HtmlPreviewOperation`'s own
- * sanitized markup — deliberately **no `allow-scripts` permission at all** (per direct request), so
- * any `<script>` that somehow survived server-side sanitization still could not execute; this is
- * the client-side half of the same defense-in-depth the backend operation's own Javadoc describes,
+ * <p>**Input** is a real CodeMirror 6 editor (`codeMirrorLanguage`-driven highlighting, same
+ * `getCodeMirrorExtensions` every operation's own Input editor already uses) with Paste and the
+ * "Preview" action in its own header. **Output** is a sandboxed `<iframe srcdoc={...}>` rendering
+ * whichever operation's own sanitized markup came back (`HtmlPreviewOperation`'s straight-through
+ * sanitization, or `MarkdownPreviewOperation`'s Markdown-to-HTML-then-sanitize — both share the
+ * identical backend `HtmlSanitizer`, so this component doesn't need to know or care which one ran)
+ * — deliberately **no `allow-scripts` permission at all** (per direct request), so any
+ * `<script>` that somehow survived server-side sanitization still could not execute; this is the
+ * client-side half of the same defense-in-depth both backend operations' own Javadoc describes,
  * not a substitute for it. The iframe's own background is a fixed white (`#ffffff`, the same
  * "always looks like a real page, independent of the app's own light/dark theme" reasoning
- * `HashGeneratorPanel.tsx`'s own result cards already establish) — most plain HTML snippets assume
- * a light page background, and a dark app theme showing an unstyled snippet through a dark
- * background would misrepresent what the sanitized markup actually looks like.
+ * `HashGeneratorPanel.tsx`'s own result cards already establish) — most plain HTML/Markdown
+ * snippets assume a light page background, and a dark app theme showing an unstyled snippet
+ * through a dark background would misrepresent what the sanitized markup actually looks like.
  *
  * <p>Toast-only error handling on a failed submit (not the inline Output-panel error
- * `RegExpTesterPanel.tsx` renders) — `HtmlPreviewOperation` never throws server-side (jsoup's
- * `Cleaner` always produces a best-effort sanitized document, the same lenient-parser shape
- * `HtmlBeautifyOperation` already establishes), so the only realistic failure here is a network/
- * technical error, the same rare-edge-case reasoning `HashGeneratorPanel.tsx`'s own toast-only
- * handling already documents.
+ * `RegExpTesterPanel.tsx` renders) — neither `HtmlPreviewOperation` nor `MarkdownPreviewOperation`
+ * throws server-side (both delegate to the same lenient, best-effort `HtmlSanitizer`/parser
+ * shape), so the only realistic failure here is a network/technical error, the same
+ * rare-edge-case reasoning `HashGeneratorPanel.tsx`'s own toast-only handling already documents.
  *
  * <p>Same resizable-split-plus-maximize mechanism every custom panel in this feature now shares —
  * a single horizontal split (`hooks/useResizableSplit.ts`'s default orientation — this operation
@@ -78,6 +92,7 @@ export default function HtmlPreviewPanel({
   input,
   onInputChange,
   inputPlaceholder,
+  codeMirrorLanguage,
   actionLabel,
   downloadFileName,
   onSubmit,
@@ -184,7 +199,7 @@ export default function HtmlPreviewPanel({
             onChange={onInputChange}
             placeholder={inputPlaceholder}
             theme="light"
-            extensions={[editorChromeTheme, ...getCodeMirrorExtensions('html')]}
+            extensions={[editorChromeTheme, ...getCodeMirrorExtensions(codeMirrorLanguage)]}
             height="100%"
             style={{ position: 'absolute', inset: 0 }}
           />

@@ -18,6 +18,7 @@ import CronParserIcon from '@mui/icons-material/ScheduleOutlined';
 import TextDiffIcon from '@mui/icons-material/DifferenceOutlined';
 import UnixTimeConverterIcon from '@mui/icons-material/AccessTimeOutlined';
 import HtmlPreviewIcon from '@mui/icons-material/PreviewOutlined';
+import MarkdownPreviewIcon from '@mui/icons-material/ArticleOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
@@ -56,7 +57,8 @@ export type TabKey =
   | 'cron-parser'
   | 'text-diff-checker'
   | 'unix-time-converter'
-  | 'html-preview';
+  | 'html-preview'
+  | 'markdown-preview';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -89,6 +91,7 @@ export const TAB_KEYS: TabKey[] = [
   'text-diff-checker',
   'unix-time-converter',
   'html-preview',
+  'markdown-preview',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -152,7 +155,21 @@ export interface OperationConfig {
    * own doc comment for exactly which operations' backend can genuinely reject their input (and
    * therefore ever actually populate that fallback) — not re-derived here, to avoid the same fact
    * drifting out of sync across multiple files' comments the way it once did. */
-  inputFormat: 'json' | 'yaml' | 'html' | 'css' | 'less' | 'scss' | 'js' | 'erb' | 'xml' | 'csv' | 'sql' | 'php' | 'text';
+  inputFormat:
+    | 'json'
+    | 'yaml'
+    | 'html'
+    | 'css'
+    | 'less'
+    | 'scss'
+    | 'js'
+    | 'erb'
+    | 'xml'
+    | 'csv'
+    | 'sql'
+    | 'php'
+    | 'markdown'
+    | 'text';
   /** Prism language for the output syntax highlighter — also the key into
    * `config/outputLanguages.ts#OUTPUT_LANGUAGE_INFO` for the Output panel's info-row badge
    * (label + color), so this is always a real, known language id, checked at compile time. */
@@ -880,5 +897,36 @@ export const OPERATIONS: OperationConfig[] = [
     supportsMinify: false,
     downloadFileName: 'preview.html',
     onSubmit: input => devUtilsApi.previewHtml(input),
+  },
+  {
+    key: 'markdown-preview',
+    // The third WEB-group operation, and html-preview's direct sibling — same bespoke-layout
+    // reasoning (a live, rendered iframe Output, not text to syntax-highlight). Renders through
+    // components/HtmlPreviewPanel.tsx too, not a separate component — the two operations differ
+    // only in which CodeMirror language highlights the Input and which backend endpoint sanitizes
+    // the result, both expressed as props rather than duplicating the whole panel.
+    group: 'Web',
+    category: 'Web',
+    label: 'Markdown Preview',
+    description: 'Render sanitized Markdown live in a sandboxed preview — scripts never run',
+    icon: <MarkdownPreviewIcon fontSize="small" />,
+    actionLabel: 'Preview',
+    inputPlaceholder:
+      '# Vui Coding\n\nOnline: **true**\n\n- JSON\n- Base64\n- JWT\n\n| Tool | Stars |\n| --- | --- |\n| JSON | 128 |\n| Base64 | 64 |\n',
+    // 'markdown' — the input is Markdown, not HTML; MarkdownPreviewOperation never throws (same
+    // lenient-parser shape html-preview's own backend operation establishes), so this is honest
+    // but effectively inert — errorFormatting.ts's own fallback path is never actually reached for
+    // this operation either way.
+    inputFormat: 'markdown',
+    // Unused by HtmlPreviewPanel (it renders a live iframe, never a syntax-highlighted text
+    // block) but still filled in with a reasonable value to satisfy `OperationConfig`'s shared
+    // shape — the same "present but inert for this operation" treatment `html-preview`/
+    // `hash-generator`/etc. already get.
+    outputLanguage: 'markup',
+    // No minify option — sanitized markup meant to be rendered has no distinct "compact form" to
+    // toggle, same reasoning `html-preview` already establishes.
+    supportsMinify: false,
+    downloadFileName: 'preview.html',
+    onSubmit: input => devUtilsApi.previewMarkdown(input),
   },
 ];

@@ -5,6 +5,7 @@ import { html } from '@codemirror/lang-html';
 import { javascript } from '@codemirror/lang-javascript';
 import { json } from '@codemirror/lang-json';
 import { less } from '@codemirror/lang-less';
+import { markdown } from '@codemirror/lang-markdown';
 import { php } from '@codemirror/lang-php';
 import { sass } from '@codemirror/lang-sass';
 import { sql } from '@codemirror/lang-sql';
@@ -71,6 +72,7 @@ const LANGUAGE_EXTENSIONS: Record<string, () => Extension[]> = {
   csv: () => [],
   sql: () => [sql()],
   php: () => [php()],
+  markdown: () => [markdown()],
   text: () => [],
 };
 

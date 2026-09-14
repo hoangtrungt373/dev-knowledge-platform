@@ -1483,6 +1483,60 @@ section again. Full unabridged entry-by-entry history for all three lives in
         other 2-panel custom panel in this feature shares. Verified via a clean `tsc --noEmit` and
         a successful `vite build` only — no Docker in this sandbox, so the actual live-preview
         rendering is unverified in a real browser.
+    - **Follow-up: new `MarkdownPreviewOperation`, per request ("Implement new operation in Web
+      group: Markdown preview") — the third `OperationGroup.WEB` operation, `HtmlPreviewOperation`'s
+      direct sibling.** Discussed as a real design fork before building, since `gui` already
+      renders Markdown safely elsewhere (`@chat/components/MarkdownRenderer.tsx`,
+      `@content/components/MarkdownField.tsx`, both via `react-markdown`, which renders to React
+      elements directly and never calls `dangerouslySetInnerHTML` — safe by construction, no
+      sanitizer needed) — a client-side-only implementation (mirroring the `base64-image`
+      precedent) was the recommended alternative; the user chose a backend endpoint instead, for
+      consistency with `html-preview`.
+      - **New `service.impl.support.HtmlSanitizer`** — extracted `HtmlPreviewOperation`'s own
+        original inline `Safelist` into a shared static utility (`sanitize(String): String`) so
+        this operation can reuse the identical sanitization pass over the HTML its own Markdown
+        conversion produces, rather than a second, drifting copy of the same `Safelist`.
+        `HtmlPreviewOperation` itself is now a thin pass-through to it. Gained one addition beyond
+        what `HtmlPreviewOperation` alone needed: a safelisted bare `<input type="checkbox">`
+        (restricted to `type`/`checked`/`disabled` — no `<form>` tag exists to submit it to, and
+        none of the 3 attributes can carry a URL/script), so `MarkdownPreviewOperation`'s own GFM
+        task-list-items extension survives sanitization with its checkboxes still visible instead
+        of silently vanishing the way a stripped tag otherwise would.
+      - **New Maven dependency: commonmark-java** (`org.commonmark:commonmark` +
+        `commonmark-ext-gfm-tables`/`commonmark-ext-gfm-strikethrough`/
+        `commonmark-ext-task-list-items`, version-managed in the root `pom.xml` the same way jsoup
+        is) — converts Markdown to HTML, matching the GFM feature set `gui`'s own
+        `react-markdown`+`remark-gfm` already renders elsewhere in this app. Deliberately **no**
+        GFM autolink extension (bare `www.`/`http` URLs auto-linked with no angle brackets) — a
+        documented, deliberate scope trim (a further runtime dependency for a narrower convenience
+        than correctness gap; CommonMark's own core syntax still autolinks a bracketed
+        `<https://...>` form without it).
+      - **Why sanitize at all, given commonmark-java's own output isn't rendered elsewhere in this
+        reactor the way `HtmlBeautifyOperation`'s already-safe output is**: unlike `react-markdown`
+        (renders to React elements, escaping embedded raw HTML), standard Markdown syntax lets an
+        author embed literal inline HTML that a renderer faithfully reproduces — so a `<script>`
+        written directly inside a `.md` document would reach `HtmlRenderer`'s own output as a live
+        script tag, and this operation's output is handed straight to the same `srcdoc` iframe
+        `html-preview` uses, not escaped text — see the class's own Javadoc.
+      - Never throws — commonmark-java's own parser, like jsoup's, is deliberately lenient
+        (there is no such thing as syntactically invalid Markdown). New
+        `POST /api/v1/dev-utils/markdown/preview` (`TextRequest` → `DevUtilResponse`, no `minify`
+        option, same reasoning `html-preview` already establishes). 8 new backend tests, verified
+        via a real `mvn -pl dev-utils-service -am test` run (JDK 21).
+      - **`gui`**: **generalized `components/HtmlPreviewPanel.tsx` to serve both operations**,
+        rather than a near-duplicate seventh custom panel — the two differ only in which
+        CodeMirror language highlights the Input (a new `codeMirrorLanguage` prop) and which
+        backend endpoint `onSubmit` calls; `DevUtilsPage.tsx`'s dispatch now routes both
+        `html-preview` and `markdown-preview` keys to this one component. New dependency
+        `@codemirror/lang-markdown` for the Markdown-highlighted Input editor. **Real, pre-existing
+        bug fixed in the same pass**: `DevUtilToolPanel.tsx`'s own `inputFormat` prop type was a
+        second, independently-maintained copy of `OperationConfig['inputFormat']`'s literal union
+        — adding `'markdown'` to the latter but not the former was a real `tsc` type error, caught
+        immediately by a clean `tsc --noEmit` run; fixed by having `DevUtilToolPanel.tsx` reuse
+        `OperationConfig['inputFormat']` directly instead of maintaining a second copy, so the two
+        can never drift apart again. Verified via a clean `tsc --noEmit` and a successful
+        `vite build` only — no Docker in this sandbox, so the actual live-preview rendering (GFM
+        tables/strikethrough/task-list checkboxes included) is unverified in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.
