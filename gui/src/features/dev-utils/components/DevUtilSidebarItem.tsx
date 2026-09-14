@@ -1,5 +1,7 @@
-import { ListItemButton, ListItemIcon, ListItemText, Tooltip } from '@mui/material';
+import { IconButton, ListItemButton, ListItemIcon, ListItemText, Tooltip } from '@mui/material';
 import { alpha } from '@mui/material/styles';
+import StarIcon from '@mui/icons-material/Star';
+import StarBorderIcon from '@mui/icons-material/StarBorderOutlined';
 
 import { OperationConfig } from '../config/operations';
 
@@ -10,6 +12,10 @@ interface DevUtilSidebarItemProps {
    * "icon-only row, label in a Tooltip" shape `AdminLayout.tsx`'s own collapsed sidebar uses. */
   collapsed: boolean;
   onSelect: () => void;
+  /** Whether this operation is in the user's (client-side-only) favorites set — see
+   * `hooks/useFavoriteOperations.ts`. */
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
 }
 
 /** One row in `DevUtilsPage.tsx`'s own sidebar `List` — extracted out of that page's own
@@ -21,6 +27,8 @@ export default function DevUtilSidebarItem({
   isSelected,
   collapsed,
   onSelect,
+  isFavorite,
+  onToggleFavorite,
 }: DevUtilSidebarItemProps): JSX.Element {
   const itemButton = (
     <ListItemButton
@@ -50,6 +58,14 @@ export default function DevUtilSidebarItem({
         '&:hover': {
           bgcolor: 'action.hover',
         },
+        // The favorite button stays out of sight until the row is hovered/keyboard-focused — per
+        // request. `opacity`, not `display`/`visibility: hidden`, so a keyboard user can still Tab
+        // to it before hovering (`focus-within` covers that) — same convention
+        // `@tasks/TaskRow.tsx`'s own hover-revealed "⋯"/drag-handle buttons already establish in
+        // this codebase.
+        '&:hover .dev-util-favorite-btn, &:focus-within .dev-util-favorite-btn': {
+          opacity: 1,
+        },
       }}
     >
       <ListItemIcon sx={{ minWidth: collapsed ? 0 : 32, justifyContent: 'center', color: 'grey.500', mr: 0.5 }}>
@@ -59,6 +75,28 @@ export default function DevUtilSidebarItem({
           the selected item now, per request. */}
       {!collapsed && (
         <ListItemText primary={operation.label} primaryTypographyProps={{ variant: 'body2', fontWeight: 600 }} />
+      )}
+      {/* No room for a second control in the collapsed, icon-only row — favoriting stays reachable
+          via the expanded sidebar or the active-operation header either way. `stopPropagation` so
+          toggling a favorite doesn't also select the row (same guard `@tasks/TaskRow.tsx`'s own
+          directly-clickable row children already use for the identical reason). */}
+      {!collapsed && (
+        <IconButton
+          size="small"
+          className="dev-util-favorite-btn"
+          onClick={e => {
+            e.stopPropagation();
+            onToggleFavorite();
+          }}
+          aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          sx={{ p: 0.5, ml: 0.5, opacity: 0, transition: 'opacity 0.15s ease' }}
+        >
+          {isFavorite ? (
+            <StarIcon fontSize="small" sx={{ color: '#FFC107' }} />
+          ) : (
+            <StarBorderIcon fontSize="small" sx={{ color: '#FFC107' }} />
+          )}
+        </IconButton>
       )}
     </ListItemButton>
   );

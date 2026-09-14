@@ -18,8 +18,11 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import ClearIcon from '@mui/icons-material/ClearOutlined';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeftOutlined';
 import ChevronRightIcon from '@mui/icons-material/ChevronRightOutlined';
+import StarIcon from '@mui/icons-material/Star';
+import StarBorderIcon from '@mui/icons-material/StarBorderOutlined';
 
 import { DevUtilError } from '../utils/errorFormatting';
+import { useFavoriteOperations } from '../hooks/useFavoriteOperations';
 import DevUtilToolPanel from '../components/DevUtilToolPanel';
 import HashGeneratorPanel from '../components/HashGeneratorPanel';
 import Base64ImagePanel from '../components/Base64ImagePanel';
@@ -189,6 +192,8 @@ export default function DevUtilsPage(): JSX.Element {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY) === 'true'
   );
+  // Client-side-only favorite operations (per request) — see hooks/useFavoriteOperations.ts.
+  const { isFavorite, toggleFavorite } = useFavoriteOperations();
   // Lifted up from DevUtilToolPanel so the headline row's Sample/Clear buttons can set/reset them
   // directly — see DevUtilToolPanel.tsx's own updated Javadoc for the full reasoning.
   const [input, setInput] = useState('');
@@ -305,6 +310,12 @@ export default function DevUtilsPage(): JSX.Element {
     operations: visibleOperations.filter(op => op.group === group),
   })).filter(entry => entry.operations.length > 0);
 
+  // Favorited operations get their own pinned section at the top of the sidebar, per request —
+  // in addition to (not instead of) their own regular group section below. Still respects the
+  // search filter (drawn from visibleOperations, not the full OPERATIONS list) so a favorite that
+  // doesn't match the current search term doesn't show up pinned above an otherwise-filtered list.
+  const favoriteOperations = visibleOperations.filter(op => isFavorite(op.key));
+
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
@@ -388,36 +399,72 @@ export default function DevUtilsPage(): JSX.Element {
                 </Box>
               )
             ) : (
-              groupedVisibleOperations.map(({ group, operations }) => (
-                <Box key={group}>
-                  {!sidebarCollapsed && (
-                    <Typography
-                      variant="caption"
-                      fontWeight={400}
-                      color="text.secondary"
-                      sx={{
-                        display: 'block',
-                        textTransform: 'uppercase',
-                        letterSpacing: 0.5,
-                        px: 1.5,
-                        pt: 1,
-                        pb: 0.5,
-                      }}
-                    >
-                      {group}
-                    </Typography>
-                  )}
-                  {operations.map(op => (
-                    <DevUtilSidebarItem
-                      key={op.key}
-                      operation={op}
-                      isSelected={op.key === tab}
-                      collapsed={sidebarCollapsed}
-                      onSelect={() => selectTab(op.key)}
-                    />
-                  ))}
-                </Box>
-              ))
+              <>
+                {favoriteOperations.length > 0 && (
+                  <Box>
+                    {!sidebarCollapsed && (
+                      <Typography
+                        variant="caption"
+                        fontWeight={400}
+                        color="text.secondary"
+                        sx={{
+                          display: 'block',
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.5,
+                          px: 1.5,
+                          pt: 1,
+                          pb: 0.5,
+                        }}
+                      >
+                        Favorites
+                      </Typography>
+                    )}
+                    {favoriteOperations.map(op => (
+                      <DevUtilSidebarItem
+                        key={op.key}
+                        operation={op}
+                        isSelected={op.key === tab}
+                        collapsed={sidebarCollapsed}
+                        onSelect={() => selectTab(op.key)}
+                        isFavorite
+                        onToggleFavorite={() => toggleFavorite(op.key)}
+                      />
+                    ))}
+                  </Box>
+                )}
+                {groupedVisibleOperations.map(({ group, operations }) => (
+                  <Box key={group}>
+                    {!sidebarCollapsed && (
+                      <Typography
+                        variant="caption"
+                        fontWeight={400}
+                        color="text.secondary"
+                        sx={{
+                          display: 'block',
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.5,
+                          px: 1.5,
+                          pt: 1,
+                          pb: 0.5,
+                        }}
+                      >
+                        {group}
+                      </Typography>
+                    )}
+                    {operations.map(op => (
+                      <DevUtilSidebarItem
+                        key={op.key}
+                        operation={op}
+                        isSelected={op.key === tab}
+                        collapsed={sidebarCollapsed}
+                        onSelect={() => selectTab(op.key)}
+                        isFavorite={isFavorite(op.key)}
+                        onToggleFavorite={() => toggleFavorite(op.key)}
+                      />
+                    ))}
+                  </Box>
+                ))}
+              </>
             )}
           </List>
         </Paper>
@@ -434,9 +481,20 @@ export default function DevUtilsPage(): JSX.Element {
                 >
                   {activeOperation.category}
                 </Typography>
-                <Typography variant="h6" fontWeight={700}>
-                  {activeOperation.label}
-                </Typography>
+                <Stack direction="row" alignItems="center" spacing={0.25}>
+                  <Typography variant="h6" fontWeight={700}>
+                    {activeOperation.label}
+                  </Typography>
+                  <Tooltip title={''}>
+                    <IconButton size="small" onClick={() => toggleFavorite(activeOperation.key)}>
+                      {isFavorite(activeOperation.key) ? (
+                        <StarIcon fontSize="small" sx={{ color: '#FFC107' }} />
+                      ) : (
+                        <StarBorderIcon fontSize="small" sx={{ color: 'grey.400' }} />
+                      )}
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
                 <Typography variant="body2" color="text.secondary">
                   {activeOperation.description}
                 </Typography>
