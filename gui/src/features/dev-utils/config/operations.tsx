@@ -21,6 +21,7 @@ import HtmlPreviewIcon from '@mui/icons-material/PreviewOutlined';
 import MarkdownPreviewIcon from '@mui/icons-material/ArticleOutlined';
 import HtmlToTsxIcon from '@mui/icons-material/TransformOutlined';
 import ColorConverterIcon from '@mui/icons-material/PaletteOutlined';
+import SvgToCssIcon from '@mui/icons-material/WallpaperOutlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
@@ -62,7 +63,8 @@ export type TabKey =
   | 'html-preview'
   | 'markdown-preview'
   | 'html-to-tsx'
-  | 'color-converter';
+  | 'color-converter'
+  | 'svg-to-css';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -98,6 +100,7 @@ export const TAB_KEYS: TabKey[] = [
   'markdown-preview',
   'html-to-tsx',
   'color-converter',
+  'svg-to-css',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -989,5 +992,28 @@ export const OPERATIONS: OperationConfig[] = [
     // establishes, the same "omitted, not a dead placeholder" treatment `text-diff-checker`'s own
     // entry already establishes for the identical underlying reason — ColorConverterPanel.tsx
     // calls `devUtilsApi.convertColor` directly instead.
+  },
+  {
+    key: 'svg-to-css',
+    // The sixth WEB-group operation — genuinely different from its Web-group siblings that do
+    // need a bespoke panel (html-preview/markdown-preview's live iframe, color-converter's
+    // picker+cards): this one's Input is plain SVG markup and its Output is a single CSS rule, a
+    // plain text-in/text-out transform that fits the shared DevUtilToolPanel exactly like
+    // html-beautify/html-to-tsx do — no bespoke panel needed.
+    group: 'Web',
+    category: 'Web',
+    label: 'SVG to CSS',
+    description: 'Convert SVG markup into a CSS background-image data URI rule',
+    icon: <SvgToCssIcon fontSize="small" />,
+    actionLabel: 'Convert',
+    inputPlaceholder:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">' +
+      '<rect width="32" height="32" rx="8" fill="#14b8a6"/>' +
+      '<path d="M9 16l5 5 9-10" fill="none" stroke="white" stroke-width="3"/></svg>',
+    inputFormat: 'xml',
+    outputLanguage: 'css',
+    supportsMinify: true,
+    downloadFileName: 'icon.css',
+    onSubmit: devUtilsApi.convertSvgToCss,
   },
 ];

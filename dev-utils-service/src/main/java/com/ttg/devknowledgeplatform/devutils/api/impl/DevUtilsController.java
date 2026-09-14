@@ -34,6 +34,7 @@ import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlEntityEncodeOperat
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlPreviewOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.HtmlToTsxOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.MarkdownPreviewOperation;
+import com.ttg.devknowledgeplatform.devutils.service.impl.SvgToCssOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonFormatOperation;
 import com.ttg.devknowledgeplatform.devutils.service.impl.JsonToCsvOperation;
@@ -106,6 +107,7 @@ public class DevUtilsController implements DevUtilsApi {
     private final MarkdownPreviewOperation markdownPreviewOperation;
     private final HtmlToTsxOperation htmlToTsxOperation;
     private final ColorConverterOperation colorConverterOperation;
+    private final SvgToCssOperation svgToCssOperation;
 
     @Override
     public ResponseEntity<DevUtilResponse> formatJson(MinifiableTextRequest request) {
@@ -296,5 +298,10 @@ public class DevUtilsController implements DevUtilsApi {
     @Override
     public ResponseEntity<ColorConversionResponse> convertColor(TextRequest request) {
         return ResponseEntity.ok(colorConverterOperation.execute(request.input()));
+    }
+
+    @Override
+    public ResponseEntity<DevUtilResponse> convertSvgToCss(MinifiableTextRequest request) {
+        return ResponseEntity.ok(new DevUtilResponse(svgToCssOperation.execute(request.input(), request.minify())));
     }
 }

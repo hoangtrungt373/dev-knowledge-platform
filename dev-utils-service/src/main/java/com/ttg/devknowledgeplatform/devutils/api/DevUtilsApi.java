@@ -444,4 +444,15 @@ public interface DevUtilsApi {
      */
     @PostMapping("/color/convert")
     ResponseEntity<ColorConversionResponse> convertColor(@Valid @RequestBody TextRequest request);
+
+    /**
+     * Converts raw SVG markup into a {@code .icon { ... }} CSS rule using it as a percent-encoded
+     * {@code background-image} data URI (see {@code SvgToCssOperation}'s own Javadoc for the full
+     * encoding rules and known limitations), pretty-printed or, with {@code request.minify()}, a
+     * single compact line.
+     *
+     * @return {@code 200} with the CSS rule
+     */
+    @PostMapping("/svg/to-css")
+    ResponseEntity<DevUtilResponse> convertSvgToCss(@Valid @RequestBody MinifiableTextRequest request);
 }

@@ -32,7 +32,11 @@ per direct follow-up request), and Color Converter (`ColorConverterOperation`/
 `hsl(...)`/`hsla(...)` function (all 3 accepted as input, per direct follow-up request; originally
 hex-only) into HEX/RGB/HSL/a fixed-name `--color` CSS variable/Swift's `UIColor`/Android's
 `Color.rgb` all at once; the one `OperationGroup.WEB` operation with a real invalid-input failure
-path, `DevUtilsErrorCode.INVALID_COLOR`, unlike its 3 lenient siblings). The four `OperationGroup.WEB`
+path, `DevUtilsErrorCode.INVALID_COLOR`, unlike its other lenient siblings), and SVG to CSS
+(`SvgToCssOperation` — SVG markup into a fixed, generic `.icon { background-image:
+url("data:image/svg+xml,...") ... }` CSS rule, percent-encoded via the exact same technique
+`UrlEncodeOperation` already uses; never throws, makes no attempt to validate `input` is actually
+well-formed SVG/XML). The six `OperationGroup.WEB`
 operations. Package root:
 `com.ttg.devknowledgeplatform.devutils.*`.
 

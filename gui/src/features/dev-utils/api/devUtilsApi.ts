@@ -271,4 +271,11 @@ export const devUtilsApi = {
   convertColor(input: string, showError?: ShowError): Promise<ColorConversionResponse> {
     return httpClient.post(`${BASE}/color/convert`, { input }, showError);
   },
+
+  // The sixth WEB-group operation, added alongside dev-utils-service's own SvgToCssOperation. Back
+  // to the plain (input, minify) shape every Formatters-group beautify operation shares — its
+  // output is a real CSS rule with a genuine pretty/compact distinction to toggle.
+  convertSvgToCss(input: string, minify: boolean, showError?: ShowError): Promise<DevUtilsResponse> {
+    return httpClient.post(`${BASE}/svg/to-css`, { input, minify }, showError);
+  },
 };

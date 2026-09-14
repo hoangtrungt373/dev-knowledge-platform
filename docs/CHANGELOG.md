@@ -1716,6 +1716,39 @@ section again. Full unabridged entry-by-entry history for all three lives in
            -am test` run (JDK 21) — 379/379 passing — and a clean `tsc --noEmit` + successful
            `vite build` on the `gui` side; no Docker in this sandbox, so the actual border/picker
            behavior in a real browser is unverified.
+    - **Follow-up: new `SvgToCssOperation`, per request ("SVG to CSS") — the sixth
+      `OperationGroup.WEB` operation, and the first Web-group operation whose Output is plain
+      converted text that renders through the shared `DevUtilToolPanel` (like `html-to-tsx`) rather
+      than a bespoke panel — its Input (raw SVG markup) and Output (one CSS rule) both fit that
+      component's plain text-in/text-out shape exactly.** Converts SVG markup into a
+      `.icon { background-image: url("data:image/svg+xml,...") ...}` rule, percent-encoding the
+      SVG (not base64 — smaller output, the same trade-off most standalone "SVG in CSS" tools make)
+      by reusing `UrlEncodeOperation`'s own exact technique (`URLEncoder.encode` UTF-8, `+`
+      rewritten to `%20`) — confirmed against the reported example byte-for-byte before relying on
+      it. Fixed, generic `.icon` selector name (same "simpler than an extra input field" choice
+      already made for `ColorConverterOperation`'s own `--color` variable), plus the 3 fixed
+      companion declarations (`background-repeat: no-repeat`/`background-position: center`/
+      `background-size: contain`) every hand-written version of this rule needs regardless of the
+      SVG's own content. **Known, deliberate gaps, documented rather than chased**: shares
+      `UrlEncodeOperation`'s own divergence from JavaScript's `encodeURIComponent` (4 characters —
+      `! ~ ' (` and `)` — that JS leaves literal but `URLEncoder` still percent-encodes; still a
+      correct data URI, just not the minimum possible byte count for an SVG using one of them, e.g.
+      a `transform="matrix(...)"` attribute); does not minify/collapse the SVG's own internal
+      whitespace before encoding (`minify` only controls this operation's own CSS output, one line
+      vs. indented — a multi-line, indented SVG pasted in encodes every one of its own newlines/
+      indentation spaces verbatim). Never throws — like `UrlEncodeOperation`, no attempt is made to
+      validate `input` is actually well-formed SVG/XML; this operation's whole job is encoding
+      whatever text it's given. New `POST /api/v1/dev-utils/svg/to-css` (`MinifiableTextRequest` →
+      `DevUtilResponse`). 7 new backend tests + 1 `DevUtilsServiceApplicationTests` case, verified
+      via a real `mvn -pl dev-utils-service -am test` run (JDK 21) — 387/387 passing (the one
+      pre-existing, unrelated `RegexTesterOperationTest` ReDoS-timeout flake aside — see that
+      class's own history).
+      - **`gui`**: no new panel component — `config/operations.tsx`'s `svg-to-css` entry renders
+        through the existing `DevUtilToolPanel` with `inputFormat: 'xml'`/`outputLanguage: 'css'`,
+        both already-registered CodeMirror languages, so no new dependency or language-extension
+        mapping was needed either. Verified via a clean `tsc --noEmit` and a successful
+        `vite build` only — no Docker in this sandbox, so the actual on-screen result is unverified
+        in a real browser.
   - See `dev-utils-service/CLAUDE.md` for the full module writeup, and root `CLAUDE.md`'s Module
     Structure table, Long-term direction, Security, Database Conventions, and Architecture →
     Routing sections for the reactor-wide documentation updates this addition required.
