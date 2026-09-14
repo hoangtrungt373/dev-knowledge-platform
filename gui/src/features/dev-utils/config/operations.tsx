@@ -22,6 +22,7 @@ import MarkdownPreviewIcon from '@mui/icons-material/ArticleOutlined';
 import HtmlToTsxIcon from '@mui/icons-material/TransformOutlined';
 import ColorConverterIcon from '@mui/icons-material/PaletteOutlined';
 import SvgToCssIcon from '@mui/icons-material/WallpaperOutlined';
+import QrCodeIcon from '@mui/icons-material/QrCode2Outlined';
 
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
@@ -64,7 +65,8 @@ export type TabKey =
   | 'markdown-preview'
   | 'html-to-tsx'
   | 'color-converter'
-  | 'svg-to-css';
+  | 'svg-to-css'
+  | 'qr-code';
 
 export const TAB_KEYS: TabKey[] = [
   'json-format',
@@ -101,6 +103,7 @@ export const TAB_KEYS: TabKey[] = [
   'html-to-tsx',
   'color-converter',
   'svg-to-css',
+  'qr-code',
 ];
 
 export const DEFAULT_TAB: TabKey = 'json-format';
@@ -112,13 +115,11 @@ export function tabFromHash(hash: string): TabKey {
 
 /** Mirrors the backend's own `service.OperationGroup` enum (`dev-utils-service`) — a much broader
  * clustering than `OperationConfig.category` below, meant to span the whole page rather than one
- * operation's own headline card. `'Formatters'`/`'Encoders/Decoders'`/`'Inspectors'`/`'Web'` all
- * have real operations today (`'Web'`'s own URL Parser example moved to `'Inspectors'` instead, per
- * direct request, but HTML Preview — see the `html-preview` entry below — landed there afterward,
- * so the group is no longer merely declared ahead of use); `'Generators'` is the one group still
- * awaiting its own first operation (e.g. a future UUID/Lorem Ipsum generator), so
- * `OPERATION_GROUP_ORDER`/`groupOperationsByGroup` below already have a stable, complete section
- * order to render whenever it lands too. */
+ * operation's own headline card. Every one of the 5 declared groups now has a real operation —
+ * `'Generators'` was the last one still merely declared ahead of use, until QR Code
+ * Reader/Generator (see the `qr-code` entry below) became its first. `OPERATION_GROUP_ORDER`/
+ * `groupOperationsByGroup` below have a stable, complete section order regardless of which group a
+ * future operation lands in. */
 export type OperationGroupName = 'Formatters' | 'Encoders/Decoders' | 'Inspectors' | 'Web' | 'Generators';
 
 /** Fixed rendering order for the sidebar's own group headlines — mirrors the backend enum's own
@@ -1015,5 +1016,35 @@ export const OPERATIONS: OperationConfig[] = [
     supportsMinify: true,
     downloadFileName: 'icon.css',
     onSubmit: devUtilsApi.convertSvgToCss,
+  },
+  {
+    key: 'qr-code',
+    // The first GENERATORS-group operation, per direct request ("reuse or extend template
+    // Base64Image") — and, like Base64 Image, entirely client-side: generating a QR code
+    // (`qrcode`) and decoding one (`jsqr`, off a `<canvas>`'s own pixel data) are both small,
+    // well-established, purely computational libraries, so round-tripping either through the
+    // backend would only add latency for zero benefit — see QrCodePanel.tsx's own doc comment for
+    // the full reasoning. Renders through that bespoke component, not the shared
+    // DevUtilToolPanel — its Input is a text field *plus* an image upload/drag-drop/paste zone,
+    // and its Output is either a rendered QR image or decoded text, neither of which fits a plain
+    // code-editor pair.
+    group: 'Generators',
+    category: 'Generators',
+    label: 'QR Code Reader/Generator',
+    description: 'Generate a QR code from text or a link, or read one back from an image',
+    icon: <QrCodeIcon fontSize="small" />,
+    actionLabel: 'Generate',
+    inputPlaceholder: 'https://vuicoding.me',
+    // `inputFormat`/`outputLanguage`/`supportsMinify`/`downloadFileName` are all unused by
+    // QrCodePanel (it renders no CodeMirror editor, reads no minify flag, and makes no backend
+    // call at all) but still filled in with reasonable values to satisfy `OperationConfig`'s
+    // shared shape — the same "present but inert for this operation" treatment `base64-image`'s
+    // own equivalent fields already get.
+    inputFormat: 'text',
+    outputLanguage: 'text',
+    supportsMinify: false,
+    downloadFileName: 'qr-code.png',
+    // No `onSubmit` — like `base64-image`, this operation makes no backend call at all;
+    // QrCodePanel.tsx calls `QRCode.toDataURL`/`jsQR` directly instead.
   },
 ];

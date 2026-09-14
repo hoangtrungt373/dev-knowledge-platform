@@ -4305,6 +4305,53 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       field, both still work exactly as before. Verified via a clean `tsc --noEmit` and a
       successful `vite build` only — no Docker in this sandbox, so the actual dropdown/search/
       free-typing behavior is unverified in a real browser.
+  - **Follow-up: "QR Code Reader/Generator," per request ("Implement new operation in Generators
+    group... We can reuse or extend template Base64Image") — the first `OperationGroup.GENERATORS`
+    operation, closing out that group's own "declared ahead of use" status (every one of the 5
+    declared groups now has a real operation). Entirely client-side, no backend change at all** —
+    the same genuine exception to "every operation calls a `dev-utils-service` endpoint"
+    `base64-image` already established: generating a QR code (new `qrcode` npm dependency,
+    `QRCode.toDataURL(input, { width: 256, margin: 2 })`) and decoding one (new `jsqr` npm
+    dependency, `jsQR(imageData.data, width, height)` against a `<canvas>`'s own pixel data) are
+    both small, well-established, purely computational libraries — round-tripping either through
+    the backend would only add latency for zero benefit. `dev-utils-service` itself is untouched
+    (no new Java class/endpoint/Maven dependency/test) — that module's own `CLAUDE.md` deliberately
+    doesn't list this operation, the same precedent `base64-image` already set.
+    - New `components/QrCodePanel.tsx`, directly extending `Base64ImagePanel.tsx`'s own structural
+      template per the request's explicit instruction: the same 3-card shape (a fixed-`height` left
+      column stacking Generate + Read, split by a **vertical** `useResizableSplit` divider
+      defaulting 30%/70% — Generate's single text field needs less room than Read's drop-zone —
+      against a **horizontal** split with Output, which floors at `availableHeight` and grows with
+      content like every other custom panel here) plus a **3-way exclusive**
+      `usePanelMaximize<'generate' | 'read' | 'output'>()` toggle — all reusing the existing
+      `hooks/useResizableSplit.ts`/`hooks/usePanelMaximize.ts`/`components/PanelResizeHandle.tsx`/
+      `components/PanelHeader.tsx`/`hooks/useCopyFeedback.ts` extraction, no new split/maximize
+      code written. Read's own upload/drag-drop/clipboard-paste handlers
+      (`handleFile`/`handleDrop`/`handlePasteButtonClick`, a fixed `ALLOWED_IMAGE_TYPES`
+      allow-list, a 5&nbsp;MB client-side size cap) are a close adaptation of
+      `Base64ImagePanel.tsx`'s own equivalent handlers.
+    - **`input` is deliberately shared by both directions, not two independent pieces of state** —
+      Generate's own text field reads it, and a successful Read *writes* the decoded text back
+      into it, letting a scanned code's own content be immediately re-generated/edited/re-scanned
+      without retyping it, and making the page's existing Clear button (which only ever resets the
+      lifted `input` back to `''`) actually clear *both* a generated image and a decoded-text
+      result via a `useEffect` watching that transition — the same fix
+      `ColorConverterPanel.tsx`/`TextDiffPanel.tsx` already needed for their own local result state.
+    - **Generate** is an explicit `SubmitButton` action (`QRCode.toDataURL` is async and can reject
+      for text too long for a QR code's own capacity limits). **Read** is not a separate button
+      click — decoding an already-loaded canvas's pixels is effectively instantaneous, so it fires
+      automatically the instant an image is provided (upload, drag-drop, or paste). A failed Read
+      (no QR code found) or a failed Generate renders inline in the Output panel, the same
+      treatment `RegExpTesterPanel.tsx`/`ColorConverterPanel.tsx` already established for an
+      expected, common failure mode — not a toast. A decoded result that looks like a URL
+      (`http(s)://`) gets an extra "Open" button, since this operation's own second half is
+      literally "generate a link from a QR code."
+    - `config/operations.tsx` gained the `qr-code` entry (`group`/`category` `'Generators'`, a new
+      `QrCode2Outlined` sidebar icon) — no `onSubmit` (like `base64-image`, this operation makes no
+      backend call at all).
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
+      sandbox, so the actual generate/upload/drag-drop/paste/decode flow is unverified in a real
+      browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

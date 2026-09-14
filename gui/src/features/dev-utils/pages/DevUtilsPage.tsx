@@ -28,6 +28,7 @@ import TextDiffPanel from '../components/TextDiffPanel';
 import UnixTimeConverterPanel from '../components/UnixTimeConverterPanel';
 import HtmlPreviewPanel from '../components/HtmlPreviewPanel';
 import ColorConverterPanel from '../components/ColorConverterPanel';
+import QrCodePanel from '../components/QrCodePanel';
 import DevUtilSidebarItem from '../components/DevUtilSidebarItem';
 import { OPERATION_GROUP_ORDER, OPERATIONS, TabKey, tabFromHash } from '../config/operations';
 
@@ -474,17 +475,18 @@ export default function DevUtilsPage(): JSX.Element {
                 (pattern/flags/test text, not one string with a minify flag), Text Diff Checker's
                 own 2-field input plus real line-by-line output structure, Unix Time
                 Converter's own 2-direction, 4-field input plus 2 genuinely different multi-field
-                outputs, HTML Preview/Markdown Preview's own live, rendered iframe Output, and
+                outputs, HTML Preview/Markdown Preview's own live, rendered iframe Output,
                 Color Converter's own hex-field-plus-color-picker Input/6-named-representations
-                Output all don't fit that component's plain Input/Output editor pair at all. HTML
-                Preview and Markdown Preview are two operations sharing one component
-                (`HtmlPreviewPanel`, see its own doc comment) — the check below routes both keys to
-                it, differing only in a `codeMirrorLanguage` prop. A direct key check per
-                operation, not a lookup table/registry — there are seven custom-layout components
-                today; extend this the same way (one more `else if`, or another key routed to an
-                existing branch like Markdown Preview was) if a new operation ever needs its own
-                layout too, rather than building plugin infrastructure for a hypothetical N ahead
-                of time. */}
+                Output, and QR Code Reader/Generator's own text-field-plus-image-upload Input/
+                rendered-QR-or-decoded-text Output all don't fit that component's plain
+                Input/Output editor pair at all. HTML Preview and Markdown Preview are two
+                operations sharing one component (`HtmlPreviewPanel`, see its own doc comment) —
+                the check below routes both keys to it, differing only in a `codeMirrorLanguage`
+                prop. A direct key check per operation, not a lookup table/registry — there are
+                eight custom-layout components today; extend this the same way (one more `else
+                if`, or another key routed to an existing branch like Markdown Preview was) if a
+                new operation ever needs its own layout too, rather than building plugin
+                infrastructure for a hypothetical N ahead of time. */}
             {activeOperation.key === 'hash-generator' ? (
               <HashGeneratorPanel
                 key={activeOperation.key}
@@ -558,6 +560,15 @@ export default function DevUtilsPage(): JSX.Element {
               />
             ) : activeOperation.key === 'color-converter' ? (
               <ColorConverterPanel
+                key={activeOperation.key}
+                input={input}
+                onInputChange={setInput}
+                inputPlaceholder={activeOperation.inputPlaceholder}
+                actionLabel={activeOperation.actionLabel}
+                availableHeight={panelHeight}
+              />
+            ) : activeOperation.key === 'qr-code' ? (
+              <QrCodePanel
                 key={activeOperation.key}
                 input={input}
                 onInputChange={setInput}
