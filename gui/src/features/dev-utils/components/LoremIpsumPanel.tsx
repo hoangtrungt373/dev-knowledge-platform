@@ -3,18 +3,16 @@ import { Box, Button, IconButton, Paper, Slider, Stack, Tooltip, Typography } fr
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesomeOutlined';
-import OpenInFullIcon from '@mui/icons-material/OpenInFullOutlined';
-import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreenOutlined';
 import SubmitButton from '@shared/components/SubmitButton';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { devUtilsApi } from '../api/devUtilsApi';
-import { downloadTextFile } from '../utils/downloadTextFile';
 import { GROWABLE_PANEL_MAX_HEIGHT } from '../config/panelSizing';
 import { useResizableSplit } from '../hooks/useResizableSplit';
 import { usePanelMaximize } from '../hooks/usePanelMaximize';
+import { useOutputActions } from '../hooks/useOutputActions';
 import PanelHeader from './PanelHeader';
 import PanelResizeHandle from './PanelResizeHandle';
-import { useCopyFeedback } from '../hooks/useCopyFeedback';
+import MaximizeToggleButton from './MaximizeToggleButton';
 
 interface LoremIpsumPanelProps {
   /** Controlled — same lifted `input`/`output` state `DevUtilsPage.tsx` already threads into
@@ -93,7 +91,7 @@ export default function LoremIpsumPanel({
 }: LoremIpsumPanelProps): JSX.Element {
   const { showError } = useNotification();
   const [generating, setGenerating] = useState(false);
-  const { copiedKey, copy } = useCopyFeedback();
+  const { copiedKey, handleCopy, handleDownload } = useOutputActions(output, downloadFileName);
 
   const { maximizedPanel, toggle: toggleMaximize } = usePanelMaximize<'generate' | 'output'>();
   const toggleMaximizeGenerate = useCallback(() => toggleMaximize('generate'), [toggleMaximize]);
@@ -135,16 +133,6 @@ export default function LoremIpsumPanel({
     }
   }, [paragraphs, onOutputChange, showError]);
 
-  const handleCopy = useCallback(() => {
-    if (output === null) return;
-    copy(output, 'output');
-  }, [output, copy]);
-
-  const handleDownload = useCallback(() => {
-    if (output === null) return;
-    downloadTextFile(downloadFileName, output);
-  }, [output, downloadFileName]);
-
   const generateHidden = maximizedPanel === 'output';
   const outputHidden = maximizedPanel === 'generate';
 
@@ -169,11 +157,7 @@ export default function LoremIpsumPanel({
             startIcon={<AutoAwesomeIcon fontSize="small" />}
             onClick={handleGenerate}
           />
-          <Tooltip title={maximizedPanel === 'generate' ? 'Restore split view' : 'Maximize Generate'}>
-            <IconButton size="small" onClick={toggleMaximizeGenerate}>
-              {maximizedPanel === 'generate' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <MaximizeToggleButton label="Generate" maximized={maximizedPanel === 'generate'} onToggle={toggleMaximizeGenerate} />
         </PanelHeader>
         <Box sx={{ p: 3, maxWidth: 480 }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
@@ -242,11 +226,7 @@ export default function LoremIpsumPanel({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title={maximizedPanel === 'output' ? 'Restore split view' : 'Maximize Output'}>
-            <IconButton size="small" onClick={toggleMaximizeOutput}>
-              {maximizedPanel === 'output' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <MaximizeToggleButton label="Output" maximized={maximizedPanel === 'output'} onToggle={toggleMaximizeOutput} />
         </PanelHeader>
         <Box sx={{ p: 2, flex: 1, minHeight: 0, maxHeight: GROWABLE_PANEL_MAX_HEIGHT, overflow: 'auto' }}>
           {output !== null ? (

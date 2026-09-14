@@ -28,7 +28,7 @@ import LoremIpsumIcon from '@mui/icons-material/TextSnippetOutlined';
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DevUtilsResponse, HashResponse, StringCaseResponse } from '../types';
 import { OutputLanguage } from './outputLanguages';
-import { parseRegexInput, serializeRegexInput } from '../utils/regexInputFormat';
+import { parseRegexInput, SAMPLE_EMAIL_TEST_TEXT, serializeRegexInput } from '../utils/regexInputFormat';
 import { serializeTextDiffInput } from '../utils/textDiffInputFormat';
 import { serializeUnixTimeInput } from '../utils/unixTimeInputFormat';
 
@@ -254,7 +254,7 @@ export const OPERATIONS: OperationConfig[] = [
     description: 'Beautify, minify, and validate JSON',
     icon: <DataObjectIcon fontSize="small" />,
     actionLabel: 'Format',
-    inputPlaceholder: '{"project":"Vui Coding","online":true,"tools":["JSON","Base64","JWT"],"stars":128}',
+    inputPlaceholder: '{"project":"DevKnowledge","online":true,"tools":["JSON","Base64","JWT"],"stars":128}',
     inputFormat: 'json',
     outputLanguage: 'json',
     supportsMinify: true,
@@ -269,7 +269,7 @@ export const OPERATIONS: OperationConfig[] = [
     description: 'Convert YAML documents into JSON',
     icon: <SwapHorizIcon fontSize="small" />,
     actionLabel: 'Convert',
-    inputPlaceholder: 'project: Vui Coding\nonline: true\ntools:\n  - JSON\n  - Base64\n  - JWT\nstars: 128\n',
+    inputPlaceholder: 'project: DevKnowledge\nonline: true\ntools:\n  - JSON\n  - Base64\n  - JWT\nstars: 128\n',
     inputFormat: 'yaml',
     outputLanguage: 'json',
     supportsMinify: true,
@@ -284,7 +284,7 @@ export const OPERATIONS: OperationConfig[] = [
     description: 'Convert JSON documents into YAML',
     icon: <SwapHorizIcon fontSize="small" />,
     actionLabel: 'Convert',
-    inputPlaceholder: '{"project":"Vui Coding","online":true,"tools":["JSON","Base64","JWT"],"stars":128}',
+    inputPlaceholder: '{"project":"DevKnowledge","online":true,"tools":["JSON","Base64","JWT"],"stars":128}',
     inputFormat: 'json',
     outputLanguage: 'yaml',
     // No minify option here — jackson-dataformat-yaml has no single-line/flow-style toggle, so
@@ -302,7 +302,7 @@ export const OPERATIONS: OperationConfig[] = [
     icon: <AutoFixHighIcon fontSize="small" />,
     actionLabel: 'Beautify',
     inputPlaceholder:
-      '<div class="card"><h2>Vui Coding</h2><p>Online: <strong>true</strong></p><ul><li>JSON</li><li>Base64</li><li>JWT</li></ul></div>',
+      '<div class="card"><h2>DevKnowledge</h2><p>Online: <strong>true</strong></p><ul><li>JSON</li><li>Base64</li><li>JWT</li></ul></div>',
     inputFormat: 'html',
     outputLanguage: 'markup',
     supportsMinify: true,
@@ -317,7 +317,7 @@ export const OPERATIONS: OperationConfig[] = [
     description: 'Beautify or minify CSS stylesheets',
     icon: <AutoFixHighIcon fontSize="small" />,
     actionLabel: 'Beautify',
-    inputPlaceholder: '.card{background:#fff;padding:16px;}.card h2{color:#333;font-size:20px;}/* Vui Coding */',
+    inputPlaceholder: '.card{background:#fff;padding:16px;}.card h2{color:#333;font-size:20px;}/* DevKnowledge */',
     inputFormat: 'css',
     outputLanguage: 'css',
     supportsMinify: true,
@@ -364,7 +364,7 @@ export const OPERATIONS: OperationConfig[] = [
     icon: <AutoFixHighIcon fontSize="small" />,
     actionLabel: 'Beautify',
     inputPlaceholder:
-        '@primary: #333; // Vui Coding\n.card{background:#fff;padding:16px;h2{color:@primary;font-size:20px;}}',
+        '@primary: #333; // DevKnowledge\n.card{background:#fff;padding:16px;h2{color:@primary;font-size:20px;}}',
     inputFormat: 'less',
     outputLanguage: 'less',
     supportsMinify: true,
@@ -380,7 +380,7 @@ export const OPERATIONS: OperationConfig[] = [
     icon: <AutoFixHighIcon fontSize="small" />,
     actionLabel: 'Beautify',
     inputPlaceholder:
-        '$primary: #333; // Vui Coding\n.card{background:#fff;padding:16px;h2{color:$primary;font-size:20px;}}',
+        '$primary: #333; // DevKnowledge\n.card{background:#fff;padding:16px;h2{color:$primary;font-size:20px;}}',
     inputFormat: 'scss',
     outputLanguage: 'scss',
     supportsMinify: true,
@@ -396,7 +396,7 @@ export const OPERATIONS: OperationConfig[] = [
     icon: <AutoFixHighIcon fontSize="small" />,
     actionLabel: 'Beautify',
     inputPlaceholder:
-      '<project><name>Vui Coding</name><online>true</online><tools><tool>JSON</tool><tool>Base64</tool></tools></project>',
+      '<project><name>DevKnowledge</name><online>true</online><tools><tool>JSON</tool><tool>Base64</tool></tools></project>',
     inputFormat: 'xml',
     outputLanguage: 'xml',
     supportsMinify: true,
@@ -462,7 +462,7 @@ export const OPERATIONS: OperationConfig[] = [
     actionLabel: 'Convert',
     // A real example to convert, not a restatement of `description` above (see that field's own
     // doc comment for the bug this once was).
-    inputPlaceholder: 'Build ship and share with Vui Coding',
+    inputPlaceholder: 'Build ship and share with DevKnowledge',
     inputFormat: 'text',
     outputLanguage: 'text',
     // No minify option — there's no "compact form" of a case conversion (see
@@ -512,7 +512,11 @@ export const OPERATIONS: OperationConfig[] = [
     description: 'Encode and decode Base64 strings',
     icon: <CodeIcon fontSize="small" />,
     actionLabel: 'Encode',
-    inputPlaceholder: 'Encode and decode Base64 strings',
+    // Real bug fixed here: this used to be the literal `description` text above — exactly the
+    // "placeholder restates the description instead of demonstrating the tool" anti-pattern this
+    // field's own doc comment already warns about (the precedent it names,
+    // `string-case-convert`, had already been fixed; this one hadn't).
+    inputPlaceholder: 'DevKnowledge — Build, Ship, Share',
     inputFormat: 'text',
     outputLanguage: 'text',
     // No minify option — a Base64 encoding has no distinct "compact form" to toggle, same
@@ -539,7 +543,7 @@ export const OPERATIONS: OperationConfig[] = [
     description: 'Encode and decode URL strings',
     icon: <LinkIcon fontSize="small" />,
     actionLabel: 'Encode',
-    inputPlaceholder: 'https://translate.google.com/?hl=vi&sl=vi&tl=en&op=translate',
+    inputPlaceholder: 'https://devknowledge.io/search?q=dev tools&sort=stars desc',
     inputFormat: 'text',
     outputLanguage: 'text',
     // No minify option — a percent-encoding has no distinct "compact form" to toggle, same
@@ -714,11 +718,13 @@ export const OPERATIONS: OperationConfig[] = [
     description: "Read a JWT's header and payload — no signature verification",
     icon: <TokenIcon fontSize="small" />,
     actionLabel: 'Debug',
-    // The exact reported example — decodes to header {"alg":"HS256","typ":"JWT"} and payload
-    // {"sub":"1234567890","name":"Vui Coding","iat":1516239022}, keeping the same "Vui Coding"
-    // project theme every other operation's own placeholder already uses.
+    // Decodes to header {"alg":"HS256","typ":"JWT"} and payload {"sub":"1234567890",
+    // "name":"DevKnowledge","iat":1516239022} — the same theme every other operation's own
+    // placeholder already uses (re-encoded from the original "Vui Coding" name, verified against a
+    // real Node harness before replacing the literal — see this feature's own English-text
+    // normalization pass).
     inputPlaceholder:
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlZ1aSBDb2RpbmciLCJpYXQiOjE1MTYyMzkwMjJ9.demo-signature',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkRldktub3dsZWRnZSIsImlhdCI6MTUxNjIzOTAyMn0.demo-signature',
     // 'text', not 'json' — the input is a dot-separated JWT string, not raw JSON, even though the
     // *output* is JSON; picking 'json' here would make a failed submit incorrectly try the
     // browser's own JSON.parse fast path first (see errorFormatting.ts#buildDevUtilError), which
@@ -742,14 +748,15 @@ export const OPERATIONS: OperationConfig[] = [
     description: 'Try regular expressions immediately',
     icon: <RegexIcon fontSize="small" />,
     actionLabel: 'Test',
-    // The exact reported example, run through the same serialize/parse pair
-    // RegExpTesterPanel.tsx itself uses — one source of truth for the "/pattern/flags\n\ntestText"
-    // shape, so this placeholder can never drift out of sync with what that component actually
-    // parses.
+    // Run through the same serialize/parse pair RegExpTesterPanel.tsx itself uses — one source of
+    // truth for the "/pattern/flags\n\ntestText" shape, so this placeholder can never drift out of
+    // sync with what that component actually parses. `testText` is the shared
+    // `SAMPLE_EMAIL_TEST_TEXT` constant, not a second independently-typed copy of the same
+    // string — RegExpTesterPanel.tsx's own Test String ghost text uses the identical constant.
     inputPlaceholder: serializeRegexInput({
       pattern: '[\\w.+-]+@[\\w.-]+\\.[a-zA-Z]{2,}',
       flags: 'gi',
-      testText: 'hello@vuicoding.me\nsupport@example.com\nnot-an-email',
+      testText: SAMPLE_EMAIL_TEST_TEXT,
     }),
     // `inputFormat`/`outputLanguage`/`supportsMinify` are all unused by RegExpTesterPanel (it
     // renders no CodeMirror editor and reads no minify flag) but still filled in with reasonable
@@ -782,7 +789,7 @@ export const OPERATIONS: OperationConfig[] = [
     description: 'Separate a URL into its components and query string',
     icon: <UrlParserIcon fontSize="small" />,
     actionLabel: 'Parse',
-    inputPlaceholder: 'https://vuicoding.me:443/tools/dev-utils?tab=json&from=homepage#workspace',
+    inputPlaceholder: 'https://devknowledge.io:443/tools/dev-utils?tab=json&from=homepage#workspace',
     inputFormat: 'text',
     outputLanguage: 'json',
     supportsMinify: true,
@@ -893,7 +900,7 @@ export const OPERATIONS: OperationConfig[] = [
     icon: <HtmlPreviewIcon fontSize="small" />,
     actionLabel: 'Preview',
     inputPlaceholder:
-      '<div style="font-family: sans-serif; padding: 16px;"><h2>Vui Coding</h2><p>Online: <strong>true</strong></p>' +
+      '<div style="font-family: sans-serif; padding: 16px;"><h2>DevKnowledge</h2><p>Online: <strong>true</strong></p>' +
       '<ul><li>JSON</li><li>Base64</li><li>JWT</li></ul></div>',
     // 'html' — the input genuinely is HTML, but HtmlPreviewOperation never throws (same lenient
     // jsoup-Cleaner-never-fails shape html-beautify already establishes), so this is honest but
@@ -925,7 +932,7 @@ export const OPERATIONS: OperationConfig[] = [
     icon: <MarkdownPreviewIcon fontSize="small" />,
     actionLabel: 'Preview',
     inputPlaceholder:
-      '# Vui Coding\n\nOnline: **true**\n\n- JSON\n- Base64\n- JWT\n\n| Tool | Stars |\n| --- | --- |\n| JSON | 128 |\n| Base64 | 64 |\n',
+      '# DevKnowledge\n\nOnline: **true**\n\n- JSON\n- Base64\n- JWT\n\n| Tool | Stars |\n| --- | --- |\n| JSON | 128 |\n| Base64 | 64 |\n',
     // 'markdown' — the input is Markdown, not HTML; MarkdownPreviewOperation never throws (same
     // lenient-parser shape html-preview's own backend operation establishes), so this is honest
     // but effectively inert — errorFormatting.ts's own fallback path is never actually reached for
@@ -1037,7 +1044,7 @@ export const OPERATIONS: OperationConfig[] = [
     description: 'Generate a QR code from text or a link, or read one back from an image',
     icon: <QrCodeIcon fontSize="small" />,
     actionLabel: 'Generate',
-    inputPlaceholder: 'https://vuicoding.me',
+    inputPlaceholder: 'https://devknowledge.io',
     // `inputFormat`/`outputLanguage`/`supportsMinify`/`downloadFileName` are all unused by
     // QrCodePanel (it renders no CodeMirror editor, reads no minify flag, and makes no backend
     // call at all) but still filled in with reasonable values to satisfy `OperationConfig`'s

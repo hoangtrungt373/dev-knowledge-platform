@@ -4,15 +4,15 @@ import ContentPasteIcon from '@mui/icons-material/ContentPasteOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import CheckIcon from '@mui/icons-material/CheckOutlined';
 import PlayArrowIcon from '@mui/icons-material/PlayArrowOutlined';
-import OpenInFullIcon from '@mui/icons-material/OpenInFullOutlined';
-import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreenOutlined';
 import SubmitButton from '@shared/components/SubmitButton';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { DevUtilsResponse } from '../types';
 import { useResizableSplit } from '../hooks/useResizableSplit';
 import { usePanelMaximize } from '../hooks/usePanelMaximize';
+import { usePasteText } from '../hooks/usePasteText';
 import PanelHeader from './PanelHeader';
 import PanelResizeHandle from './PanelResizeHandle';
+import MaximizeToggleButton from './MaximizeToggleButton';
 import { useCopyFeedback } from '../hooks/useCopyFeedback';
 import { HIDDEN_TEXT_FIELD_OUTLINE_SX } from '../utils/textFieldStyles';
 
@@ -164,14 +164,7 @@ export default function HashGeneratorPanel({
     }
   }, [input, onSubmit, onOutputChange, showError]);
 
-  const handlePaste = useCallback(async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      onInputChange(text);
-    } catch {
-      showError('Could not read from the clipboard — check your browser permissions.');
-    }
-  }, [onInputChange, showError]);
+  const handlePaste = usePasteText(onInputChange);
 
   const handleCopyValue = useCallback((label: string, value: string) => copy(value, label), [copy]);
 
@@ -204,11 +197,7 @@ export default function HashGeneratorPanel({
             onClick={handleGenerate}
             disabled={!input.trim()}
           />
-          <Tooltip title={maximizedPanel === 'input' ? 'Restore split view' : 'Maximize Input'}>
-            <IconButton size="small" onClick={toggleMaximizeInput}>
-              {maximizedPanel === 'input' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <MaximizeToggleButton label="Input" maximized={maximizedPanel === 'input'} onToggle={toggleMaximizeInput} />
         </PanelHeader>
         <Box sx={{ p: 2 }}>
           <TextField
@@ -252,11 +241,7 @@ export default function HashGeneratorPanel({
         }}
       >
         <PanelHeader title="Output">
-          <Tooltip title={maximizedPanel === 'output' ? 'Restore split view' : 'Maximize Output'}>
-            <IconButton size="small" onClick={toggleMaximizeOutput}>
-              {maximizedPanel === 'output' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <MaximizeToggleButton label="Output" maximized={maximizedPanel === 'output'} onToggle={toggleMaximizeOutput} />
         </PanelHeader>
         <Box sx={{ p: 2, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
           {hashes.length === 0 ? (

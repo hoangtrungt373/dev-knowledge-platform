@@ -1,27 +1,24 @@
 import { useCallback, useState } from 'react';
 import { Box, Button, IconButton, Paper, Stack, TextField, Tooltip, Typography } from '@mui/material';
-import { alpha } from '@mui/material/styles';
 import ContentPasteIcon from '@mui/icons-material/ContentPasteOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import PlayArrowIcon from '@mui/icons-material/PlayArrowOutlined';
-import OpenInFullIcon from '@mui/icons-material/OpenInFullOutlined';
-import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreenOutlined';
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CodeMirror from '@uiw/react-codemirror';
 import SubmitButton from '@shared/components/SubmitButton';
-import { useNotification } from '@shared/contexts/NotificationContext';
 import { DevUtilsResponse } from '../types';
 import { DevUtilError } from '../utils/errorFormatting';
-import { downloadTextFile } from '../utils/downloadTextFile';
-import { parseRegexInput, serializeRegexInput } from '../utils/regexInputFormat';
+import { parseRegexInput, SAMPLE_EMAIL_TEST_TEXT, serializeRegexInput } from '../utils/regexInputFormat';
 import { editorChromeTheme } from '../config/codeMirrorConfig';
 import { GROWABLE_PANEL_MAX_HEIGHT } from '../config/panelSizing';
 import { useResizableSplit } from '../hooks/useResizableSplit';
 import { usePanelMaximize } from '../hooks/usePanelMaximize';
+import { usePasteText } from '../hooks/usePasteText';
+import { useOutputActions } from '../hooks/useOutputActions';
 import PanelHeader from './PanelHeader';
 import PanelResizeHandle from './PanelResizeHandle';
-import { useCopyFeedback } from '../hooks/useCopyFeedback';
+import MaximizeToggleButton from './MaximizeToggleButton';
+import InlineErrorBox from './InlineErrorBox';
 
 interface RegExpTesterPanelProps {
   /** Controlled — same lifted `input`/`output`/`error` state `DevUtilsPage.tsx` already threads
@@ -121,9 +118,8 @@ export default function RegExpTesterPanel({
   onSubmit,
   availableHeight,
 }: RegExpTesterPanelProps): JSX.Element {
-  const { showError } = useNotification();
   const [saving, setSaving] = useState(false);
-  const { copiedKey, copy } = useCopyFeedback();
+  const { copiedKey, handleCopy, handleDownload } = useOutputActions(output, downloadFileName);
 
   const { pattern, flags, testText } = parseRegexInput(input);
 
@@ -174,6 +170,8 @@ export default function RegExpTesterPanel({
     [onInputChange, pattern, flags, testText]
   );
 
+  const handlePasteTestText = usePasteText(useCallback(text => updateField('testText', text), [updateField]));
+
   const handleTest = useCallback(async () => {
     setSaving(true);
     try {
@@ -188,25 +186,6 @@ export default function RegExpTesterPanel({
       setSaving(false);
     }
   }, [input, onSubmit, onOutputChange, onErrorChange]);
-
-  const handlePasteTestText = useCallback(async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      updateField('testText', text);
-    } catch {
-      showError('Could not read from the clipboard — check your browser permissions.');
-    }
-  }, [updateField, showError]);
-
-  const handleCopy = useCallback(() => {
-    if (output === null) return;
-    copy(output, 'output');
-  }, [output, copy]);
-
-  const handleDownload = useCallback(() => {
-    if (output === null) return;
-    downloadTextFile(downloadFileName, output);
-  }, [output, downloadFileName]);
 
   const patternHidden = maximizedPanel === 'testString' || maximizedPanel === 'output';
   const testStringHidden = maximizedPanel === 'pattern' || maximizedPanel === 'output';
@@ -240,11 +219,7 @@ export default function RegExpTesterPanel({
           }}
         >
           <PanelHeader title="Pattern">
-            <Tooltip title={maximizedPanel === 'pattern' ? 'Restore split view' : 'Maximize Pattern'}>
-              <IconButton size="small" onClick={toggleMaximizePattern}>
-                {maximizedPanel === 'pattern' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
+            <MaximizeToggleButton label="Pattern" maximized={maximizedPanel === 'pattern'} onToggle={toggleMaximizePattern} />
           </PanelHeader>
           <Box sx={{ p: 2 }}>
             <Stack direction="row" alignItems="center" spacing={0.5}>
@@ -309,11 +284,11 @@ export default function RegExpTesterPanel({
               onClick={handleTest}
               disabled={!pattern.trim() || !testText.trim()}
             />
-            <Tooltip title={maximizedPanel === 'testString' ? 'Restore split view' : 'Maximize Test String'}>
-              <IconButton size="small" onClick={toggleMaximizeTestString}>
-                {maximizedPanel === 'testString' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
+            <MaximizeToggleButton
+              label="Test String"
+              maximized={maximizedPanel === 'testString'}
+              onToggle={toggleMaximizeTestString}
+            />
           </PanelHeader>
           {/* `position: 'relative'` + CodeMirror's own `position: 'absolute', inset: 0` (via
               `style`) — the same trick DevUtilToolPanel.tsx's Input editor already relies on to
@@ -324,7 +299,7 @@ export default function RegExpTesterPanel({
             <CodeMirror
               value={testText}
               onChange={value => updateField('testText', value)}
-              placeholder={'hello@vuicoding.me\nsupport@example.com\nnot-an-email'}
+              placeholder={SAMPLE_EMAIL_TEST_TEXT}
               theme="light"
               extensions={[editorChromeTheme]}
               height="100%"
@@ -375,40 +350,11 @@ export default function RegExpTesterPanel({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title={maximizedPanel === 'output' ? 'Restore split view' : 'Maximize Output'}>
-            <IconButton size="small" onClick={toggleMaximizeOutput}>
-              {maximizedPanel === 'output' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <MaximizeToggleButton label="Output" maximized={maximizedPanel === 'output'} onToggle={toggleMaximizeOutput} />
         </PanelHeader>
         <Box sx={{ p: 2, flex: 1, minHeight: 0, maxHeight: GROWABLE_PANEL_MAX_HEIGHT, overflow: 'auto' }}>
           {error !== null ? (
-            <Stack
-              direction="row"
-              spacing={1.5}
-              sx={{
-                p: 2,
-                borderRadius: 1,
-                border: '1px solid',
-                borderColor: 'error.main',
-                bgcolor: theme => alpha(theme.palette.error.main, 0.08),
-              }}
-            >
-              <ErrorOutlineIcon fontSize="small" color="error" sx={{ mt: '2px' }} />
-              <Box sx={{ minWidth: 0 }}>
-                <Typography variant="subtitle2" fontWeight={700} color="error.main">
-                  {error.headline}
-                </Typography>
-                <Typography
-                  component="pre"
-                  variant="body2"
-                  color="text.primary"
-                  sx={{ m: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'monospace' }}
-                >
-                  {error.detail}
-                </Typography>
-              </Box>
-            </Stack>
+            <InlineErrorBox error={error} monospaceDetail />
           ) : output !== null ? (
             <Typography
               component="pre"

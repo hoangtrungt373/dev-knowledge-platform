@@ -6,15 +6,16 @@ import BrokenImageIcon from '@mui/icons-material/BrokenImageOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import CheckIcon from '@mui/icons-material/CheckOutlined';
-import OpenInFullIcon from '@mui/icons-material/OpenInFullOutlined';
-import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreenOutlined';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useResizableSplit } from '../hooks/useResizableSplit';
 import { usePanelMaximize } from '../hooks/usePanelMaximize';
 import PanelHeader from './PanelHeader';
 import PanelResizeHandle from './PanelResizeHandle';
+import MaximizeToggleButton from './MaximizeToggleButton';
 import { useCopyFeedback } from '../hooks/useCopyFeedback';
 import { HIDDEN_TEXT_FIELD_OUTLINE_SX } from '../utils/textFieldStyles';
+import { DEFAULT_MAX_IMAGE_SIZE_BYTES, formatBytes, validateImageFile } from '../utils/imageFile';
+import { extractImageFileFromClipboardEvent, readImageFromClipboard } from '../utils/clipboardImage';
 
 interface Base64ImagePanelProps {
   /** Controlled — same lifted `input` state `DevUtilsPage.tsx` already threads into
@@ -54,8 +55,9 @@ const CHECKERBOARD_BACKGROUND = {
 // A generous but finite cap, purely a client-side UX safeguard (unlike every other operation's
 // own MAX_INPUT_LENGTH, there is no backend round trip here at all to enforce one) — a very large
 // image would otherwise base64-encode into a multi-megabyte string sitting in React state and a
-// plain <textarea>, which gets sluggish well before this limit.
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+// plain <textarea>, which gets sluggish well before this limit. `QrCodePanel.tsx` uses this same
+// default — see `utils/imageFile.ts`'s own doc comment.
+const MAX_FILE_SIZE_BYTES = DEFAULT_MAX_IMAGE_SIZE_BYTES;
 
 // Restricted to a fixed, explicit allow-list per request — deliberately narrower than the more
 // permissive `file.type.startsWith('image/')` check this component used before (which would also
@@ -71,10 +73,6 @@ const ALLOWED_IMAGE_TYPES: Record<string, string> = {
 };
 const ALLOWED_IMAGE_TYPES_LABEL = 'PNG, JPG, GIF, WebP, SVG';
 const FILE_INPUT_ACCEPT = Object.keys(ALLOWED_IMAGE_TYPES).join(',');
-
-function formatBytes(bytes: number): string {
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 // Parses a `data:<mime>;base64,<data>` string apart — used both to decide whether Download should
 // be enabled at all and to actually build the Blob it downloads. Deliberately returns `null`
@@ -227,12 +225,9 @@ export default function Base64ImagePanel({
 
   const handleFile = useCallback(
     (file: File) => {
-      if (!(file.type in ALLOWED_IMAGE_TYPES)) {
-        showError(`"${file.name}" isn't a supported image type — allowed: ${ALLOWED_IMAGE_TYPES_LABEL}.`);
-        return;
-      }
-      if (file.size > MAX_FILE_SIZE_BYTES) {
-        showError(`"${file.name}" is ${formatBytes(file.size)} — the limit is ${formatBytes(MAX_FILE_SIZE_BYTES)}.`);
+      const validationError = validateImageFile(file, ALLOWED_IMAGE_TYPES, ALLOWED_IMAGE_TYPES_LABEL, MAX_FILE_SIZE_BYTES);
+      if (validationError) {
+        showError(validationError);
         return;
       }
       const reader = new FileReader();
@@ -276,21 +271,10 @@ export default function Base64ImagePanel({
     // rendered `<textarea>`'s; the event's `clipboardData` (the only thing read below) doesn't
     // depend on which element type this is anyway.
     (e: ReactClipboardEvent<HTMLDivElement>) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      // Plain indexed loop, not for...of — DataTransferItemList's own TS typings don't guarantee
-      // an iterator the way FileList's do, so a for...of here risks a downlevelIteration error
-      // depending on this project's own tsconfig target.
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        if (item.type.startsWith('image/')) {
-          const file = item.getAsFile();
-          if (file) {
-            e.preventDefault();
-            handleFile(file);
-          }
-          return;
-        }
+      const file = extractImageFileFromClipboardEvent(e.clipboardData?.items);
+      if (file) {
+        e.preventDefault();
+        handleFile(file);
       }
     },
     [handleFile]
@@ -304,17 +288,10 @@ export default function Base64ImagePanel({
   // the button and native paste never disagree about which one wins when both are present.
   const handlePasteButtonClick = useCallback(async () => {
     try {
-      if (navigator.clipboard.read) {
-        const items = await navigator.clipboard.read();
-        for (const item of items) {
-          const imageType = item.types.find(type => type.startsWith('image/'));
-          if (imageType) {
-            const blob = await item.getType(imageType);
-            const extension = ALLOWED_IMAGE_TYPES[imageType] ?? 'png';
-            handleFile(new File([blob], `pasted.${extension}`, { type: imageType }));
-            return;
-          }
-        }
+      const file = await readImageFromClipboard(ALLOWED_IMAGE_TYPES);
+      if (file) {
+        handleFile(file);
+        return;
       }
       const text = await navigator.clipboard.readText();
       if (text) {
@@ -386,11 +363,7 @@ export default function Base64ImagePanel({
           }}
         >
           <PanelHeader title="Upload Image">
-            <Tooltip title={maximizedPanel === 'upload' ? 'Restore split view' : 'Maximize Upload Image'}>
-              <IconButton size="small" onClick={toggleMaximizeUpload}>
-                {maximizedPanel === 'upload' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
+            <MaximizeToggleButton label="Upload Image" maximized={maximizedPanel === 'upload'} onToggle={toggleMaximizeUpload} />
           </PanelHeader>
           <input
             ref={fileInputRef}
@@ -486,11 +459,11 @@ export default function Base64ImagePanel({
                 </IconButton>
               </span>
             </Tooltip>
-            <Tooltip title={maximizedPanel === 'dataUrl' ? 'Restore split view' : 'Maximize Image Data URL'}>
-              <IconButton size="small" onClick={toggleMaximizeDataUrl}>
-                {maximizedPanel === 'dataUrl' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
+            <MaximizeToggleButton
+              label="Image Data URL"
+              maximized={maximizedPanel === 'dataUrl'}
+              onToggle={toggleMaximizeDataUrl}
+            />
           </PanelHeader>
           {/* Fills this card's own flex-grown height via the older `!important`-override
               TextField technique (see this component's own doc comment for why this box stayed a
@@ -570,11 +543,7 @@ export default function Base64ImagePanel({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title={maximizedPanel === 'preview' ? 'Restore split view' : 'Maximize Preview'}>
-            <IconButton size="small" onClick={toggleMaximizePreview}>
-              {maximizedPanel === 'preview' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <MaximizeToggleButton label="Preview" maximized={maximizedPanel === 'preview'} onToggle={toggleMaximizePreview} />
         </PanelHeader>
         <Box
           sx={{

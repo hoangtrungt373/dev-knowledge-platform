@@ -5,19 +5,18 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import CheckIcon from '@mui/icons-material/CheckOutlined';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import PlayArrowIcon from '@mui/icons-material/PlayArrowOutlined';
-import OpenInFullIcon from '@mui/icons-material/OpenInFullOutlined';
-import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreenOutlined';
 import CodeMirror from '@uiw/react-codemirror';
 import SubmitButton from '@shared/components/SubmitButton';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { DevUtilsResponse } from '../types';
-import { downloadTextFile } from '../utils/downloadTextFile';
 import { editorChromeTheme, getCodeMirrorExtensions } from '../config/codeMirrorConfig';
 import { useResizableSplit } from '../hooks/useResizableSplit';
 import { usePanelMaximize } from '../hooks/usePanelMaximize';
+import { usePasteText } from '../hooks/usePasteText';
+import { useOutputActions } from '../hooks/useOutputActions';
 import PanelHeader from './PanelHeader';
 import PanelResizeHandle from './PanelResizeHandle';
-import { useCopyFeedback } from '../hooks/useCopyFeedback';
+import MaximizeToggleButton from './MaximizeToggleButton';
 
 interface HtmlPreviewPanelProps {
   /** Controlled — same lifted `input` state `DevUtilsPage.tsx` already threads into
@@ -101,7 +100,8 @@ export default function HtmlPreviewPanel({
   const { showError } = useNotification();
   const [saving, setSaving] = useState(false);
   const [output, setOutput] = useState<string | null>(null);
-  const { copiedKey, copy } = useCopyFeedback();
+  const { copiedKey, handleCopy, handleDownload } = useOutputActions(output, downloadFileName);
+  const handlePaste = usePasteText(onInputChange);
 
   const { maximizedPanel, toggle: toggleMaximize } = usePanelMaximize<'input' | 'output'>();
   const toggleMaximizeInput = useCallback(() => toggleMaximize('input'), [toggleMaximize]);
@@ -134,25 +134,6 @@ export default function HtmlPreviewPanel({
     }
   }, [input, onSubmit, showError]);
 
-  const handlePaste = useCallback(async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      onInputChange(text);
-    } catch {
-      showError('Could not read from the clipboard — check your browser permissions.');
-    }
-  }, [onInputChange, showError]);
-
-  const handleCopy = useCallback(() => {
-    if (output === null) return;
-    copy(output, 'output');
-  }, [output, copy]);
-
-  const handleDownload = useCallback(() => {
-    if (output === null) return;
-    downloadTextFile(downloadFileName, output);
-  }, [output, downloadFileName]);
-
   const inputHidden = maximizedPanel === 'output';
   const outputHidden = maximizedPanel === 'input';
 
@@ -183,11 +164,7 @@ export default function HtmlPreviewPanel({
             onClick={handlePreview}
             disabled={!input.trim()}
           />
-          <Tooltip title={maximizedPanel === 'input' ? 'Restore split view' : 'Maximize Input'}>
-            <IconButton size="small" onClick={toggleMaximizeInput}>
-              {maximizedPanel === 'input' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <MaximizeToggleButton label="Input" maximized={maximizedPanel === 'input'} onToggle={toggleMaximizeInput} />
         </PanelHeader>
         {/* `position: 'relative'` + CodeMirror's own `position: 'absolute', inset: 0` (via
             `style`) — the same trick DevUtilToolPanel.tsx's Input editor already relies on to fill
@@ -246,11 +223,7 @@ export default function HtmlPreviewPanel({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title={maximizedPanel === 'output' ? 'Restore split view' : 'Maximize Preview'}>
-            <IconButton size="small" onClick={toggleMaximizeOutput}>
-              {maximizedPanel === 'output' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <MaximizeToggleButton label="Preview" maximized={maximizedPanel === 'output'} onToggle={toggleMaximizeOutput} />
         </PanelHeader>
         {output === null ? (
           <Box sx={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#ffffff' }}>

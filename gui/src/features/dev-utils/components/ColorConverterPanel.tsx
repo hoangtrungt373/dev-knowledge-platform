@@ -1,22 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, Button, IconButton, Paper, Stack, TextField, Tooltip, Typography } from '@mui/material';
-import { alpha } from '@mui/material/styles';
 import ContentPasteIcon from '@mui/icons-material/ContentPasteOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import CheckIcon from '@mui/icons-material/CheckOutlined';
 import PlayArrowIcon from '@mui/icons-material/PlayArrowOutlined';
-import OpenInFullIcon from '@mui/icons-material/OpenInFullOutlined';
-import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreenOutlined';
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import SubmitButton from '@shared/components/SubmitButton';
-import { useNotification } from '@shared/contexts/NotificationContext';
 import { devUtilsApi } from '../api/devUtilsApi';
 import { ColorConversionResponse } from '../types';
 import { DevUtilError } from '../utils/errorFormatting';
 import { useResizableSplit } from '../hooks/useResizableSplit';
 import { usePanelMaximize } from '../hooks/usePanelMaximize';
+import { usePasteText } from '../hooks/usePasteText';
 import PanelHeader from './PanelHeader';
 import PanelResizeHandle from './PanelResizeHandle';
+import MaximizeToggleButton from './MaximizeToggleButton';
+import InlineErrorBox from './InlineErrorBox';
 import { useCopyFeedback } from '../hooks/useCopyFeedback';
 
 interface ColorConverterPanelProps {
@@ -182,11 +180,11 @@ export default function ColorConverterPanel({
   actionLabel,
   availableHeight,
 }: ColorConverterPanelProps): JSX.Element {
-  const { showError } = useNotification();
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<ColorConversionResponse | null>(null);
   const [error, setError] = useState<DevUtilError | null>(null);
   const { copiedKey, copy } = useCopyFeedback();
+  const handlePaste = usePasteText(onInputChange);
 
   const { maximizedPanel, toggle: toggleMaximize } = usePanelMaximize<'input' | 'output'>();
   const toggleMaximizeInput = useCallback(() => toggleMaximize('input'), [toggleMaximize]);
@@ -243,15 +241,6 @@ export default function ColorConverterPanel({
     }
   }, [input]);
 
-  const handlePaste = useCallback(async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      onInputChange(text);
-    } catch {
-      showError('Could not read from the clipboard — check your browser permissions.');
-    }
-  }, [onInputChange, showError]);
-
   const handleCopyValue = useCallback((key: string, value: string) => copy(value, key), [copy]);
 
   const cards = result !== null ? toResultCards(result) : [];
@@ -283,11 +272,7 @@ export default function ColorConverterPanel({
             onClick={handleConvert}
             disabled={!input.trim()}
           />
-          <Tooltip title={maximizedPanel === 'input' ? 'Restore split view' : 'Maximize Input'}>
-            <IconButton size="small" onClick={toggleMaximizeInput}>
-              {maximizedPanel === 'input' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <MaximizeToggleButton label="Input" maximized={maximizedPanel === 'input'} onToggle={toggleMaximizeInput} />
         </PanelHeader>
         <Box sx={{ p: 2 }}>
           <Stack direction="row" spacing={2} alignItems="center">
@@ -376,35 +361,11 @@ export default function ColorConverterPanel({
         }}
       >
         <PanelHeader title="Output">
-          <Tooltip title={maximizedPanel === 'output' ? 'Restore split view' : 'Maximize Output'}>
-            <IconButton size="small" onClick={toggleMaximizeOutput}>
-              {maximizedPanel === 'output' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <MaximizeToggleButton label="Output" maximized={maximizedPanel === 'output'} onToggle={toggleMaximizeOutput} />
         </PanelHeader>
         <Box sx={{ p: 2, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
           {error !== null ? (
-            <Stack
-              direction="row"
-              spacing={1.5}
-              sx={{
-                p: 2,
-                borderRadius: 1,
-                border: '1px solid',
-                borderColor: 'error.main',
-                bgcolor: theme => alpha(theme.palette.error.main, 0.08),
-              }}
-            >
-              <ErrorOutlineIcon fontSize="small" color="error" sx={{ mt: '2px' }} />
-              <Box sx={{ minWidth: 0 }}>
-                <Typography variant="subtitle2" fontWeight={700} color="error.main">
-                  {error.headline}
-                </Typography>
-                <Typography variant="body2" color="text.primary" sx={{ wordBreak: 'break-word' }}>
-                  {error.detail}
-                </Typography>
-              </Box>
-            </Stack>
+            <InlineErrorBox error={error} />
           ) : cards.length === 0 ? (
             <Paper
               variant="outlined"

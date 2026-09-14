@@ -4,6 +4,14 @@ export interface RegexTesterFields {
   testText: string;
 }
 
+/** Shared sample test text for the email-matching regex example — used both by
+ * `config/operations.tsx#regexp-tester`'s own `inputPlaceholder` (via {@link serializeRegexInput})
+ * and by `components/RegExpTesterPanel.tsx`'s own Test String ghost text, which used to be two
+ * independently-typed copies of the same literal string risking drift. Two IANA-reserved example
+ * domains (`example.com`/`example.org`, RFC 2606) rather than a made-up one, plus a non-matching
+ * line to demonstrate the regex actually excludes it. */
+export const SAMPLE_EMAIL_TEST_TEXT = 'hello@example.com\nsupport@example.org\nnot-an-email';
+
 /**
  * Serializes/deserializes RegExp Tester's 3 logically distinct fields (pattern, flags, test text)
  * into the single lifted `input` string `DevUtilsPage.tsx`'s Sample/Clear buttons operate on — the

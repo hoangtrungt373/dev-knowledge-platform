@@ -4385,6 +4385,60 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       `generateLoremIpsum(paragraphs)`.
     - Verified via a clean `tsc --noEmit` and a successful `vite build` only — no Docker in this
       sandbox, so the actual slider/generate/copy/download flow is unverified in a real browser.
+  - **Follow-up: a third `features/dev-utils` code-quality pass, per direct request ("Recheck all
+    operation in gui dev-utils: extract duplication, clean up code, format input/sample text —
+    English for all cases"), covering all 29 files in the folder** (the two earlier passes — see
+    this section's own "code-quality analysis pass" entries — predate `qr-code`/`lorem-ipsum` and
+    several other operations, so neither one caught what those newer panels had re-duplicated).
+    - **New `hooks/usePasteText.ts`** — the clipboard-paste-with-toast-on-failure handler
+      `DevUtilToolPanel.tsx`/`HashGeneratorPanel.tsx`/`ColorConverterPanel.tsx`/
+      `HtmlPreviewPanel.tsx` each hand-rolled independently (plus a field-targeted variant
+      `RegExpTesterPanel.tsx`/`TextDiffPanel.tsx` each hand-rolled separately) — one hook now
+      covers all six call sites.
+    - **New `hooks/useOutputActions.ts`** — the Copy/Download-the-whole-output pair
+      `DevUtilToolPanel.tsx`/`RegExpTesterPanel.tsx`/`HtmlPreviewPanel.tsx`/`LoremIpsumPanel.tsx`/
+      `TextDiffPanel.tsx` each hand-rolled independently, wrapping `useCopyFeedback` — also a real
+      (minor) UX fix in passing: every custom panel's Download button now shows the same
+      "Downloaded ..." toast `DevUtilToolPanel.tsx` alone used to show, instead of one panel
+      silently behaving differently from the other four.
+    - **New `components/MaximizeToggleButton.tsx`** — this folder's single biggest duplication:
+      the `Tooltip`+`IconButton`+`OpenInFullIcon`/`CloseFullscreenIcon` maximize/restore block was
+      repeated **over 20 times** across every Input/Output-shaped panel. One shared button now
+      covers all of them.
+    - **New `components/InlineErrorBox.tsx`** — the inline "Cannot be processed" error card
+      `RegExpTesterPanel.tsx`/`ColorConverterPanel.tsx` each rendered independently (a
+      `monospaceDetail` prop preserves the one real difference between them — RegExp's own error
+      can come back multi-line with a caret pointer); `QrCodePanel.tsx`'s own third hand-rolled
+      copy now uses it too. `DevUtilToolPanel.tsx`'s own error box deliberately stays out of this
+      extraction — its Output background is independently state-driven, so it genuinely needs
+      fixed color literals rather than the theme tokens this shared component uses.
+    - **New `utils/imageFile.ts`/`utils/clipboardImage.ts`** — `Base64ImagePanel.tsx`'s own
+      file-validation/`formatBytes`/clipboard-image-scanning logic had been re-implemented
+      byte-for-byte in `QrCodePanel.tsx` (added in a later session, after `Base64ImagePanel.tsx`'s
+      own earlier code-quality pass had already run) — both panels' `handleFile`/paste handlers
+      now share one implementation each, confirmed zero behavior change via the diff.
+    - **Real bug fixed**: `config/operations.tsx`'s `base64-string` entry had `inputPlaceholder`
+      set to the literal same string as its own `description` — exactly the "placeholder restates
+      the description" anti-pattern that field's own doc comment already names
+      `string-case-convert` as the (already-fixed) precedent for. Fixed to a real example value.
+    - **English-text/branding normalization, per direct request.** Found the fictional sample-data
+      theme had drifted across three inconsistent spellings — `"Vui Coding"` (a literal Vietnamese
+      word, 11 placeholders), `"DevKnowledge"` (2), `"Dev Knowledge Platform"` (1) — plus a
+      Vietnamese-language-coded URL example (`url-string`'s own `hl=vi&sl=vi&tl=en` Google
+      Translate query) and `regexp-tester`'s own sample email domain duplicated as two
+      independently-typed literals across two files. Standardized every "Vui Coding" onto
+      `"DevKnowledge"` (11 operations); replaced `url-string`'s placeholder with a plain English
+      URL; replaced every remaining `vuicoding.me` with `devknowledge.io`; re-encoded
+      `jwt-debugger`'s demo JWT payload (`"Vui Coding"` → `"DevKnowledge"`) via a real Node harness
+      rather than hand-editing base64url, then verified the new token still decodes correctly. New
+      **`utils/regexInputFormat.ts#SAMPLE_EMAIL_TEST_TEXT`** (two IANA-reserved `example.com`/
+      `example.org` addresses, RFC 2606) replaces `regexp-tester`'s own duplicated email-sample
+      literal, imported by both `config/operations.tsx` and `RegExpTesterPanel.tsx` so the two can
+      no longer drift apart.
+    - Verified via a clean `tsc --noEmit` and a successful `vite build` after every step — no
+      Docker in this sandbox, so the actual on-screen result (every panel's Paste/Copy/Download/
+      Maximize buttons, the inline error boxes, and the corrected sample text) is unverified in a
+      real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

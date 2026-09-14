@@ -5,22 +5,21 @@ import ContentPasteIcon from '@mui/icons-material/ContentPasteOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import PlayArrowIcon from '@mui/icons-material/PlayArrowOutlined';
-import OpenInFullIcon from '@mui/icons-material/OpenInFullOutlined';
-import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreenOutlined';
 import CodeMirror from '@uiw/react-codemirror';
 import SubmitButton from '@shared/components/SubmitButton';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { devUtilsApi } from '../api/devUtilsApi';
 import { DiffLine, TextDiffResponse } from '../types';
-import { downloadTextFile } from '../utils/downloadTextFile';
 import { parseTextDiffInput, serializeTextDiffInput } from '../utils/textDiffInputFormat';
 import { editorChromeTheme } from '../config/codeMirrorConfig';
 import { GROWABLE_PANEL_MAX_HEIGHT } from '../config/panelSizing';
 import { useResizableSplit } from '../hooks/useResizableSplit';
 import { usePanelMaximize } from '../hooks/usePanelMaximize';
+import { usePasteText } from '../hooks/usePasteText';
+import { useOutputActions } from '../hooks/useOutputActions';
 import PanelHeader from './PanelHeader';
 import PanelResizeHandle from './PanelResizeHandle';
-import { useCopyFeedback } from '../hooks/useCopyFeedback';
+import MaximizeToggleButton from './MaximizeToggleButton';
 
 /** GitHub-style old/new line-number gutter widths for the Diff panel below — wide enough for a
  * comfortable 4-digit line count (this operation caps input at 2000 lines each side, see
@@ -182,7 +181,6 @@ export default function TextDiffPanel({
   const { showError } = useNotification();
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<TextDiffResponse | null>(null);
-  const { copiedKey, copy } = useCopyFeedback();
 
   const { original, updated } = parseTextDiffInput(input);
 
@@ -252,33 +250,15 @@ export default function TextDiffPanel({
     }
   }, [original, updated, showError]);
 
-  const handlePaste = useCallback(
-    async (field: 'original' | 'updated') => {
-      try {
-        const text = await navigator.clipboard.readText();
-        updateField(field, text);
-      } catch {
-        showError('Could not read from the clipboard — check your browser permissions.');
-      }
-    },
-    [updateField, showError]
-  );
+  const handlePasteOriginal = usePasteText(useCallback(text => updateField('original', text), [updateField]));
+  const handlePasteUpdated = usePasteText(useCallback(text => updateField('updated', text), [updateField]));
 
   // Recomputed only when a new comparison result actually lands, not on every keystroke in
   // Original/Updated (those don't touch `result` at all until Compare is clicked again).
   const diffRows = useMemo(() => (result ? buildDiffLineRows(result.lines) : []), [result]);
 
   const unifiedText = result ? formatUnifiedDiffText(result.lines) : null;
-
-  const handleCopy = useCallback(() => {
-    if (unifiedText === null) return;
-    copy(unifiedText, 'output');
-  }, [unifiedText, copy]);
-
-  const handleDownload = useCallback(() => {
-    if (unifiedText === null) return;
-    downloadTextFile(downloadFileName, unifiedText);
-  }, [unifiedText, downloadFileName]);
+  const { copiedKey, handleCopy, handleDownload } = useOutputActions(unifiedText, downloadFileName);
 
   const originalHidden = maximizedPanel === 'updated' || maximizedPanel === 'diff';
   const updatedHidden = maximizedPanel === 'original' || maximizedPanel === 'diff';
@@ -312,14 +292,10 @@ export default function TextDiffPanel({
           }}
         >
           <PanelHeader title="Original">
-            <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={() => handlePaste('original')}>
+            <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={handlePasteOriginal}>
               Paste
             </Button>
-            <Tooltip title={maximizedPanel === 'original' ? 'Restore split view' : 'Maximize Original'}>
-              <IconButton size="small" onClick={toggleMaximizeOriginal}>
-                {maximizedPanel === 'original' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
+            <MaximizeToggleButton label="Original" maximized={maximizedPanel === 'original'} onToggle={toggleMaximizeOriginal} />
           </PanelHeader>
           {/* `position: 'relative'` + CodeMirror's own `position: 'absolute', inset: 0` (via
               `style`) — the same trick DevUtilToolPanel.tsx's Input editor already relies on to
@@ -363,7 +339,7 @@ export default function TextDiffPanel({
           }}
         >
           <PanelHeader title="Updated">
-            <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={() => handlePaste('updated')}>
+            <Button size="small" variant="outlined" startIcon={<ContentPasteIcon fontSize="small" />} onClick={handlePasteUpdated}>
               Paste
             </Button>
             <SubmitButton
@@ -373,11 +349,7 @@ export default function TextDiffPanel({
               startIcon={<PlayArrowIcon fontSize="small" />}
               onClick={handleCompare}
             />
-            <Tooltip title={maximizedPanel === 'updated' ? 'Restore split view' : 'Maximize Updated'}>
-              <IconButton size="small" onClick={toggleMaximizeUpdated}>
-                {maximizedPanel === 'updated' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
+            <MaximizeToggleButton label="Updated" maximized={maximizedPanel === 'updated'} onToggle={toggleMaximizeUpdated} />
           </PanelHeader>
           <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>
             <CodeMirror
@@ -444,11 +416,7 @@ export default function TextDiffPanel({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title={maximizedPanel === 'diff' ? 'Restore split view' : 'Maximize Diff'}>
-            <IconButton size="small" onClick={toggleMaximizeDiff}>
-              {maximizedPanel === 'diff' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <MaximizeToggleButton label="Diff" maximized={maximizedPanel === 'diff'} onToggle={toggleMaximizeDiff} />
         </PanelHeader>
         <Box sx={{ flex: 1, minHeight: 0, maxHeight: GROWABLE_PANEL_MAX_HEIGHT, overflow: 'auto' }}>
           {result === null ? (

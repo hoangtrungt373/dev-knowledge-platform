@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState, ChangeEvent, DragEvent as ReactDragEvent, ClipboardEvent as ReactClipboardEvent } from 'react';
-import { Box, Button, IconButton, Paper, Stack, TextField, Tooltip, Typography } from '@mui/material';
-import { alpha } from '@mui/material/styles';
+import { Box, Button, IconButton, Paper, TextField, Tooltip, Typography } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUploadOutlined';
 import ContentPasteIcon from '@mui/icons-material/ContentPasteOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
@@ -8,9 +7,6 @@ import CheckIcon from '@mui/icons-material/CheckOutlined';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import OpenInNewIcon from '@mui/icons-material/OpenInNewOutlined';
 import QrCode2Icon from '@mui/icons-material/QrCode2Outlined';
-import OpenInFullIcon from '@mui/icons-material/OpenInFullOutlined';
-import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreenOutlined';
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
 import SubmitButton from '@shared/components/SubmitButton';
@@ -21,8 +17,12 @@ import { useResizableSplit } from '../hooks/useResizableSplit';
 import { usePanelMaximize } from '../hooks/usePanelMaximize';
 import PanelHeader from './PanelHeader';
 import PanelResizeHandle from './PanelResizeHandle';
+import MaximizeToggleButton from './MaximizeToggleButton';
+import InlineErrorBox from './InlineErrorBox';
 import { useCopyFeedback } from '../hooks/useCopyFeedback';
 import { HIDDEN_TEXT_FIELD_OUTLINE_SX } from '../utils/textFieldStyles';
+import { DEFAULT_MAX_IMAGE_SIZE_BYTES, formatBytes, validateImageFile } from '../utils/imageFile';
+import { extractImageFileFromClipboardEvent, readImageFromClipboard } from '../utils/clipboardImage';
 
 interface QrCodePanelProps {
   /** Controlled — same lifted `input` state `DevUtilsPage.tsx` already threads into
@@ -38,9 +38,10 @@ interface QrCodePanelProps {
 }
 
 // A generous but finite cap, purely a client-side UX safeguard — the same role
-// Base64ImagePanel.tsx's own MAX_FILE_SIZE_BYTES plays, reused verbatim (there is no backend round
-// trip here either to enforce one).
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+// Base64ImagePanel.tsx's own MAX_FILE_SIZE_BYTES plays, reused via the shared
+// utils/imageFile.ts#DEFAULT_MAX_IMAGE_SIZE_BYTES constant (there is no backend round trip here
+// either to enforce one).
+const MAX_FILE_SIZE_BYTES = DEFAULT_MAX_IMAGE_SIZE_BYTES;
 
 const ALLOWED_IMAGE_TYPES: Record<string, string> = {
   'image/png': 'png',
@@ -52,10 +53,6 @@ const ALLOWED_IMAGE_TYPES_LABEL = 'PNG, JPG, WebP, GIF';
 const FILE_INPUT_ACCEPT = Object.keys(ALLOWED_IMAGE_TYPES).join(',');
 
 const URL_PATTERN = /^https?:\/\//i;
-
-function formatBytes(bytes: number): string {
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 /** Decodes whatever QR code is in `imageDataUrl`, via an off-screen `<canvas>` (the only way to get
  * at an image's raw pixels in a browser) and `jsQR` — rejects with a plain `Error` (never a special
@@ -229,12 +226,9 @@ export default function QrCodePanel({
 
   const handleFile = useCallback(
     (file: File) => {
-      if (!(file.type in ALLOWED_IMAGE_TYPES)) {
-        showError(`"${file.name}" isn't a supported image type — allowed: ${ALLOWED_IMAGE_TYPES_LABEL}.`);
-        return;
-      }
-      if (file.size > MAX_FILE_SIZE_BYTES) {
-        showError(`"${file.name}" is ${formatBytes(file.size)} — the limit is ${formatBytes(MAX_FILE_SIZE_BYTES)}.`);
+      const validationError = validateImageFile(file, ALLOWED_IMAGE_TYPES, ALLOWED_IMAGE_TYPES_LABEL, MAX_FILE_SIZE_BYTES);
+      if (validationError) {
+        showError(validationError);
         return;
       }
       const reader = new FileReader();
@@ -281,18 +275,10 @@ export default function QrCodePanel({
   // text fallback here, since this card has no text field of its own to paste plain text into.
   const handleDropzonePaste = useCallback(
     (e: ReactClipboardEvent<HTMLDivElement>) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        if (item.type.startsWith('image/')) {
-          const file = item.getAsFile();
-          if (file) {
-            e.preventDefault();
-            handleFile(file);
-          }
-          return;
-        }
+      const file = extractImageFileFromClipboardEvent(e.clipboardData?.items);
+      if (file) {
+        e.preventDefault();
+        handleFile(file);
       }
     },
     [handleFile]
@@ -300,17 +286,10 @@ export default function QrCodePanel({
 
   const handlePasteButtonClick = useCallback(async () => {
     try {
-      if (navigator.clipboard.read) {
-        const items = await navigator.clipboard.read();
-        for (const item of items) {
-          const imageType = item.types.find(type => type.startsWith('image/'));
-          if (imageType) {
-            const blob = await item.getType(imageType);
-            const extension = ALLOWED_IMAGE_TYPES[imageType] ?? 'png';
-            handleFile(new File([blob], `pasted.${extension}`, { type: imageType }));
-            return;
-          }
-        }
+      const file = await readImageFromClipboard(ALLOWED_IMAGE_TYPES);
+      if (file) {
+        handleFile(file);
+        return;
       }
       showError('The clipboard has no image to read a QR code from.');
     } catch {
@@ -384,11 +363,11 @@ export default function QrCodePanel({
               onClick={handleGenerate}
               disabled={!input.trim()}
             />
-            <Tooltip title={maximizedPanel === 'generate' ? 'Restore split view' : 'Maximize Generate QR Code'}>
-              <IconButton size="small" onClick={toggleMaximizeGenerate}>
-                {maximizedPanel === 'generate' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
+            <MaximizeToggleButton
+              label="Generate QR Code"
+              maximized={maximizedPanel === 'generate'}
+              onToggle={toggleMaximizeGenerate}
+            />
           </PanelHeader>
           <Box sx={{ p: 2 }}>
             <TextField
@@ -439,11 +418,7 @@ export default function QrCodePanel({
             >
               Paste
             </Button>
-            <Tooltip title={maximizedPanel === 'read' ? 'Restore split view' : 'Maximize Read QR Code'}>
-              <IconButton size="small" onClick={toggleMaximizeRead}>
-                {maximizedPanel === 'read' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
+            <MaximizeToggleButton label="Read QR Code" maximized={maximizedPanel === 'read'} onToggle={toggleMaximizeRead} />
           </PanelHeader>
           <input
             ref={fileInputRef}
@@ -555,35 +530,11 @@ export default function QrCodePanel({
               </Tooltip>
             </>
           )}
-          <Tooltip title={maximizedPanel === 'output' ? 'Restore split view' : 'Maximize Output'}>
-            <IconButton size="small" onClick={toggleMaximizeOutput}>
-              {maximizedPanel === 'output' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <MaximizeToggleButton label="Output" maximized={maximizedPanel === 'output'} onToggle={toggleMaximizeOutput} />
         </PanelHeader>
         <Box sx={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2, overflow: 'auto' }}>
           {error !== null ? (
-            <Stack
-              direction="row"
-              spacing={1.5}
-              sx={{
-                p: 2,
-                borderRadius: 1,
-                border: '1px solid',
-                borderColor: 'error.main',
-                bgcolor: theme => alpha(theme.palette.error.main, 0.08),
-              }}
-            >
-              <ErrorOutlineIcon fontSize="small" color="error" sx={{ mt: '2px' }} />
-              <Box sx={{ minWidth: 0 }}>
-                <Typography variant="subtitle2" fontWeight={700} color="error.main">
-                  {error.headline}
-                </Typography>
-                <Typography variant="body2" color="text.primary" sx={{ wordBreak: 'break-word' }}>
-                  {error.detail}
-                </Typography>
-              </Box>
-            </Stack>
+            <InlineErrorBox error={error} />
           ) : mode === 'generate' && qrImageDataUrl !== null ? (
             <img src={qrImageDataUrl} alt="Generated QR code" style={{ maxWidth: '100%', maxHeight: '100%' }} />
           ) : mode === 'read' ? (

@@ -3,8 +3,6 @@ import { Autocomplete, Box, Button, IconButton, Paper, Stack, TextField, Tooltip
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import CheckIcon from '@mui/icons-material/CheckOutlined';
 import PlayArrowIcon from '@mui/icons-material/PlayArrowOutlined';
-import OpenInFullIcon from '@mui/icons-material/OpenInFullOutlined';
-import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreenOutlined';
 import SubmitButton from '@shared/components/SubmitButton';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { devUtilsApi } from '../api/devUtilsApi';
@@ -15,6 +13,7 @@ import { useResizableSplit } from '../hooks/useResizableSplit';
 import { usePanelMaximize } from '../hooks/usePanelMaximize';
 import PanelHeader from './PanelHeader';
 import PanelResizeHandle from './PanelResizeHandle';
+import MaximizeToggleButton from './MaximizeToggleButton';
 import { useCopyFeedback } from '../hooks/useCopyFeedback';
 
 interface UnixTimeConverterPanelProps {
@@ -267,11 +266,11 @@ export default function UnixTimeConverterPanel({
           }}
         >
           <PanelHeader title="Date/Time → Unix">
-            <Tooltip title={maximizedPanel === 'dateToUnix' ? 'Restore split view' : 'Maximize Date/Time → Unix'}>
-              <IconButton size="small" onClick={toggleMaximizeDateToUnix}>
-                {maximizedPanel === 'dateToUnix' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
+            <MaximizeToggleButton
+              label="Date/Time → Unix"
+              maximized={maximizedPanel === 'dateToUnix'}
+              onToggle={toggleMaximizeDateToUnix}
+            />
           </PanelHeader>
           <Box sx={{ p: 2 }}>
             <Stack spacing={2}>
@@ -282,8 +281,6 @@ export default function UnixTimeConverterPanel({
                 onChange={e => updateField('dateTime', e.target.value)}
                 size="small"
                 fullWidth
-
-
                 InputLabelProps={{ shrink: true }}
                 inputProps={{ step: 1 }}
               />
@@ -361,11 +358,11 @@ export default function UnixTimeConverterPanel({
           }}
         >
           <PanelHeader title="Unix → Date/Time">
-            <Tooltip title={maximizedPanel === 'unixToDate' ? 'Restore split view' : 'Maximize Unix → Date/Time'}>
-              <IconButton size="small" onClick={toggleMaximizeUnixToDate}>
-                {maximizedPanel === 'unixToDate' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
+            <MaximizeToggleButton
+              label="Unix → Date/Time"
+              maximized={maximizedPanel === 'unixToDate'}
+              onToggle={toggleMaximizeUnixToDate}
+            />
           </PanelHeader>
           <Box sx={{ p: 2 }}>
             <Stack spacing={2}>

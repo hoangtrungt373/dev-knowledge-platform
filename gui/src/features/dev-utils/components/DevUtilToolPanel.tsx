@@ -6,8 +6,6 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import PlayArrowIcon from '@mui/icons-material/PlayArrowOutlined';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLessOutlined';
-import OpenInFullIcon from '@mui/icons-material/OpenInFullOutlined';
-import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreenOutlined';
 // Already an outline-style glyph under its own distinct name (not the "Outlined" suffix
 // convention every other icon above uses) — MUI ships "Error" (filled) and "ErrorOutline" as two
 // separately named icons, not a base/Outlined pair, so there's no further outlined variant to
@@ -16,7 +14,6 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CodeMirror from '@uiw/react-codemirror';
 import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import SubmitButton from '@shared/components/SubmitButton';
-import { useNotification } from '@shared/contexts/NotificationContext';
 import { DevUtilsResponse } from '../types';
 import { OperationConfig } from '../config/operations';
 import { buildDevUtilError, DevUtilError } from '../utils/errorFormatting';
@@ -25,10 +22,11 @@ import { editorChromeTheme, getCodeMirrorExtensions } from '../config/codeMirror
 import { GROWABLE_PANEL_MAX_HEIGHT } from '../config/panelSizing';
 import { useResizableSplit } from '../hooks/useResizableSplit';
 import { usePanelMaximize } from '../hooks/usePanelMaximize';
+import { usePasteText } from '../hooks/usePasteText';
+import { useOutputActions } from '../hooks/useOutputActions';
 import PanelHeader from './PanelHeader';
 import PanelResizeHandle from './PanelResizeHandle';
-import { useCopyFeedback } from '../hooks/useCopyFeedback';
-import { downloadTextFile } from '../utils/downloadTextFile';
+import MaximizeToggleButton from './MaximizeToggleButton';
 
 interface DevUtilToolPanelProps {
   /** Controlled — lifted up to `DevUtilsPage.tsx` so its own headline row's Sample/Clear buttons
@@ -242,7 +240,6 @@ export default function DevUtilToolPanel({
   secondaryAction,
   availableHeight,
 }: DevUtilToolPanelProps): JSX.Element {
-  const { showError, showSuccess } = useNotification();
   const [minify, setMinify] = useState(false);
   // Tracks *which* action is in flight, not just whether one is — with two independent action
   // buttons (the primary one plus an optional `secondaryAction`), a single boolean `saving` would
@@ -251,7 +248,8 @@ export default function DevUtilToolPanel({
   // this rather than a per-button state pair, so the two can never independently claim "saving" at
   // the same time (submitting one disables the other, preventing an overlapping double-submit).
   const [savingAction, setSavingAction] = useState<'primary' | 'secondary' | null>(null);
-  const { copiedKey, copy } = useCopyFeedback();
+  const { copiedKey, handleCopy, handleDownload } = useOutputActions(output, downloadFileName);
+  const handlePaste = usePasteText(onInputChange);
 
   // Memoized so a re-render (e.g. every keystroke while typing in Input) doesn't hand CodeMirror a
   // brand-new extensions array reference each time — `inputFormat`/`outputLanguage` are constant
@@ -331,26 +329,6 @@ export default function DevUtilToolPanel({
     runAction('secondary', secondaryAction.onSubmit);
   }, [runAction, secondaryAction]);
 
-  const handlePaste = useCallback(async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      onInputChange(text);
-    } catch {
-      showError('Could not read from the clipboard — check your browser permissions.');
-    }
-  }, [onInputChange, showError]);
-
-  const handleCopy = useCallback(() => {
-    if (output === null) return;
-    copy(output, 'output');
-  }, [output, copy]);
-
-  const handleDownload = useCallback(() => {
-    if (output === null) return;
-    downloadTextFile(downloadFileName, output);
-    showSuccess(`Downloaded ${downloadFileName}`);
-  }, [output, downloadFileName, showSuccess]);
-
   return (
     // `alignItems: 'flex-start'`, not the flexbox default `'stretch'` — Input carries its own
     // explicit `height: availableHeight`; Output instead carries `minHeight: availableHeight` (a
@@ -419,11 +397,7 @@ export default function DevUtilToolPanel({
               Minify
             </Button>
           )}
-          <Tooltip title={maximizedPanel === 'input' ? 'Restore split view' : 'Maximize Input'}>
-            <IconButton size="small" onClick={toggleMaximizeInput}>
-              {maximizedPanel === 'input' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <MaximizeToggleButton label="Input" maximized={maximizedPanel === 'input'} onToggle={toggleMaximizeInput} />
         </PanelHeader>
 
         {/* `position: 'relative'` + the CodeMirror instance's own `position: 'absolute', inset: 0`
@@ -501,11 +475,7 @@ export default function DevUtilToolPanel({
                 </IconButton>
               </span>
             </Tooltip>
-            <Tooltip title={maximizedPanel === 'output' ? 'Restore split view' : 'Maximize Output'}>
-              <IconButton size="small" onClick={toggleMaximizeOutput}>
-                {maximizedPanel === 'output' ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
+            <MaximizeToggleButton label="Output" maximized={maximizedPanel === 'output'} onToggle={toggleMaximizeOutput} />
           </PanelHeader>
 
           {output !== null && (
