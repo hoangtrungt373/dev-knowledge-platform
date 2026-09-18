@@ -29,6 +29,7 @@
         <module>identity-service</module>
         <module>ecommerce-service</module>
         <module>dev-utils-service</module>
+        <module>dev-practice-service</module>
         <module>gateway</module>
     </modules>
 
@@ -41,7 +42,7 @@
              this reactor is always built (./mvnw from the repo root, with or without -pl) — it does
              NOT get resolved if a child pom is ever built standalone with no relativePath back to
              this parent (not a scenario this reactor uses today). -->
-        <revision>0.0.3-SNAPSHOT</revision>
+        <revision>0.0.4-SNAPSHOT</revision>
         <java.version>21</java.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         <langchain4j.version>0.33.0</langchain4j.version>
@@ -121,6 +122,11 @@
             <dependency>
                 <groupId>com.ttg</groupId>
                 <artifactId>dev-utils-service</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ttg</groupId>
+                <artifactId>dev-practice-service</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

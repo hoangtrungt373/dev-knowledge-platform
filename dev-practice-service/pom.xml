@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.ttg</groupId>
+        <artifactId>dev-knowledge-platform</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>dev-practice-service</artifactId>
+    <name>Dev Practice Service</name>
+    <description>LeetCode/NeetCode-style coding practice platform: problem catalog and code submission/judging</description>
+
+    <dependencies>
+
+        <!-- Internal -->
+        <dependency>
+            <groupId>com.ttg</groupId>
+            <artifactId>common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ttg</groupId>
+            <artifactId>infra</artifactId>
+        </dependency>
+
+        <!-- DevPracticeErrorCode implements the common ErrorCode interface and references
+             HttpStatus directly in main code — common declares spring-boot-starter-web as
+             optional, so it isn't inherited transitively; this module needs it on the compile
+             classpath itself. Same pattern as task-service's TaskErrorCode. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- MapStruct mappers (entity <-> dto/). No <version> — centrally managed in the root pom. -->
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct</artifactId>
+        </dependency>
+
+        <!-- Spring Security — this module's own filter chain, same reasoning as every other
+             standalone service's pom.xml. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- OAuth2 Resource Server — Keycloak is the identity provider; this service only ever
+             verifies bearer tokens against Keycloak's JWKS (issuer-uri auto-discovery), never
+             issues them. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+
+        <!-- OAuth2 Client — KeycloakJwtAuthenticationConverter builds a common.dto.CustomOAuth2User
+             (implements OAuth2User) as this app's own Authentication principal; common declares
+             this starter optional (type-support only), so it isn't inherited transitively. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+        </dependency>
+
+        <!-- PostgreSQL — this module's own datasource connection, own schema (dev_practice). -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Actuator — health/info/metrics endpoints, same as every other standalone service. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <!-- Include the Liquibase changelog XML/SQL bundled under src/main/java so they end up on
+             the runtime classpath — same shape as every other standalone service's pom.xml. This
+             module's own changelog is run via the consolidated services-liquibase job (see root
+             CLAUDE.md's Database Conventions section), not on app boot
+             (spring.liquibase.enabled stays false here too). -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>src/main/java</directory>
+                <includes>
+                    <include>**/*.xml</include>
+                    <include>**/*.sql</include>
+                </includes>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

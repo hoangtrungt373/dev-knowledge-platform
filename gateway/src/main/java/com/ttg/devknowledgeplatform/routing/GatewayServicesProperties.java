@@ -49,4 +49,8 @@ public class GatewayServicesProperties {
     /** {@code dev-utils-service} — stateless developer utilities (JSON/YAML/HTML). */
     @NotBlank
     private String devUtilsServiceBaseUrl;
+
+    /** {@code dev-practice-service} — LeetCode/NeetCode-style problem catalog and submissions. */
+    @NotBlank
+    private String devPracticeServiceBaseUrl;
 }

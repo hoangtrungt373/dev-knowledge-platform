@@ -20,6 +20,7 @@ COPY social-service/pom.xml social-service/pom.xml
 COPY identity-service/pom.xml identity-service/pom.xml
 COPY ecommerce-service/pom.xml ecommerce-service/pom.xml
 COPY dev-utils-service/pom.xml dev-utils-service/pom.xml
+COPY dev-practice-service/pom.xml dev-practice-service/pom.xml
 COPY gateway/pom.xml gateway/pom.xml
 RUN mvn -B -pl ai-service -am dependency:go-offline
 

@@ -35,6 +35,12 @@ JWT verification, and no Liquibase changelog of any kind — see that section fo
 was deleted outright during `ai-service`'s extraction, not moved — see that module's own section
 further down for the dead-code finding.
 
+`dev-practice-service/` is an **eighth** standalone Spring Boot application, also new rather than an
+extraction — built directly standalone from day one like `dev-utils-service`, but unlike it, this
+one *does* persist its own schema (`dev_practice`) and *does* verify JWTs, since its problem catalog
+and per-user submission history are genuine stateful, ownership-scoped data (see its own `##
+dev-practice-service` section further down).
+
 `ai-service` depends only on `common`+`infra` now — **not** `common` ← `infra` ← `content-service`
 ← `ai-service` as this file used to describe, nor `gateway` → `ai-service` as it described more
 recently. It used to carry a single, real, one-directional Maven dependency on `content-service`
@@ -2812,6 +2818,147 @@ downstream service needs its own carve-out at that layer too) — see `gateway/C
 
 ---
 
+## dev-practice-service
+
+A LeetCode/NeetCode-style coding practice platform: a problem catalog with an admin-managed test
+suite, and a code-submission endpoint (Phase 1 — persists submissions as `PENDING` only, no judging
+pipeline yet). **Built directly as a standalone Spring Boot application from day one, like
+`dev-utils-service`** — never embedded in `gateway`, so not part of the (closed)
+microservices-extraction-plan project — but unlike `dev-utils-service`, it does persist its own
+schema and does verify JWTs, since a problem catalog and per-user submission history are genuine
+stateful, ownership-scoped data. Own `DevPracticeServiceApplication` entry point, own `dev_practice`
+Postgres schema, own port (`8088`), own Liquibase changelog (`DKP-0052`, a fresh snapshot). Routed
+through `gateway`'s `routing/GatewayRoutesConfig` (`devPracticeServiceRoutes()`) —
+`/api/v1/admin/problems/**` and `/api/v1/public/problems/**` are two more resource segments under
+the already-shared `/api/v1/admin/**`/`/api/v1/public/**` prefixes; `/api/v1/submissions/**` is a
+genuinely new top-level prefix.
+
+**No local `User` copy** — same "Option C" shape as `task-service`/`content-service`/`ai-service`:
+`Problem.authorUuid`/`Submission.userUuid` are plain columns compared directly against the caller's
+verified JWT `sub` claim, never a `@ManyToOne User` foreign key.
+
+```
+dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
+├── DevPracticeServiceApplication.java — @SpringBootApplication; @Import({JacksonConfig,
+│                                        TraceContextFilter, SlugServiceImpl,
+│                                        KeycloakRealmRoleConverter,
+│                                        KeycloakJwtAuthenticationConverter,
+│                                        CurrentUserIdArgumentResolver,
+│                                        GlobalExceptionHandler}) — no broad @ComponentScan into
+│                                        infra (see root CLAUDE.md's "Post-extraction hardening"),
+│                                        no AsyncEventThreadPoolConfig import (no @EventHandler yet
+│                                        — see Phase 2 note below)
+├── security/
+│   └── SecurityConfig.java            — this app's own filter chain: /api/v1/public/** permits
+│                                         all, /api/v1/admin/** requires ROLE_ADMIN, everything
+│                                         else (/api/v1/submissions/**) requires authentication
+│                                         only — ownership, not role, scopes a caller to their own
+│                                         submissions
+├── config/web/
+│   └── WebMvcConfig.java              — registers infra's shared CurrentUserIdArgumentResolver as
+│                                         a HandlerMethodArgumentResolver (a WebMvcConfigurer bean,
+│                                         not just an @Import) so @CurrentUserId parameters resolve
+├── entity/
+│   ├── Problem.java                   — title, slug (unique, via infra's SlugService), description
+│   │                                     (TEXT), difficulty (Difficulty), status
+│   │                                     (common.enums.ContentStatus — reused as-is, same
+│   │                                     DRAFT/PUBLISHED/ARCHIVED shape content-service's
+│   │                                     Article/QuestionAnswer already use), authorUuid (String,
+│   │                                     plain column), publishedAt (Instant, nullable),
+│   │                                     testCases (List<TestCase>, @OneToMany, cascade ALL +
+│   │                                     orphanRemoval)
+│   ├── TestCase.java                  — problem (@ManyToOne), input (TEXT), expectedOutput (TEXT),
+│   │                                     sample (Boolean — true = shown as a worked example, false
+│   │                                     = hidden, judge-only)
+│   └── Submission.java                — problem (@ManyToOne), userUuid (String, plain column),
+│                                         language (ProgrammingLanguage), sourceCode (TEXT), status
+│                                         (SubmissionStatus, default PENDING — Phase 1 never
+│                                         transitions this)
+├── enums/
+│   ├── Difficulty.java                — EASY, MEDIUM, HARD; deliberately not
+│   │                                     common.enums.QuestionDifficulty
+│   │                                     (BEGINNER/INTERMEDIATE/ADVANCED) — a coincidental
+│   │                                     three-value shape from a different domain
+│   ├── ProgrammingLanguage.java        — JAVA, PYTHON, JAVASCRIPT
+│   └── SubmissionStatus.java           — PENDING, RUNNING, ACCEPTED, WRONG_ANSWER, COMPILE_ERROR,
+│                                         RUNTIME_ERROR, TIME_LIMIT_EXCEEDED (the full eventual
+│                                         vocabulary defined now; only PENDING is reachable today)
+├── repository/
+│   ├── ProblemRepository.java         — JpaRepository<Problem, Integer> + JpaSpecificationExecutor
+│   │                                     + existsBySlug/existsBySlugAndIdNot/findBySlug
+│   ├── SubmissionRepository.java      — JpaRepository<Submission, Integer> +
+│   │                                     findByUserUuid(Pageable)/findByUserUuidAndProblem_Id(...)
+│   └── spec/
+│       └── ProblemSpecification.java  — withFilters(difficulty, status, q) — optional
+│                                         equality/like predicates only
+├── service/
+│   ├── ProblemService.java (+ impl/)  — create/update/delete/getById + getPublishedBySlug (throws
+│   │                                     PROBLEM_NOT_FOUND for a draft/archived slug too — never a
+│   │                                     distinguishable "found but not visible") + list
+│   ├── SubmissionService.java (+ impl/) — create (validates the target problem is PUBLISHED, same
+│   │                                     non-leaking posture as getPublishedBySlug) +
+│   │                                     getSubmission (ownership-checked, same
+│   │                                     resolveOwnedX pattern as task-service's ProjectService) +
+│   │                                     listSubmissions
+│   ├── ProblemCommands.java           — Create/Update records + nested TestCaseInput record
+│   └── SubmissionCommands.java        — Create record (problemId, language, sourceCode)
+├── exception/
+│   └── DevPracticeErrorCode.java       — PROBLEM_NOT_FOUND, PROBLEM_SLUG_CONFLICT,
+│                                         SUBMISSION_NOT_FOUND
+├── dto/
+│   ├── ProblemResponse.java           — record: id, slug, title, description, difficulty, status,
+│   │                                     testCases (List<TestCaseResponse>), publishedAt,
+│   │                                     createdAt — used by both admin (all test cases) and
+│   │                                     public (sample-only, via ProblemMapper#toPublicResponse)
+│   ├── ProblemSummaryResponse.java    — record: id, slug, title, difficulty (list-view row shape)
+│   ├── TestCaseResponse.java / TestCaseRequest.java
+│   ├── CreateProblemRequest.java / UpdateProblemRequest.java — @Data; testCases is a nested,
+│   │                                     inline List<TestCaseRequest> (real content, not an
+│   │                                     id reference — unlike content-service's tag-id-list
+│   │                                     pattern); update is replace-all
+│   ├── SubmissionResponse.java        — record: id, problemId, problemTitle, language, sourceCode,
+│   │                                     status, submittedAt
+│   └── CreateSubmissionRequest.java   — @Data: problemId, language, sourceCode
+├── mapper/
+│   ├── ProblemMapper.java              — toResponse/toSummaryResponse (MapStruct) +
+│   │                                      toPublicResponse (default method: filters testCases to
+│   │                                      sample = true only — the one place a hidden test case's
+│   │                                      expected output could otherwise leak to a public caller)
+│   └── SubmissionMapper.java          — problemId/problemTitle mapped from the nested Problem
+└── api/ (+ api/impl/)
+    ├── ProblemApi.java (+ ProblemController.java)             — /api/v1/admin/problems: create,
+    │                                     update, delete, getById, list (difficulty/status/q filters)
+    ├── PublicProblemApi.java (+ PublicProblemController.java) — /api/v1/public/problems: list
+    │                                     (hardcodes ContentStatus.PUBLISHED, same convention as
+    │                                     content-service's PublicContentController), getBySlug
+    └── SubmissionApi.java (+ SubmissionController.java)        — /api/v1/submissions: create,
+                                          getById, list — every method takes @CurrentUserId String
+                                          userUuid
+```
+
+**Liquibase:** own changelog tree (`dev-practice-service/.../database/sql/dev-practice-service.xml`
++ `2026/0.0.4/202609170001__0.0.4__DKP-0052__add_dev_practice_tables.sql`), applied via the
+consolidated `services-liquibase` job in `docker-compose.apps.yml` — no standalone single-service
+`*-liquibase.yml` file of its own (same as `ecommerce-service`/`identity-service`/`content-service`/
+`ai-service`). `PROBLEM`/`TEST_CASE`/`SUBMISSION` land directly in the new `dev_practice` schema; a
+fresh snapshot, not a replay of any other module's history, since this module was never embedded in
+`gateway` to begin with. `TEST_CASE` cascades from `PROBLEM` (`ON DELETE CASCADE`); `SUBMISSION`'s
+FK to `PROBLEM` deliberately carries no cascade rule — a submission is a historical record of what a
+user actually ran and should never silently disappear when a problem is edited.
+
+**Compiles cleanly against the reactor's existing conventions** (needs `JAVA_HOME` pointed at a JDK
+21 install to verify) but hasn't been run against a real Postgres yet — same unverified-at-runtime
+caveat every other standalone service's first changelog has carried at this stage.
+
+**Planned: Phase 2** — submission judging, not built yet. Agreed design: a `JudgeClient` Adapter in
+front of a self-hosted Judge0 instance, a Strategy per `ProgrammingLanguage` for compile/run config,
+a Template Method for the compile → run → compare-output → score pipeline, dispatched async via
+`infra`'s `AsyncEventThreadPoolConfig` (the same `@EventHandler` pattern `ai-service`/
+`social-service` already use). See `dev-practice-service/CLAUDE.md`'s own "Planned: Phase 2" section
+and the `project_dev_practice_service_module` memory for the full discussion.
+
+---
+
 ## gateway
 
 Renamed from `api` once its last REST controller (`UserApi.search`/`getPublicProfile`) moved to
@@ -3107,43 +3254,45 @@ expected over time, and are modelled as data, not schema:
 
 ## Deployment
 
-Eight independently-runnable Spring Boot processes exist today — `gateway` (now a bare
+Nine independently-runnable Spring Boot processes exist today — `gateway` (now a bare
 JWT-verification shell with zero embedded feature modules, zero local user persistence, and zero
 Liquibase migrations of its own),
 `ecommerce-service`, `identity-service`, `task-service`, `social-service`, `content-service`, and
 `ai-service` (the latter six standalone microservices-study extractions, `ai-service` the sixth and
-final), plus `dev-utils-service` (a seventh standalone service, but a new module built directly
-standalone from day one — not an eighth extraction, see its own section above) — each with its own
+final), plus `dev-utils-service` and `dev-practice-service` (two new modules built directly
+standalone from day one — not extractions, see their own sections above) — each with its own
 `Dockerfile` (multi-stage: `maven:3.9.9-eclipse-temurin-21` build stage
 running `mvn -pl <module> -am package` against the full reactor, `eclipse-temurin:21-jre-jammy`
-runtime stage). All eight Dockerfiles use the **repo root** as their build context, since the Maven
+runtime stage). All nine Dockerfiles use the **repo root** as their build context, since the Maven
 reactor build needs sibling-module sources (`docker build -f gateway/Dockerfile .`, not
 `docker build gateway/`). `gateway`'s `Dockerfile` only `COPY`s the sources of modules it actually
 depends on (`common`/`infra`) plus every module's `pom.xml` (needed for Maven to parse the reactor's
 full `<modules>` list even for modules it won't build) — it does not copy `identity-service`,
-`ecommerce-service`, `task-service`, `social-service`, `content-service`, `ai-service`, or
-`dev-utils-service` sources.
+`ecommerce-service`, `task-service`, `social-service`, `content-service`, `ai-service`,
+`dev-utils-service`, or `dev-practice-service` sources.
 
-`docker-compose.apps.yml` (repo root) brings up all eight app containers plus
-**one consolidated `services-liquibase` container** that runs all six standalone services'
-migrations sequentially in a single `sh -c` loop (`ecommerce-service` → `identity-service` →
-`task-service` → `social-service` → `content-service` → `ai-service`, each its own
-`liquibase ... update` invocation against its own mounted changelog directory) — replaces what used
-to be six separate inline services (`ecommerce-liquibase`, `identity-liquibase`, `task-liquibase`,
-`social-liquibase`, `content-liquibase`, `ai-liquibase`), one container per service. Each of the six
+`docker-compose.apps.yml` (repo root) brings up all nine app containers plus
+**one consolidated `services-liquibase` container** that runs all seven schema-owning standalone
+services' migrations sequentially in a single `sh -c` loop (`ecommerce-service` → `identity-service`
+→ `task-service` → `social-service` → `content-service` → `ai-service` → `dev-practice-service`,
+each its own `liquibase ... update` invocation against its own mounted changelog directory) —
+replaces what used to be six separate inline services (`ecommerce-liquibase`, `identity-liquibase`,
+`task-liquibase`, `social-liquibase`, `content-liquibase`, `ai-liquibase`), one container per
+service, before `dev-practice-service` joined the same loop as its seventh entry. Each of the seven
 app containers' `depends_on` now points at this one `services-liquibase` service instead of its own
 dedicated runner. Sequential execution is a deliberate improvement over the old shape, not just a
-consolidation: all six changelogs share one Postgres instance and one Liquibase
-`DATABASECHANGELOG`/`DATABASECHANGELOGLOCK` tracking pair regardless of container count, so six
+consolidation: all seven changelogs share one Postgres instance and one Liquibase
+`DATABASECHANGELOG`/`DATABASECHANGELOGLOCK` tracking pair regardless of container count, so seven
 containers starting in parallel (as they could before, since none of them depended on each other)
 could contend for that lock; one container running them one at a time never contends with itself.
 Only `task-service-liquibase.yml` and `social-service-liquibase.yml` — the two standalone
 single-service compose files that predate this consolidation, for running just one service's
 migration against Postgres's host-exposed port (`host.docker.internal`) outside the combined
-apps-compose flow — are unaffected; `ecommerce-service`, `identity-service`, `content-service`, and
-`ai-service` never got an equivalent standalone file of their own, so the consolidated job is their
-only migration path (a doc/reality mismatch caught and fixed 2026-08-16 — several `CLAUDE.md`/
-`pom.xml`/`application.yml` comments across this reactor used to claim all six had one). `gateway` has no migration runner of its own at all
+apps-compose flow — are unaffected; `ecommerce-service`, `identity-service`, `content-service`,
+`ai-service`, and `dev-practice-service` never got an equivalent standalone file of their own, so
+the consolidated job is their only migration path (a doc/reality mismatch caught and fixed
+2026-08-16 — several `CLAUDE.md`/`pom.xml`/`application.yml` comments across this reactor used to
+claim all six of the original set had one). `gateway` has no migration runner of its own at all
 (neither the old `dkp-liquibase` nor a slot in the new consolidated loop), since it has no Liquibase
 changelog left to run; the one thing that runner used to do beyond `gateway`'s own concerns
 (bootstrapping the `keycloak` schema, `DKP-0024`) now happens in `docker/postgres/init.sql`
@@ -3158,11 +3307,12 @@ docker compose -f docker-compose.infra.yml \
                 up -d --build
 ```
 
-`ecommerce-service`, `identity-service`, `task-service`, `social-service`, `content-service`, and
-`ai-service` share the same `dev-premier` Postgres database as `gateway`, each in its own schema
-(`ecommerce`/`identity`/`task`/`social`/`content`/`ai` vs. `gateway`'s `product`, which now holds no
-live tables at all — see the Database section above) — per-service-per-schema, not
-per-service-per-database (see root `CLAUDE.md`'s Database Conventions and the
+`ecommerce-service`, `identity-service`, `task-service`, `social-service`, `content-service`,
+`ai-service`, and `dev-practice-service` share the same `dev-premier` Postgres database as
+`gateway`, each in its own schema
+(`ecommerce`/`identity`/`task`/`social`/`content`/`ai`/`dev_practice` vs. `gateway`'s `product`,
+which now holds no live tables at all — see the Database section above) — per-service-per-schema,
+not per-service-per-database (see root `CLAUDE.md`'s Database Conventions and the
 `project-microservices-extraction-plan` memory for why). **`dev-utils-service` shares none of
 this** — its own `docker-compose.apps.yml` container block has no `SPRING_DATASOURCE_*`/
 `KEYCLOAK_ISSUER_URI` env vars and no `depends_on` at all (not even `services-liquibase`), since it

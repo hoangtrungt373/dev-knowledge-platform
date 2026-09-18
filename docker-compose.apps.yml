@@ -6,7 +6,7 @@ services:
     command:
       - |
         set -e
-        for svc in ecommerce-service identity-service task-service social-service content-service ai-service; do
+        for svc in ecommerce-service identity-service task-service social-service content-service ai-service dev-practice-service; do
           echo "==> Running Liquibase for $$svc"
           liquibase \
             --search-path=/changelog/$$svc \
@@ -24,6 +24,7 @@ services:
       - ./social-service/src/main/java/com/ttg/devknowledgeplatform/social/database/sql:/changelog/social-service:ro
       - ./content-service/src/main/java/com/ttg/devknowledgeplatform/content/database/sql:/changelog/content-service:ro
       - ./ai-service/src/main/java/com/ttg/devknowledgeplatform/ai/database/sql:/changelog/ai-service:ro
+      - ./dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/database/sql:/changelog/dev-practice-service:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -211,3 +212,21 @@ services:
     # migrate, and no other container this one needs to be up before it starts.
     ports:
       - "8087:8087"
+
+  dev-practice-service:
+    build:
+      context: .
+      dockerfile: dev-practice-service/Dockerfile
+    container_name: dev-premier-dev-practice-service
+    restart: on-failure
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/dev-premier
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/dev-knowledge-platform
+    ports:
+      - "8088:8088"
+    depends_on:
+      services-liquibase:
+        condition: service_completed_successfully

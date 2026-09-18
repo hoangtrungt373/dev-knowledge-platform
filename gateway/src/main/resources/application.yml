@@ -70,6 +70,7 @@ app:
     content-service-base-url: ${CONTENT_SERVICE_BASE_URL:http://localhost:8085}
     ai-service-base-url: ${AI_SERVICE_BASE_URL:http://localhost:8086}
     dev-utils-service-base-url: ${DEV_UTILS_SERVICE_BASE_URL:http://localhost:8087}
+    dev-practice-service-base-url: ${DEV_PRACTICE_SERVICE_BASE_URL:http://localhost:8088}
 
 # Logging
 logging:

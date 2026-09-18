@@ -29,10 +29,14 @@ import lombok.RequiredArgsConstructor;
  * /products/**}, {@code /product-categories/**} — added for the storefront's category filter rail,
  * since a logged-out shopper can't reach the admin-gated
  * {@code /api/v1/admin/product-categories/**} — and {@code /payment-config} (tells the checkout
- * GUI at runtime whether to render Stripe Elements)), and {@code /api/v1/admin} (three different
+ * GUI at runtime whether to render Stripe Elements)), and {@code /api/v1/admin} (four different
  * services, but each one's own resource segment — {@code /products/**}, {@code
  * /product-categories/**}, {@code /product-tags/**}, {@code /product-attributes/**}, {@code
- * /orders/**}, {@code /articles/**}, {@code /embeddings/**}, etc. — never collides with another's).
+ * /orders/**}, {@code /articles/**}, {@code /embeddings/**}, {@code /problems/**} (added for
+ * {@code dev-practice-service}'s admin problem-catalog CRUD), etc. — never collides with
+ * another's). {@code /api/v1/public} also gained {@code dev-practice-service}'s own
+ * {@code /problems/**} (published-problem browsing) alongside {@code content-service}'s/
+ * {@code ecommerce-service}'s existing segments.
  * Confirmed via a full audit of
  * every {@code @RequestMapping} in the reactor before writing this class, not assumed from the
  * top-level prefix alone. <b>Caveat, learned the hard way:</b> that audit is only as good as
@@ -174,6 +178,24 @@ public class GatewayRoutesConfig {
         String baseUrl = services.getDevUtilsServiceBaseUrl();
         return route("dev-utils-service")
                 .route(path("/api/v1/dev-utils/**"), http(baseUrl))
+                .build();
+    }
+
+    /**
+     * Routes admin problem-catalog CRUD, public published-problem browsing, and code submissions
+     * to {@code dev-practice-service}. {@code /api/v1/admin/problems/**} and
+     * {@code /api/v1/public/problems/**} are two more resource segments under the already-shared
+     * {@code /api/v1/admin/**}/{@code /api/v1/public/**} prefixes (see class Javadoc); {@code
+     * /api/v1/submissions/**} is a genuinely new top-level prefix, no shared-prefix disambiguation
+     * needed.
+     */
+    @Bean
+    public RouterFunction<ServerResponse> devPracticeServiceRoutes() {
+        String baseUrl = services.getDevPracticeServiceBaseUrl();
+        return route("dev-practice-service")
+                .route(path("/api/v1/admin/problems/**"), http(baseUrl))
+                .route(path("/api/v1/public/problems/**"), http(baseUrl))
+                .route(path("/api/v1/submissions/**"), http(baseUrl))
                 .build();
     }
 }
