@@ -1,10 +1,15 @@
 package com.ttg.devknowledgeplatform.devpractice.config;
 
+import java.util.EnumMap;
+import java.util.Map;
+
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
+
+import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -60,4 +65,17 @@ public class JudgeClientProperties {
     /** Judge0's own {@code cpu_time_limit}, in seconds, applied per test-case run. */
     @Min(1)
     private int cpuTimeLimitSeconds = 5;
+
+    /**
+     * Maps each {@link ProgrammingLanguage} to the Judge0 {@code language_id} to submit it as —
+     * externalized here rather than hardcoded (e.g. on {@code ProgrammingLanguage} itself) for two
+     * reasons: it's Judge0-specific detail that would otherwise leak into a domain enum used well
+     * beyond the judge subsystem (see {@code ProgrammingLanguage}'s own Javadoc), and Judge0
+     * language ids are per-deployment and known to be unverified against this reactor's actual
+     * instance (see this class's own header Javadoc) — a wrong id is fixable with one config/env
+     * var change (e.g. {@code app.judge0.language-ids.java} / {@code JUDGE0_LANGUAGE_ID_JAVA}), not
+     * a code change and redeploy. {@code judge.impl.Judge0Client}'s constructor fails fast at
+     * startup if any {@link ProgrammingLanguage} constant has no entry here.
+     */
+    private Map<ProgrammingLanguage, Integer> languageIds = new EnumMap<>(ProgrammingLanguage.class);
 }

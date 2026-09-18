@@ -24,13 +24,6 @@ spring:
 server:
   port: ${SERVER_PORT:8088}
 
-# Judge0 CE — defaults to the hosted RapidAPI instance (JUDGE0_RAPIDAPI_KEY must be set; get one at
-# https://rapidapi.com/judge0-official/api/judge0-ce), chosen over this reactor's own self-hosted
-# stack (docker-compose.infra.yml's judge0-* services, still there and still an option — repoint
-# JUDGE0_BASE_URL at it, e.g. http://localhost:2358, and leave JUDGE0_RAPIDAPI_KEY unset) to avoid
-# Judge0's isolate sandbox's known Docker-Desktop-on-Windows/WSL2 friction while this module's
-# judging pipeline is still being verified end-to-end — see JudgeClientProperties' own Javadoc and
-# this module's CLAUDE.md.
 app:
   judge0:
     base-url: ${JUDGE0_BASE_URL:https://judge0-ce.p.rapidapi.com}
@@ -39,6 +32,10 @@ app:
     poll-interval-ms: ${JUDGE0_POLL_INTERVAL_MS:500}
     max-poll-attempts: ${JUDGE0_MAX_POLL_ATTEMPTS:40}
     cpu-time-limit-seconds: ${JUDGE0_CPU_TIME_LIMIT_SECONDS:5}
+    language-ids:
+      java: ${JUDGE0_LANGUAGE_ID_JAVA:62}
+      python: ${JUDGE0_LANGUAGE_ID_PYTHON:71}
+      javascript: ${JUDGE0_LANGUAGE_ID_JAVASCRIPT:63}
 
 logging:
   pattern:

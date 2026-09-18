@@ -31,6 +31,12 @@ import lombok.extern.slf4j.Slf4j;
  * auth header at all in this reactor's own compose setup, so leaving the key blank is what makes
  * this same class work unmodified against either backend.
  *
+ * <p>Translates {@link ProgrammingLanguage} to Judge0's own {@code language_id} via
+ * {@link JudgeClientProperties#getLanguageIds()} — this class, not {@code ProgrammingLanguage}
+ * itself, owns that vendor-specific mapping (see that enum's own Javadoc for why); the constructor
+ * fails fast if the configured map is missing an entry for any {@link ProgrammingLanguage} constant,
+ * rather than letting a missing id surface later as a confusing per-submission failure.
+ *
  * <p>Deliberately never sends Judge0's own {@code expected_output} field — see
  * {@link Judge0Status}'s Javadoc for why the pass/fail verdict is this module's own, computed by
  * comparing {@code stdout} against a {@code TestCase.expectedOutput} structurally (JSON-aware, not
@@ -48,6 +54,13 @@ public class Judge0Client implements JudgeClient {
 
     public Judge0Client(JudgeClientProperties properties, RestClient.Builder builder) {
         this.properties = properties;
+        for (ProgrammingLanguage language : ProgrammingLanguage.values()) {
+            if (!properties.getLanguageIds().containsKey(language)) {
+                throw new IllegalStateException(
+                        "Missing app.judge0.language-ids entry for " + language
+                                + " — every ProgrammingLanguage constant needs a Judge0 language_id configured");
+            }
+        }
         builder = builder.baseUrl(properties.getBaseUrl());
         if (properties.getRapidApiKey() != null && !properties.getRapidApiKey().isBlank()) {
             builder = builder
@@ -64,8 +77,9 @@ public class Judge0Client implements JudgeClient {
     }
 
     private String submit(String program, ProgrammingLanguage language, String stdin) {
+        int languageId = properties.getLanguageIds().get(language);
         CreateSubmissionRequest request = new CreateSubmissionRequest(
-                encode(program), language.getJudge0LanguageId(), encode(stdin), properties.getCpuTimeLimitSeconds());
+                encode(program), languageId, encode(stdin), properties.getCpuTimeLimitSeconds());
 
         CreateSubmissionResponse response = restClient.post()
                 .uri("/submissions?base64_encoded=true&wait=false")

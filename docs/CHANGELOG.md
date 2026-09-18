@@ -172,6 +172,24 @@ section again. Full unabridged entry-by-entry history for all four lives in
     against the old set (`passedTestCases`/`totalTestCases`/`status` are a one-time snapshot from
     whenever `SubmissionJudgeEventListener` ran) — same behavior every real competitive-judge
     platform has.
+  - **Follow-up, same day: moved Judge0's `language_id` mapping off `ProgrammingLanguage` and into
+    configuration — a vendor-coupling smell spotted by the user while reviewing the enum.**
+    `ProgrammingLanguage` previously carried its own hardcoded `judge0LanguageId` field
+    (`JAVA(62), PYTHON(71), JAVASCRIPT(63)`); a Judge0-specific implementation detail leaking into a
+    domain enum used well beyond the judge subsystem (`Submission.language`, DTOs,
+    `LanguageHarnessRegistry`), and something a future different-judge-backend swap would have had
+    to touch, defeating the point of `JudgeClient` being an Adapter. Reverted to a plain
+    `JAVA`/`PYTHON`/`JAVASCRIPT` enum with zero vendor detail — the same discipline `Judge0Status`
+    already applies in the other direction for submission statuses. The mapping moved to
+    `config.JudgeClientProperties#getLanguageIds()` (`app.judge0.language-ids.*`, a
+    `Map<ProgrammingLanguage, Integer>`, bound from `application.yml`'s
+    `language-ids: {java: ..., python: ..., javascript: ...}` with per-entry env-var overrides
+    `JUDGE0_LANGUAGE_ID_JAVA`/`_PYTHON`/`_JAVASCRIPT`) — since these ids are already known to be
+    per-deployment and unverified, a wrong one is now fixable with an env var, not a code change and
+    redeploy. `judge.impl.Judge0Client`'s constructor fails fast at startup
+    (`IllegalStateException`) if the configured map is missing an entry for any
+    `ProgrammingLanguage` constant, rather than letting a missing id surface later as a confusing
+    per-submission failure.
   - Not built this phase (deliberately deferred, not rejected): the webhook-callback alternative to
     polling, admin GUI/seed data for authoring problems, and any GUI code-editor/submission flow.
     See `dev-practice-service/CLAUDE.md`'s "Phase 2" section for the full list.

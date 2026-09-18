@@ -2867,8 +2867,14 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   ├── web/WebMvcConfig.java          — registers infra's shared CurrentUserIdArgumentResolver as
 │   │                                     a HandlerMethodArgumentResolver (a WebMvcConfigurer bean,
 │   │                                     not just an @Import) so @CurrentUserId parameters resolve
-│   └── JudgeClientProperties.java     — app.judge0.* (base-url, poll-interval-ms,
-│                                         max-poll-attempts, cpu-time-limit-seconds)
+│   └── JudgeClientProperties.java     — app.judge0.* (base-url, rapid-api-key, rapid-api-host,
+│                                         poll-interval-ms, max-poll-attempts,
+│                                         cpu-time-limit-seconds, and language-ids: a
+│                                         Map<ProgrammingLanguage, Integer> of Judge0 language_ids —
+│                                         externalized here rather than hardcoded on
+│                                         ProgrammingLanguage itself, both to keep that domain enum
+│                                         vendor-neutral and because these ids are per-deployment
+│                                         and unverified, so a wrong one is fixable via env var)
 ├── entity/
 │   ├── Problem.java                   — title, slug (unique, via infra's SlugService), description
 │   │                                     (TEXT), difficulty (Difficulty), status
@@ -2904,9 +2910,13 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     DOUBLE_ARRAY, BOOLEAN_ARRAY, STRING_ARRAY, INT_MATRIX —
 │   │                                     the closed value-shape vocabulary every method signature
 │   │                                     and every harness.LanguageHarness is restricted to
-│   ├── ProgrammingLanguage.java        — JAVA(62), PYTHON(71), JAVASCRIPT(63) — each carries its
-│   │                                     Judge0 CE language_id (unverified against a real Judge0
-│   │                                     instance's own /languages list — see the enum's Javadoc)
+│   ├── ProgrammingLanguage.java        — plain JAVA/PYTHON/JAVASCRIPT, no vendor-specific detail —
+│   │                                     Judge0's own language_id mapping was moved out to
+│   │                                     config.JudgeClientProperties#getLanguageIds()
+│   │                                     (app.judge0.language-ids.*) once it became clear a
+│   │                                     Judge0-specific id didn't belong on a domain enum used
+│   │                                     well beyond the judge subsystem — see the enum's own
+│   │                                     Javadoc and Judge0Client's own Javadoc
 │   └── SubmissionStatus.java           — PENDING, RUNNING, ACCEPTED, WRONG_ANSWER, COMPILE_ERROR,
 │                                         RUNTIME_ERROR, TIME_LIMIT_EXCEEDED — Phase 2's
 │                                         SubmissionJudgeEventListener now actually produces every
@@ -2945,7 +2955,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                         X-RapidAPI-Key/X-RapidAPI-Host headers only when
 │                                         JudgeClientProperties.rapidApiKey is set, never sends
 │                                         expected_output, polls per JudgeClientProperties'
-│                                         interval/attempt bounds
+│                                         interval/attempt bounds; constructor fails fast if
+│                                         JudgeClientProperties.languageIds is missing an entry for
+│                                         any ProgrammingLanguage constant
 ├── event/
 │   ├── SubmissionCreatedEvent.java      — record(submissionId), published by
 │   │                                     SubmissionServiceImpl.create

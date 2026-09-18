@@ -67,8 +67,11 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
   knowledge-level filtering, a different domain. See each enum's own Javadoc.
 - `enums/` — `Difficulty`, `ParamType` (the closed value-shape vocabulary every method signature and
   every `harness.LanguageHarness` is restricted to — see its own Javadoc for exactly why it's
-  closed), `ProgrammingLanguage` (JAVA/PYTHON/JAVASCRIPT, each carrying its Judge0 `language_id` —
-  extend this enum, plus a matching `harness.LanguageHarness` bean, to add a language),
+  closed), `ProgrammingLanguage` (plain `JAVA`/`PYTHON`/`JAVASCRIPT` — deliberately carries **no**
+  vendor-specific detail like a Judge0 `language_id`; that mapping lives in
+  `config.JudgeClientProperties#getLanguageIds()` instead, since it's Judge0-specific and this enum
+  is used well beyond the judge subsystem — see the enum's own Javadoc. Extend this enum, plus a
+  matching `harness.LanguageHarness` bean and a `language-ids` config entry, to add a language),
   `SubmissionStatus` (the full judging vocabulary — Phase 1 only ever produced `PENDING`; Phase 2's
   `SubmissionJudgeEventListener` now actually produces every other value too).
 - `harness/` — turns a submission's method body into a full program Judge0 can run. `LanguageHarness`
@@ -187,6 +190,16 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   `TestCase.expectedOutput` in `SubmissionJudgeEventListener`. Don't "simplify" by switching to
   Judge0's own comparison; it does a raw string compare, which would make whitespace-only
   differences (`[0, 1]` vs `[0,1]`) fail incorrectly.
+- **No vendor-specific execution-backend detail belongs on `ProgrammingLanguage` (or any other
+  domain enum) — it belongs in `judge/impl/`'s own config/mapping.** `judge0LanguageId` used to be a
+  field on `ProgrammingLanguage` itself; moved to `JudgeClientProperties#getLanguageIds()`
+  (`app.judge0.language-ids.*`) once it became clear that polluted a domain enum used well beyond
+  the judge subsystem with one specific vendor's ids, and would have forced a change to that enum on
+  any future judge-backend swap — the same discipline `Judge0Status` already applies to submission
+  statuses (Judge0's raw status ids never touch `SubmissionStatus` either). `Judge0Client`'s
+  constructor fails fast at startup if the configured map is missing an entry for any
+  `ProgrammingLanguage` constant, rather than letting a missing id surface later as a confusing
+  per-submission failure — keep that check if this mapping mechanism ever changes shape.
 - **A new event listener that needs to re-query a row from the publishing transaction must use
   `@TransactionalEventListener(phase = AFTER_COMMIT)`, not this reactor's usual `@EventHandler`** —
   see `SubmissionJudgeEventListener`'s Javadoc for the exact race `@EventHandler` alone would hit
