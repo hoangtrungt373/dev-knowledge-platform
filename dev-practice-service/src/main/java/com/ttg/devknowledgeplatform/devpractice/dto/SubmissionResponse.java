@@ -12,5 +12,8 @@ public record SubmissionResponse(
         ProgrammingLanguage language,
         String sourceCode,
         SubmissionStatus status,
+        Integer passedTestCases,
+        Integer totalTestCases,
+        String errorMessage,
         Instant submittedAt) {
 }

@@ -2821,43 +2821,54 @@ downstream service needs its own carve-out at that layer too) — see `gateway/C
 ## dev-practice-service
 
 A LeetCode/NeetCode-style coding practice platform: a problem catalog with an admin-managed test
-suite, and a code-submission endpoint (Phase 1 — persists submissions as `PENDING` only, no judging
-pipeline yet). **Built directly as a standalone Spring Boot application from day one, like
-`dev-utils-service`** — never embedded in `gateway`, so not part of the (closed)
-microservices-extraction-plan project — but unlike `dev-utils-service`, it does persist its own
-schema and does verify JWTs, since a problem catalog and per-user submission history are genuine
-stateful, ownership-scoped data. Own `DevPracticeServiceApplication` entry point, own `dev_practice`
-Postgres schema, own port (`8088`), own Liquibase changelog (`DKP-0052`, a fresh snapshot). Routed
-through `gateway`'s `routing/GatewayRoutesConfig` (`devPracticeServiceRoutes()`) —
-`/api/v1/admin/problems/**` and `/api/v1/public/problems/**` are two more resource segments under
-the already-shared `/api/v1/admin/**`/`/api/v1/public/**` prefixes; `/api/v1/submissions/**` is a
-genuinely new top-level prefix.
+suite, plus LeetCode-style method-signature submission judging via a self-hosted Judge0 instance
+(Phase 1 — catalog + persistence; Phase 2 — actual judging — both now built). **Built directly as a
+standalone Spring Boot application from day one, like `dev-utils-service`** — never embedded in
+`gateway`, so not part of the (closed) microservices-extraction-plan project — but unlike
+`dev-utils-service`, it does persist its own schema and does verify JWTs, since a problem catalog
+and per-user submission history are genuine stateful, ownership-scoped data. Own
+`DevPracticeServiceApplication` entry point, own `dev_practice` Postgres schema, own port (`8088`),
+own Liquibase changelog (`DKP-0052` Phase 1, `DKP-0053` Phase 2, additive-only). Routed through
+`gateway`'s `routing/GatewayRoutesConfig` (`devPracticeServiceRoutes()`) —
+`/api/v1/admin/problems/**` and `/api/v1/public/problems/**` (incl. `/starter-code`) are two more
+resource segments under the already-shared `/api/v1/admin/**`/`/api/v1/public/**` prefixes;
+`/api/v1/submissions/**` is a genuinely new top-level prefix.
 
 **No local `User` copy** — same "Option C" shape as `task-service`/`content-service`/`ai-service`:
 `Problem.authorUuid`/`Submission.userUuid` are plain columns compared directly against the caller's
 verified JWT `sub` claim, never a `@ManyToOne User` foreign key.
 
+**Submissions are LeetCode-style method bodies, not full stdin/stdout programs** — a deliberate,
+harder-than-necessary choice confirmed directly with the user over the simpler competitive-
+programming-judge shape (see the `project_dev_practice_service_module` memory). This is why
+`Problem` carries a `methodName`/`returnType`/ordered `parameters` signature and why
+`TestCase.input`/`expectedOutput` are JSON-encoded argument/return values.
+
 ```
 dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
-├── DevPracticeServiceApplication.java — @SpringBootApplication; @Import({JacksonConfig,
-│                                        TraceContextFilter, SlugServiceImpl,
-│                                        KeycloakRealmRoleConverter,
-│                                        KeycloakJwtAuthenticationConverter,
-│                                        CurrentUserIdArgumentResolver,
-│                                        GlobalExceptionHandler}) — no broad @ComponentScan into
-│                                        infra (see root CLAUDE.md's "Post-extraction hardening"),
-│                                        no AsyncEventThreadPoolConfig import (no @EventHandler yet
-│                                        — see Phase 2 note below)
+├── DevPracticeServiceApplication.java — @SpringBootApplication + @EnableAsync;
+│                                        @Import({JacksonConfig, TraceContextFilter, SlugServiceImpl,
+│                                        KeycloakRealmRoleConverter, KeycloakJwtAuthenticationConverter,
+│                                        CurrentUserIdArgumentResolver, GlobalExceptionHandler,
+│                                        AsyncEventThreadPoolConfig});
+│                                        @EnableConfigurationProperties({AsyncEventThreadPoolProperties,
+│                                        JudgeClientProperties}) — no broad @ComponentScan into infra
+│                                        (see root CLAUDE.md's "Post-extraction hardening");
+│                                        AsyncEventThreadPoolConfig/@EnableAsync added in Phase 2 once
+│                                        SubmissionJudgeEventListener became this module's first real
+│                                        AsyncEventHandler subclass (Phase 1 dispatched no events)
 ├── security/
 │   └── SecurityConfig.java            — this app's own filter chain: /api/v1/public/** permits
 │                                         all, /api/v1/admin/** requires ROLE_ADMIN, everything
 │                                         else (/api/v1/submissions/**) requires authentication
 │                                         only — ownership, not role, scopes a caller to their own
 │                                         submissions
-├── config/web/
-│   └── WebMvcConfig.java              — registers infra's shared CurrentUserIdArgumentResolver as
-│                                         a HandlerMethodArgumentResolver (a WebMvcConfigurer bean,
-│                                         not just an @Import) so @CurrentUserId parameters resolve
+├── config/
+│   ├── web/WebMvcConfig.java          — registers infra's shared CurrentUserIdArgumentResolver as
+│   │                                     a HandlerMethodArgumentResolver (a WebMvcConfigurer bean,
+│   │                                     not just an @Import) so @CurrentUserId parameters resolve
+│   └── JudgeClientProperties.java     — app.judge0.* (base-url, poll-interval-ms,
+│                                         max-poll-attempts, cpu-time-limit-seconds)
 ├── entity/
 │   ├── Problem.java                   — title, slug (unique, via infra's SlugService), description
 │   │                                     (TEXT), difficulty (Difficulty), status
@@ -2865,24 +2876,91 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     DRAFT/PUBLISHED/ARCHIVED shape content-service's
 │   │                                     Article/QuestionAnswer already use), authorUuid (String,
 │   │                                     plain column), publishedAt (Instant, nullable),
-│   │                                     testCases (List<TestCase>, @OneToMany, cascade ALL +
-│   │                                     orphanRemoval)
-│   ├── TestCase.java                  — problem (@ManyToOne), input (TEXT), expectedOutput (TEXT),
-│   │                                     sample (Boolean — true = shown as a worked example, false
-│   │                                     = hidden, judge-only)
+│   │                                     methodName (String), returnType (ParamType), parameters
+│   │                                     (List<MethodParameter>, @OneToMany, cascade ALL +
+│   │                                     orphanRemoval, ordered by position), testCases
+│   │                                     (List<TestCase>, same cascade shape, ordered by id)
+│   ├── MethodParameter.java           — problem (@ManyToOne), name (String), type (ParamType),
+│   │                                     position (Integer) — a signature's parameter order is
+│   │                                     semantically load-bearing, hence explicit position over
+│   │                                     insertion-id ordering
+│   ├── TestCase.java                  — problem (@ManyToOne), input (TEXT — JSON array of argument
+│   │                                     values in Problem.parameters order), expectedOutput (TEXT
+│   │                                     — single JSON-encoded value of Problem.returnType's
+│   │                                     shape), sample (Boolean — true = shown as a worked
+│   │                                     example, false = hidden, judge-only)
 │   └── Submission.java                — problem (@ManyToOne), userUuid (String, plain column),
 │                                         language (ProgrammingLanguage), sourceCode (TEXT), status
-│                                         (SubmissionStatus, default PENDING — Phase 1 never
-│                                         transitions this)
+│                                         (SubmissionStatus, default PENDING — transitions once
+│                                         SubmissionJudgeEventListener judges it), passedTestCases/
+│                                         totalTestCases (Integer, nullable), errorMessage (TEXT,
+│                                         nullable)
 ├── enums/
 │   ├── Difficulty.java                — EASY, MEDIUM, HARD; deliberately not
 │   │                                     common.enums.QuestionDifficulty
 │   │                                     (BEGINNER/INTERMEDIATE/ADVANCED) — a coincidental
 │   │                                     three-value shape from a different domain
-│   ├── ProgrammingLanguage.java        — JAVA, PYTHON, JAVASCRIPT
+│   ├── ParamType.java                 — INT, LONG, DOUBLE, BOOLEAN, STRING, INT_ARRAY,
+│   │                                     DOUBLE_ARRAY, BOOLEAN_ARRAY, STRING_ARRAY, INT_MATRIX —
+│   │                                     the closed value-shape vocabulary every method signature
+│   │                                     and every harness.LanguageHarness is restricted to
+│   ├── ProgrammingLanguage.java        — JAVA(62), PYTHON(71), JAVASCRIPT(63) — each carries its
+│   │                                     Judge0 CE language_id (unverified against a real Judge0
+│   │                                     instance's own /languages list — see the enum's Javadoc)
 │   └── SubmissionStatus.java           — PENDING, RUNNING, ACCEPTED, WRONG_ANSWER, COMPILE_ERROR,
-│                                         RUNTIME_ERROR, TIME_LIMIT_EXCEEDED (the full eventual
-│                                         vocabulary defined now; only PENDING is reachable today)
+│                                         RUNTIME_ERROR, TIME_LIMIT_EXCEEDED — Phase 2's
+│                                         SubmissionJudgeEventListener now actually produces every
+│                                         value, not just PENDING
+├── harness/
+│   ├── LanguageHarness.java            — abstract; Template Method: buildProgram(problem, userCode)
+│   │                                     is the fixed prelude → user-code → generated-main
+│   │                                     skeleton; renderPrelude/renderMain are the per-language
+│   │                                     steps; renderStarterCode is a separate, simpler stub
+│   │                                     generator (no test-harness wrapping)
+│   ├── JavaLanguageHarness.java         — embeds a hand-rolled JsonMini parser/writer (Judge0's
+│   │                                     Java runtime has no application classpath — no Jackson);
+│   │                                     generates JsonMini + user's `class Solution` (non-public,
+│   │                                     matches Judge0's one-public-class-per-file Java
+│   │                                     requirement) + a generated `public class Main`
+│   ├── PythonLanguageHarness.java       — uses stdlib json/typing directly, no embedded helper
+│   ├── JavaScriptLanguageHarness.java   — uses native JSON.parse/JSON.stringify, no embedded
+│   │                                     helper; follows real LeetCode's own `var fn = function(){}`
+│   │                                     convention, not a class
+│   └── LanguageHarnessRegistry.java     — the Strategy half: Map<ProgrammingLanguage, LanguageHarness>
+│                                         built from every LanguageHarness @Component Spring finds
+├── judge/
+│   ├── JudgeClient.java                 — Adapter interface: run(program, language, stdin) →
+│   │                                     Judge0SubmissionResult, blocking (polls internally)
+│   ├── Judge0Status.java                — Judge0's status vocabulary narrowed to IN_QUEUE/
+│   │                                     PROCESSING/ACCEPTED/WRONG_ANSWER/TIME_LIMIT_EXCEEDED/
+│   │                                     COMPILATION_ERROR/RUNTIME_ERROR (folds Judge0's 6 distinct
+│   │                                     runtime-error subtypes into one)/INTERNAL_ERROR/
+│   │                                     EXEC_FORMAT_ERROR; ACCEPTED here never means "matched
+│   │                                     expected output" — see its own Javadoc
+│   ├── Judge0SubmissionResult.java      — record: status, stdout, stderr, compileOutput, message
+│   └── impl/Judge0Client.java           — RestClient-backed; works unmodified against Judge0 CE's
+│                                         hosted RapidAPI instance (default) or a self-hosted one:
+│                                         submits with base64_encoded=true (arbitrary source/stdin
+│                                         bytes need no JSON-string escaping over the wire), adds
+│                                         X-RapidAPI-Key/X-RapidAPI-Host headers only when
+│                                         JudgeClientProperties.rapidApiKey is set, never sends
+│                                         expected_output, polls per JudgeClientProperties'
+│                                         interval/attempt bounds
+├── event/
+│   ├── SubmissionCreatedEvent.java      — record(submissionId), published by
+│   │                                     SubmissionServiceImpl.create
+│   └── SubmissionJudgeEventListener.java — extends infra.event.AsyncEventHandler, but listens via
+│                                         @TransactionalEventListener(phase = AFTER_COMMIT) +
+│                                         explicit @Async("asyncEventExecutor"), NOT this reactor's
+│                                         usual @EventHandler — @EventHandler fires immediately on
+│                                         publish, which would race the still-open publishing
+│                                         transaction (caught as a real bug during this build, see
+│                                         the class's own Javadoc); judges every TestCase in order,
+│                                         stopping at the first failure; splits its own work across
+│                                         two short TransactionTemplate transactions
+│                                         (load-and-mark-RUNNING, save-final-outcome) around a long
+│                                         non-transactional middle (the Judge0 round-trips) rather
+│                                         than holding one open transaction for the whole run
 ├── repository/
 │   ├── ProblemRepository.java         — JpaRepository<Problem, Integer> + JpaSpecificationExecutor
 │   │                                     + existsBySlug/existsBySlugAndIdNot/findBySlug
@@ -2894,68 +2972,114 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 ├── service/
 │   ├── ProblemService.java (+ impl/)  — create/update/delete/getById + getPublishedBySlug (throws
 │   │                                     PROBLEM_NOT_FOUND for a draft/archived slug too — never a
-│   │                                     distinguishable "found but not visible") + list
+│   │                                     distinguishable "found but not visible") + list.
+│   │                                     ProblemServiceImpl#update rejects any methodName/
+│   │                                     returnType/parameters change while the problem is (and
+│   │                                     stays) PUBLISHED (signatureChanged, PROBLEM_SIGNATURE_LOCKED)
+│   │                                     — testCases stay editable regardless of publish status,
+│   │                                     but validateTestCaseArity always checks every
+│   │                                     TestCase.input parses as a JSON array matching the final
+│   │                                     parameters list's size (PROBLEM_TEST_CASE_ARITY_MISMATCH),
+│   │                                     on both create and update
 │   ├── SubmissionService.java (+ impl/) — create (validates the target problem is PUBLISHED, same
-│   │                                     non-leaking posture as getPublishedBySlug) +
-│   │                                     getSubmission (ownership-checked, same
-│   │                                     resolveOwnedX pattern as task-service's ProjectService) +
-│   │                                     listSubmissions
-│   ├── ProblemCommands.java           — Create/Update records + nested TestCaseInput record
+│   │                                     non-leaking posture as getPublishedBySlug; publishes
+│   │                                     SubmissionCreatedEvent after saving) + getSubmission
+│   │                                     (ownership-checked, same resolveOwnedX pattern as
+│   │                                     task-service's ProjectService) + listSubmissions
+│   ├── ProblemCommands.java           — Create/Update records + nested TestCaseInput/
+│   │                                     MethodParameterInput records
 │   └── SubmissionCommands.java        — Create record (problemId, language, sourceCode)
 ├── exception/
 │   └── DevPracticeErrorCode.java       — PROBLEM_NOT_FOUND, PROBLEM_SLUG_CONFLICT,
+│                                         PROBLEM_SIGNATURE_LOCKED, PROBLEM_TEST_CASE_ARITY_MISMATCH,
 │                                         SUBMISSION_NOT_FOUND
 ├── dto/
 │   ├── ProblemResponse.java           — record: id, slug, title, description, difficulty, status,
-│   │                                     testCases (List<TestCaseResponse>), publishedAt,
-│   │                                     createdAt — used by both admin (all test cases) and
-│   │                                     public (sample-only, via ProblemMapper#toPublicResponse)
+│   │                                     methodName, returnType, parameters
+│   │                                     (List<MethodParameterResponse>), testCases
+│   │                                     (List<TestCaseResponse>), publishedAt, createdAt — used
+│   │                                     by both admin (all test cases) and public (sample-only,
+│   │                                     via ProblemMapper#toPublicResponse)
 │   ├── ProblemSummaryResponse.java    — record: id, slug, title, difficulty (list-view row shape)
+│   ├── MethodParameterResponse.java / MethodParameterRequest.java — request carries no position
+│   │                                     field; derived from the request list's own index
 │   ├── TestCaseResponse.java / TestCaseRequest.java
-│   ├── CreateProblemRequest.java / UpdateProblemRequest.java — @Data; testCases is a nested,
-│   │                                     inline List<TestCaseRequest> (real content, not an
-│   │                                     id reference — unlike content-service's tag-id-list
-│   │                                     pattern); update is replace-all
+│   ├── CreateProblemRequest.java / UpdateProblemRequest.java — @Data; parameters/testCases are
+│   │                                     both nested, inline lists (real content, not an id
+│   │                                     reference — unlike content-service's tag-id-list
+│   │                                     pattern); both replace-all on update
 │   ├── SubmissionResponse.java        — record: id, problemId, problemTitle, language, sourceCode,
-│   │                                     status, submittedAt
-│   └── CreateSubmissionRequest.java   — @Data: problemId, language, sourceCode
+│   │                                     status, passedTestCases, totalTestCases, errorMessage,
+│   │                                     submittedAt
+│   ├── CreateSubmissionRequest.java   — @Data: problemId, language, sourceCode
+│   └── StarterCodeResponse.java       — record: language, code
 ├── mapper/
-│   ├── ProblemMapper.java              — toResponse/toSummaryResponse (MapStruct) +
-│   │                                      toPublicResponse (default method: filters testCases to
-│   │                                      sample = true only — the one place a hidden test case's
-│   │                                      expected output could otherwise leak to a public caller)
-│   └── SubmissionMapper.java          — problemId/problemTitle mapped from the nested Problem
+│   ├── ProblemMapper.java              — toResponse/toSummaryResponse/toResponse(MethodParameter)
+│   │                                      (MapStruct) + toPublicResponse (default method: filters
+│   │                                      testCases to sample = true only — the one place a hidden
+│   │                                      test case's expected output could otherwise leak to a
+│   │                                      public caller)
+│   └── SubmissionMapper.java          — problemId/problemTitle mapped from the nested Problem;
+│                                         passedTestCases/totalTestCases/errorMessage auto-map by
+│                                         matching field names, no explicit @Mapping needed
 └── api/ (+ api/impl/)
     ├── ProblemApi.java (+ ProblemController.java)             — /api/v1/admin/problems: create,
     │                                     update, delete, getById, list (difficulty/status/q filters)
     ├── PublicProblemApi.java (+ PublicProblemController.java) — /api/v1/public/problems: list
     │                                     (hardcodes ContentStatus.PUBLISHED, same convention as
-    │                                     content-service's PublicContentController), getBySlug
+    │                                     content-service's PublicContentController), getBySlug,
+    │                                     GET /{slug}/starter-code?language=... (renders a
+    │                                     LanguageHarness#renderStarterCode stub — no test-case
+    │                                     wrapping, just the signature)
     └── SubmissionApi.java (+ SubmissionController.java)        — /api/v1/submissions: create,
                                           getById, list — every method takes @CurrentUserId String
                                           userUuid
 ```
 
 **Liquibase:** own changelog tree (`dev-practice-service/.../database/sql/dev-practice-service.xml`
-+ `2026/0.0.4/202609170001__0.0.4__DKP-0052__add_dev_practice_tables.sql`), applied via the
-consolidated `services-liquibase` job in `docker-compose.apps.yml` — no standalone single-service
-`*-liquibase.yml` file of its own (same as `ecommerce-service`/`identity-service`/`content-service`/
-`ai-service`). `PROBLEM`/`TEST_CASE`/`SUBMISSION` land directly in the new `dev_practice` schema; a
-fresh snapshot, not a replay of any other module's history, since this module was never embedded in
-`gateway` to begin with. `TEST_CASE` cascades from `PROBLEM` (`ON DELETE CASCADE`); `SUBMISSION`'s
-FK to `PROBLEM` deliberately carries no cascade rule — a submission is a historical record of what a
-user actually ran and should never silently disappear when a problem is edited.
++ `2026/0.0.4/202609170001__0.0.4__DKP-0052__add_dev_practice_tables.sql` (Phase 1 — fresh-snapshot
+`PROBLEM`/`TEST_CASE`/`SUBMISSION`) +
+`2026/0.0.4/202609180001__0.0.4__DKP-0053__add_dev_practice_method_signature_and_judging_columns.sql`
+(Phase 2 — additive-only, per this reactor's never-edit-an-already-run-changeset convention:
+`PROBLEM.METHOD_NAME`/`RETURN_TYPE`, new table `METHOD_PARAMETER`, `SUBMISSION`'s three new nullable
+judging-result columns)), applied via the consolidated `services-liquibase` job in
+`docker-compose.apps.yml` — no standalone single-service `*-liquibase.yml` file of its own (same as
+`ecommerce-service`/`identity-service`/`content-service`/`ai-service`). `TEST_CASE`/
+`METHOD_PARAMETER` both cascade from `PROBLEM` (`ON DELETE CASCADE`); `SUBMISSION`'s FK to `PROBLEM`
+deliberately carries no cascade rule — a submission is a historical record of what a user actually
+ran and should never silently disappear when a problem is edited.
 
 **Compiles cleanly against the reactor's existing conventions** (needs `JAVA_HOME` pointed at a JDK
-21 install to verify) but hasn't been run against a real Postgres yet — same unverified-at-runtime
-caveat every other standalone service's first changelog has carried at this stage.
+21 install to verify) but the Liquibase changesets haven't been run against a real Postgres, and
+`judge.impl.Judge0Client` hasn't been exercised against a real Judge0 instance, in this session —
+same unverified-at-runtime caveat every other standalone service's first changelog/first-landing
+infra has carried at this stage in this reactor. **The `harness.LanguageHarness` code generation
+itself was verified for real**, though, not just read-through: the actual generated `JsonMini`
+class, a full generated two-sum `Main.java` (both via `JavaLanguageHarness`), and the generated
+JavaScript harness were extracted from the real source files and compiled/run with a real JDK 21
+`javac`/`java` and a real Node runtime in this session, including a passing two-sum test and a
+quote/backslash JSON-escaping round-trip test — `PythonLanguageHarness` was not executed (no Python
+interpreter available in this session; its `json`/`typing`-stdlib logic is much lower-risk than
+the hand-rolled Java parser by comparison).
 
-**Planned: Phase 2** — submission judging, not built yet. Agreed design: a `JudgeClient` Adapter in
-front of a self-hosted Judge0 instance, a Strategy per `ProgrammingLanguage` for compile/run config,
-a Template Method for the compile → run → compare-output → score pipeline, dispatched async via
-`infra`'s `AsyncEventThreadPoolConfig` (the same `@EventHandler` pattern `ai-service`/
-`social-service` already use). See `dev-practice-service/CLAUDE.md`'s own "Planned: Phase 2" section
-and the `project_dev_practice_service_module` memory for the full discussion.
+**Judge0 backend: hosted RapidAPI, no self-hosted stack scaffolded in this repo right now**
+(`https://judge0-ce.p.rapidapi.com`, `JUDGE0_RAPIDAPI_KEY` read from the host shell same as
+`OPENAI_API_KEY`) — chosen specifically to avoid Judge0's `isolate` sandbox's known
+Docker-Desktop-on-Windows/WSL2 cgroup friction while this judging pipeline is still being verified.
+A self-hosted `judge0-*` stack (`judge0-db`/`judge0-redis`/`judge0-server`/`judge0-workers`,
+`docker/judge0/judge0.conf`) was added to `docker-compose.infra.yml` and then removed outright once
+RapidAPI became the only backend actually in use — `judge.impl.Judge0Client` still supports a
+self-hosted instance unmodified (leave `rapidApiKey` blank, repoint `baseUrl`), so reintroducing one
+later is a compose/config addition, not a code change; see `dev-practice-service/CLAUDE.md`'s
+"Phase 2" section. **Not exercised against a live Judge0 API call of either kind in this session** —
+the `judge.impl.Judge0Client`/harness code itself *was* verified (see above), just never against a
+real Judge0 response.
+
+**Not built, deliberately deferred (not rejected):** the webhook-callback alternative to polling
+result delivery, admin GUI/seed data for authoring problems, any GUI code-editor/submission flow,
+and LeetCode-style structural types beyond `ParamType`'s current vocabulary (linked lists, trees,
+generic objects). See `dev-practice-service/CLAUDE.md`'s "Phase 2" section and the
+`project_dev_practice_service_module` memory for the full discussion.
 
 ---
 

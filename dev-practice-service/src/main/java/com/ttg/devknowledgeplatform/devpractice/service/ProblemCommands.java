@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 
 /**
  * Service-layer input records for {@link ProblemService} — never this module's own {@code dto/}
@@ -16,13 +17,19 @@ public final class ProblemCommands {
     }
 
     public record Create(String title, String description, Difficulty difficulty,
-            ContentStatus status, List<TestCaseInput> testCases) {
+            ContentStatus status, String methodName, ParamType returnType,
+            List<MethodParameterInput> parameters, List<TestCaseInput> testCases) {
     }
 
     public record Update(String title, String description, Difficulty difficulty,
-            ContentStatus status, List<TestCaseInput> testCases) {
+            ContentStatus status, String methodName, ParamType returnType,
+            List<MethodParameterInput> parameters, List<TestCaseInput> testCases) {
     }
 
     public record TestCaseInput(String input, String expectedOutput, Boolean sample) {
+    }
+
+    /** {@code position} is the parameter's index in the method signature (0-based, in order). */
+    public record MethodParameterInput(String name, ParamType type, Integer position) {
     }
 }

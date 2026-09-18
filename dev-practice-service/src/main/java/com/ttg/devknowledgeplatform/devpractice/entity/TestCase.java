@@ -21,6 +21,13 @@ import lombok.ToString;
 /**
  * One input/expected-output pair a {@link Problem}'s submissions are judged against.
  *
+ * <p>{@code input} is a JSON array of argument values, one per {@link Problem#getParameters()}
+ * entry in order — e.g. {@code [[2,7,11,15], 9]} for a two-argument
+ * {@code (int[] numbers, int target)} signature. {@code expectedOutput} is a single JSON-encoded
+ * value of {@link Problem#getReturnType()}'s shape — e.g. {@code [0,1]}. Both are parsed/rendered
+ * by {@code harness.LanguageHarness}'s generated program, never interpreted as raw stdin/stdout
+ * text (this module's submissions are LeetCode-style method bodies, not full programs).
+ *
  * <p>{@code sample} distinguishes the small set of test cases shown to the user alongside the
  * problem statement (worked examples) from the full, larger hidden set actually used for
  * grading — {@link com.ttg.devknowledgeplatform.devpractice.mapper.ProblemMapper#toPublicResponse}

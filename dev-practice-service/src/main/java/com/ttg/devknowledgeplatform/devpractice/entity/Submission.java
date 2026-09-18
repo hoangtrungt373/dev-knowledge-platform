@@ -31,11 +31,13 @@ import lombok.ToString;
  * {@code Task.ownerUuid}/{@code content-service}'s {@code ContentItem.authorUuid} (see root
  * {@code CLAUDE.md}'s Security section).
  *
- * <p><b>Phase 1 scope:</b> this entity only ever persists as {@link SubmissionStatus#PENDING} —
- * there is no judging pipeline wired up yet (no {@code JudgeClient}, no async event listener).
- * See this module's own {@code CLAUDE.md} for the planned follow-up phase (Judge0-backed {@code
- * JudgeClient} adapter, a Strategy per {@link ProgrammingLanguage}, a Template Method for the
- * compile → run → compare → score pipeline).
+ * <p>Judged asynchronously by {@code event.SubmissionJudgeEventListener} after creation — a
+ * submission is created and returned to the caller as {@link SubmissionStatus#PENDING}
+ * immediately, then transitions to its final status once every {@link TestCase} has been run
+ * through Judge0 (via {@code judge.JudgeClient}) or the first failing test case is hit, whichever
+ * comes first (grading stops at the first failure, same as a real judge). {@code passedTestCases}/
+ * {@code totalTestCases} record how far it got; {@code errorMessage} carries a compiler error or
+ * runtime stderr detail for a non-{@code ACCEPTED} result, {@code null} otherwise.
  */
 @Entity
 @Table(name = "SUBMISSION", schema = "dev_practice")
@@ -71,4 +73,13 @@ public class Submission extends AbstractEntity {
     @Column(name = "STATUS", length = 50, nullable = false)
     @Builder.Default
     private SubmissionStatus status = SubmissionStatus.PENDING;
+
+    @Column(name = "PASSED_TEST_CASES")
+    private Integer passedTestCases;
+
+    @Column(name = "TOTAL_TEST_CASES")
+    private Integer totalTestCases;
+
+    @Column(name = "ERROR_MESSAGE")
+    private String errorMessage;
 }

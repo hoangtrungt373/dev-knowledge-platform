@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.devpractice.entity;
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.CascadeType;
@@ -44,6 +45,13 @@ import java.util.List;
  * <p>{@code authorUuid} is a plain column (the creating admin's Keycloak {@code sub} claim),
  * never a {@code User} foreign key — same "Option C" shape as every other standalone service's
  * owner/author column in this reactor (see root {@code CLAUDE.md}'s Security section).
+ *
+ * <p>{@code methodName}/{@code returnType}/{@code parameters} define the LeetCode-style method
+ * signature a submission implements (a submission is a method body, e.g. a {@code class Solution}
+ * with this exact method, never a full stdin/stdout program) — see {@code harness.LanguageHarness}
+ * for how these get rendered into a runnable program per language, and {@link TestCase}'s own
+ * Javadoc for how {@code input}/{@code expectedOutput} relate to {@code parameters}/
+ * {@code returnType}.
  */
 @Entity
 @Table(name = "PROBLEM", schema = "dev_practice")
@@ -52,8 +60,8 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(callSuper = true, exclude = "testCases")
-@ToString(exclude = "testCases")
+@EqualsAndHashCode(callSuper = true, exclude = {"testCases", "parameters"})
+@ToString(exclude = {"testCases", "parameters"})
 public class Problem extends AbstractEntity {
 
     @NotNull
@@ -88,6 +96,22 @@ public class Problem extends AbstractEntity {
 
     @Column(name = "PUBLISHED_AT")
     private Instant publishedAt;
+
+    @NotNull
+    @Size(max = 100)
+    @Column(name = "METHOD_NAME", length = 100, nullable = false)
+    private String methodName;
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "RETURN_TYPE", length = 50, nullable = false)
+    private ParamType returnType;
+
+    @OrderBy("position ASC")
+    @BatchSize(size = 32)
+    @OneToMany(mappedBy = "problem", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<MethodParameter> parameters = new ArrayList<>();
 
     @OrderBy("id ASC")
     @BatchSize(size = 32)

@@ -1,5 +1,6 @@
 package com.ttg.devknowledgeplatform.devpractice.service.impl;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -10,6 +11,7 @@ import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
+import com.ttg.devknowledgeplatform.devpractice.event.SubmissionCreatedEvent;
 import com.ttg.devknowledgeplatform.devpractice.exception.DevPracticeErrorCode;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
@@ -27,6 +29,7 @@ public class SubmissionServiceImpl implements SubmissionService {
 
     private final SubmissionRepository submissionRepository;
     private final ProblemRepository problemRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public Submission create(String userUuid, SubmissionCommands.Create command) {
@@ -47,6 +50,11 @@ public class SubmissionServiceImpl implements SubmissionService {
                 .build();
 
         Submission saved = submissionRepository.save(submission);
+        // Published now, but only actually delivered after this transaction commits — see
+        // SubmissionJudgeEventListener's Javadoc for why it listens with phase = AFTER_COMMIT
+        // rather than this reactor's usual @EventHandler (which would fire immediately here, still
+        // inside this same not-yet-committed transaction).
+        eventPublisher.publishEvent(new SubmissionCreatedEvent(saved.getId()));
         log.info("User {} submitted solution {} for problem {}", userUuid, saved.getId(), problem.getId());
         return saved;
     }

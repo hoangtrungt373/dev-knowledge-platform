@@ -14,7 +14,11 @@ import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.api.PublicProblemApi;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemSummaryResponse;
+import com.ttg.devknowledgeplatform.devpractice.dto.StarterCodeResponse;
+import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
+import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarnessRegistry;
 import com.ttg.devknowledgeplatform.devpractice.mapper.ProblemMapper;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemService;
 
@@ -28,6 +32,7 @@ public class PublicProblemController implements PublicProblemApi {
 
     private final ProblemService problemService;
     private final ProblemMapper problemMapper;
+    private final LanguageHarnessRegistry harnessRegistry;
 
     @Override
     public ResponseEntity<PagedResponse<ProblemSummaryResponse>> list(
@@ -42,6 +47,13 @@ public class PublicProblemController implements PublicProblemApi {
     @Override
     public ResponseEntity<ProblemResponse> getBySlug(String slug) {
         return ResponseEntity.ok(problemMapper.toPublicResponse(problemService.getPublishedBySlug(slug)));
+    }
+
+    @Override
+    public ResponseEntity<StarterCodeResponse> getStarterCode(String slug, ProgrammingLanguage language) {
+        Problem problem = problemService.getPublishedBySlug(slug);
+        String code = harnessRegistry.get(language).renderStarterCode(problem);
+        return ResponseEntity.ok(new StarterCodeResponse(language, code));
     }
 
     private Sort buildSort(String sortBy, String sortDir) {

@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 
 /**
  * Full problem detail — used by both the admin ({@code getById}, all test cases) and public
@@ -19,6 +20,9 @@ public record ProblemResponse(
         String description,
         Difficulty difficulty,
         ContentStatus status,
+        String methodName,
+        ParamType returnType,
+        List<MethodParameterResponse> parameters,
         List<TestCaseResponse> testCases,
         Instant publishedAt,
         Instant createdAt) {

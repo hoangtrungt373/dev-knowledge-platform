@@ -3,7 +3,9 @@ package com.ttg.devknowledgeplatform.devpractice.api;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemSummaryResponse;
+import com.ttg.devknowledgeplatform.devpractice.dto.StarterCodeResponse;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -49,4 +51,17 @@ public interface PublicProblemApi {
      */
     @GetMapping("/{slug}")
     ResponseEntity<ProblemResponse> getBySlug(@PathVariable String slug);
+
+    /**
+     * Returns the method-signature stub for a published problem in the given language — what a
+     * code editor should pre-fill before the user has written anything (see
+     * {@code harness.LanguageHarness#renderStarterCode}).
+     *
+     * @param slug     URL-friendly identifier of the problem
+     * @param language language to render the stub in
+     * @return {@code 200} with the starter code
+     */
+    @GetMapping("/{slug}/starter-code")
+    ResponseEntity<StarterCodeResponse> getStarterCode(
+            @PathVariable String slug, @RequestParam ProgrammingLanguage language);
 }

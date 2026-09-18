@@ -17,6 +17,11 @@ public enum DevPracticeErrorCode implements ErrorCode {
     // Problem errors (PROBLEM_*)
     PROBLEM_NOT_FOUND("PROBLEM_001", "Problem not found", HttpStatus.NOT_FOUND),
     PROBLEM_SLUG_CONFLICT("PROBLEM_002", "Unable to generate a unique slug for this problem", HttpStatus.CONFLICT),
+    PROBLEM_SIGNATURE_LOCKED("PROBLEM_003",
+            "Cannot change a published problem's method name, return type, or parameters — move it back to DRAFT first",
+            HttpStatus.CONFLICT),
+    PROBLEM_TEST_CASE_ARITY_MISMATCH("PROBLEM_004",
+            "Test case input must be a JSON array with exactly one value per parameter", HttpStatus.BAD_REQUEST),
 
     // Submission errors (SUBMISSION_*)
     SUBMISSION_NOT_FOUND("SUBMISSION_001", "Submission not found", HttpStatus.NOT_FOUND);

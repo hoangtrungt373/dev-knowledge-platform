@@ -225,6 +225,13 @@ services:
       SPRING_DATASOURCE_PASSWORD: password
       SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
       KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/dev-knowledge-platform
+      # Defaults to Judge0 CE's hosted RapidAPI instance (see application.yml's own comment and
+      # JudgeClientProperties' Javadoc for why) — set on the host shell before bringing this
+      # container up. A self-hosted Judge0 CE stack was scaffolded here at one point and removed
+      # for now (no active default needs it) — see dev-practice-service/CLAUDE.md's "Phase 2"
+      # section if reintroducing one; JudgeClient/Judge0Client already support it unmodified via
+      # JUDGE0_BASE_URL pointed at a self-hosted instance with JUDGE0_RAPIDAPI_KEY left unset.
+      JUDGE0_RAPIDAPI_KEY: ${JUDGE0_RAPIDAPI_KEY:-}
     ports:
       - "8088:8088"
     depends_on:

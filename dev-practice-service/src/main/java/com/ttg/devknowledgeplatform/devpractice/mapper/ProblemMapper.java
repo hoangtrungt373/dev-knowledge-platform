@@ -5,9 +5,11 @@ import java.util.List;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
+import com.ttg.devknowledgeplatform.devpractice.dto.MethodParameterResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemSummaryResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.TestCaseResponse;
+import com.ttg.devknowledgeplatform.devpractice.entity.MethodParameter;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.TestCase;
 
@@ -21,6 +23,8 @@ public interface ProblemMapper {
 
     TestCaseResponse toResponse(TestCase testCase);
 
+    MethodParameterResponse toResponse(MethodParameter parameter);
+
     /**
      * Same as {@link #toResponse(Problem)}, but with hidden test cases stripped — the shape a
      * public, unauthenticated caller is allowed to see. Never expose a {@code sample = false}
@@ -32,6 +36,7 @@ public interface ProblemMapper {
                 .filter(TestCaseResponse::sample)
                 .toList();
         return new ProblemResponse(full.id(), full.slug(), full.title(), full.description(),
-                full.difficulty(), full.status(), sampleOnly, full.publishedAt(), full.createdAt());
+                full.difficulty(), full.status(), full.methodName(), full.returnType(),
+                full.parameters(), sampleOnly, full.publishedAt(), full.createdAt());
     }
 }

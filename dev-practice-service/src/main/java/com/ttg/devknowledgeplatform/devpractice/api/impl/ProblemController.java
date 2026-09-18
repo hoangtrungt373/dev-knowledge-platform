@@ -2,6 +2,7 @@ package com.ttg.devknowledgeplatform.devpractice.api.impl;
 
 import java.util.List;
 import java.util.Set;
+import java.util.stream.IntStream;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -15,6 +16,7 @@ import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.api.ProblemApi;
 import com.ttg.devknowledgeplatform.devpractice.dto.CreateProblemRequest;
+import com.ttg.devknowledgeplatform.devpractice.dto.MethodParameterRequest;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemSummaryResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.TestCaseRequest;
@@ -39,8 +41,9 @@ public class ProblemController implements ProblemApi {
     @Override
     public ResponseEntity<ProblemResponse> create(String authorUuid, CreateProblemRequest request) {
         ProblemCommands.Create command = new ProblemCommands.Create(
-                request.getTitle(), request.getDescription(), request.getDifficulty(),
-                request.getStatus(), toTestCaseInputs(request.getTestCases()));
+                request.getTitle(), request.getDescription(), request.getDifficulty(), request.getStatus(),
+                request.getMethodName(), request.getReturnType(), toParameterInputs(request.getParameters()),
+                toTestCaseInputs(request.getTestCases()));
         Problem created = problemService.create(command, authorUuid);
         return ResponseEntity.status(HttpStatus.CREATED).body(problemMapper.toResponse(created));
     }
@@ -48,8 +51,9 @@ public class ProblemController implements ProblemApi {
     @Override
     public ResponseEntity<ProblemResponse> update(Integer id, UpdateProblemRequest request) {
         ProblemCommands.Update command = new ProblemCommands.Update(
-                request.getTitle(), request.getDescription(), request.getDifficulty(),
-                request.getStatus(), toTestCaseInputs(request.getTestCases()));
+                request.getTitle(), request.getDescription(), request.getDifficulty(), request.getStatus(),
+                request.getMethodName(), request.getReturnType(), toParameterInputs(request.getParameters()),
+                toTestCaseInputs(request.getTestCases()));
         Problem updated = problemService.update(id, command);
         return ResponseEntity.ok(problemMapper.toResponse(updated));
     }
@@ -77,6 +81,14 @@ public class ProblemController implements ProblemApi {
     private static List<ProblemCommands.TestCaseInput> toTestCaseInputs(List<TestCaseRequest> requests) {
         return requests.stream()
                 .map(r -> new ProblemCommands.TestCaseInput(r.getInput(), r.getExpectedOutput(), r.getSample()))
+                .toList();
+    }
+
+    /** A parameter's position is its index in the supplied list, not a client-specified field. */
+    private static List<ProblemCommands.MethodParameterInput> toParameterInputs(List<MethodParameterRequest> requests) {
+        return IntStream.range(0, requests.size())
+                .mapToObj(i -> new ProblemCommands.MethodParameterInput(
+                        requests.get(i).getName(), requests.get(i).getType(), i))
                 .toList();
     }
 
