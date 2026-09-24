@@ -74,22 +74,24 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
   matching `harness.LanguageHarness` bean and a `language-ids` config entry, to add a language),
   `SubmissionStatus` (the full judging vocabulary — Phase 1 only ever produced `PENDING`; Phase 2's
   `SubmissionJudgeEventListener` now actually produces every other value too).
-- `harness/` — turns a submission's method body into a full program Judge0 can run. `LanguageHarness`
-  (abstract, **Template Method**: `buildProgram` is the fixed skeleton — prelude, user code, a
-  generated `main` — with `renderPrelude`/`renderMain` as the per-language steps) has one concrete
-  subclass per `ProgrammingLanguage` — `JavaLanguageHarness`, `PythonLanguageHarness`,
-  `JavaScriptLanguageHarness` — which simultaneously serve as the **Strategy** half of the design:
-  `LanguageHarnessRegistry` selects the right one per submission's declared language. `JavaLanguageHarness`
-  is the one with real complexity: Judge0's Java runtime has no application classpath (no Jackson),
-  so it carries a hand-rolled, closed-vocabulary JSON parser/writer (`JsonMini`) embedded verbatim
-  into every generated Java program — Python's `json`/JavaScript's `JSON` are stdlib/native, so
-  those two harnesses need no equivalent. **Verified against the real JDK 21 compiler and a real
-  Node runtime in this session** (not just read-through) — the exact generated `JsonMini` class, a
-  full generated two-sum `Main.java`, and the generated JavaScript harness were all extracted,
-  compiled/run standalone, and produced the correct `[0,1]` output; the Python harness was not
-  executed in this session (its logic — `json.loads`/`*args`-unpack/`json.dumps` — is stdlib-trivial
-  by comparison), so treat it with the same "read-through only" caution as any other
-  unrun-in-this-session code path.
+- `harness/` — turns a submission's method body into a full program Judge0 can run.
+  `LanguageHarness`'s `final buildProgram` is the fixed skeleton (prelude, user code, generated
+  `main`); what varies per language is split in two:
+  - **Program layout → JMustache templates** in `src/main/resources/harness/{java,python,javascript}/`
+    (`prelude`/`main`/`starter.mustache`), compiled once at construction so a missing/broken
+    template fails startup. Java's hand-rolled `JsonMini` JSON helper (needed because Judge0's Java
+    runtime has no application classpath — no Jackson) is a plain `harness/java/JsonMini.java`
+    resource embedded via `{{includes.jsonMini}}`.
+  - **Per-`ParamType` syntax → `TypeRenderer`** (Strategy): `JavaTypeRenderer`/`PythonTypeRenderer`/
+    `JavaScriptTypeRenderer`, each one exhaustive switch returning a `TypeSyntax` record.
+  The three `*LanguageHarness` subclasses are constructor-only (language + renderer + includes);
+  `LanguageHarnessRegistry` selects one per submission's declared language.
+  **Template gotchas:** HTML escaping is disabled in the compiler (source code needs `<`/`&` as-is);
+  user code is concatenated, never rendered through Mustache (a submission containing `{{` must
+  never be interpreted); the JavaScript starter template switches delimiters to `<% %>`, since
+  JSDoc's `{type}` braces collide with Mustache's; and a backslash in a template is a literal
+  backslash in the generated program — no Java-string escaping layer anymore, so write `"\\A"` in a
+  template exactly as it should appear in the generated Java.
 - `judge/` — `JudgeClient` (an **Adapter**, Structural pattern, in front of Judge0's HTTP API) +
   `judge.impl.Judge0Client` (the `RestClient`-backed implementation, works unmodified against
   either Judge0 CE's hosted RapidAPI instance — the default, see the "Phase 2" section below — or a
@@ -99,7 +101,9 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
   `JudgeClientProperties`' interval/attempt bounds) + `Judge0Status` (Judge0's status vocabulary
   narrowed to what this module acts on — see its own Javadoc for why `ACCEPTED` here never means
   "matched expected output": this module never sends Judge0's own `expected_output` field, doing
-  its own structural JSON comparison instead) + `Judge0SubmissionResult`.
+  its own structural JSON comparison instead) + `Judge0SubmissionResult` + `OutputMatcher` (that
+  structural comparison: return-type-aware — `DOUBLE`/`DOUBLE_ARRAY` within `1e-5`, every other
+  numeric type by exact `BigDecimal` value; see its own Javadoc).
 - `event/` — `SubmissionCreatedEvent` (published by `SubmissionServiceImpl.create`) +
   `SubmissionJudgeEventListener` (extends `infra.event.AsyncEventHandler`, but listens via
   `@TransactionalEventListener(phase = AFTER_COMMIT)` + explicit `@Async("asyncEventExecutor")`
@@ -152,9 +156,11 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   list (`ProblemController.toParameterInputs`), never client-specified.
 - **`TestCase.input`/`expectedOutput` are JSON, not raw stdin/stdout text** — `input` is a JSON
   array of argument values in `Problem.parameters` order (e.g. `[[2,7,11,15], 9]`); `expectedOutput`
-  is a single JSON-encoded value of `Problem.returnType`'s shape (e.g. `[0,1]`). Get the numeric
-  representation right when authoring a test case for an array/number return type — `[0,1]` and
-  `[0.0,1.0]` do not compare equal (see `SubmissionJudgeEventListener#matches`'s Javadoc).
+  is a single JSON-encoded value of `Problem.returnType`'s shape (e.g. `[0,1]`). Numeric
+  representation doesn't need to match the program's formatting — `judge.OutputMatcher` treats `2`
+  and `2.0` as equal, and compares `DOUBLE`/`DOUBLE_ARRAY` within `1e-5` — but a `LONG` beyond
+  2^53 can't be judged correctly in JavaScript (`JSON.parse` itself rounds it, same as LeetCode's
+  JS judge), so keep `LONG` test data within ±2^53 if JavaScript submissions must pass it.
 - **A `PUBLISHED` problem's grading contract is split into two independently-governed halves —
   `ProblemServiceImpl` enforces both:**
   - **`methodName`/`returnType`/`parameters` are frozen once a problem is (and stays) `PUBLISHED`.**
@@ -181,15 +187,24 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
     actually ran (see `Submission`'s own Javadoc), so a previously-`ACCEPTED` submission stays
     `ACCEPTED` even if the test data that accepted it changes later. Same behavior every real
     competitive-judge platform has; not something this module tries to solve.
-- **Never add a `ParamType` without adding matching support in all three `LanguageHarness`
-  implementations** (declaration syntax, JSON parse, JSON write) — the vocabulary is closed
-  precisely because every harness has to hand-render support for exactly what it contains, not a
-  superset. See `ParamType`'s own Javadoc.
+- **Never add a `ParamType` without adding matching support in every language** — one line per
+  `TypeRenderer` (the compiler flags each via their exhaustive switches — never add a `default`
+  branch to one, it would silently defeat that), matching `toX`/`write` methods in
+  `harness/java/JsonMini.java` (not compiler-checked — only `LanguageHarnessExecutionIT` catches a
+  missing one), and a `sampleValue` in that IT. The vocabulary is closed precisely because every
+  harness has to hand-render support for exactly what it contains. See `ParamType`'s own Javadoc.
+- **Harness output is pinned by golden files — any change to a template, `JsonMini`, or a
+  `TypeRenderer` must show up as a reviewed golden diff.** Run `LanguageHarnessGoldenTest` with
+  `-Dharness.golden.update=true`, then review the diff under `src/test/resources/harness/golden/`
+  before committing it; a golden update is never a way to turn a red test green. A pure refactor
+  must leave every golden byte-identical. Run `LanguageHarnessExecutionIT` (needs Docker; not part
+  of plain `mvn test`, select it with `-Dtest=LanguageHarnessExecutionIT`) after any change that
+  alters generated code, since goldens prove *what* is generated, not that it runs.
 - **Judge0's own `expected_output`/`WRONG_ANSWER` machinery is never used** — this module always
   submits without `expected_output` and does its own structural JSON comparison against
-  `TestCase.expectedOutput` in `SubmissionJudgeEventListener`. Don't "simplify" by switching to
-  Judge0's own comparison; it does a raw string compare, which would make whitespace-only
-  differences (`[0, 1]` vs `[0,1]`) fail incorrectly.
+  `TestCase.expectedOutput` in `judge.OutputMatcher`. Don't "simplify" by switching to Judge0's own
+  comparison; it does a raw string compare, which would make whitespace-only differences
+  (`[0, 1]` vs `[0,1]`) and cross-language number rendering (`2` vs `2.0`) fail incorrectly.
 - **No vendor-specific execution-backend detail belongs on `ProgrammingLanguage` (or any other
   domain enum) — it belongs in `judge/impl/`'s own config/mapping.** `judge0LanguageId` used to be a
   field on `ProgrammingLanguage` itself; moved to `JudgeClientProperties#getLanguageIds()`
@@ -211,7 +226,8 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
 
 Design agreed in Phase 1 planning (see the `project_dev_practice_service_module` memory) and now
 implemented as described in "What lives here" above: `JudgeClient` Adapter → Judge0,
-`LanguageHarness` Strategy+Template Method for per-language program generation, async dispatch via
+`LanguageHarness` (templates + `TypeRenderer` Strategy, see `harness/` above) for per-language
+program generation, async dispatch via
 `infra`'s `AsyncEventThreadPoolConfig`.
 
 **Judge0 backend: hosted RapidAPI, no self-hosted stack scaffolded right now.** Originally built
@@ -233,6 +249,13 @@ self-hosting is a `docker-compose.infra.yml`/`judge0.conf` addition (Judge0's ow
 host shell (same pattern as `OPENAI_API_KEY`). **Not run against a live Judge0 API call of either
 kind in this session** — the `JudgeClient`/harness code itself *was* verified (see "What lives
 here" above), just never against a real Judge0 response.
+
+**Tests (the module's first):** `LanguageHarnessGoldenTest` + `OutputMatcherTest` run under plain
+`mvn test`. `LanguageHarnessExecutionIT` (Testcontainers, Judge0 CE's own runtime versions —
+OpenJDK 13 / Python 3.8 / Node 12) compiles but **has not yet run with Docker** — no Docker daemon was
+available when it was added; its exact 36-case list was instead executed against local runtimes
+(JDK 21, Python 3.6, Node 24), all passing. Treat compatibility with Judge0's exact older versions
+as unverified until the IT runs somewhere with Docker.
 
 **Not built, deliberately deferred past this phase:**
 - Result delivery is polling only (`Judge0Client` blocks internally on `GET /submissions/{token}`)

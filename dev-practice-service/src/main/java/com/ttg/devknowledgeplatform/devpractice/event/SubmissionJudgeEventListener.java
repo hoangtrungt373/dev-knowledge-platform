@@ -10,10 +10,6 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import com.ttg.devknowledgeplatform.devpractice.entity.MethodParameter;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
@@ -24,6 +20,7 @@ import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarness;
 import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarnessRegistry;
 import com.ttg.devknowledgeplatform.devpractice.judge.JudgeClient;
 import com.ttg.devknowledgeplatform.devpractice.judge.Judge0SubmissionResult;
+import com.ttg.devknowledgeplatform.devpractice.judge.OutputMatcher;
 import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
 
 import com.ttg.devknowledgeplatform.infra.event.AsyncEventHandler;
@@ -62,19 +59,19 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
     private final SubmissionRepository submissionRepository;
     private final LanguageHarnessRegistry harnessRegistry;
     private final JudgeClient judgeClient;
-    private final ObjectMapper objectMapper;
+    private final OutputMatcher outputMatcher;
     private final TransactionTemplate transactionTemplate;
 
     public SubmissionJudgeEventListener(
             SubmissionRepository submissionRepository,
             LanguageHarnessRegistry harnessRegistry,
             JudgeClient judgeClient,
-            ObjectMapper objectMapper,
+            OutputMatcher outputMatcher,
             PlatformTransactionManager transactionManager) {
         this.submissionRepository = submissionRepository;
         this.harnessRegistry = harnessRegistry;
         this.judgeClient = judgeClient;
-        this.objectMapper = objectMapper;
+        this.outputMatcher = outputMatcher;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -133,7 +130,9 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
                 case COMPILATION_ERROR -> SubmissionStatus.COMPILE_ERROR;
                 case TIME_LIMIT_EXCEEDED -> SubmissionStatus.TIME_LIMIT_EXCEEDED;
                 case RUNTIME_ERROR, INTERNAL_ERROR, EXEC_FORMAT_ERROR -> SubmissionStatus.RUNTIME_ERROR;
-                case ACCEPTED -> matches(result.stdout(), testCase.getExpectedOutput()) ? null : SubmissionStatus.WRONG_ANSWER;
+                case ACCEPTED -> outputMatcher.matches(
+                        result.stdout(), testCase.getExpectedOutput(), input.problem().getReturnType())
+                        ? null : SubmissionStatus.WRONG_ANSWER;
                 // Judge0 only reports WRONG_ANSWER when we supply expected_output (we never do —
                 // see Judge0SubmissionResult's Javadoc), and IN_QUEUE/PROCESSING are non-final
                 // statuses JudgeClient#run never returns; both are defensive fallbacks only.
@@ -156,25 +155,6 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
             submission.setErrorMessage(outcome.errorMessage());
             submissionRepository.save(submission);
         });
-    }
-
-    /**
-     * Structural JSON comparison, not a raw string compare — {@code [0, 1]} and {@code [0,1]} must
-     * be treated as equal, which a string compare would get wrong given {@code JsonMini.write}'s
-     * exact formatting is only one of many valid renderings of the same value. Admin-entered
-     * numeric expected output should match the type this problem's return type actually produces
-     * (an int array renders as {@code [0,1]}, not {@code [0.0,1.0]}) — Jackson's {@link JsonNode}
-     * equality is value-typed, so a mismatched numeric representation (integer vs. decimal) would
-     * not compare equal even when numerically the same.
-     */
-    private boolean matches(String actualStdout, String expectedOutput) {
-        try {
-            JsonNode actual = objectMapper.readTree(actualStdout == null ? "" : actualStdout.trim());
-            JsonNode expected = objectMapper.readTree(expectedOutput);
-            return actual.equals(expected);
-        } catch (JsonProcessingException e) {
-            return false;
-        }
     }
 
     private static String errorMessageOf(Judge0SubmissionResult result) {

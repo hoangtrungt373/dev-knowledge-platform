@@ -1,0 +1,19 @@
+from typing import List
+
+
+class Solution:
+    def twoSum(self, nums: List[int], target: int) -> List[int]:
+        seen = {}
+        for i, n in enumerate(nums):
+            if target - n in seen:
+                return [seen[target - n], i]
+            seen[n] = i
+        return []
+
+
+
+if __name__ == "__main__":
+    import json, sys
+    _args = json.loads(sys.stdin.read())
+    _result = Solution().twoSum(*_args)
+    print(json.dumps(_result))

@@ -1,2 +1,6 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+# dev-practice-service's harness templates/fixtures/golden files: generated programs are compared
+# byte-for-byte, so a CRLF checkout (core.autocrlf=true) must never rewrite them.
+/dev-practice-service/src/main/resources/harness/** text eol=lf
+/dev-practice-service/src/test/resources/harness/** text eol=lf

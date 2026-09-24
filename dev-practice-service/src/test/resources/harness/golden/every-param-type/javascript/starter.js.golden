@@ -1,0 +1,16 @@
+/**
+ * @param {number} a
+ * @param {number} b
+ * @param {number} c
+ * @param {boolean} d
+ * @param {string} e
+ * @param {number[]} f
+ * @param {number[]} g
+ * @param {boolean[]} h
+ * @param {string[]} i
+ * @param {number[][]} j
+ * @return {string}
+ */
+var describe = function(a, b, c, d, e, f, g, h, i, j) {
+
+};

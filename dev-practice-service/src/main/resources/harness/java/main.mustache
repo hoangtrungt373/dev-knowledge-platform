@@ -1,0 +1,13 @@
+
+
+public class Main {
+    @SuppressWarnings("unchecked")
+    public static void main(String[] args) throws Exception {
+        java.util.Scanner _scanner = new java.util.Scanner(System.in).useDelimiter("\\A");
+        String _input = _scanner.hasNext() ? _scanner.next() : "[]";
+        List<Object> _parsed = (List<Object>) JsonMini.parse(_input);
+        Solution _sol = new Solution();
+        {{returnType.declaration}} _result = _sol.{{methodName}}({{#params}}{{^-first}}, {{/-first}}JsonMini.{{type.jsonConverter}}(_parsed.get({{position}})){{/params}});
+        System.out.println(JsonMini.write(_result));
+    }
+}

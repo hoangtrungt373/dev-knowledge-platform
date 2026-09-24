@@ -1,0 +1,14 @@
+from typing import List
+
+
+class Solution:
+    def describe(self, a: int, b: int, c: float, d: bool, e: str, f: List[int], g: List[float], h: List[bool], i: List[str], j: List[List[int]]) -> str:
+        return e
+
+
+
+if __name__ == "__main__":
+    import json, sys
+    _args = json.loads(sys.stdin.read())
+    _result = Solution().describe(*_args)
+    print(json.dumps(_result))

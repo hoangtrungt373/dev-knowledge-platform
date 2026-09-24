@@ -7,7 +7,8 @@ package com.ttg.devknowledgeplatform.devpractice.enums;
  * plain domain vocabulary; translating a value here into whatever a specific execution backend
  * needs is that backend's own adapter's job (see {@code config.JudgeClientProperties#getLanguageIds()}
  * for Judge0's). Extending this enum means adding a matching {@code harness.LanguageHarness} bean
- * and a config entry for whichever judge backend is active — never a field on this type itself.
+ * (plus its {@code TypeRenderer} and a {@code harness/{language}/} template directory) and a config
+ * entry for whichever judge backend is active — never a field on this type itself.
  */
 public enum ProgrammingLanguage {
     JAVA,

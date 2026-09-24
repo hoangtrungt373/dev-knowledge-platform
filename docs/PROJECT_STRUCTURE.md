@@ -2922,22 +2922,34 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                         SubmissionJudgeEventListener now actually produces every
 │                                         value, not just PENDING
 ├── harness/
-│   ├── LanguageHarness.java            — abstract; Template Method: buildProgram(problem, userCode)
-│   │                                     is the fixed prelude → user-code → generated-main
-│   │                                     skeleton; renderPrelude/renderMain are the per-language
-│   │                                     steps; renderStarterCode is a separate, simpler stub
-│   │                                     generator (no test-harness wrapping)
-│   ├── JavaLanguageHarness.java         — embeds a hand-rolled JsonMini parser/writer (Judge0's
-│   │                                     Java runtime has no application classpath — no Jackson);
-│   │                                     generates JsonMini + user's `class Solution` (non-public,
-│   │                                     matches Judge0's one-public-class-per-file Java
-│   │                                     requirement) + a generated `public class Main`
-│   ├── PythonLanguageHarness.java       — uses stdlib json/typing directly, no embedded helper
-│   ├── JavaScriptLanguageHarness.java   — uses native JSON.parse/JSON.stringify, no embedded
-│   │                                     helper; follows real LeetCode's own `var fn = function(){}`
-│   │                                     convention, not a class
-│   └── LanguageHarnessRegistry.java     — the Strategy half: Map<ProgrammingLanguage, LanguageHarness>
-│                                         built from every LanguageHarness @Component Spring finds
+│   ├── LanguageHarness.java            — abstract; final buildProgram(problem, userCode) is the fixed
+│   │                                     prelude → user-code → generated-main skeleton; the
+│   │                                     prelude/main/starter parts are JMustache templates loaded
+│   │                                     from resources/harness/{language}/ and compiled once at
+│   │                                     construction (fail-fast at startup); user code is
+│   │                                     concatenated, never passed through Mustache; per-type
+│   │                                     syntax comes from the subclass's TypeRenderer
+│   ├── TypeRenderer.java                — Strategy interface: ParamType → TypeSyntax for one
+│   │                                     language; implementations use an exhaustive switch (no
+│   │                                     default) so a new ParamType is a compile error until
+│   │                                     every language handles it
+│   ├── TypeSyntax.java                  — record(declaration, jsonConverter) — jsonConverter is
+│   │                                     Java-only (JsonMini.toIntArray etc.), null elsewhere
+│   ├── JavaTypeRenderer.java / PythonTypeRenderer.java / JavaScriptTypeRenderer.java
+│   │                                   — one line per ParamType per language
+│   ├── JavaLanguageHarness.java         — constructor-only: JAVA + JavaTypeRenderer + the
+│   │                                     `jsonMini` include (resources/harness/java/JsonMini.java,
+│   │                                     embedded verbatim — Judge0's Java runtime has no
+│   │                                     application classpath, so no Jackson); generates JsonMini +
+│   │                                     user's `class Solution` (non-public, matches Judge0's
+│   │                                     one-public-class-per-file requirement) + `public class Main`
+│   ├── PythonLanguageHarness.java       — constructor-only; stdlib json/typing, no embedded helper
+│   ├── JavaScriptLanguageHarness.java   — constructor-only; native JSON.parse/JSON.stringify;
+│   │                                     follows real LeetCode's own `var fn = function(){}`
+│   │                                     convention; its starter template switches delimiters to
+│   │                                     <% %> so JSDoc's {type} braces don't collide with Mustache
+│   └── LanguageHarnessRegistry.java     — Map<ProgrammingLanguage, LanguageHarness> built from every
+│                                         LanguageHarness @Component Spring finds
 ├── judge/
 │   ├── JudgeClient.java                 — Adapter interface: run(program, language, stdin) →
 │   │                                     Judge0SubmissionResult, blocking (polls internally)
@@ -2948,6 +2960,10 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     EXEC_FORMAT_ERROR; ACCEPTED here never means "matched
 │   │                                     expected output" — see its own Javadoc
 │   ├── Judge0SubmissionResult.java      — record: status, stdout, stderr, compileOutput, message
+│   ├── OutputMatcher.java               — @Component: structural, return-type-aware JSON compare of
+│   │                                     stdout vs. TestCase.expectedOutput — DOUBLE/DOUBLE_ARRAY
+│   │                                     within 1e-5 (abs, or relative above 1), every other numeric
+│   │                                     type by exact BigDecimal value (2 == 2.0, longs unrounded)
 │   └── impl/Judge0Client.java           — RestClient-backed; works unmodified against Judge0 CE's
 │                                         hosted RapidAPI instance (default) or a self-hosted one:
 │                                         submits with base64_encoded=true (arbitrary source/stdin
@@ -3046,7 +3062,33 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
     └── SubmissionApi.java (+ SubmissionController.java)        — /api/v1/submissions: create,
                                           getById, list — every method takes @CurrentUserId String
                                           userUuid
+
+dev-practice-service/src/main/resources/harness/
+├── java/       prelude.mustache, main.mustache, starter.mustache, JsonMini.java (verbatim include)
+├── python/     prelude.mustache, main.mustache, starter.mustache
+└── javascript/ prelude.mustache (empty), main.mustache, starter.mustache
+
+dev-practice-service/src/test/
+├── java/.../harness/
+│   ├── HarnessFixtures.java             — in-memory Problem fixtures (two-sum, every-param-type,
+│   │                                     identity(T)) + all three harnesses, no Spring context
+│   ├── LanguageHarnessGoldenTest.java   — snapshot test: starter code + full program per fixture ×
+│   │                                     language, byte-compared to resources/harness/golden/;
+│   │                                     regenerate with -Dharness.golden.update=true
+│   └── LanguageHarnessExecutionIT.java  — Testcontainers (openjdk:13 / python:3.8 / node:12 —
+│                                         Judge0 CE's own runtime versions): compiles/runs every
+│                                         fixture + an identity round-trip per ParamType per
+│                                         language, judged via the real OutputMatcher; skipped
+│                                         without Docker; *IT, so not part of a plain `mvn test`
+├── java/.../judge/OutputMatcherTest.java — tolerance/exactness/structural cases
+└── resources/harness/
+    ├── fixtures/{two-sum,every-param-type}/solution.{java,py,js}
+    └── golden/{fixture}/{java,python,javascript}/{starter,program}.*.golden
 ```
+
+Harness resources and golden files are pinned `eol=lf` in the root `.gitattributes` (this checkout
+uses `core.autocrlf=true`, which would otherwise rewrite them and break byte comparison); both the
+harness loader and the golden test also normalize CRLF defensively.
 
 **Liquibase:** own changelog tree (`dev-practice-service/.../database/sql/dev-practice-service.xml`
 + `2026/0.0.4/202609170001__0.0.4__DKP-0052__add_dev_practice_tables.sql` (Phase 1 — fresh-snapshot
@@ -3065,14 +3107,12 @@ ran and should never silently disappear when a problem is edited.
 21 install to verify) but the Liquibase changesets haven't been run against a real Postgres, and
 `judge.impl.Judge0Client` hasn't been exercised against a real Judge0 instance, in this session —
 same unverified-at-runtime caveat every other standalone service's first changelog/first-landing
-infra has carried at this stage in this reactor. **The `harness.LanguageHarness` code generation
-itself was verified for real**, though, not just read-through: the actual generated `JsonMini`
-class, a full generated two-sum `Main.java` (both via `JavaLanguageHarness`), and the generated
-JavaScript harness were extracted from the real source files and compiled/run with a real JDK 21
-`javac`/`java` and a real Node runtime in this session, including a passing two-sum test and a
-quote/backslash JSON-escaping round-trip test — `PythonLanguageHarness` was not executed (no Python
-interpreter available in this session; its `json`/`typing`-stdlib logic is much lower-risk than
-the hand-rolled Java parser by comparison).
+infra has carried at this stage in this reactor. **The `harness` code generation itself is covered
+by real tests** (see the test tree above): `LanguageHarnessGoldenTest` and `OutputMatcherTest` pass
+under `mvn test`. `LanguageHarnessExecutionIT` compiles, but was not run with Docker when it was
+added (no Docker daemon available); its exact case list was instead executed against local
+runtimes (JDK 21, Python 3.6, Node 24), all 36 cases passing — so Judge0's exact older versions
+(OpenJDK 13, Python 3.8, Node 12) are still only covered once the IT runs somewhere with Docker.
 
 **Judge0 backend: hosted RapidAPI, no self-hosted stack scaffolded in this repo right now**
 (`https://judge0-ce.p.rapidapi.com`, `JUDGE0_RAPIDAPI_KEY` read from the host shell same as

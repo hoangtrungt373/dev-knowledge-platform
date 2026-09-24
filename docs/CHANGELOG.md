@@ -194,7 +194,48 @@ section again. Full unabridged entry-by-entry history for all four lives in
     polling, admin GUI/seed data for authoring problems, and any GUI code-editor/submission flow.
     See `dev-practice-service/CLAUDE.md`'s "Phase 2" section for the full list.
 
+- **`dev-practice-service`'s first tests.** `harness.LanguageHarnessGoldenTest` (snapshot: every
+  fixture's starter code + full generated program per language, byte-compared to checked-in
+  `src/test/resources/harness/golden/**` files; `-Dharness.golden.update=true` regenerates them),
+  `harness.LanguageHarnessExecutionIT` (Testcontainers — compiles/runs every generated program in
+  Judge0 CE's own runtime versions, `openjdk:13-jdk-slim`/`python:3.8-slim`/`node:12-slim`, including
+  an `identity(T) -> T` round-trip for every `ParamType` in every language; skipped without Docker,
+  and excluded from plain `mvn test` by its `IT` suffix), and `judge.OutputMatcherTest`. New test
+  dependency `org.testcontainers:junit-jupiter`. The goldens were captured from the pre-refactor
+  code first, so the refactor below is proven byte-identical rather than assumed.
+- `judge.OutputMatcher` — the submission-vs-expected-output comparison, extracted from
+  `SubmissionJudgeEventListener`'s private `matches` into its own `@Component` so it's unit-testable
+  and the execution IT can judge with the exact production logic.
+
 ### Changed
+
+- **`dev-practice-service` harness refactor: program skeletons moved to JMustache templates, per-type
+  syntax moved to `TypeRenderer` strategies.** `LanguageHarness`'s abstract
+  `renderPrelude`/`renderMain`/`renderStarterCode` steps are gone; each language's
+  prelude/main/starter now lives in `src/main/resources/harness/{java,python,javascript}/*.mustache`,
+  and Java's embedded `JsonMini` helper is a plain `harness/java/JsonMini.java` resource instead of a
+  double-escaped text block. The per-`ParamType` switch statements previously scattered through each
+  harness (`javaType`/`toMethod`/`typeHint`/`jsType`) are consolidated into one exhaustive switch
+  per language (`JavaTypeRenderer`/`PythonTypeRenderer`/`JavaScriptTypeRenderer`, returning a
+  `TypeSyntax` record), keeping the compile-time "every harness supports every `ParamType`" check.
+  The three harness subclasses are now constructor-only. `language()` is now `final` on the base
+  class. New dependency `com.samskivert:jmustache` (used directly, not via
+  `spring-boot-starter-mustache`, to avoid an unneeded HTML view resolver). Root `.gitattributes`
+  pins the harness resources and golden files to `eol=lf`.
+
+### Fixed
+
+- **`dev-practice-service`: a correct `DOUBLE`/`DOUBLE_ARRAY` answer could be judged
+  `WRONG_ANSWER`.** Comparison was Jackson `JsonNode.equals`, which is numeric-type-sensitive:
+  JavaScript's `JSON.stringify(2.0)` prints `2` where Java/Python print `2.0`, so no single
+  `expectedOutput` could pass in all three languages; floating-point rounding (`0.1 + 0.2`) also
+  failed outright. `OutputMatcher` now compares floating-point return types within `1e-5` (absolute,
+  or relative above 1 — LeetCode's own convention) and every other numeric type by exact
+  `BigDecimal` value (so `2` and `2.0` now also match for an integral return type).
+- **`dev-practice-service`: a Java `long` argument beyond 2^53 was silently rounded.** `JsonMini`
+  parsed every JSON number as a `Double` before `toLong` narrowed it; integral literals now parse as
+  `Long`. (JavaScript's own `JSON.parse` has the same limit natively — unchanged, same as LeetCode's
+  JS judge.)
 
 - Reactor version bumped `0.0.3-SNAPSHOT` → `0.0.4-SNAPSHOT` (root `pom.xml`'s `<revision>`), and
   `docs/CHANGELOG.md`'s `[Unreleased]` section (everything accumulated since the `0.0.3` cut —

@@ -26,7 +26,9 @@ import lombok.ToString;
  * {@code (int[] numbers, int target)} signature. {@code expectedOutput} is a single JSON-encoded
  * value of {@link Problem#getReturnType()}'s shape — e.g. {@code [0,1]}. Both are parsed/rendered
  * by {@code harness.LanguageHarness}'s generated program, never interpreted as raw stdin/stdout
- * text (this module's submissions are LeetCode-style method bodies, not full programs).
+ * text (this module's submissions are LeetCode-style method bodies, not full programs). A program's
+ * stdout is compared against {@code expectedOutput} by {@code judge.OutputMatcher} — structurally,
+ * with a tolerance for floating-point return types — so its exact formatting doesn't matter.
  *
  * <p>{@code sample} distinguishes the small set of test cases shown to the user alongside the
  * problem statement (worked examples) from the full, larger hidden set actually used for

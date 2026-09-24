@@ -77,6 +77,27 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- JMustache — renders harness/{language}/*.mustache (the per-language program skeletons
+             LanguageHarness wraps a submission in). Used directly rather than via
+             spring-boot-starter-mustache, which would also auto-configure an HTML view resolver
+             this REST-only app has no use for. Version managed by spring-boot-dependencies. -->
+        <dependency>
+            <groupId>com.samskivert</groupId>
+            <artifactId>jmustache</artifactId>
+        </dependency>
+
+        <!-- Testcontainers — LanguageHarnessExecutionIT compiles/runs every generated harness
+             program inside the same runtime versions Judge0 CE uses (OpenJDK 13, Python 3.8,
+             Node 12), proving the generated code actually executes, not just that it matches a
+             golden file. Version managed by spring-boot-dependencies (see root pom.xml). The *IT
+             suffix keeps it out of a plain `mvn test` run (surefire's default includes don't match
+             it), same convention as ecommerce-service's ProductSearchViewRepositoryIT. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>
