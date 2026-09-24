@@ -41,9 +41,11 @@ class JsonMini {
                 switch (e) {
                     case 'n': sb.append('\n'); break;
                     case 't': sb.append('\t'); break;
-                    case '"': sb.append('"'); break;
-                    case '\\': sb.append('\\'); break;
-                    default: sb.append(e);
+                    case 'r': sb.append('\r'); break;
+                    case 'b': sb.append('\b'); break;
+                    case 'f': sb.append('\f'); break;
+                    case 'u': sb.append((char) Integer.parseInt(s.substring(i, i + 4), 16)); i += 4; break;
+                    default: sb.append(e); // \" \\ \/
                 }
             } else {
                 sb.append(c);
@@ -130,8 +132,20 @@ class JsonMini {
         sb.append('"');
         for (int k = 0; k < v.length(); k++) {
             char c = v.charAt(k);
-            if (c == '"' || c == '\\') { sb.append('\\'); }
-            sb.append(c);
+            switch (c) {
+                case '"': sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                case '\b': sb.append("\\b"); break;
+                case '\f': sb.append("\\f"); break;
+                default:
+                    // Control chars are illegal raw in a JSON string; non-ASCII is escaped too, so the
+                    // output is pure ASCII whatever default charset the sandbox's JVM prints with.
+                    if (c < 0x20 || c > 0x7e) sb.append(String.format("\\u%04x", (int) c));
+                    else sb.append(c);
+            }
         }
         sb.append('"');
         return sb.toString();

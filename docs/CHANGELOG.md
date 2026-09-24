@@ -236,6 +236,15 @@ section again. Full unabridged entry-by-entry history for all four lives in
   parsed every JSON number as a `Double` before `toLong` narrowed it; integral literals now parse as
   `Long`. (JavaScript's own `JSON.parse` has the same limit natively — unchanged, same as LeetCode's
   JS judge.)
+- **`dev-practice-service`: a Java `String` answer containing a newline (or any control character)
+  was judged `WRONG_ANSWER`.** `JsonMini.write(String)` escaped only `"`/`\`, so control characters
+  were printed raw — invalid JSON. It now escapes `\n \r \t \b \f`, every other control character,
+  and all non-ASCII as `\uXXXX` (pure-ASCII output, independent of the sandbox JVM's default
+  charset). `JsonMini.parseString` gained the matching `\r \b \f \uXXXX` decoding (it previously
+  turned `é` into the literal text `u00e9`), and the generated `Main` now reads stdin as
+  explicit UTF-8 — Judge0's JDK 13 predates JDK 18's UTF-8-by-default, so a raw non-ASCII test
+  input depended on the sandbox locale. `LanguageHarnessExecutionIT`'s `STRING` sample now covers
+  all of these.
 
 - Reactor version bumped `0.0.3-SNAPSHOT` → `0.0.4-SNAPSHOT` (root `pom.xml`'s `<revision>`), and
   `docs/CHANGELOG.md`'s `[Unreleased]` section (everything accumulated since the `0.0.3` cut —

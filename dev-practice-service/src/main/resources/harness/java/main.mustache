@@ -3,7 +3,7 @@
 public class Main {
     @SuppressWarnings("unchecked")
     public static void main(String[] args) throws Exception {
-        java.util.Scanner _scanner = new java.util.Scanner(System.in).useDelimiter("\\A");
+        java.util.Scanner _scanner = new java.util.Scanner(System.in, "UTF-8").useDelimiter("\\A");
         String _input = _scanner.hasNext() ? _scanner.next() : "[]";
         List<Object> _parsed = (List<Object>) JsonMini.parse(_input);
         Solution _sol = new Solution();
