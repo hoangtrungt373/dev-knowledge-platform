@@ -86,6 +86,16 @@
             <artifactId>jmustache</artifactId>
         </dependency>
 
+        <!-- Resilience4j Retry — Judge0Client's exponential-backoff retry of transient Judge0
+             failures (429/502/503/504, I/O errors), used programmatically (no annotations/aspects).
+             Also arrives transitively via infra (polling.PollingTemplate is built on it), but is
+             declared here too because Judge0Client uses the API directly. Version managed by
+             spring-cloud-dependencies (root pom). Replaced spring-retry's RetryTemplate. -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-retry</artifactId>
+        </dependency>
+
         <!-- Testcontainers — LanguageHarnessExecutionIT compiles/runs every generated harness
              program inside the same runtime versions Judge0 CE uses (OpenJDK 13, Python 3.8,
              Node 12), proving the generated code actually executes, not just that it matches a

@@ -11,6 +11,7 @@ import com.ttg.devknowledgeplatform.devpractice.config.JudgeClientProperties;
 import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
 import com.ttg.devknowledgeplatform.infra.config.thread.AsyncEventThreadPoolConfig;
 import com.ttg.devknowledgeplatform.infra.config.thread.AsyncEventThreadPoolProperties;
+import com.ttg.devknowledgeplatform.infra.polling.PollingTemplate;
 import com.ttg.devknowledgeplatform.infra.security.CurrentUserIdArgumentResolver;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakJwtAuthenticationConverter;
 import com.ttg.devknowledgeplatform.infra.security.KeycloakRealmRoleConverter;
@@ -43,14 +44,16 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
  * publishing thread instead of the dedicated {@code asyncEventExecutor} pool (the exact bug
  * {@code social-service}'s own extraction caught and documents in its own {@code CLAUDE.md}).
  * {@link JudgeClientProperties} is this module's own local {@code @ConfigurationProperties} class
- * (Judge0 base URL/poll tuning), registered the same way.
+ * (Judge0 base URL/poll tuning), registered the same way. {@link PollingTemplate} is
+ * {@code infra}'s shared Resilience4j-backed poll loop, used by {@code judge.impl.Judge0Client} to
+ * wait for a Judge0 submission's final status.
  */
 @SpringBootApplication
 @EnableAsync
 @Import({JacksonConfig.class, TraceContextFilter.class, SlugServiceImpl.class,
         KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
         CurrentUserIdArgumentResolver.class, GlobalExceptionHandler.class,
-        AsyncEventThreadPoolConfig.class})
+        AsyncEventThreadPoolConfig.class, PollingTemplate.class})
 @EnableConfigurationProperties({AsyncEventThreadPoolProperties.class, JudgeClientProperties.class})
 public class DevPracticeServiceApplication {
 

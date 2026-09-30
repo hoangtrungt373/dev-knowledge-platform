@@ -224,6 +224,26 @@ Module-local guidance for `infra`. Read alongside the root `CLAUDE.md`.
   reactor — but also no machine-readable `ErrorResponse` body); adopting this bean in any of them
   is a config-only change (reference `infra.security.JsonAuthenticationEntryPoint` in that
   service's own `SecurityConfig.exceptionHandling()`), not something that needs a new class.
+- `polling/{PollingTemplate,PollingPolicy,PollOutcome,PollingInterruptedException}` — shared
+  blocking poll loop ("call, check, wait, repeat") for waiting on an operation another system owns.
+  Built at the user's request as a study exercise, knowing it had one consumer at the time
+  (`dev-practice-service`'s `Judge0Client`) — a deliberate choice over the Rule-of-Three default,
+  not an accident; keep the API small until a second consumer shows what really generalizes.
+  Implemented on Resilience4j `Retry`'s **result-based** retry (`retryOnResult`), with exceptions
+  deliberately never retried here — callers that need transient-failure retry nest their own
+  exception-based `Retry` inside the probe (as `Judge0Client` does), so the two policies' attempt
+  counts never multiply silently. Rules:
+  - **One `PollingPolicy.name` = one policy.** `RetryRegistry#retry(name, config)` returns the
+    already-registered instance and silently ignores a new config, so `PollingTemplate` fails fast
+    on a conflicting re-registration. Tests must use a fresh `PollingTemplate`/registry each.
+  - **Keep the interrupt workaround.** Resilience4j 2.1.0 (pinned by `spring-cloud-dependencies`)
+    turns an interrupted result-based wait into a `NullPointerException` ("last exception" is null)
+    and loses the interrupt flag. `PollingTemplate` tracks which failures came from the caller's own
+    probe so it can tell them apart, and `PollingTemplateTest` pins this. Recheck it (don't just
+    delete it) when bumping Resilience4j.
+  - Registered only via explicit `@Import(PollingTemplate.class)`, per the convention below. Reuses
+    the application's own `RetryRegistry` bean if one exists (e.g. once a service adds
+    `resilience4j-spring-boot3`), otherwise keeps a private one.
 - `config/json/JacksonConfig` — shared `ObjectMapper` customization (`JavaTimeModule`, tolerant
   deserialization, ISO-8601 dates instead of epoch-millis), moved here from `gateway`. Before this
   move, this bean only ever applied to `gateway`'s own (nonexistent, since it has no REST
@@ -291,7 +311,9 @@ what caused all three rounds of bugs here.
 - Depends on `common` + `spring-boot-starter` (for `@Async`/`@EventListener`/`@Transactional`
   annotation support) + `commons-csv` (for `CsvSeeder`) + `spring-boot-starter-web` (for
   `MultipartFile` on `StorageService`) + `io.minio:minio` + `io.micrometer:micrometer-core` (for
-  `ExecutorServiceMetrics` on `asyncEventExecutor`). Never add a dependency on any feature module
+  `ExecutorServiceMetrics` on `asyncEventExecutor`) + `io.github.resilience4j:resilience4j-retry`
+  (for `PollingTemplate` — core library only, never `resilience4j-spring-boot3`, whose
+  auto-configuration would then activate in every service). Never add a dependency on any feature module
   or `gateway` here.
 - When adding a new event listener anywhere in the codebase, extend `AsyncEventHandler<E>` from
   here rather than rolling a bare `@EventListener` method — that's the whole point of this module.

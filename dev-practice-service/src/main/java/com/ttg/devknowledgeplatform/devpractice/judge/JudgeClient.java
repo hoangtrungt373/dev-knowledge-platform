@@ -19,7 +19,11 @@ public interface JudgeClient {
      *                {@code harness.LanguageHarness#buildProgram})
      * @param language the program's language
      * @param stdin    the input to feed the program (a {@code TestCase.input} JSON array)
-     * @return the final result
+     * @return the final result — a failure of the <em>user's</em> code (compile error, crash,
+     *         timeout) is a normal result, never an exception
+     * @throws JudgeUnavailableException if the judge backend itself failed and no result could be
+     *                                   obtained (unreachable, rate-limited past retries, rejected
+     *                                   the request)
      */
     Judge0SubmissionResult run(String program, ProgrammingLanguage language, String stdin);
 }

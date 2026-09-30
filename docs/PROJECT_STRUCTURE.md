@@ -131,6 +131,20 @@ infra/src/main/java/com/ttg/devknowledgeplatform/infra/
 │                                    SPAN_ID = "spanId". Only visible in log output where a module's
 │                                    own logging.pattern.console renders %X{traceId}/%X{spanId} —
 │                                    see tracing/ below.
+├── polling/
+│   ├── PollingTemplate.java      — @Component (explicit @Import only); blocking poll loop built on
+│   │                                Resilience4j Retry's result-based retry: poll(policy, probe,
+│   │                                isComplete) → PollOutcome. Probe exceptions are never retried
+│   │                                (callers nest their own exception Retry). Uses the app's
+│   │                                RetryRegistry bean if present, else a private one. Translates
+│   │                                Resilience4j 2.1.0's interrupted-wait NPE into
+│   │                                PollingInterruptedException and restores the interrupt flag.
+│   │                                Used by dev-practice-service's Judge0Client.
+│   ├── PollingPolicy.java        — record(name, maxAttempts, interval); validated; one name = one
+│   │                                policy (a conflicting re-registration fails fast)
+│   ├── PollOutcome.java          — sealed interface: Completed(value, attempts) |
+│   │                                TimedOut(lastValue, attempts)
+│   └── PollingInterruptedException.java — interrupted while waiting or probing
 ├── tracing/
 │   ├── TraceContext.java         — record(traceId, spanId, sampled) implementing the W3C Trace
 │   │                                Context traceparent header shape (version-traceid-spanid-flags);
@@ -2850,7 +2864,7 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                        @Import({JacksonConfig, TraceContextFilter, SlugServiceImpl,
 │                                        KeycloakRealmRoleConverter, KeycloakJwtAuthenticationConverter,
 │                                        CurrentUserIdArgumentResolver, GlobalExceptionHandler,
-│                                        AsyncEventThreadPoolConfig});
+│                                        AsyncEventThreadPoolConfig, PollingTemplate});
 │                                        @EnableConfigurationProperties({AsyncEventThreadPoolProperties,
 │                                        JudgeClientProperties}) — no broad @ComponentScan into infra
 │                                        (see root CLAUDE.md's "Post-extraction hardening");
@@ -2867,9 +2881,16 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   ├── web/WebMvcConfig.java          — registers infra's shared CurrentUserIdArgumentResolver as
 │   │                                     a HandlerMethodArgumentResolver (a WebMvcConfigurer bean,
 │   │                                     not just an @Import) so @CurrentUserId parameters resolve
+│   ├── Judge0RestClientConfig.java    — @Bean RestClient judge0RestClient: base URL, connect/read
+│   │                                     timeouts (ClientHttpRequestFactories), RapidAPI headers
+│   │                                     only when a key is set — transport wiring kept out of
+│   │                                     Judge0Client so tests can bind a MockRestServiceServer
 │   └── JudgeClientProperties.java     — app.judge0.* (base-url, rapid-api-key, rapid-api-host,
 │                                         poll-interval-ms, max-poll-attempts,
-│                                         cpu-time-limit-seconds, and language-ids: a
+│                                         cpu-time-limit-seconds, connect-timeout, read-timeout,
+│                                         retry.{max-attempts, initial-interval, multiplier,
+│                                         max-interval} — equal intervals = fixed backoff,
+│                                         max < initial rejected at startup — and language-ids: a
 │                                         Map<ProgrammingLanguage, Integer> of Judge0 language_ids —
 │                                         externalized here rather than hardcoded on
 │                                         ProgrammingLanguage itself, both to keep that domain enum
@@ -2918,7 +2939,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     well beyond the judge subsystem — see the enum's own
 │   │                                     Javadoc and Judge0Client's own Javadoc
 │   └── SubmissionStatus.java           — PENDING, RUNNING, ACCEPTED, WRONG_ANSWER, COMPILE_ERROR,
-│                                         RUNTIME_ERROR, TIME_LIMIT_EXCEEDED — Phase 2's
+│                                         RUNTIME_ERROR, TIME_LIMIT_EXCEEDED, JUDGE_ERROR (the judge
+│                                         backend failed — not a verdict on the code) — Phase 2's
 │                                         SubmissionJudgeEventListener now actually produces every
 │                                         value, not just PENDING
 ├── harness/
@@ -2964,16 +2986,23 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     stdout vs. TestCase.expectedOutput — DOUBLE/DOUBLE_ARRAY
 │   │                                     within 1e-5 (abs, or relative above 1), every other numeric
 │   │                                     type by exact BigDecimal value (2 == 2.0, longs unrounded)
-│   └── impl/Judge0Client.java           — RestClient-backed; works unmodified against Judge0 CE's
-│                                         hosted RapidAPI instance (default) or a self-hosted one:
-│                                         submits with base64_encoded=true (arbitrary source/stdin
-│                                         bytes need no JSON-string escaping over the wire), adds
-│                                         X-RapidAPI-Key/X-RapidAPI-Host headers only when
-│                                         JudgeClientProperties.rapidApiKey is set, never sends
-│                                         expected_output, polls per JudgeClientProperties'
-│                                         interval/attempt bounds; constructor fails fast if
-│                                         JudgeClientProperties.languageIds is missing an entry for
-│                                         any ProgrammingLanguage constant
+│   ├── JudgeUnavailableException.java   — the judge backend itself failed (unreachable, rate-limited
+│   │                                     past retries, rejected the request); part of
+│   │                                     JudgeClient's contract, so no Spring RestClientException
+│   │                                     ever crosses the Adapter boundary
+│   └── impl/Judge0Client.java           — uses Judge0RestClientConfig's RestClient; works unmodified
+│                                         against Judge0 CE's hosted RapidAPI instance (default) or
+│                                         a self-hosted one: submits with base64_encoded=true,
+│                                         decodes responses with the MIME base64 decoder (Judge0's
+│                                         Ruby Base64.encode64 line-wraps), never sends
+│                                         expected_output, polls via infra's PollingTemplate
+│                                         (JudgeClientProperties' interval/attempt bounds); every
+│                                         HTTP call runs under a Resilience4j Retry "judge0-call"
+│                                         (exponential backoff, only 429/502/503/504 + I/O
+│                                         errors, nested inside the poll policy), and any final failure
+│                                         becomes JudgeUnavailableException; constructor fails
+│                                         fast if JudgeClientProperties.languageIds is missing an
+│                                         entry for any ProgrammingLanguage constant
 ├── event/
 │   ├── SubmissionCreatedEvent.java      — record(submissionId), published by
 │   │                                     SubmissionServiceImpl.create
@@ -3081,6 +3110,12 @@ dev-practice-service/src/test/
 │                                         language, judged via the real OutputMatcher; skipped
 │                                         without Docker; *IT, so not part of a plain `mvn test`
 ├── java/.../judge/OutputMatcherTest.java — tolerance/exactness/structural cases
+├── java/.../judge/impl/Judge0ClientTest.java — MockRestServiceServer as a scripted fake Judge0:
+│                                         submit/poll, line-wrapped base64, retry of 429/503/I/O
+│                                         only, no retry of 401, give-up → JudgeUnavailableException
+├── java/.../event/SubmissionJudgeEventListenerTest.java — final-status bookkeeping; judge
+│                                         failures and unexpected bugs end as JUDGE_ERROR, never
+│                                         RUNNING
 └── resources/harness/
     ├── fixtures/{two-sum,every-param-type}/solution.{java,py,js}
     └── golden/{fixture}/{java,python,javascript}/{starter,program}.*.golden
@@ -3096,7 +3131,9 @@ harness loader and the golden test also normalize CRLF defensively.
 `2026/0.0.4/202609180001__0.0.4__DKP-0053__add_dev_practice_method_signature_and_judging_columns.sql`
 (Phase 2 — additive-only, per this reactor's never-edit-an-already-run-changeset convention:
 `PROBLEM.METHOD_NAME`/`RETURN_TYPE`, new table `METHOD_PARAMETER`, `SUBMISSION`'s three new nullable
-judging-result columns)), applied via the consolidated `services-liquibase` job in
+judging-result columns) +
+`2026/0.0.4/202609240001__0.0.4__DKP-0054__add_submission_judge_error_status.sql` (drops and
+re-creates `CKC_SUBMISSION_STATUS` to allow `JUDGE_ERROR`)), applied via the consolidated `services-liquibase` job in
 `docker-compose.apps.yml` — no standalone single-service `*-liquibase.yml` file of its own (same as
 `ecommerce-service`/`identity-service`/`content-service`/`ai-service`). `TEST_CASE`/
 `METHOD_PARAMETER` both cascade from `PROBLEM` (`ON DELETE CASCADE`); `SUBMISSION`'s FK to `PROBLEM`
@@ -3108,8 +3145,9 @@ ran and should never silently disappear when a problem is edited.
 `judge.impl.Judge0Client` hasn't been exercised against a real Judge0 instance, in this session —
 same unverified-at-runtime caveat every other standalone service's first changelog/first-landing
 infra has carried at this stage in this reactor. **The `harness` code generation itself is covered
-by real tests** (see the test tree above): `LanguageHarnessGoldenTest` and `OutputMatcherTest` pass
-under `mvn test`. `LanguageHarnessExecutionIT` compiles, but was not run with Docker when it was
+by real tests** (see the test tree above): `LanguageHarnessGoldenTest`, `OutputMatcherTest`,
+`Judge0ClientTest`, and `SubmissionJudgeEventListenerTest` pass under `mvn test` —
+`Judge0ClientTest` covers `Judge0Client`'s protocol against a scripted fake, not a live Judge0. `LanguageHarnessExecutionIT` compiles, but was not run with Docker when it was
 added (no Docker daemon available); its exact case list was instead executed against local
 runtimes (JDK 21, Python 3.6, Node 24), all 36 cases passing — so Judge0's exact older versions
 (OpenJDK 13, Python 3.8, Node 12) are still only covered once the IT runs somewhere with Docker.

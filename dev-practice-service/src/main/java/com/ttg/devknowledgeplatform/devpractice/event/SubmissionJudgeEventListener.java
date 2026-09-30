@@ -19,6 +19,7 @@ import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarness;
 import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarnessRegistry;
 import com.ttg.devknowledgeplatform.devpractice.judge.JudgeClient;
+import com.ttg.devknowledgeplatform.devpractice.judge.JudgeUnavailableException;
 import com.ttg.devknowledgeplatform.devpractice.judge.Judge0SubmissionResult;
 import com.ttg.devknowledgeplatform.devpractice.judge.OutputMatcher;
 import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
@@ -51,6 +52,14 @@ import lombok.extern.slf4j.Slf4j;
  * in one open transaction would hold a database connection (and row locks) for the entire judging
  * run — {@link #loadAndMarkRunning} and {@link #saveOutcome} are each their own quick transaction
  * instead, with the network-bound work happening in between while holding no transaction at all.
+ *
+ * <p><b>A submission never stays {@code RUNNING}:</b> any failure in the judging middle — the judge
+ * backend being unavailable ({@link JudgeUnavailableException}) or an unexpected bug on this side —
+ * is caught here and saved as {@link SubmissionStatus#JUDGE_ERROR}. Letting it propagate would reach
+ * {@code AsyncEventHandler#handle}, which only logs, leaving the row {@code RUNNING} forever. (The
+ * one remaining gap: if {@link #saveOutcome} itself fails, e.g. the database is down, or the process
+ * dies mid-judging, the row still stays {@code RUNNING} — that needs a stale-{@code RUNNING} sweeper,
+ * not handled here.)
  */
 @Component
 @Slf4j
@@ -89,7 +98,7 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
             return;
         }
 
-        JudgingOutcome outcome = judge(input);
+        JudgingOutcome outcome = judgeOrJudgeError(event.submissionId(), input);
 
         transactionTemplate.executeWithoutResult(status -> saveOutcome(event.submissionId(), outcome));
         log.info("Judged submission {}: {} ({}/{} test cases passed)",
@@ -116,6 +125,19 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
         submissionRepository.save(submission);
 
         return new JudgingInput(problem, submission.getLanguage(), submission.getSourceCode(), testCases);
+    }
+
+    /** {@link #judge}, with every failure converted to {@link JudgingOutcome#JUDGE_ERROR} — see the class Javadoc. */
+    private JudgingOutcome judgeOrJudgeError(Integer submissionId, JudgingInput input) {
+        try {
+            return judge(input);
+        } catch (JudgeUnavailableException e) {
+            log.warn("Judge unavailable for submission {}: {}", submissionId, e.getMessage(), e);
+        } catch (RuntimeException e) {
+            // A bug on our side (harness, matcher, ...) — still must not leave the row RUNNING.
+            log.error("Unexpected failure judging submission {}", submissionId, e);
+        }
+        return JudgingOutcome.JUDGE_ERROR;
     }
 
     private JudgingOutcome judge(JudgingInput input) {
@@ -172,5 +194,13 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
     }
 
     private record JudgingOutcome(SubmissionStatus status, Integer passedTestCases, String errorMessage) {
+
+        /**
+         * Judging couldn't complete. {@code passedTestCases} is left null rather than a partial count —
+         * a partial run isn't a meaningful score. The message is shown to the submitter, so it's
+         * deliberately generic; the operator-facing cause is logged instead.
+         */
+        static final JudgingOutcome JUDGE_ERROR = new JudgingOutcome(SubmissionStatus.JUDGE_ERROR, null,
+                "The judge is temporarily unavailable, so this submission could not be judged. Please resubmit.");
     }
 }

@@ -59,6 +59,16 @@
             <artifactId>micrometer-core</artifactId>
         </dependency>
 
+        <!-- Resilience4j Retry — backs polling.PollingTemplate (result-based retry as a bounded
+             poll loop). Core library only, not resilience4j-spring-boot3: infra is a library every
+             service depends on, and the Boot starter would auto-configure registries/aspects in
+             all of them. Version managed by spring-cloud-dependencies (root pom), which imports
+             resilience4j-bom at the release Spring Cloud tests against. -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-retry</artifactId>
+        </dependency>
+
         <!-- Spring Boot OAuth2 Resource Server — needed for security.KeycloakRealmRoleConverter/
              KeycloakJwtAuthenticationConverter's Jwt/Converter/GrantedAuthority types. Every one of
              the seven standalone services already declares this same starter itself for their own

@@ -16,7 +16,8 @@ instance — per-service-per-schema, see root `CLAUDE.md`'s Database Conventions
 (`8088`), and its own Liquibase changelog (`DKP-0052` — Phase 1's fresh-snapshot `PROBLEM`/
 `TEST_CASE`/`SUBMISSION` tables; `DKP-0053` — Phase 2's additive `METHOD_NAME`/`RETURN_TYPE`
 columns, the new `METHOD_PARAMETER` table, and `SUBMISSION`'s judging-result columns, per this
-repo's never-edit-an-already-run-changeset convention). Routed through `gateway`'s
+repo's never-edit-an-already-run-changeset convention; `DKP-0054` — widens `CKC_SUBMISSION_STATUS`
+for `JUDGE_ERROR`). Routed through `gateway`'s
 `routing/GatewayRoutesConfig` (`devPracticeServiceRoutes()`) — `/api/v1/admin/problems/**` and
 `/api/v1/public/problems/**` (including `/starter-code`) are two more resource segments under the
 already-shared `/api/v1/admin/**`/`/api/v1/public/**` prefixes; `/api/v1/submissions/**` is a
@@ -32,7 +33,7 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
   `@Import({JacksonConfig.class, TraceContextFilter.class, SlugServiceImpl.class,
   KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
   CurrentUserIdArgumentResolver.class, GlobalExceptionHandler.class,
-  AsyncEventThreadPoolConfig.class})` +
+  AsyncEventThreadPoolConfig.class, PollingTemplate.class})` +
   `@EnableConfigurationProperties({AsyncEventThreadPoolProperties.class,
   JudgeClientProperties.class})` entry point — names the exact `infra` beans this module uses
   instead of a broad `@ComponentScan`/`@ConfigurationPropertiesScan` into the sibling `infra`
@@ -73,7 +74,9 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
   is used well beyond the judge subsystem — see the enum's own Javadoc. Extend this enum, plus a
   matching `harness.LanguageHarness` bean and a `language-ids` config entry, to add a language),
   `SubmissionStatus` (the full judging vocabulary — Phase 1 only ever produced `PENDING`; Phase 2's
-  `SubmissionJudgeEventListener` now actually produces every other value too).
+  `SubmissionJudgeEventListener` now actually produces every other value too; `JUDGE_ERROR` is the
+  one final value that isn't a verdict on the user's code — the judge backend failed. Adding a value
+  here needs a new changeset widening `CKC_SUBMISSION_STATUS`, like `DKP-0054`).
 - `harness/` — turns a submission's method body into a full program Judge0 can run.
   `LanguageHarness`'s `final buildProgram` is the fixed skeleton (prelude, user code, generated
   `main`); what varies per language is split in two:
@@ -96,9 +99,15 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
   `judge.impl.Judge0Client` (the `RestClient`-backed implementation, works unmodified against
   either Judge0 CE's hosted RapidAPI instance — the default, see the "Phase 2" section below — or a
   self-hosted one: submits with `base64_encoded=true` so arbitrary source/stdin bytes never need
-  JSON-string escaping over the wire, adds `X-RapidAPI-Key`/`X-RapidAPI-Host` headers only when
-  `JudgeClientProperties#getRapidApiKey()` is set, then polls `GET /submissions/{token}` per
-  `JudgeClientProperties`' interval/attempt bounds) + `Judge0Status` (Judge0's status vocabulary
+  JSON-string escaping over the wire, then polls `GET /submissions/{token}` through `infra`'s
+  shared `polling.PollingTemplate` (policy `judge0-submission-status`, `JudgeClientProperties`'
+  interval/attempt bounds), decoding with the MIME base64 decoder since
+  Judge0's Ruby `Base64.encode64` line-wraps; every HTTP call is retried with exponential backoff —
+  a programmatic Resilience4j `Retry` (`judge0-call`), `app.judge0.retry.*` — on 429/502/503/504 and
+  I/O errors only. The two policies are nested, not merged: the poll policy never retries
+  exceptions, the call policy never retries results — keep it that way, or attempt counts multiply) + `config.Judge0RestClientConfig` (builds the `RestClient`: base URL, connect/read
+  timeouts, RapidAPI headers only when a key is set) + `JudgeUnavailableException` (every judge-side
+  failure, so no Spring `RestClientException` crosses the Adapter) + `Judge0Status` (Judge0's status vocabulary
   narrowed to what this module acts on — see its own Javadoc for why `ACCEPTED` here never means
   "matched expected output": this module never sends Judge0's own `expected_output` field, doing
   its own structural JSON comparison instead) + `Judge0SubmissionResult` + `OutputMatcher` (that
@@ -215,6 +224,16 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   constructor fails fast at startup if the configured map is missing an entry for any
   `ProgrammingLanguage` constant, rather than letting a missing id surface later as a confusing
   per-submission failure — keep that check if this mapping mechanism ever changes shape.
+- **A submission must never be left `RUNNING`.** `SubmissionJudgeEventListener#judgeOrJudgeError`
+  converts any failure between mark-`RUNNING` and save-outcome into `JUDGE_ERROR` — don't let an
+  exception escape that middle section, since `infra`'s `AsyncEventHandler#handle` only logs it.
+  `JUDGE_ERROR`'s `errorMessage` is shown to the submitter, so it stays generic; operator detail
+  (HTTP status, endpoint) goes to the log only. Remaining known gap: a failure in `saveOutcome`
+  itself, or the process dying mid-judging, still strands the row — that needs a stale-`RUNNING`
+  sweeper, not built.
+- **Keep `Judge0Client` free of transport wiring.** Timeouts/headers/base URL belong in
+  `config.Judge0RestClientConfig`; if the client built its own request factory, it would override
+  the `MockRestServiceServer` `Judge0ClientTest` binds, and the test would silently hit the network.
 - **A new event listener that needs to re-query a row from the publishing transaction must use
   `@TransactionalEventListener(phase = AFTER_COMMIT)`, not this reactor's usual `@EventHandler`** —
   see `SubmissionJudgeEventListener`'s Javadoc for the exact race `@EventHandler` alone would hit
@@ -250,8 +269,9 @@ host shell (same pattern as `OPENAI_API_KEY`). **Not run against a live Judge0 A
 kind in this session** — the `JudgeClient`/harness code itself *was* verified (see "What lives
 here" above), just never against a real Judge0 response.
 
-**Tests (the module's first):** `LanguageHarnessGoldenTest` + `OutputMatcherTest` run under plain
-`mvn test`. `LanguageHarnessExecutionIT` (Testcontainers, Judge0 CE's own runtime versions —
+**Tests (the module's first):** `LanguageHarnessGoldenTest`, `OutputMatcherTest`,
+`Judge0ClientTest` (scripted fake Judge0 via `MockRestServiceServer`), and
+`SubmissionJudgeEventListenerTest` run under plain `mvn test`. `LanguageHarnessExecutionIT` (Testcontainers, Judge0 CE's own runtime versions —
 OpenJDK 13 / Python 3.8 / Node 12) compiles but **has not yet run with Docker** — no Docker daemon was
 available when it was added; its exact 36-case list was instead executed against local runtimes
 (JDK 21, Python 3.6, Node 24), all passing. Treat compatibility with Judge0's exact older versions

@@ -207,7 +207,42 @@ section again. Full unabridged entry-by-entry history for all four lives in
   `SubmissionJudgeEventListener`'s private `matches` into its own `@Component` so it's unit-testable
   and the execution IT can judge with the exact production logic.
 
+- **`dev-practice-service`: judge-side failure handling.** New `SubmissionStatus.JUDGE_ERROR`
+  (changeset `DKP-0054` widens `CKC_SUBMISSION_STATUS`), new `judge.JudgeUnavailableException`
+  (part of `JudgeClient`'s contract — Spring's `RestClientException`s no longer cross the Adapter),
+  new `config.Judge0RestClientConfig` (builds the Judge0 `RestClient`), new `app.judge0.*`
+  properties `connect-timeout`/`read-timeout`/`retry.{max-attempts,initial-interval,multiplier,
+  max-interval}` (with `JUDGE0_*` env overrides), new dependency `org.springframework.retry:spring-retry`,
+  and new tests `judge.impl.Judge0ClientTest` (`MockRestServiceServer` as a scripted fake Judge0) and
+  `event.SubmissionJudgeEventListenerTest`.
+
+- **`infra`: shared polling component `polling.PollingTemplate`, built on Resilience4j Retry.** A
+  blocking "call, check, wait, repeat" loop (template-callback style, like `JdbcTemplate`): the
+  caller supplies a probe and a completion predicate, the template owns the attempt budget, fixed
+  wait and interrupt handling, using Resilience4j's result-based retry (`retryOnResult`) with
+  exceptions deliberately not retried. Supporting types: `PollingPolicy` (record: name, maxAttempts,
+  interval; one name must always mean one policy, and a conflicting re-registration fails fast),
+  `PollOutcome` (sealed: `Completed`/`TimedOut` — running out of attempts is a normal outcome, not
+  an exception), `PollingInterruptedException`. Works around a real Resilience4j 2.1.0 quirk: an
+  interrupted result-based wait surfaces as a `NullPointerException` with the interrupt flag lost;
+  the template translates it and restores the flag. New dependency
+  `io.github.resilience4j:resilience4j-retry` on `infra` (version from `spring-cloud-dependencies`,
+  2.1.0). New test `polling.PollingTemplateTest` (`infra`'s first test class). Registered only via explicit
+  `@Import(PollingTemplate.class)` — `dev-practice-service` is its first consumer.
+
 ### Changed
+
+- **`dev-practice-service`: `Judge0Client` moved onto `infra`'s `PollingTemplate` and Resilience4j,
+  replacing its hand-written poll loop and Spring Retry.** Status polling now goes through
+  `PollingTemplate` (policy `judge0-submission-status`, from the unchanged
+  `app.judge0.poll-interval-ms`/`max-poll-attempts`); per-call transient-failure retry is a
+  Resilience4j `Retry` (`judge0-call`, same `app.judge0.retry.*` settings, same retried failure
+  set). The two policies are nested, not merged: the poll policy never retries exceptions, the call
+  policy never retries results. Behavior is unchanged except that no wait happens after the final
+  poll attempt anymore. Dependency `org.springframework.retry:spring-retry` removed from
+  `dev-practice-service`, replaced by `io.github.resilience4j:resilience4j-retry`.
+  `Judge0Client`'s constructor takes a `PollingTemplate`; `DevPracticeServiceApplication` now
+  imports it.
 
 - **`dev-practice-service` harness refactor: program skeletons moved to JMustache templates, per-type
   syntax moved to `TypeRenderer` strategies.** `LanguageHarness`'s abstract
@@ -245,6 +280,19 @@ section again. Full unabridged entry-by-entry history for all four lives in
   explicit UTF-8 — Judge0's JDK 13 predates JDK 18's UTF-8-by-default, so a raw non-ASCII test
   input depended on the sandbox locale. `LanguageHarnessExecutionIT`'s `STRING` sample now covers
   all of these.
+- **`dev-practice-service`: calls to Judge0 had no timeouts.** A hung connection could block a
+  judging thread indefinitely — the poll ceiling only counts completed polls. Connect/read timeouts
+  are now configured on the Judge0 `RestClient` (defaults 5s/15s).
+- **`dev-practice-service`: any Judge0 HTTP error left the submission stuck in `RUNNING` forever.**
+  The exception escaped to `AsyncEventHandler#handle`, which only logs it, so the final status was
+  never saved. Transient failures (429 — likely on RapidAPI's free tier — 502/503/504, I/O errors)
+  are now retried with configurable exponential backoff, and whatever still fails — or any
+  unexpected bug during judging — ends as `JUDGE_ERROR` with a generic, user-safe message
+  (operator detail is logged only).
+- **`dev-practice-service`: Judge0 response decoding used the strict base64 decoder.** Judge0 (Ruby
+  `Base64.encode64`) is expected to line-wrap its base64 output, which `Base64.getDecoder()`
+  rejects; responses now use `Base64.getMimeDecoder()`. Not yet confirmed against a live Judge0
+  response — the MIME decoder is correct either way.
 
 - Reactor version bumped `0.0.3-SNAPSHOT` → `0.0.4-SNAPSHOT` (root `pom.xml`'s `<revision>`), and
   `docs/CHANGELOG.md`'s `[Unreleased]` section (everything accumulated since the `0.0.3` cut —

@@ -1,10 +1,15 @@
 package com.ttg.devknowledgeplatform.devpractice.config;
 
+import java.time.Duration;
 import java.util.EnumMap;
 import java.util.Map;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
@@ -67,6 +72,26 @@ public class JudgeClientProperties {
     private int cpuTimeLimitSeconds = 5;
 
     /**
+     * TCP connect timeout for every call to Judge0. Without one, an unreachable host could block
+     * a judging thread far longer than the poll ceiling above ever accounts for.
+     */
+    @NotNull
+    private Duration connectTimeout = Duration.ofSeconds(5);
+
+    /**
+     * Socket read timeout for every call to Judge0 — every call is a quick request/response
+     * ({@code wait=false} submit, status poll), never a long-held connection, so this can stay
+     * short. A hung response otherwise blocks the judging thread indefinitely.
+     */
+    @NotNull
+    private Duration readTimeout = Duration.ofSeconds(15);
+
+    /** Retry of transient Judge0 failures (429/502/503/504, I/O errors) — see {@link Retry}. */
+    @Valid
+    @NotNull
+    private Retry retry = new Retry();
+
+    /**
      * Maps each {@link ProgrammingLanguage} to the Judge0 {@code language_id} to submit it as —
      * externalized here rather than hardcoded (e.g. on {@code ProgrammingLanguage} itself) for two
      * reasons: it's Judge0-specific detail that would otherwise leak into a domain enum used well
@@ -78,4 +103,38 @@ public class JudgeClientProperties {
      * startup if any {@link ProgrammingLanguage} constant has no entry here.
      */
     private Map<ProgrammingLanguage, Integer> languageIds = new EnumMap<>(ProgrammingLanguage.class);
+
+    /**
+     * Exponential-backoff retry applied to each individual Judge0 HTTP call (the submit, and each
+     * status poll), only for failures that are plausibly transient — RapidAPI's rate limit (429),
+     * gateway/unavailable errors (502/503/504), and I/O errors including timeouts. A permanent
+     * failure (400, 401 bad key, 403, 404) is never retried. With the defaults, one call waits at
+     * most 1s + 2s + 4s before giving up.
+     */
+    @Getter
+    @Setter
+    public static class Retry {
+
+        /** Total attempts per call, including the first — {@code 1} disables retrying. */
+        @Min(1)
+        private int maxAttempts = 4;
+
+        /** Delay before the first retry. */
+        @NotNull
+        private Duration initialInterval = Duration.ofSeconds(1);
+
+        /** Factor each successive delay is multiplied by. */
+        @DecimalMin("1.0")
+        private double multiplier = 2.0;
+
+        /** Upper bound on any single delay — equal to {@code initialInterval} means a fixed delay. */
+        @NotNull
+        private Duration maxInterval = Duration.ofSeconds(10);
+
+        /** Rejects an inverted range at startup with a clear message, rather than deep inside Resilience4j's IntervalFunction. */
+        @AssertTrue(message = "app.judge0.retry.max-interval must be >= initial-interval")
+        public boolean isIntervalRangeValid() {
+            return initialInterval == null || maxInterval == null || maxInterval.compareTo(initialInterval) >= 0;
+        }
+    }
 }

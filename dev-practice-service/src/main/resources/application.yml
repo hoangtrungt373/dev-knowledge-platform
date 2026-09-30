@@ -32,6 +32,13 @@ app:
     poll-interval-ms: ${JUDGE0_POLL_INTERVAL_MS:500}
     max-poll-attempts: ${JUDGE0_MAX_POLL_ATTEMPTS:40}
     cpu-time-limit-seconds: ${JUDGE0_CPU_TIME_LIMIT_SECONDS:5}
+    connect-timeout: ${JUDGE0_CONNECT_TIMEOUT:5s}
+    read-timeout: ${JUDGE0_READ_TIMEOUT:15s}
+    retry:
+      max-attempts: ${JUDGE0_RETRY_MAX_ATTEMPTS:4}
+      initial-interval: ${JUDGE0_RETRY_INITIAL_INTERVAL:1s}
+      multiplier: ${JUDGE0_RETRY_MULTIPLIER:2.0}
+      max-interval: ${JUDGE0_RETRY_MAX_INTERVAL:10s}
     language-ids:
       java: ${JUDGE0_LANGUAGE_ID_JAVA:62}
       python: ${JUDGE0_LANGUAGE_ID_PYTHON:71}

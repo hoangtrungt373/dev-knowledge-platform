@@ -1,11 +1,14 @@
 package com.ttg.devknowledgeplatform.devpractice.enums;
 
 /**
- * A submission's judging lifecycle. Phase 1 (problem catalog + submission persistence, no
- * judging yet) only ever produces {@link #PENDING} — every other value is reserved for the
- * follow-up phase that wires an actual {@code JudgeClient} (Judge0-backed) into this pipeline,
- * defined now so the eventual judging changeset only needs to update code, not widen a
- * database CHECK constraint.
+ * A submission's judging lifecycle: {@link #PENDING} on creation, {@link #RUNNING} once
+ * {@code event.SubmissionJudgeEventListener} picks it up, then exactly one final value.
+ *
+ * <p>{@link #JUDGE_ERROR} is the one final value that says nothing about the user's code: the
+ * judge backend itself failed (unreachable, rate-limited past every retry, rejected our API key,
+ * ...), so the submission couldn't be judged at all and should simply be resubmitted. Every other
+ * final value is a verdict on the code. It exists so that a judge-side failure never leaves a
+ * submission stuck in {@code RUNNING} forever, and is never reported as the user's own fault.
  */
 public enum SubmissionStatus {
     PENDING,
@@ -14,5 +17,6 @@ public enum SubmissionStatus {
     WRONG_ANSWER,
     COMPILE_ERROR,
     RUNTIME_ERROR,
-    TIME_LIMIT_EXCEEDED
+    TIME_LIMIT_EXCEEDED,
+    JUDGE_ERROR
 }
