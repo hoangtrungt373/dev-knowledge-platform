@@ -3092,7 +3092,15 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     applies tagIds by diffing (replaceTags), not clear-and-
 │   │                                     rebuild — Hibernate flushes INSERTs before orphan DELETEs,
 │   │                                     which would trip UK_PROBLEM_TAG_ASSIGNMENT_PAIR
-│   └── SubmissionCommands.java        — Create record (problemId, language, sourceCode)
+│   ├── SubmissionCommands.java        — Create record (problemId, language, sourceCode)
+│   └── seed/
+│       ├── ProblemSeeder.java         — Seeder: data/problems/*.md (YAML front matter + Markdown
+│       │                                description) → signature via SignatureTemplateParserRegistry
+│       │                                (Java templates only — no ambiguous types) → ProblemService
+│       │                                .create (all normal validation); idempotent by slug; tags
+│       │                                by name; author = all-zero placeholder UUID
+│       └── DevPracticeDataSeedingRunner.java — ApplicationRunner, @ConditionalOnProperty
+│                                        app.seed.enabled (APP_SEED_ENABLED; true in application-local.yml)
 ├── exception/
 │   └── DevPracticeErrorCode.java       — PROBLEM_NOT_FOUND, PROBLEM_SLUG_CONFLICT,
 │                                         PROBLEM_SIGNATURE_LOCKED, PROBLEM_TEST_CASE_ARITY_MISMATCH,
@@ -3157,6 +3165,11 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
                                           getById, list — every method takes @CurrentUserId String
                                           userUuid
 
+dev-practice-service/src/main/resources/data/problems/
+└── evaluate-reverse-polish-notation.md — MEDIUM, tags Array/Math/Stack, Java template
+    `int evalRPN(String[] tokens)`, 18 test cases (2 samples; truncation-toward-zero, operand
+    order, single operand, deep stack, ±200 extremes)
+
 dev-practice-service/src/main/resources/harness/
 ├── java/       prelude.mustache, main.mustache, starter.mustache, JsonMini.java (verbatim include),
 │               reserved-names.txt
@@ -3184,6 +3197,9 @@ dev-practice-service/src/test/
 ├── java/.../harness/SignatureNameValidatorTest.java — against the real harnesses/resource files:
 │                                         shape, per-language keywords, harness-owned names,
 │                                         case-sensitivity, duplicates
+├── java/.../service/seed/ProblemSeederTest.java — loads the real seed files: signature from the
+│                                         template, tags, sample count; every RPN test case checked
+│                                         against a reference solution; skip-if-exists
 ├── java/.../service/impl/ProblemServiceImplTest.java — delete refused with submissions,
 │                                         reserved-name rejection on create, arity error message
 ├── java/.../judge/OutputMatcherTest.java — tolerance/exactness/structural cases

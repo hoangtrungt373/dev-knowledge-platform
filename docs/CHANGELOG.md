@@ -246,6 +246,18 @@ section again. Full unabridged entry-by-entry history for all four lives in
   be unique. New `@dev-practice/*` path alias (`tsconfig.json` + `vite.config.ts`).
 - **`dev-practice-service`: new `dto.AdminProblemSummaryResponse`** (id, slug, title, difficulty,
   status, publishedAt, createdAt) + `ProblemMapper#toAdminSummaryResponse`.
+- **`dev-practice-service`: problem seeding + the first seeded problem, Evaluate Reverse Polish
+  Notation.** New `service.seed.ProblemSeeder` (implements `infra`'s `Seeder`) and
+  `DevPracticeDataSeedingRunner` (gated by new `app.seed.enabled` / `APP_SEED_ENABLED`, default
+  `false`; `true` in `application-local.yml`), reading `resources/data/problems/*.md` — the same
+  front-matter-plus-Markdown file shape as `content-service`'s Q&A seeds. The signature is parsed
+  from the file's Java code template by `SignatureTemplateParserRegistry`, and the problem is
+  created through `ProblemService.create`, so seed data passes every normal validation; idempotent
+  by slug. New `ProblemTagRepository#findByNameIgnoreCase`. New seed file
+  `evaluate-reverse-polish-notation.md` (MEDIUM; Array/Math/Stack; `int evalRPN(String[] tokens)`;
+  18 test cases, 2 shown as samples, every expected output computed by a reference
+  implementation). New test `ProblemSeederTest` (runs every seeded test case through a reference
+  solution).
 - **Code-template signature import — paste a LeetCode-style template, get the method signature
   (`dev-practice-service` + `gui`).** E.g. `class Solution { public int evalRPN(String[] tokens) {} }`
   → `evalRPN`, `INT`, `[tokens: STRING_ARRAY]`.

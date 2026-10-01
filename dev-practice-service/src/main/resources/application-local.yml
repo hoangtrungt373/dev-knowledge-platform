@@ -28,3 +28,7 @@ management:
   endpoint:
     health:
       show-details: always
+
+app:
+  seed:
+    enabled: ${APP_SEED_ENABLED:true}

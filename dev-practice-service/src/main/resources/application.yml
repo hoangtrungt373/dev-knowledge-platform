@@ -25,6 +25,11 @@ server:
   port: ${SERVER_PORT:8088}
 
 app:
+  # Startup data seeding (service.seed.DevPracticeDataSeedingRunner → ProblemSeeder, data/problems/*.md)
+  # — off by default; on in the local profile. Idempotent by problem slug.
+  seed:
+    enabled: ${APP_SEED_ENABLED:false}
+
   judge0:
     base-url: ${JUDGE0_BASE_URL:https://judge0-ce.p.rapidapi.com}
     rapid-api-key: ${JUDGE0_RAPIDAPI_KEY:}

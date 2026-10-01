@@ -256,6 +256,19 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   JavaParser quirk: a bare method (no class) parses into a synthetic `$COMPACT_CLASS` (Java 21+
   compact source files) even at language level 17 — `JavaSignatureTemplateParser` treats
   `$`-prefixed class names as "no class".
+- **Seeding problems: add one `resources/data/problems/<slug>.md` file per problem** — YAML front
+  matter (`title`, `difficulty`, `status`, `tags` by name, `template: {language, code}`,
+  `testCases: [{input, expectedOutput, sample}]`) + a Markdown body (the description).
+  `service.seed.ProblemSeeder` (run by `DevPracticeDataSeedingRunner` when `app.seed.enabled` —
+  on in the `local` profile, `APP_SEED_ENABLED` elsewhere) derives the signature from the template
+  with the same `SignatureTemplateParserRegistry` the admin form uses, then creates the problem via
+  `ProblemService.create` — never via the repository directly — so seed data gets every validation
+  admin input gets, and a bad file fails startup naming the file. Rules: write seed templates in
+  **Java** (an ambiguous Python/JS type is an error — nobody is there to confirm it); seeding is
+  idempotent **by slug**, so it never overwrites an admin's later edits, but renaming a seeded
+  title re-seeds it under the new slug; tags must already exist (DKP-0055's topics). Compute every
+  `expectedOutput` with a reference solution, never by hand — `ProblemSeederTest` does exactly this
+  for the RPN problem (add the same kind of check when adding a problem).
 - **Problem tags (`ProblemTag` + `ProblemTagAssignment`, `DKP-0055`) follow `ecommerce-service`'s
   Product Tags, with three deliberate differences:** (1) responses embed `tags: [{id, name, slug}]`
   rather than ids-only, so a problem list renders topics without a second lookup —
@@ -328,8 +341,9 @@ as unverified until the IT runs somewhere with Docker.
 - Result delivery is polling only (`Judge0Client` blocks internally on `GET /submissions/{token}`)
   — the webhook-callback alternative discussed in Phase 1 planning was explicitly not chosen this
   round (simpler, no new inbound-auth surface to design).
-- No seed data for problems — every fresh database starts empty. The admin GUI now exists
-  (`gui`'s `@dev-practice` feature, `/admin/problems`); the public problem/submission GUI doesn't yet.
+- Only one seeded problem so far (Evaluate Reverse Polish Notation — see the seeding rule above).
+  The admin GUI exists (`gui`'s `@dev-practice` feature, `/admin/problems`); the public
+  problem/submission GUI doesn't yet.
 - `Submission` result columns (`passedTestCases`/`totalTestCases`/`errorMessage`) are surfaced on
   `SubmissionResponse` but there's no polling/websocket push to the GUI for "judging finished" —
   a client has to re-`GET /api/v1/submissions/{id}` to see a status change.
