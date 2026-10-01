@@ -3,10 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   Box,
   Button,
-  Chip,
   FormControl,
   IconButton,
-  InputAdornment,
   InputLabel,
   MenuItem,
   Select,
@@ -15,7 +13,6 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import AddIcon from '@mui/icons-material/Add';
 import { Product, ProductCategoryTreeNode, ProductVariantInput } from '../types';
 import { ecommerceApi } from '../api/ecommerceApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
@@ -27,6 +24,7 @@ import ProductImageGallery from '../components/ProductImageGallery';
 import ProductImageStager from '../components/ProductImageStager';
 import ProductDescriptionEditor from '../components/ProductDescriptionEditor';
 import SectionPanel from '../components/common/SectionPanel';
+import TagPicker from '@shared/components/TagPicker';
 import { hasVisibleHtmlContent } from '../utils/htmlContent';
 import { flattenCategoryTree } from '../utils/categoryTree';
 import { useProductTags } from '../hooks/useProductTags';
@@ -57,10 +55,10 @@ export default function ProductFormPage(): JSX.Element {
   const [categoryTree, setCategoryTree] = useState<ProductCategoryTreeNode[]>([]);
   const categoryOptions = flattenCategoryTree(categoryTree);
 
-  const {
-    allTags, selectedTagIds, setSelectedTagIds, stagedTagNames, newTagInput, setNewTagInput,
-    toggleTag, handleAddStagedTag, handleRemoveStagedTag, resolveStagedTagIds, clearStagedTagNames,
-  } = useProductTags(showError);
+  // The whole picker result goes to the shared TagPicker; only what the load/submit logic needs
+  // is pulled out by name.
+  const productTags = useProductTags(showError);
+  const { selectedTagIds, setSelectedTagIds, resolveStagedTagIds, clearStagedTagNames } = productTags;
 
   // Create-mode-only: a local, unsaved variant list — a product requires >=1 variant to exist at
   // all (US-1.6), so these travel in the same create request as the basic fields, unlike edit
@@ -346,79 +344,13 @@ export default function ProductFormPage(): JSX.Element {
           {/* Tags — split into an "Existing tags" Chip-toggle-cloud (mirroring @content's
               QuestionAnswerFormPage picker) and a separate "New tags" section for names typed
               here but not yet created — nothing is persisted to the tag catalog until the product
-              itself is saved (see useProductTags' own resolveStagedTagIds). Renaming/deleting an
+              itself is saved (see useStagedTagPicker's resolveStagedTagIds). Renaming/deleting an
               already-real tag still requires /admin/product-tags — this section is add-only. */}
           <SectionPanel title="Tags" sx={{ mt: 3 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-              Existing tags
-            </Typography>
-            {allTags.length === 0 ? (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>No tags yet</Typography>
-            ) : (
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2 }}>
-                {allTags.map(tag => {
-                  const selected = selectedTagIds.has(tag.id);
-                  return (
-                    <Chip
-                      key={tag.id}
-                      label={tag.name}
-                      size="small"
-                      color={selected ? 'primary' : 'default'}
-                      variant={selected ? 'filled' : 'outlined'}
-                      onClick={() => toggleTag(tag.id)}
-                      clickable
-                    />
-                  );
-                })}
-              </Box>
-            )}
-
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-              New tags
-            </Typography>
-            <TextField
-              placeholder="New tag name…"
-              value={newTagInput}
-              onChange={e => setNewTagInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddStagedTag(); } }}
-              size="small"
-              fullWidth
-              inputProps={{ maxLength: 100 }}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      size="small"
-                      onClick={handleAddStagedTag}
-                      disabled={!newTagInput.trim()}
-                      title="Queue tag"
-                    >
-                      <AddIcon fontSize="small" />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-              sx={{ mb: 1 }}
+            <TagPicker
+              picker={productTags}
+              stagedHint={`Created when you ${isEdit ? 'save' : 'create'} the product.`}
             />
-            {stagedTagNames.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">No new tags queued</Typography>
-            ) : (
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                {stagedTagNames.map(tagName => (
-                  <Chip
-                    key={tagName}
-                    label={tagName}
-                    size="small"
-                    color="warning"
-                    variant="outlined"
-                    onDelete={() => handleRemoveStagedTag(tagName)}
-                  />
-                ))}
-              </Box>
-            )}
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-              Created when you {isEdit ? 'save' : 'create'} the product.
-            </Typography>
           </SectionPanel>
         </Box>
       </Box>

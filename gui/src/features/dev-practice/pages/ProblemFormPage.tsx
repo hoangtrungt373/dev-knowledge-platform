@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   Box,
   Button,
-  Chip,
   FormControl,
   IconButton,
   InputLabel,
@@ -38,6 +37,8 @@ import { useNotification } from '@shared/contexts/NotificationContext';
 import FullPageLoader from '@shared/components/FullPageLoader';
 import SubmitButton from '@shared/components/SubmitButton';
 import MarkdownField from '@shared/components/MarkdownField';
+import TagPicker from '@shared/components/TagPicker';
+import { useStagedTagPicker } from '@shared/hooks/useStagedTagPicker';
 
 const LIST_PATH = '/admin/problems';
 
@@ -65,8 +66,13 @@ export default function ProblemFormPage(): JSX.Element {
   const [returnType, setReturnType] = useState<ParamType>('INT');
   const [params, setParams] = useState<ParamRow[]>(() => [{ key: nextRowKey(), name: '', type: 'INT' }]);
   const [testCases, setTestCases] = useState<TestCaseRow[]>([]);
-  const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
-  const [allTags, setAllTags] = useState<ProblemTag[]>([]);
+  // Same picker as @ecommerce's product form (existing tags + a "New tags" queue created on save).
+  // The catalog is small (tens of topics), so it loads all of it once.
+  const problemTags = useStagedTagPicker<ProblemTag>({
+    loadTags: () => devPracticeApi.listAllProblemTags(showError),
+    createTag: name => devPracticeApi.createProblemTag(name, showError),
+  });
+  const { selectedTagIds, setSelectedTagIds, resolveStagedTagIds, clearStagedTagNames } = problemTags;
   const [typeHints, setTypeHints] = useState<SignatureTypeHints>({ params: {} });
 
   // What the server last returned — the signature lock compares against these, not against
@@ -78,11 +84,6 @@ export default function ProblemFormPage(): JSX.Element {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
-
-  // The whole catalog is small (tens of topics), so the picker just loads all of it once.
-  useEffect(() => {
-    devPracticeApi.listAllProblemTags(showError).then(setAllTags).catch(() => {});
-  }, [showError]);
 
   useEffect(() => {
     if (!isEdit || !id) return;
@@ -149,15 +150,6 @@ export default function ProblemFormPage(): JSX.Element {
       : `Signature filled — ${guesses} type(s) were guessed, check the highlighted fields`);
   };
 
-  const toggleTag = (tagId: number) => {
-    setSelectedTagIds(prev => {
-      const next = new Set(prev);
-      if (next.has(tagId)) next.delete(tagId);
-      else next.add(tagId);
-      return next;
-    });
-  };
-
   const revertSignature = () => {
     if (!loaded) return;
     const rows = rowsFromProblem(loaded);
@@ -176,9 +168,13 @@ export default function ProblemFormPage(): JSX.Element {
     }
     setSaving(true);
     try {
+      // Queued new tag names are created now, right before the problem itself is saved — and only
+      // after validation passed, so a form with errors never adds anything to the tag catalog.
+      const newTagIds = await resolveStagedTagIds();
+      clearStagedTagNames();
       // Always the complete tag set — never relies on the backend's "omitted = unchanged" update case.
       const payload = toPayload(
-        { title, description, difficulty, status, methodName, returnType, tagIds: [...selectedTagIds] },
+        { title, description, difficulty, status, methodName, returnType, tagIds: [...selectedTagIds, ...newTagIds] },
         params,
         testCases,
       );
@@ -300,33 +296,16 @@ export default function ProblemFormPage(): JSX.Element {
               </Stack>
             </Paper>
 
+            {/* Tags — the same shared section as @ecommerce's ProductFormPage: an "Existing tags"
+                Chip-toggle-cloud plus a "New tags" queue, created only when the problem itself is
+                saved (see handleSubmit). Renaming/deleting a real tag still happens on
+                /admin/problem-tags — this section is add-only. */}
             <Paper variant="outlined" sx={{ p: 2 }}>
-              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
-                <Typography variant="subtitle2" fontWeight={700}>Tags</Typography>
-                <Typography variant="caption" color="text.secondary">{selectedTagIds.size} selected</Typography>
-              </Stack>
-              {allTags.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  No tags yet — create them under Dev Practice → Problem Tags.
-                </Typography>
-              ) : (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                  {allTags.map(tag => {
-                    const selected = selectedTagIds.has(tag.id);
-                    return (
-                      <Chip
-                        key={tag.id}
-                        label={tag.name}
-                        size="small"
-                        clickable
-                        color={selected ? 'primary' : 'default'}
-                        variant={selected ? 'filled' : 'outlined'}
-                        onClick={() => toggleTag(tag.id)}
-                      />
-                    );
-                  })}
-                </Box>
-              )}
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Tags</Typography>
+              <TagPicker
+                picker={problemTags}
+                stagedHint={`Created when you ${isEdit ? 'save' : 'create'} the problem.`}
+              />
             </Paper>
 
             {loaded && (

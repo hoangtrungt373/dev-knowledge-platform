@@ -271,7 +271,11 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   name that isn't). Like every startup seeder here, a seeded tag/problem an admin deletes comes
   back on the next seeded startup — accepted, since seeding is off outside `local`. Compute every
   `expectedOutput` with a reference solution, never by hand — `ProblemSeederTest` does exactly this
-  for the RPN problem (add the same kind of check when adding a problem).
+  for the RPN problem (add the same kind of check when adding a problem). To re-seed after
+  editing a seed file, run `scripts/purge-seed-data.sql` (a plain dev utility outside
+  `database/sql/`, so never a migration; mirrors `ecommerce-service`'s) — it `TRUNCATE ... RESTART
+  IDENTITY CASCADE`s all 6 `dev_practice` tables, **including users' `SUBMISSION` history**, then
+  restart with seeding on. Add any new table to its list.
 - **Problem tags (`ProblemTag` + `ProblemTagAssignment`, `DKP-0055`) follow `ecommerce-service`'s
   Product Tags, with three deliberate differences:** (1) responses embed `tags: [{id, name, slug}]`
   rather than ids-only, so a problem list renders topics without a second lookup —

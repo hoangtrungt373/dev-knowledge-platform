@@ -246,6 +246,20 @@ section again. Full unabridged entry-by-entry history for all four lives in
   be unique. New `@dev-practice/*` path alias (`tsconfig.json` + `vite.config.ts`).
 - **`dev-practice-service`: new `dto.AdminProblemSummaryResponse`** (id, slug, title, difficulty,
   status, publishedAt, createdAt) + `ProblemMapper#toAdminSummaryResponse`.
+- **`gui`: shared form "Tags" section — `@shared/components/TagPicker` +
+  `@shared/hooks/useStagedTagPicker`.** The tag picker logic moved out of
+  `@ecommerce/hooks/useProductTags` into a generic hook (tag type generic; `loadTags`/`createTag`
+  injected by the caller), and the section markup ("Existing tags" chip cloud + "New tags" queue,
+  created only on save) out of `ProductFormPage` into a presentational `TagPicker`.
+  `useProductTags` is now a thin wrapper (same result shape, so `ProductFormPage`'s submit logic is
+  unchanged; its section is now `<TagPicker>`, ~77 lines removed). `ProblemFormPage`'s Tags panel
+  uses the same pair, gaining the "New tags" queue: queued names are created right before the
+  problem is saved, after validation passes.
+- **`dev-practice-service`: `scripts/purge-seed-data.sql`** — dev utility mirroring
+  `ecommerce-service`'s: `TRUNCATE ... RESTART IDENTITY CASCADE` of all 6 `dev_practice` tables
+  (`PROBLEM`, `TEST_CASE`, `METHOD_PARAMETER`, `PROBLEM_TAG`, `PROBLEM_TAG_ASSIGNMENT`,
+  `SUBMISSION`) so the name/slug-idempotent seeders reseed edited seed files. Wipes real submission
+  history too; local/dev databases only.
 - **`dev-practice-service`: problem seeding + the first seeded problem, Evaluate Reverse Polish
   Notation.** New `service.seed.ProblemSeeder` (implements `infra`'s `Seeder`) and
   `DevPracticeDataSeedingRunner` (gated by new `app.seed.enabled` / `APP_SEED_ENABLED`, default

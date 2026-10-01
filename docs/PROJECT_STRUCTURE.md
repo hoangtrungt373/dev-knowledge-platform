@@ -3168,6 +3168,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
                                           getById, list — every method takes @CurrentUserId String
                                           userUuid
 
+dev-practice-service/scripts/purge-seed-data.sql — dev utility (not a migration): TRUNCATE ...
+RESTART IDENTITY CASCADE of all 6 dev_practice tables, incl. SUBMISSION, so the seeders reseed
+
 dev-practice-service/src/main/resources/data/csv/problem_tags.csv — the 18 starter topics
 (Array, String, Hash Table, Two Pointers, … Math, Bit Manipulation)
 

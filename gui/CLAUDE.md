@@ -34,7 +34,9 @@ gui/src/
                       NotificationContext, storage.ts (STORAGE_KEYS), colors.ts, errorHandler.ts,
                       useSubmitGuard, ConfirmDialog, FullPageLoader, EmptyState, SubmitButton,
                       TableStatusRow, SectionStatus, UploadingOverlay, MarkdownField (moved from
-                      @content once @dev-practice became its second consumer)
+                      @content once @dev-practice became its second consumer), TagPicker +
+                      hooks/useStagedTagPicker (the form "Tags" section, shared by @ecommerce's
+                      product form and @dev-practice's problem form)
 ```
 
 Each `features/<name>/` folder owns its own `api/`, `types.ts`, `pages/`, `components/`, `hooks/` —
@@ -4474,10 +4476,15 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     the guessed type** — changing it is the confirmation. Disabled while the signature is locked.
   - **Tags:** `pages/ProblemTagListPage.tsx` + `components/ProblemTagFormDialog.tsx`
     (`/admin/problem-tags`, mirrors `@ecommerce`'s Product Tags page; delete refused server-side
-    while a tag is in use). `ProblemFormPage` has a Chip-toggle picker loaded from
-    `listAllProblemTags` (`GET /api/v1/admin/problem-tags/all` — the catalog is small, no paging)
-    and **always sends the full `tagIds` set**, so the backend's "omitted = unchanged" update case
-    is never relied on. `ProblemListPage` shows up to `MAX_TAG_CHIPS` (3) chips + a "+N" tooltip
+    while a tag is in use). `ProblemFormPage`'s Tags section is the **shared**
+    `@shared/components/TagPicker` + `@shared/hooks/useStagedTagPicker` — the exact section
+    `@ecommerce`'s `ProductFormPage` uses: an "Existing tags" chip cloud (catalog loaded once from
+    `listAllProblemTags`, `GET /api/v1/admin/problem-tags/all`) plus a "New tags" queue whose
+    names are created (`resolveStagedTagIds`) only inside `handleSubmit`, after validation passes
+    and right before the problem is saved — a discarded form leaves nothing in the catalog. The
+    form **always sends the full `tagIds` set** (selected + newly created), so the backend's
+    "omitted = unchanged" update case is never relied on. Change the section's markup/behavior in
+    the shared files, never per page. `ProblemListPage` shows up to `MAX_TAG_CHIPS` (3) chips + a "+N" tooltip
     chip, and a multi-select tag filter (ANY-match); `listProblems` sends `tagIds` as a **repeated**
     query param, since the backend binds `Set<Integer>` from repeats, not a comma list.
   - `components/JsonCodeField.tsx` is a small CodeMirror JSON field local to this feature (no
