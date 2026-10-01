@@ -175,7 +175,10 @@ both `identity-service` and `social-service` were extracted into standalone serv
     registry follow-up) was built before its own route line was added here; caught and fixed in
     the same overall change once this warning was re-read, not left as a real gap, but a reminder
     that re-reading this warning each time is the actual mechanism, not a habit that sticks on its
-    own.
+    own. **`dev-practice-service`'s Problem Tags** (`/api/v1/admin/problem-tags/**` +
+    `/api/v1/public/problem-tags/**`) added both route lines in the same change — note
+    `/problems/**` does **not** cover `/problem-tags/**` (different path segment), so a sibling
+    segment always needs its own line.
 - `security/` — transport/security **edge** infra, **and, as of the CORS-consolidation pass, the
   sole CORS source of truth in this whole reactor — zero exceptions.** `CorsConfig` here is the
   only real CORS config left anywhere. `ai-service`'s own copy (the only other one that ever

@@ -24,6 +24,7 @@ public record ProblemResponse(
         ParamType returnType,
         List<MethodParameterResponse> parameters,
         List<TestCaseResponse> testCases,
+        List<ProblemTagSummaryResponse> tags,
         Instant publishedAt,
         Instant createdAt) {
 }

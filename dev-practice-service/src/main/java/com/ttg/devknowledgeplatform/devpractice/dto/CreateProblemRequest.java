@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.devpractice.dto;
 
 import java.util.List;
+import java.util.Set;
 
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
@@ -48,4 +49,7 @@ public class CreateProblemRequest {
     @NotEmpty(message = "At least one test case is required")
     @Valid
     private List<TestCaseRequest> testCases;
+
+    /** Optional topic tag ids — omitted or empty means no tags. */
+    private Set<Integer> tagIds;
 }

@@ -4464,6 +4464,14 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     only in the backend's `harness/*/reserved-names.txt`, and a rejected name (`class`, `def`,
     `self`, `require`, …) comes back as the save's error toast naming the language(s).
     Errors show only after the first save attempt, then track every edit live.
+  - **Tags:** `pages/ProblemTagListPage.tsx` + `components/ProblemTagFormDialog.tsx`
+    (`/admin/problem-tags`, mirrors `@ecommerce`'s Product Tags page; delete refused server-side
+    while a tag is in use). `ProblemFormPage` has a Chip-toggle picker loaded from
+    `listAllProblemTags` (`GET /api/v1/admin/problem-tags/all` — the catalog is small, no paging)
+    and **always sends the full `tagIds` set**, so the backend's "omitted = unchanged" update case
+    is never relied on. `ProblemListPage` shows up to `MAX_TAG_CHIPS` (3) chips + a "+N" tooltip
+    chip, and a multi-select tag filter (ANY-match); `listProblems` sends `tagIds` as a **repeated**
+    query param, since the backend binds `Set<Integer>` from repeats, not a comma list.
   - `components/JsonCodeField.tsx` is a small CodeMirror JSON field local to this feature (no
     shared CodeMirror wrapper exists; `@dev-utils/config/codeMirrorConfig` isn't imported from
     outside that feature). Promote it to `@shared` if a second feature needs one.

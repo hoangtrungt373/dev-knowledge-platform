@@ -243,6 +243,19 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   depend on a new non-`_` name, add that name to the language's file** — e.g. JavaScript's
   `require`/`JSON`/`console` are there because the starter's `var <methodName>` shares a scope with
   the entry point that calls them. A new language needs its own file (startup fails without it).
+- **Problem tags (`ProblemTag` + `ProblemTagAssignment`, `DKP-0055`) follow `ecommerce-service`'s
+  Product Tags, with three deliberate differences:** (1) responses embed `tags: [{id, name, slug}]`
+  rather than ids-only, so a problem list renders topics without a second lookup —
+  `ProblemTagAssignment.problemTag`'s `@BatchSize` keeps that to one extra query per page;
+  (2) `ProblemServiceImpl#replaceTags` **diffs** the assignment set instead of clearing and
+  rebuilding it — keep it that way: Hibernate flushes INSERTs before orphan-removal DELETEs, so
+  re-adding a tag the problem already has would insert a duplicate (problem, tag) row first and
+  violate `UK_PROBLEM_TAG_ASSIGNMENT_PAIR` (`ecommerce-service`'s `applyTagIds` clears-and-rebuilds
+  under the same kind of constraint and may share this latent bug — unverified); (3) the tag
+  filter is an `EXISTS` subquery in `ProblemSpecification`, not a join + `distinct`. Update's
+  `tagIds` is three-state (`null` unchanged / empty clears / set replaces); a tag can't be deleted
+  while assigned (`PROBLEM_TAG_IN_USE`). Seeded tag ids are 1, 51, 101, … by design (raw
+  `nextval()` against a pooled-lo sequence) — never hardcode ids in a seed changeset here.
 - **A problem with submissions can't be deleted** — `PROBLEM_HAS_SUBMISSIONS` (409);
   `FK_SUBMISSION_PROBLEM` deliberately has no `ON DELETE CASCADE` (submissions are users' own
   history, unlike test cases/parameters). Archive instead. Don't "fix" this with a cascade

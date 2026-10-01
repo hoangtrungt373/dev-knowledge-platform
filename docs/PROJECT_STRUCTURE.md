@@ -2916,6 +2916,13 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     — single JSON-encoded value of Problem.returnType's
 │   │                                     shape), sample (Boolean — true = shown as a worked
 │   │                                     example, false = hidden, judge-only)
+│   ├── ProblemTag.java                — topic tag (Array, Math, ...): name (case-insensitively
+│   │                                     unique via a LOWER(NAME) index), slug. Flat, no
+│   │                                     back-reference collection (nothing navigates tag → problems)
+│   ├── ProblemTagAssignment.java      — explicit join entity problem ↔ tag (audit columns), owned
+│   │                                     by Problem.tagAssignments (cascade ALL, orphanRemoval);
+│   │                                     @BatchSize on problemTag so a page of problems resolves
+│   │                                     its tags in one IN (...) query
 │   └── Submission.java                — problem (@ManyToOne), userUuid (String, plain column),
 │                                         language (ProgrammingLanguage), sourceCode (TEXT), status
 │                                         (SubmissionStatus, default PENDING — transitions once
@@ -3031,9 +3038,14 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   ├── SubmissionRepository.java      — JpaRepository<Submission, Integer> +
 │   │                                     findByUserUuid(Pageable)/findByUserUuidAndProblem_Id(...)/
 │   │                                     countByProblem_Id (guards ProblemService#delete)
+│   ├── ProblemTagRepository.java      — existsBySlug/…AndIdNot, existsByNameIgnoreCase/…AndIdNot,
+│   │                                     findByNameContainingIgnoreCase(Pageable)
+│   ├── ProblemTagAssignmentRepository.java — countByProblemTag_Id (guards tag delete)
 │   └── spec/
-│       └── ProblemSpecification.java  — withFilters(difficulty, status, q) — optional
-│                                         equality/like predicates only
+│       └── ProblemSpecification.java  — withFilters(difficulty, status, q, tagIds) — tagIds is
+│                                         an ANY-match via an EXISTS subquery on
+│                                         ProblemTagAssignment (no join, so no duplicate rows and no
+│                                         distinct needed for paging/count)
 ├── service/
 │   ├── ProblemService.java (+ impl/)  — create/update/delete/getById + getPublishedBySlug (throws
 │   │                                     PROBLEM_NOT_FOUND for a draft/archived slug too — never a
@@ -3051,8 +3063,14 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     SubmissionCreatedEvent after saving) + getSubmission
 │   │                                     (ownership-checked, same resolveOwnedX pattern as
 │   │                                     task-service's ProjectService) + listSubmissions
-│   ├── ProblemCommands.java           — Create/Update records + nested TestCaseInput/
-│   │                                     MethodParameterInput records
+│   ├── ProblemTagService.java (+ impl/) — tag catalog CRUD + listAll (sorted by name); delete
+│   │                                     refused while in use (PROBLEM_TAG_IN_USE)
+│   ├── ProblemCommands.java           — Create/Update records (+ tagIds: Create null = none;
+│   │                                     Update null = unchanged, empty = clear) + nested
+│   │                                     TestCaseInput/MethodParameterInput records. ProblemServiceImpl
+│   │                                     applies tagIds by diffing (replaceTags), not clear-and-
+│   │                                     rebuild — Hibernate flushes INSERTs before orphan DELETEs,
+│   │                                     which would trip UK_PROBLEM_TAG_ASSIGNMENT_PAIR
 │   └── SubmissionCommands.java        — Create record (problemId, language, sourceCode)
 ├── exception/
 │   └── DevPracticeErrorCode.java       — PROBLEM_NOT_FOUND, PROBLEM_SLUG_CONFLICT,
@@ -3068,6 +3086,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     by both admin (all test cases) and public (sample-only,
 │   │                                     via ProblemMapper#toPublicResponse)
 │   ├── ProblemSummaryResponse.java    — record: id, slug, title, difficulty (public list row shape)
+│   ├── ProblemTagResponse.java / ProblemTagSummaryResponse.java / ProblemTagRequest.java — tag
+│   │                                     DTOs; the summary {id, name, slug} is embedded as `tags`
+│   │                                     in ProblemResponse and both list-row DTOs (not ids-only)
 │   ├── AdminProblemSummaryResponse.java — record: ProblemSummaryResponse's fields + status,
 │   │                                     publishedAt, createdAt (admin list row shape, own type so
 │   │                                     the public list never gains admin-only fields; no
@@ -3095,7 +3116,12 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                         matching field names, no explicit @Mapping needed
 └── api/ (+ api/impl/)
     ├── ProblemApi.java (+ ProblemController.java)             — /api/v1/admin/problems: create,
-    │                                     update, delete, getById, list (difficulty/status/q filters)
+    │                                     update, delete, getById, list (difficulty/status/q/tagIds
+    │                                     filters — tagIds repeated: ?tagIds=1&tagIds=2)
+    ├── ProblemTagApi.java (+ ProblemTagController.java)       — /api/v1/admin/problem-tags:
+    │                                     create, update (rename), delete, list (paged, q), GET /all
+    ├── PublicProblemTagApi.java (+ PublicProblemTagController.java) — /api/v1/public/problem-tags:
+    │                                     every tag as {id, name, slug}, sorted by name (topic filter)
     ├── PublicProblemApi.java (+ PublicProblemController.java) — /api/v1/public/problems: list
     │                                     (hardcodes ContentStatus.PUBLISHED, same convention as
     │                                     content-service's PublicContentController), getBySlug,
@@ -3155,7 +3181,10 @@ harness loader and the golden test also normalize CRLF defensively.
 `PROBLEM.METHOD_NAME`/`RETURN_TYPE`, new table `METHOD_PARAMETER`, `SUBMISSION`'s three new nullable
 judging-result columns) +
 `2026/0.0.4/202609240001__0.0.4__DKP-0054__add_submission_judge_error_status.sql` (drops and
-re-creates `CKC_SUBMISSION_STATUS` to allow `JUDGE_ERROR`)), applied via the consolidated `services-liquibase` job in
+re-creates `CKC_SUBMISSION_STATUS` to allow `JUDGE_ERROR`) +
+`2026/0.0.4/202610010001__0.0.4__DKP-0055__add_problem_tag_tables.sql` (`PROBLEM_TAG` +
+`PROBLEM_TAG_ASSIGNMENT`, assignment cascades from `PROBLEM` but not from `PROBLEM_TAG`; seeds the
+18 NeetCode topics, ids via `nextval()` so they occupy whole pooled-lo blocks — 1, 51, 101, …)), applied via the consolidated `services-liquibase` job in
 `docker-compose.apps.yml` — no standalone single-service `*-liquibase.yml` file of its own (same as
 `ecommerce-service`/`identity-service`/`content-service`/`ai-service`). `TEST_CASE`/
 `METHOD_PARAMETER` both cascade from `PROBLEM` (`ON DELETE CASCADE`); `SUBMISSION`'s FK to `PROBLEM`

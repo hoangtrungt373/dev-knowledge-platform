@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.devpractice.service;
 
 import java.util.List;
+import java.util.Set;
 
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
@@ -16,14 +17,19 @@ public final class ProblemCommands {
     private ProblemCommands() {
     }
 
+    /** {@code tagIds}: {@code null} or empty means no tags. */
     public record Create(String title, String description, Difficulty difficulty,
             ContentStatus status, String methodName, ParamType returnType,
-            List<MethodParameterInput> parameters, List<TestCaseInput> testCases) {
+            List<MethodParameterInput> parameters, List<TestCaseInput> testCases, Set<Integer> tagIds) {
     }
 
+    /**
+     * {@code tagIds} is three-state, like {@code ecommerce-service}'s product update: {@code null}
+     * leaves the problem's tags unchanged, an empty set clears them, a non-empty set replaces them.
+     */
     public record Update(String title, String description, Difficulty difficulty,
             ContentStatus status, String methodName, ParamType returnType,
-            List<MethodParameterInput> parameters, List<TestCaseInput> testCases) {
+            List<MethodParameterInput> parameters, List<TestCaseInput> testCases, Set<Integer> tagIds) {
     }
 
     public record TestCaseInput(String input, String expectedOutput, Boolean sample) {

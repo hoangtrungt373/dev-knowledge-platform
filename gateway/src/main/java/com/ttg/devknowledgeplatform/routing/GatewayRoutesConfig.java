@@ -32,10 +32,11 @@ import lombok.RequiredArgsConstructor;
  * GUI at runtime whether to render Stripe Elements)), and {@code /api/v1/admin} (four different
  * services, but each one's own resource segment — {@code /products/**}, {@code
  * /product-categories/**}, {@code /product-tags/**}, {@code /product-attributes/**}, {@code
- * /orders/**}, {@code /articles/**}, {@code /embeddings/**}, {@code /problems/**} (added for
- * {@code dev-practice-service}'s admin problem-catalog CRUD), etc. — never collides with
+ * /orders/**}, {@code /articles/**}, {@code /embeddings/**}, {@code /problems/**} and
+ * {@code /problem-tags/**} (added for {@code dev-practice-service}'s admin problem-catalog and tag
+ * CRUD), etc. — never collides with
  * another's). {@code /api/v1/public} also gained {@code dev-practice-service}'s own
- * {@code /problems/**} (published-problem browsing) alongside {@code content-service}'s/
+ * {@code /problems/**} (published-problem browsing) and {@code /problem-tags/**} alongside {@code content-service}'s/
  * {@code ecommerce-service}'s existing segments.
  * Confirmed via a full audit of
  * every {@code @RequestMapping} in the reactor before writing this class, not assumed from the
@@ -184,7 +185,9 @@ public class GatewayRoutesConfig {
     /**
      * Routes admin problem-catalog CRUD, public published-problem browsing, and code submissions
      * to {@code dev-practice-service}. {@code /api/v1/admin/problems/**} and
-     * {@code /api/v1/public/problems/**} are two more resource segments under the already-shared
+     * {@code /api/v1/public/problems/**} — plus the matching {@code /problem-tags/**} pair for the tag
+     * catalog (a separate segment; {@code /problems/**} does not match it) — are more resource
+     * segments under the already-shared
      * {@code /api/v1/admin/**}/{@code /api/v1/public/**} prefixes (see class Javadoc); {@code
      * /api/v1/submissions/**} is a genuinely new top-level prefix, no shared-prefix disambiguation
      * needed.
@@ -195,6 +198,8 @@ public class GatewayRoutesConfig {
         return route("dev-practice-service")
                 .route(path("/api/v1/admin/problems/**"), http(baseUrl))
                 .route(path("/api/v1/public/problems/**"), http(baseUrl))
+                .route(path("/api/v1/admin/problem-tags/**"), http(baseUrl))
+                .route(path("/api/v1/public/problem-tags/**"), http(baseUrl))
                 .route(path("/api/v1/submissions/**"), http(baseUrl))
                 .build();
     }

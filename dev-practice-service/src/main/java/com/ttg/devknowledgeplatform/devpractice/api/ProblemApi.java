@@ -1,5 +1,7 @@
 package com.ttg.devknowledgeplatform.devpractice.api;
 
+import java.util.Set;
+
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.dto.AdminProblemSummaryResponse;
@@ -80,6 +82,7 @@ public interface ProblemApi {
      * @param difficulty optional difficulty filter
      * @param status     optional status filter
      * @param q          optional title search
+     * @param tagIds     optional — problems tagged with any of these tag ids (repeat the param: ?tagIds=1&tagIds=2)
      * @return {@code 200} with a paged list of problem summaries
      */
     @GetMapping
@@ -90,5 +93,6 @@ public interface ProblemApi {
             @RequestParam(defaultValue = "desc") String sortDir,
             @RequestParam(required = false) Difficulty difficulty,
             @RequestParam(required = false) ContentStatus status,
-            @RequestParam(required = false) String q);
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Set<Integer> tagIds);
 }

@@ -1,5 +1,7 @@
 package com.ttg.devknowledgeplatform.devpractice.api;
 
+import java.util.Set;
+
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemSummaryResponse;
@@ -32,6 +34,7 @@ public interface PublicProblemApi {
      * @param sortDir    sort direction: {@code asc} or {@code desc} (default {@code desc})
      * @param difficulty optional difficulty filter
      * @param q          optional title search
+     * @param tagIds     optional — problems tagged with any of these tag ids (?tagIds=1&tagIds=2)
      * @return {@code 200} with a paged list of problem summaries
      */
     @GetMapping
@@ -41,7 +44,8 @@ public interface PublicProblemApi {
             @RequestParam(defaultValue = "id") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir,
             @RequestParam(required = false) Difficulty difficulty,
-            @RequestParam(required = false) String q);
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Set<Integer> tagIds);
 
     /**
      * Returns a published problem by its URL slug, with sample test cases only.

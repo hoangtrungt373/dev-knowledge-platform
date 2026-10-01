@@ -1,5 +1,7 @@
 package com.ttg.devknowledgeplatform.devpractice.service;
 
+import java.util.Set;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -29,5 +31,8 @@ public interface ProblemService {
      */
     Problem getPublishedBySlug(String slug);
 
-    Page<Problem> list(Pageable pageable, Difficulty difficulty, ContentStatus status, String q);
+    /**
+     * @param tagIds optional — matches a problem tagged with <em>any</em> of these ids; null/empty means no filter
+     */
+    Page<Problem> list(Pageable pageable, Difficulty difficulty, ContentStatus status, String q, Set<Integer> tagIds);
 }

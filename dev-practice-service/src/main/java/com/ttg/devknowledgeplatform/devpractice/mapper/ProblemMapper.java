@@ -1,5 +1,6 @@
 package com.ttg.devknowledgeplatform.devpractice.mapper;
 
+import java.util.Comparator;
 import java.util.List;
 
 import org.mapstruct.Mapper;
@@ -9,25 +10,44 @@ import com.ttg.devknowledgeplatform.devpractice.dto.AdminProblemSummaryResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.MethodParameterResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemSummaryResponse;
+import com.ttg.devknowledgeplatform.devpractice.dto.ProblemTagResponse;
+import com.ttg.devknowledgeplatform.devpractice.dto.ProblemTagSummaryResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.TestCaseResponse;
 import com.ttg.devknowledgeplatform.devpractice.entity.MethodParameter;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
+import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTag;
 import com.ttg.devknowledgeplatform.devpractice.entity.TestCase;
 
 @Mapper(componentModel = "spring")
 public interface ProblemMapper {
 
     @Mapping(target = "createdAt", source = "dteCreation")
+    @Mapping(target = "tags", expression = "java(tagsOf(problem))")
     ProblemResponse toResponse(Problem problem);
 
+    @Mapping(target = "tags", expression = "java(tagsOf(problem))")
     ProblemSummaryResponse toSummaryResponse(Problem problem);
 
     @Mapping(target = "createdAt", source = "dteCreation")
+    @Mapping(target = "tags", expression = "java(tagsOf(problem))")
     AdminProblemSummaryResponse toAdminSummaryResponse(Problem problem);
 
     TestCaseResponse toResponse(TestCase testCase);
 
     MethodParameterResponse toResponse(MethodParameter parameter);
+
+    @Mapping(target = "createdAt", source = "dteCreation")
+    ProblemTagResponse toResponse(ProblemTag tag);
+
+    ProblemTagSummaryResponse toSummary(ProblemTag tag);
+
+    /** A problem's tags, flattened out of its assignment rows and sorted by name for stable display. */
+    default List<ProblemTagSummaryResponse> tagsOf(Problem problem) {
+        return problem.getTagAssignments().stream()
+                .map(assignment -> toSummary(assignment.getProblemTag()))
+                .sorted(Comparator.comparing(ProblemTagSummaryResponse::name, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
 
     /**
      * Same as {@link #toResponse(Problem)}, but with hidden test cases stripped — the shape a
@@ -41,6 +61,6 @@ public interface ProblemMapper {
                 .toList();
         return new ProblemResponse(full.id(), full.slug(), full.title(), full.description(),
                 full.difficulty(), full.status(), full.methodName(), full.returnType(),
-                full.parameters(), sampleOnly, full.publishedAt(), full.createdAt());
+                full.parameters(), sampleOnly, full.tags(), full.publishedAt(), full.createdAt());
     }
 }

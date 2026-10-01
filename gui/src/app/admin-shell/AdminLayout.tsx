@@ -106,6 +106,7 @@ const NAV_STRUCTURE: NavEntry[] = [
     icon: <CodeIcon fontSize="small" />,
     children: [
       { label: 'Problems', icon: <ExtensionIcon fontSize="small" />, path: '/admin/problems' },
+      { label: 'Problem Tags', icon: <LabelIcon fontSize="small" />, path: '/admin/problem-tags' },
     ],
   },
 ];

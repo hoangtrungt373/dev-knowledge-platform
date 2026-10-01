@@ -31,6 +31,13 @@ public enum DevPracticeErrorCode implements ErrorCode {
             "This problem already has {0} submission(s) and can''t be deleted — archive it instead",
             HttpStatus.CONFLICT),
 
+    // Problem tag errors (PROBLEM_TAG_*)
+    PROBLEM_TAG_NOT_FOUND("PROBLEM_TAG_001", "Problem tag not found", HttpStatus.NOT_FOUND),
+    PROBLEM_TAG_NAME_CONFLICT("PROBLEM_TAG_002", "A tag named ''{0}'' already exists", HttpStatus.CONFLICT),
+    PROBLEM_TAG_SLUG_CONFLICT("PROBLEM_TAG_003", "Unable to generate a unique slug for this tag", HttpStatus.CONFLICT),
+    PROBLEM_TAG_IN_USE("PROBLEM_TAG_004",
+            "This tag is used by {0} problem(s) — remove it from them before deleting it", HttpStatus.CONFLICT),
+
     // Submission errors (SUBMISSION_*)
     SUBMISSION_NOT_FOUND("SUBMISSION_001", "Submission not found", HttpStatus.NOT_FOUND);
 

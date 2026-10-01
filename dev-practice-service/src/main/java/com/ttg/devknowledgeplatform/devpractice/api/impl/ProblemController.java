@@ -43,7 +43,7 @@ public class ProblemController implements ProblemApi {
         ProblemCommands.Create command = new ProblemCommands.Create(
                 request.getTitle(), request.getDescription(), request.getDifficulty(), request.getStatus(),
                 request.getMethodName(), request.getReturnType(), toParameterInputs(request.getParameters()),
-                toTestCaseInputs(request.getTestCases()));
+                toTestCaseInputs(request.getTestCases()), request.getTagIds());
         Problem created = problemService.create(command, authorUuid);
         return ResponseEntity.status(HttpStatus.CREATED).body(problemMapper.toResponse(created));
     }
@@ -53,7 +53,7 @@ public class ProblemController implements ProblemApi {
         ProblemCommands.Update command = new ProblemCommands.Update(
                 request.getTitle(), request.getDescription(), request.getDifficulty(), request.getStatus(),
                 request.getMethodName(), request.getReturnType(), toParameterInputs(request.getParameters()),
-                toTestCaseInputs(request.getTestCases()));
+                toTestCaseInputs(request.getTestCases()), request.getTagIds());
         Problem updated = problemService.update(id, command);
         return ResponseEntity.ok(problemMapper.toResponse(updated));
     }
@@ -71,9 +71,10 @@ public class ProblemController implements ProblemApi {
 
     @Override
     public ResponseEntity<PagedResponse<AdminProblemSummaryResponse>> list(
-            int page, int size, String sortBy, String sortDir, Difficulty difficulty, ContentStatus status, String q) {
+            int page, int size, String sortBy, String sortDir, Difficulty difficulty, ContentStatus status, String q,
+            Set<Integer> tagIds) {
         Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
-        Page<AdminProblemSummaryResponse> responses = problemService.list(pageable, difficulty, status, q)
+        Page<AdminProblemSummaryResponse> responses = problemService.list(pageable, difficulty, status, q, tagIds)
                 .map(problemMapper::toAdminSummaryResponse);
         return ResponseEntity.ok(PagedResponse.from(responses));
     }

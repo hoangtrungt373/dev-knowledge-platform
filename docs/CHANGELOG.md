@@ -246,6 +246,30 @@ section again. Full unabridged entry-by-entry history for all four lives in
   be unique. New `@dev-practice/*` path alias (`tsconfig.json` + `vite.config.ts`).
 - **`dev-practice-service`: new `dto.AdminProblemSummaryResponse`** (id, slug, title, difficulty,
   status, publishedAt, createdAt) + `ProblemMapper#toAdminSummaryResponse`.
+- **Problem tags (topics such as Array, Math, Stack) — `dev-practice-service` + `gateway` + `gui`.**
+  Mirrors `ecommerce-service`'s Product Tags.
+  - **Schema (`DKP-0055`):** `PROBLEM_TAG` (name, slug; case-insensitive name uniqueness via a
+    `LOWER(NAME)` unique index) and an explicit `PROBLEM_TAG_ASSIGNMENT` join entity (audit
+    columns; cascades from `PROBLEM`, deliberately not from `PROBLEM_TAG`). Seeds the 18 NeetCode
+    topics (Array … Bit Manipulation), ids via `nextval()` so seeded rows take whole pooled-lo
+    blocks and never collide with Hibernate-allocated ids.
+  - **Backend:** entities `ProblemTag`/`ProblemTagAssignment` (`Problem.tagAssignments`),
+    `ProblemTagRepository`/`ProblemTagAssignmentRepository`, `ProblemTagService` (+ impl),
+    `ProblemTagApi` (`/api/v1/admin/problem-tags`: CRUD, paged list, `GET /all`) and
+    `PublicProblemTagApi` (`/api/v1/public/problem-tags`). Problem create/update take optional
+    `tagIds` (update: `null` = unchanged, `[]` = clear); applied by diffing rather than
+    clear-and-rebuild, since Hibernate flushes INSERTs before orphan DELETEs and re-adding an
+    existing tag would violate the pair's unique constraint. Problem responses (detail + both list
+    rows) embed `tags: [{id, name, slug}]`. Admin and public problem lists take a repeated
+    `tagIds` filter (ANY-match, an `EXISTS` subquery). New error codes `PROBLEM_TAG_NOT_FOUND`,
+    `PROBLEM_TAG_NAME_CONFLICT`, `PROBLEM_TAG_SLUG_CONFLICT`, `PROBLEM_TAG_IN_USE` (delete refused
+    while assigned). New tests `ProblemTagServiceImplTest` + tag cases in `ProblemServiceImplTest`.
+  - **`gateway`:** `devPracticeServiceRoutes()` gained `/api/v1/admin/problem-tags/**` and
+    `/api/v1/public/problem-tags/**`.
+  - **`gui`:** new `/admin/problem-tags` page (`ProblemTagListPage` + `ProblemTagFormDialog`,
+    "Dev Practice → Problem Tags" in the sidebar); a chip tag picker in `ProblemFormPage`'s sidebar
+    (always sends the full `tagIds` set); a Tags column (first 3 chips + "+N") and a multi-select
+    tag filter on `ProblemListPage`.
 - **`dev-practice-service`: signature-name validation — `harness.SignatureNameValidator`.** A
   problem's method and parameter names must (1) match `^[A-Za-z][A-Za-z0-9_]*$` (also enforced
   field-level via `@Pattern` on `CreateProblemRequest`/`UpdateProblemRequest`/
@@ -297,6 +321,12 @@ section again. Full unabridged entry-by-entry history for all four lives in
   pins the harness resources and golden files to `eol=lf`.
 
 ### Fixed
+
+- **Keycloak crash-looped on a fresh database: `docker/keycloak/realm-export.json` used
+  `hideOnLoginPage`**, a field name Keycloak 26 (`quay.io/keycloak/keycloak:26.0`) no longer knows
+  — its importer fails on unknown fields (`Unrecognized field "hideOnLoginPage"`). Renamed to
+  `hideOnLogin`. Went unnoticed because `--import-realm` skips an already-existing realm; it only
+  ran (and failed) once the `keycloak` schema was empty. `docker/keycloak/README.md` updated.
 
 - **`dev-practice-service`: `PROBLEM_TEST_CASE_ARITY_MISMATCH`'s API message was the raw test-case
   input JSON**, not an explanation — `Validator.isTrue(..., testCase.input())` passed a lone

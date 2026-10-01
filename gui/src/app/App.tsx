@@ -31,6 +31,7 @@ import AddressBookPage from '@ecommerce/pages/AddressBookPage';
 import DevUtilsPage from '@dev-utils/pages/DevUtilsPage';
 import ProblemListPage from '@dev-practice/pages/ProblemListPage';
 import ProblemFormPage from '@dev-practice/pages/ProblemFormPage';
+import ProblemTagListPage from '@dev-practice/pages/ProblemTagListPage';
 import { NotificationProvider } from '@shared/contexts/NotificationContext';
 import { CartProvider } from '@ecommerce/context/CartContext';
 import { StompConnectionProvider } from '@messaging/context/StompConnectionContext';
@@ -202,6 +203,7 @@ function App() {
               <Route path="problems" element={<ProblemListPage />} />
               <Route path="problems/new" element={<ProblemFormPage />} />
               <Route path="problems/:id/edit" element={<ProblemFormPage />} />
+              <Route path="problem-tags" element={<ProblemTagListPage />} />
               <Route index element={<Navigate to="dashboard" replace />} />
             </Route>
 

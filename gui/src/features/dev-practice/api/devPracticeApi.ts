@@ -1,6 +1,6 @@
 import { httpClient } from '@shared/api/httpClient';
 import { PagedResponse } from '@shared/types';
-import { AdminProblemSummary, Difficulty, Problem, ProblemPayload, ProblemStatus } from '../types';
+import { AdminProblemSummary, Difficulty, Problem, ProblemPayload, ProblemStatus, ProblemTag } from '../types';
 
 type ShowError = (msg: string) => void;
 
@@ -22,16 +22,28 @@ export interface ProblemListParams {
   difficulty?: Difficulty;
   status?: ProblemStatus;
   q?: string;
+  /** Problems tagged with *any* of these. Sent as a repeated param (`tagIds=1&tagIds=2`) — the
+   * backend binds `Set<Integer> tagIds` from repeats, not a comma-joined value. */
+  tagIds?: number[];
+}
+
+export interface ProblemTagListParams {
+  page?: number;
+  size?: number;
+  sortBy?: 'name' | 'id' | 'dteCreation';
+  sortDir?: 'asc' | 'desc';
+  q?: string;
 }
 
 export const devPracticeApi = {
   // ── Admin problem catalog (/api/v1/admin/problems, ROLE_ADMIN) ──────────────
 
   listProblems(params: ProblemListParams, showError?: ShowError): Promise<PagedResponse<AdminProblemSummary>> {
-    return httpClient.get(
-      `/api/v1/admin/problems${buildQuery(params as Record<string, string | number | undefined>)}`,
-      showError,
-    );
+    const { tagIds, ...scalar } = params;
+    const q = new URLSearchParams(buildQuery(scalar as Record<string, string | number | undefined>).slice(1));
+    tagIds?.forEach(id => q.append('tagIds', String(id)));
+    const query = q.toString();
+    return httpClient.get(`/api/v1/admin/problems${query ? `?${query}` : ''}`, showError);
   },
 
   getProblem(id: number, showError?: ShowError): Promise<Problem> {
@@ -48,5 +60,31 @@ export const devPracticeApi = {
 
   deleteProblem(id: number, showError?: ShowError): Promise<void> {
     return httpClient.delete(`/api/v1/admin/problems/${id}`, showError);
+  },
+
+  // ── Admin tag catalog (/api/v1/admin/problem-tags, ROLE_ADMIN) ──────────────
+
+  listProblemTags(params: ProblemTagListParams, showError?: ShowError): Promise<PagedResponse<ProblemTag>> {
+    return httpClient.get(
+      `/api/v1/admin/problem-tags${buildQuery(params as Record<string, string | number | undefined>)}`,
+      showError,
+    );
+  },
+
+  /** Every tag, sorted by name — for the problem form's picker and the list's tag filter. */
+  listAllProblemTags(showError?: ShowError): Promise<ProblemTag[]> {
+    return httpClient.get('/api/v1/admin/problem-tags/all', showError);
+  },
+
+  createProblemTag(name: string, showError?: ShowError): Promise<ProblemTag> {
+    return httpClient.post('/api/v1/admin/problem-tags', { name }, showError);
+  },
+
+  updateProblemTag(id: number, name: string, showError?: ShowError): Promise<ProblemTag> {
+    return httpClient.put(`/api/v1/admin/problem-tags/${id}`, { name }, showError);
+  },
+
+  deleteProblemTag(id: number, showError?: ShowError): Promise<void> {
+    return httpClient.delete(`/api/v1/admin/problem-tags/${id}`, showError);
   },
 };

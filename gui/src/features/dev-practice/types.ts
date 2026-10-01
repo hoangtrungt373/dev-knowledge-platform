@@ -38,6 +38,18 @@ export interface TestCase {
   sample: boolean;
 }
 
+/** `ProblemTagSummaryResponse` — a tag as embedded in a problem response. */
+export interface ProblemTagSummary {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+/** `ProblemTagResponse` — a tag as the admin Tags page sees it. */
+export interface ProblemTag extends ProblemTagSummary {
+  createdAt: string;
+}
+
 /** `ProblemResponse` — the admin get-by-id shape, including hidden test cases. */
 export interface Problem {
   id: number;
@@ -50,6 +62,8 @@ export interface Problem {
   returnType: ParamType;
   parameters: MethodParameter[];
   testCases: TestCase[];
+  /** Sorted by name. */
+  tags: ProblemTagSummary[];
   publishedAt: string | null;
   createdAt: string;
 }
@@ -61,6 +75,8 @@ export interface AdminProblemSummary {
   title: string;
   difficulty: Difficulty;
   status: ProblemStatus;
+  /** Sorted by name. */
+  tags: ProblemTagSummary[];
   publishedAt: string | null;
   createdAt: string;
 }
@@ -76,4 +92,6 @@ export interface ProblemPayload {
   returnType: ParamType;
   parameters: { name: string; type: ParamType }[];
   testCases: { input: string; expectedOutput: string; sample: boolean }[];
+  /** The complete tag set — the form always sends it, so update never relies on "omitted = unchanged". */
+  tagIds: number[];
 }

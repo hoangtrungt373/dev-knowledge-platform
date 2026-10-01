@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   Box,
   Button,
+  Chip,
   FormControl,
   IconButton,
   InputLabel,
@@ -14,7 +15,7 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { Difficulty, ParamType, Problem, ProblemStatus } from '../types';
+import { Difficulty, ParamType, Problem, ProblemStatus, ProblemTag } from '../types';
 import { devPracticeApi } from '../api/devPracticeApi';
 import { DIFFICULTIES, DIFFICULTY_LABEL, STATUSES, STATUS_LABEL } from '../constants';
 import {
@@ -45,8 +46,8 @@ function formatDateTime(iso: string | null): string {
 
 /**
  * Create/edit page for one coding problem — `/admin/problems/new` and `/admin/problems/:id/edit`.
- * Main column: title, description, method signature, test cases. Sidebar: difficulty, status, and
- * (edit mode) read-only slug/dates. The whole problem, including every parameter and test case,
+ * Main column: title, description, method signature, test cases. Sidebar: difficulty, status, a
+ * tag chip picker, and (edit mode) read-only slug/dates. The whole problem, including every parameter and test case,
  * is sent in one create/update call — the backend replaces both lists wholesale.
  */
 export default function ProblemFormPage(): JSX.Element {
@@ -63,6 +64,8 @@ export default function ProblemFormPage(): JSX.Element {
   const [returnType, setReturnType] = useState<ParamType>('INT');
   const [params, setParams] = useState<ParamRow[]>(() => [{ key: nextRowKey(), name: '', type: 'INT' }]);
   const [testCases, setTestCases] = useState<TestCaseRow[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
+  const [allTags, setAllTags] = useState<ProblemTag[]>([]);
 
   // What the server last returned — the signature lock compares against these, not against
   // whatever the form currently shows.
@@ -73,6 +76,11 @@ export default function ProblemFormPage(): JSX.Element {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
+
+  // The whole catalog is small (tens of topics), so the picker just loads all of it once.
+  useEffect(() => {
+    devPracticeApi.listAllProblemTags(showError).then(setAllTags).catch(() => {});
+  }, [showError]);
 
   useEffect(() => {
     if (!isEdit || !id) return;
@@ -87,6 +95,7 @@ export default function ProblemFormPage(): JSX.Element {
         setReturnType(problem.returnType);
         setParams(rows.params);
         setTestCases(rows.testCases);
+        setSelectedTagIds(new Set(problem.tags.map(t => t.id)));
         setLoaded(problem);
         setOriginalSignature(signatureOf(problem.methodName, problem.returnType, rows.params));
       })
@@ -116,6 +125,15 @@ export default function ProblemFormPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted, title, description, methodName, params, testCases, signatureLocked, currentSignature]);
 
+  const toggleTag = (tagId: number) => {
+    setSelectedTagIds(prev => {
+      const next = new Set(prev);
+      if (next.has(tagId)) next.delete(tagId);
+      else next.add(tagId);
+      return next;
+    });
+  };
+
   const revertSignature = () => {
     if (!loaded) return;
     const rows = rowsFromProblem(loaded);
@@ -134,7 +152,12 @@ export default function ProblemFormPage(): JSX.Element {
     }
     setSaving(true);
     try {
-      const payload = toPayload({ title, description, difficulty, status, methodName, returnType }, params, testCases);
+      // Always the complete tag set — never relies on the backend's "omitted = unchanged" update case.
+      const payload = toPayload(
+        { title, description, difficulty, status, methodName, returnType, tagIds: [...selectedTagIds] },
+        params,
+        testCases,
+      );
       if (isEdit && id) {
         await devPracticeApi.updateProblem(Number(id), payload, showError);
         showSuccess('Problem updated');
@@ -248,6 +271,35 @@ export default function ProblemFormPage(): JSX.Element {
                   Only published problems are visible to users and accept submissions.
                 </Typography>
               </Stack>
+            </Paper>
+
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
+                <Typography variant="subtitle2" fontWeight={700}>Tags</Typography>
+                <Typography variant="caption" color="text.secondary">{selectedTagIds.size} selected</Typography>
+              </Stack>
+              {allTags.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No tags yet — create them under Dev Practice → Problem Tags.
+                </Typography>
+              ) : (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                  {allTags.map(tag => {
+                    const selected = selectedTagIds.has(tag.id);
+                    return (
+                      <Chip
+                        key={tag.id}
+                        label={tag.name}
+                        size="small"
+                        clickable
+                        color={selected ? 'primary' : 'default'}
+                        variant={selected ? 'filled' : 'outlined'}
+                        onClick={() => toggleTag(tag.id)}
+                      />
+                    );
+                  })}
+                </Box>
+              )}
             </Paper>
 
             {loaded && (

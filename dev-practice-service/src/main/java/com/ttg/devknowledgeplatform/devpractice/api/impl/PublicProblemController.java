@@ -36,10 +36,10 @@ public class PublicProblemController implements PublicProblemApi {
 
     @Override
     public ResponseEntity<PagedResponse<ProblemSummaryResponse>> list(
-            int page, int size, String sortBy, String sortDir, Difficulty difficulty, String q) {
+            int page, int size, String sortBy, String sortDir, Difficulty difficulty, String q, Set<Integer> tagIds) {
         Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
         Page<ProblemSummaryResponse> responses =
-                problemService.list(pageable, difficulty, ContentStatus.PUBLISHED, q)
+                problemService.list(pageable, difficulty, ContentStatus.PUBLISHED, q, tagIds)
                         .map(problemMapper::toSummaryResponse);
         return ResponseEntity.ok(PagedResponse.from(responses));
     }

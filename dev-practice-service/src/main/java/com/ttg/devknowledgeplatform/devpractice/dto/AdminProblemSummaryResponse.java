@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.devpractice.dto;
 
 import java.time.Instant;
+import java.util.List;
 
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
@@ -22,6 +23,7 @@ public record AdminProblemSummaryResponse(
         String title,
         Difficulty difficulty,
         ContentStatus status,
+        List<ProblemTagSummaryResponse> tags,
         Instant publishedAt,
         Instant createdAt) {
 }

@@ -3,7 +3,10 @@ package com.ttg.devknowledgeplatform.devpractice.service.impl;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -18,11 +21,14 @@ import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.devpractice.entity.MethodParameter;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
+import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTag;
+import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTagAssignment;
 import com.ttg.devknowledgeplatform.devpractice.entity.TestCase;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
 import com.ttg.devknowledgeplatform.devpractice.exception.DevPracticeErrorCode;
 import com.ttg.devknowledgeplatform.devpractice.harness.SignatureNameValidator;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
+import com.ttg.devknowledgeplatform.devpractice.repository.ProblemTagRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.spec.ProblemSpecification;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemCommands;
@@ -40,6 +46,7 @@ public class ProblemServiceImpl implements ProblemService {
 
     private final ProblemRepository problemRepository;
     private final SubmissionRepository submissionRepository;
+    private final ProblemTagRepository problemTagRepository;
     private final SignatureNameValidator signatureNameValidator;
     private final SlugService slugService;
     private final ObjectMapper objectMapper;
@@ -66,6 +73,7 @@ public class ProblemServiceImpl implements ProblemService {
                 .build();
         replaceParameters(problem, command.parameters());
         replaceTestCases(problem, command.testCases());
+        replaceTags(problem, command.tagIds() == null ? Set.of() : command.tagIds());
 
         Problem saved = problemRepository.save(problem);
         log.info("User {} created problem {} slug={}", authorUuid, saved.getId(), slug);
@@ -111,6 +119,9 @@ public class ProblemServiceImpl implements ProblemService {
 
         replaceParameters(problem, command.parameters());
         replaceTestCases(problem, command.testCases());
+        if (command.tagIds() != null) {
+            replaceTags(problem, command.tagIds());
+        }
 
         Problem updated = problemRepository.save(problem);
         log.info("Updated problem {}", id);
@@ -143,8 +154,8 @@ public class ProblemServiceImpl implements ProblemService {
     }
 
     @Override
-    public Page<Problem> list(Pageable pageable, Difficulty difficulty, ContentStatus status, String q) {
-        return problemRepository.findAll(ProblemSpecification.withFilters(difficulty, status, q), pageable);
+    public Page<Problem> list(Pageable pageable, Difficulty difficulty, ContentStatus status, String q, Set<Integer> tagIds) {
+        return problemRepository.findAll(ProblemSpecification.withFilters(difficulty, status, q, tagIds), pageable);
     }
 
     private Problem findById(Integer id) {
@@ -215,6 +226,33 @@ public class ProblemServiceImpl implements ProblemService {
                     .build();
             problem.getParameters().add(parameter);
         }
+    }
+
+    /**
+     * Makes {@code problem}'s tags exactly {@code tagIds} — by diffing, not clear-and-rebuild like
+     * {@link #replaceTestCases}. The difference matters because of UK_PROBLEM_TAG_ASSIGNMENT_PAIR:
+     * Hibernate's flush runs INSERTs before orphan-removal DELETEs, so clearing and re-adding a tag
+     * the problem already had would insert the duplicate (problem, tag) row first and violate the
+     * constraint. Keeping unchanged assignments also avoids rewriting rows (and their audit columns)
+     * on every save.
+     *
+     * @throws com.ttg.devknowledgeplatform.common.exception.BusinessException
+     *         {@code PROBLEM_TAG_NOT_FOUND} if any id doesn't exist
+     */
+    private void replaceTags(Problem problem, Set<Integer> tagIds) {
+        // stream().anyMatch, not contains(null): immutable sets (Set.of) throw NPE on contains(null).
+        Validator.isFalse(tagIds.stream().anyMatch(Objects::isNull), DevPracticeErrorCode.PROBLEM_TAG_NOT_FOUND);
+        List<ProblemTag> tags = problemTagRepository.findAllById(tagIds);
+        Validator.isTrue(tags.size() == tagIds.size(), DevPracticeErrorCode.PROBLEM_TAG_NOT_FOUND, tagIds);
+
+        problem.getTagAssignments().removeIf(a -> !tagIds.contains(a.getProblemTag().getId()));
+        Set<Integer> kept = problem.getTagAssignments().stream()
+                .map(a -> a.getProblemTag().getId())
+                .collect(Collectors.toSet());
+        tags.stream()
+                .filter(tag -> !kept.contains(tag.getId()))
+                .forEach(tag -> problem.getTagAssignments().add(
+                        ProblemTagAssignment.builder().problem(problem).problemTag(tag).build()));
     }
 
     /** Replace-all: clears the current test-case list (orphanRemoval deletes the old rows on save) and rebuilds it. */

@@ -34,7 +34,7 @@ wherever the provider's own app registration lives.
 
 ## Login page: registration and Google hidden on purpose
 
-`registrationAllowed: false` and the `google` identity provider's `hideOnLoginPage: true` both
+`registrationAllowed: false` and the `google` identity provider's `hideOnLogin: true` both
 exist so Keycloak's own bare hosted login page — the one `AdminLogin.tsx` redirects to (it never
 passes `kc_idp_hint`, unlike the regular flow below) — doesn't show a "Register" link or a
 "Continue with Google" button that would just lead a non-admin down a dead end (the callback
@@ -47,8 +47,14 @@ regular, non-admin flows:
   which nothing in this app's real sign-up path relies on.
 - `Login.tsx`'s own "Continue with Google" button passes `kc_idp_hint=google` when it redirects,
   which sends the browser straight to Google — it never renders Keycloak's account-chooser page at
-  all, so `hideOnLoginPage` (which only controls whether the button appears *on that page*) has no
+  all, so `hideOnLogin` (which only controls whether the button appears *on that page*) has no
   effect on it.
+
+**The field is `hideOnLogin` (top-level on the identity provider), not `hideOnLoginPage`.** Keycloak
+26 renamed it, and its realm importer rejects unknown fields outright, so a stale name makes
+`start-dev --import-realm` fail with `Unrecognized field "hideOnLoginPage"` and the container
+crash-loop. This only surfaces when the realm is actually imported, i.e. on a fresh database:
+`--import-realm` skips a realm that already exists, which is how the wrong name went unnoticed.
 
 If a future admin-facing flow ever needs registration or social login back on Keycloak's own login
 page, flip these back per-setting rather than assuming both need to move together — they're

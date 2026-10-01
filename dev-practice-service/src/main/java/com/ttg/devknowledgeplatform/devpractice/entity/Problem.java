@@ -60,8 +60,8 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(callSuper = true, exclude = {"testCases", "parameters"})
-@ToString(exclude = {"testCases", "parameters"})
+@EqualsAndHashCode(callSuper = true, exclude = {"testCases", "parameters", "tagAssignments"})
+@ToString(exclude = {"testCases", "parameters", "tagAssignments"})
 public class Problem extends AbstractEntity {
 
     @NotNull
@@ -118,4 +118,10 @@ public class Problem extends AbstractEntity {
     @OneToMany(mappedBy = "problem", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<TestCase> testCases = new ArrayList<>();
+
+    /** Topic tags — replace-all on every create/update, same as parameters/test cases. */
+    @BatchSize(size = 32)
+    @OneToMany(mappedBy = "problem", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<ProblemTagAssignment> tagAssignments = new ArrayList<>();
 }
