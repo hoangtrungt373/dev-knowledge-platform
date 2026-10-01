@@ -33,7 +33,8 @@
       "@ai/*": ["src/features/ai/*"],
       "@tasks/*": ["src/features/tasks/*"],
       "@ecommerce/*": ["src/features/ecommerce/*"],
-      "@dev-utils/*": ["src/features/dev-utils/*"]
+      "@dev-utils/*": ["src/features/dev-utils/*"],
+      "@dev-practice/*": ["src/features/dev-practice/*"]
     }
   },
   "include": ["src"],

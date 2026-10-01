@@ -5,11 +5,13 @@ import java.util.List;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
 import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
+import com.ttg.devknowledgeplatform.devpractice.harness.SignatureNameValidator;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import lombok.Data;
@@ -32,6 +34,8 @@ public class UpdateProblemRequest {
     private ContentStatus status;
 
     @NotBlank(message = "Method name is required")
+    @Pattern(regexp = SignatureNameValidator.IDENTIFIER_REGEX,
+            message = "Method name must use ASCII letters, digits and _, starting with a letter")
     private String methodName;
 
     @NotNull(message = "Return type is required")

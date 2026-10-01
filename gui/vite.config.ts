@@ -18,6 +18,7 @@ export default defineConfig({
       '@tasks': fileURLToPath(new URL('./src/features/tasks', import.meta.url)),
       '@ecommerce': fileURLToPath(new URL('./src/features/ecommerce', import.meta.url)),
       '@dev-utils': fileURLToPath(new URL('./src/features/dev-utils', import.meta.url)),
+      '@dev-practice': fileURLToPath(new URL('./src/features/dev-practice', import.meta.url)),
     },
   },
   server: {

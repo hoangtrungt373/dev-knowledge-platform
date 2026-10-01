@@ -29,6 +29,8 @@ import OrderHistoryPage from '@ecommerce/pages/orders/OrderHistoryPage';
 import OrderDetailPage from '@ecommerce/pages/orders/OrderDetailPage';
 import AddressBookPage from '@ecommerce/pages/AddressBookPage';
 import DevUtilsPage from '@dev-utils/pages/DevUtilsPage';
+import ProblemListPage from '@dev-practice/pages/ProblemListPage';
+import ProblemFormPage from '@dev-practice/pages/ProblemFormPage';
 import { NotificationProvider } from '@shared/contexts/NotificationContext';
 import { CartProvider } from '@ecommerce/context/CartContext';
 import { StompConnectionProvider } from '@messaging/context/StompConnectionContext';
@@ -197,6 +199,9 @@ function App() {
               <Route path="products/:id/edit" element={<ProductFormPage />} />
               <Route path="orders" element={<AdminOrderListPage />} />
               <Route path="coupons" element={<CouponListPage />} />
+              <Route path="problems" element={<ProblemListPage />} />
+              <Route path="problems/new" element={<ProblemFormPage />} />
+              <Route path="problems/:id/edit" element={<ProblemFormPage />} />
               <Route index element={<Navigate to="dashboard" replace />} />
             </Route>
 

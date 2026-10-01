@@ -15,10 +15,10 @@ import org.springframework.web.bind.annotation.RestController;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.api.ProblemApi;
+import com.ttg.devknowledgeplatform.devpractice.dto.AdminProblemSummaryResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.CreateProblemRequest;
 import com.ttg.devknowledgeplatform.devpractice.dto.MethodParameterRequest;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
-import com.ttg.devknowledgeplatform.devpractice.dto.ProblemSummaryResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.TestCaseRequest;
 import com.ttg.devknowledgeplatform.devpractice.dto.UpdateProblemRequest;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
@@ -70,11 +70,11 @@ public class ProblemController implements ProblemApi {
     }
 
     @Override
-    public ResponseEntity<PagedResponse<ProblemSummaryResponse>> list(
+    public ResponseEntity<PagedResponse<AdminProblemSummaryResponse>> list(
             int page, int size, String sortBy, String sortDir, Difficulty difficulty, ContentStatus status, String q) {
         Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
-        Page<ProblemSummaryResponse> responses = problemService.list(pageable, difficulty, status, q)
-                .map(problemMapper::toSummaryResponse);
+        Page<AdminProblemSummaryResponse> responses = problemService.list(pageable, difficulty, status, q)
+                .map(problemMapper::toAdminSummaryResponse);
         return ResponseEntity.ok(PagedResponse.from(responses));
     }
 

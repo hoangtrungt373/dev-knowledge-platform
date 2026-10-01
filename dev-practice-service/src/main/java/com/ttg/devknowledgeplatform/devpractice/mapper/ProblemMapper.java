@@ -5,6 +5,7 @@ import java.util.List;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
+import com.ttg.devknowledgeplatform.devpractice.dto.AdminProblemSummaryResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.MethodParameterResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemSummaryResponse;
@@ -20,6 +21,9 @@ public interface ProblemMapper {
     ProblemResponse toResponse(Problem problem);
 
     ProblemSummaryResponse toSummaryResponse(Problem problem);
+
+    @Mapping(target = "createdAt", source = "dteCreation")
+    AdminProblemSummaryResponse toAdminSummaryResponse(Problem problem);
 
     TestCaseResponse toResponse(TestCase testCase);
 

@@ -31,7 +31,7 @@ import { contentApi } from '../api/contentApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import FullPageLoader from '@shared/components/FullPageLoader';
 import SubmitButton from '@shared/components/SubmitButton';
-import MarkdownField from '../components/MarkdownField';
+import MarkdownField from '@shared/components/MarkdownField';
 
 interface FlatOption { id: number; name: string; depth: number; }
 

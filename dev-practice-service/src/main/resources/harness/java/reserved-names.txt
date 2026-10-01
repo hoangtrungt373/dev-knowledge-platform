@@ -1,0 +1,65 @@
+# Names a problem's method or parameters may not use, because the generated Java program would no
+# longer compile. One name per line, case-sensitive; '#' starts a comment. Loaded by
+# LanguageHarness alongside this directory's templates.
+#
+# Java keywords and literals (JLS 3.9), as of Judge0 CE's OpenJDK 13 runtime.
+abstract
+assert
+boolean
+break
+byte
+case
+catch
+char
+class
+const
+continue
+default
+do
+double
+else
+enum
+extends
+final
+finally
+float
+for
+goto
+if
+implements
+import
+instanceof
+int
+interface
+long
+native
+new
+package
+private
+protected
+public
+return
+short
+static
+strictfp
+super
+switch
+synchronized
+this
+throw
+throws
+transient
+try
+void
+volatile
+while
+true
+false
+null
+# Restricted identifiers: not keywords, but rejected as a type or in some positions (var since 10,
+# yield since 13/14, record since 16) — reserved so a problem stays valid on a newer Judge0 JDK.
+var
+yield
+record
+# No harness-owned names needed: the generated main() only uses _-prefixed locals, and leading
+# underscores are already rejected for every language (see SignatureNameValidator).

@@ -22,22 +22,25 @@ gui/src/
 │   │                        (the public storefront: browse/search/filter, product detail) +
 │   │                        pages/cart/, pages/checkout/ (Epic 2) + pages/orders/ (Epic 3's
 │   │                        shopper-facing order history/detail, US-3.3/3.5/3.6)
-│   └── dev-utils/        — fronts dev-utils-service: JSON format/validate, YAML↔JSON, HTML
-│                            beautify. One page (Tabs, one per operation), genuinely public — see
-│                            its own rules-section entry below
+│   ├── dev-utils/        — fronts dev-utils-service: JSON format/validate, YAML↔JSON, HTML
+│   │                        beautify. One page (Tabs, one per operation), genuinely public — see
+│   │                        its own rules-section entry below
+│   └── dev-practice/     — fronts dev-practice-service: admin problem-catalog screens (list +
+│                            create/edit form). Public problem/submission pages not built yet
 ├── app/          — app shell: App.tsx (routes), main.tsx, theme.ts, NavBar, GuestRoute/PrivateRoute,
 │                    admin-shell/ (AdminLayout, AdminDashboard — the admin nav frame + landing page),
 │                    account-shell/ (AccountLayout — the shopper's own Profile+Addresses sidebar)
 └── shared/        — httpClient, common.types-equivalent (types.ts, incl. PagedResponse), the
                       NotificationContext, storage.ts (STORAGE_KEYS), colors.ts, errorHandler.ts,
                       useSubmitGuard, ConfirmDialog, FullPageLoader, EmptyState, SubmitButton,
-                      TableStatusRow, SectionStatus, UploadingOverlay
+                      TableStatusRow, SectionStatus, UploadingOverlay, MarkdownField (moved from
+                      @content once @dev-practice became its second consumer)
 ```
 
 Each `features/<name>/` folder owns its own `api/`, `types.ts`, `pages/`, `components/`, `hooks/` —
 whichever of those it needs; nothing is centralized by layer anymore (see "Why this shape" below).
 Cross-directory imports use path aliases (`@shared/*`, `@app/*`, `@auth/*`, `@chat/*`, `@friends/*`,
-`@messaging/*`, `@content/*`, `@ai/*`, `@tasks/*`, `@ecommerce/*`, `@dev-utils/*` — defined in both `tsconfig.json`'s `compilerOptions.paths` and
+`@messaging/*`, `@content/*`, `@ai/*`, `@tasks/*`, `@ecommerce/*`, `@dev-utils/*`, `@dev-practice/*` — defined in both `tsconfig.json`'s `compilerOptions.paths` and
 `vite.config.ts`'s `resolve.alias`, and must be kept in sync between the two) instead of relative
 `../../` traversal — imports within a single feature (e.g. a page importing its own feature's
 `api/`) stay relative (`../api/chatApi`), only *cross*-feature imports use the alias.
@@ -4439,6 +4442,35 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       Docker in this sandbox, so the actual on-screen result (every panel's Paste/Copy/Download/
       Maximize buttons, the inline error boxes, and the corrected sample text) is unverified in a
       real browser.
+- **`@dev-practice` — fronts `dev-practice-service`; admin problem-catalog screens only so far**
+  (`/admin/problems`, `/new`, `/:id/edit`, nested under `AdminLayout` — "Dev Practice → Problems"
+  sidebar group). `pages/ProblemListPage.tsx`/`ProblemFormPage.tsx` copy `@content`'s
+  `QuestionAnswerListPage`/`FormPage` shape (filters, `TableStatusRow`, `ConfirmDialog`,
+  two-column form with a Settings sidebar). Types are declared locally in `types.ts` (own
+  `Difficulty`/`ProblemStatus`), not imported from `@content` — dev-practice-service doesn't depend
+  on content-service. Rules:
+  - **The whole problem is one create/update payload** — the backend replaces parameters and test
+    cases wholesale, so there are no per-row API calls (unlike `@ecommerce`'s edit-mode variants).
+    Rows carry a client-only `key` (`utils/problemForm.ts#nextRowKey`) because they reorder and
+    delete; never use the list index as the React key.
+  - **Parameter order is the argument order** every test-case input follows — reordered with
+    up/down buttons (chosen over dnd-kit), and sent as list order (the backend derives `position`).
+  - **`utils/problemForm.ts#validateProblemForm` mirrors backend rules, keep it in sync**:
+    test-case arity (`input` must be a JSON array with one value per parameter) and the
+    published-signature lock (`signatureLocked` = loaded as PUBLISHED *and* still PUBLISHED —
+    picking Draft/Archived unlocks it in the same save, matching `ProblemServiceImpl`), plus the
+    identifier shape (`^[A-Za-z][A-Za-z0-9_]*$`, same as the backend's `@Pattern`) and unique
+    parameter names. **Per-language reserved words are deliberately not mirrored** — they live
+    only in the backend's `harness/*/reserved-names.txt`, and a rejected name (`class`, `def`,
+    `self`, `require`, …) comes back as the save's error toast naming the language(s).
+    Errors show only after the first save attempt, then track every edit live.
+  - `components/JsonCodeField.tsx` is a small CodeMirror JSON field local to this feature (no
+    shared CodeMirror wrapper exists; `@dev-utils/config/codeMirrorConfig` isn't imported from
+    outside that feature). Promote it to `@shared` if a second feature needs one.
+  - Server-side field errors still arrive as the standard `showError` toast — `validationErrors`
+    isn't mapped onto fields anywhere in this app, and this feature doesn't start that pattern.
+  - Verified via a clean `tsc --noEmit` (only the documented pre-existing errors) and a successful
+    `vite build` only — not exercised in a real browser.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

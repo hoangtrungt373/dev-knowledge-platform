@@ -13,4 +13,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, Integer>
     Page<Submission> findByUserUuid(String userUuid, Pageable pageable);
 
     Page<Submission> findByUserUuidAndProblem_Id(String userUuid, Integer problemId, Pageable pageable);
+
+    /** Every user's submissions against one problem — guards deleting a problem with history. */
+    long countByProblem_Id(Integer problemId);
 }

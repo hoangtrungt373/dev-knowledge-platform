@@ -131,7 +131,10 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
   rule as `content-service`'s `ArticleService`).
 - `api/` (interfaces) + `api/impl/` (controllers) — `ProblemApi` (admin CRUD), `PublicProblemApi`
   (public browsing + `/starter-code`), `SubmissionApi` (owner-gated). `mapper/` —
-  `ProblemMapper`/`SubmissionMapper` (MapStruct).
+  `ProblemMapper`/`SubmissionMapper` (MapStruct). The admin list returns its own
+  `dto.AdminProblemSummaryResponse` (adds `status`/`publishedAt`/`createdAt`); the public list keeps
+  the lean `ProblemSummaryResponse` — don't merge them, and don't add test-case/parameter counts to
+  either (both are lazy collections; counting per row is an N+1 query).
 - `exception/DevPracticeErrorCode` — `PROBLEM_*`/`SUBMISSION_*` codes, implements `common`'s
   `ErrorCode` interface.
 
@@ -231,6 +234,24 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   (HTTP status, endpoint) goes to the log only. Remaining known gap: a failure in `saveOutcome`
   itself, or the process dying mid-judging, still strands the row — that needs a stale-`RUNNING`
   sweeper, not built.
+- **Every method/parameter name must compile in every supported language** —
+  `harness.SignatureNameValidator`, run on every create/update: `IDENTIFIER_REGEX` (ASCII letter
+  first; the `_` prefix is the harnesses' own namespace — `_args`/`_result`/`_sol` — so keep
+  generated-code locals `_`-prefixed), not in any harness's `reservedNames()`, and unique. The
+  reserved lists live in `resources/harness/{language}/reserved-names.txt` (keywords **plus**
+  names the generated program itself depends on). **When a template change makes generated code
+  depend on a new non-`_` name, add that name to the language's file** — e.g. JavaScript's
+  `require`/`JSON`/`console` are there because the starter's `var <methodName>` shares a scope with
+  the entry point that calls them. A new language needs its own file (startup fails without it).
+- **A problem with submissions can't be deleted** — `PROBLEM_HAS_SUBMISSIONS` (409);
+  `FK_SUBMISSION_PROBLEM` deliberately has no `ON DELETE CASCADE` (submissions are users' own
+  history, unlike test cases/parameters). Archive instead. Don't "fix" this with a cascade
+  migration without asking — it was an explicit choice over that option.
+- **`Validator` overload trap**: `Validator.isTrue(cond, code, someString)` with exactly one
+  `String` argument binds to the `(…, String message)` overload and *replaces* the error code's
+  template rather than filling `{0}`. Cast to `(Object)` or pass two args when you mean a template
+  argument (this already bit `PROBLEM_TEST_CASE_ARITY_MISMATCH`, whose message used to be the raw
+  input JSON).
 - **Keep `Judge0Client` free of transport wiring.** Timeouts/headers/base URL belong in
   `config.Judge0RestClientConfig`; if the client built its own request factory, it would override
   the `MockRestServiceServer` `Judge0ClientTest` binds, and the test would silently hit the network.
@@ -281,8 +302,8 @@ as unverified until the IT runs somewhere with Docker.
 - Result delivery is polling only (`Judge0Client` blocks internally on `GET /submissions/{token}`)
   — the webhook-callback alternative discussed in Phase 1 planning was explicitly not chosen this
   round (simpler, no new inbound-auth surface to design).
-- No admin UI/seed data for authoring problems with real method signatures and test cases yet — the
-  REST API is complete, but there's no GUI page and no seeder.
+- No seed data for problems — every fresh database starts empty. The admin GUI now exists
+  (`gui`'s `@dev-practice` feature, `/admin/problems`); the public problem/submission GUI doesn't yet.
 - `Submission` result columns (`passedTestCases`/`totalTestCases`/`errorMessage`) are surfaced on
   `SubmissionResponse` but there's no polling/websocket push to the GUI for "judging finished" —
   a client has to re-`GET /api/v1/submissions/{id}` to see a status change.

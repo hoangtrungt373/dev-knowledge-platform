@@ -31,6 +31,8 @@ import DiscountIcon from '@mui/icons-material/Discount';
 import ArticleIcon from '@mui/icons-material/Article';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import StorefrontIcon from '@mui/icons-material/Storefront';
+import CodeIcon from '@mui/icons-material/Code';
+import ExtensionIcon from '@mui/icons-material/Extension';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import HomeIcon from '@mui/icons-material/Home';
@@ -97,6 +99,13 @@ const NAV_STRUCTURE: NavEntry[] = [
       { label: 'Product Attributes', icon: <TuneIcon fontSize="small" />, path: '/admin/product-attributes' },
       { label: 'Order Fulfillment', icon: <LocalShippingIcon fontSize="small" />, path: '/admin/orders' },
       { label: 'Coupons', icon: <DiscountIcon fontSize="small" />, path: '/admin/coupons' },
+    ],
+  },
+  {
+    label: 'Dev Practice',
+    icon: <CodeIcon fontSize="small" />,
+    children: [
+      { label: 'Problems', icon: <ExtensionIcon fontSize="small" />, path: '/admin/problems' },
     ],
   },
 ];

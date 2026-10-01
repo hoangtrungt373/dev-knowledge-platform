@@ -1,0 +1,43 @@
+# Names a problem's method or parameters may not use, because the generated Python program would
+# no longer run. One name per line, case-sensitive; '#' starts a comment. Loaded by LanguageHarness
+# alongside this directory's templates.
+#
+# Python 3.8 keywords (keyword.kwlist), Judge0 CE's Python runtime.
+False
+None
+True
+and
+as
+assert
+async
+await
+break
+class
+continue
+def
+del
+elif
+else
+except
+finally
+for
+from
+global
+if
+import
+in
+is
+lambda
+nonlocal
+not
+or
+pass
+raise
+return
+try
+while
+with
+yield
+# Harness-owned: the starter/harness declare `def <method>(self, <params>)`, so a parameter named
+# `self` is a duplicate-argument SyntaxError.
+self

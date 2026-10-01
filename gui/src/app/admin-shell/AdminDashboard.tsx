@@ -7,6 +7,7 @@ import QueryStatsIcon from '@mui/icons-material/QueryStats';
 import DataArrayIcon from '@mui/icons-material/DataArray';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import CategoryIcon from '@mui/icons-material/Category';
+import ExtensionIcon from '@mui/icons-material/Extension';
 import { adminAuthService } from '@auth/services/adminAuthService';
 
 const FEATURE_CARDS = [
@@ -56,6 +57,12 @@ const FEATURE_CARDS = [
     label: 'Product Categories',
     icon: <CategoryIcon fontSize="small" />,
     description: 'Manage the flat product-category taxonomy.',
+    status: 'ready' as const,
+  },
+  {
+    label: 'Coding Problems',
+    icon: <ExtensionIcon fontSize="small" />,
+    description: 'Author practice problems: method signatures and judge test cases.',
     status: 'ready' as const,
   },
 ];

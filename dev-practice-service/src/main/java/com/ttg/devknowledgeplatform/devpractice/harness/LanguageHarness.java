@@ -9,6 +9,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import com.samskivert.mustache.Mustache;
 import com.samskivert.mustache.Template;
@@ -38,6 +40,12 @@ import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
  * template tag. Templates are compiled once at construction, so a missing or malformed template
  * fails application startup rather than a submission.
  *
+ * <p><b>Reserved names</b> live next to the templates too, in {@code harness/{language}/reserved-names.txt}:
+ * the language's own keywords plus any name this harness's generated code itself depends on (e.g.
+ * JavaScript's {@code require}). {@link SignatureNameValidator} rejects a method/parameter name
+ * reserved by any harness, so a problem can never be saved with a signature some language can't
+ * compile. Like the templates, the file is read at construction — a missing one fails startup.
+ *
  * <p>Template context (every template sees the same one): {@code methodName}; {@code returnType}
  * and each {@code params[].type} as a {@link TypeSyntax}; {@code params[].name}/{@code position};
  * and {@code includes.*} — verbatim resource files a subclass declares (Java's {@code JsonMini}).
@@ -53,6 +61,7 @@ public abstract class LanguageHarness {
     private final Template prelude;
     private final Template main;
     private final Template starter;
+    private final Set<String> reservedNames;
 
     /**
      * @param language     the language this harness generates programs for; also names its
@@ -71,11 +80,22 @@ public abstract class LanguageHarness {
         this.prelude = compile("prelude");
         this.main = compile("main");
         this.starter = compile("starter");
+        this.reservedNames = parseReservedNames(readResource("reserved-names.txt"));
     }
 
     /** The language this harness generates programs for. */
     public final ProgrammingLanguage language() {
         return language;
+    }
+
+    /**
+     * Names a problem's method or parameters may not use for this language — its keywords plus any
+     * name the generated program itself relies on. Case-sensitive, like the languages themselves.
+     *
+     * @return an immutable set, loaded from {@code harness/{language}/reserved-names.txt}
+     */
+    public final Set<String> reservedNames() {
+        return reservedNames;
     }
 
     /**
@@ -123,6 +143,17 @@ public abstract class LanguageHarness {
                 "returnType", typeRenderer.render(problem.getReturnType()),
                 "params", params,
                 "includes", includes);
+    }
+
+    /** One name per line; blank lines and {@code #} comments (whole-line or trailing) are ignored. */
+    private static Set<String> parseReservedNames(String text) {
+        return text.lines()
+                .map(line -> {
+                    int comment = line.indexOf('#');
+                    return (comment >= 0 ? line.substring(0, comment) : line).strip();
+                })
+                .filter(name -> !name.isEmpty())
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     private Template compile(String name) {

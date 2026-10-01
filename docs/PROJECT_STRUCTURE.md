@@ -2970,8 +2970,15 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     follows real LeetCode's own `var fn = function(){}`
 │   │                                     convention; its starter template switches delimiters to
 │   │                                     <% %> so JSDoc's {type} braces don't collide with Mustache
-│   └── LanguageHarnessRegistry.java     — Map<ProgrammingLanguage, LanguageHarness> built from every
-│                                         LanguageHarness @Component Spring finds
+│   ├── LanguageHarnessRegistry.java     — Map<ProgrammingLanguage, LanguageHarness> built from every
+│   │                                     LanguageHarness @Component Spring finds
+│   └── SignatureNameValidator.java      — @Component; method/parameter names must match
+│                                         IDENTIFIER_REGEX (ASCII letter first — `_` prefix is the
+│                                         harnesses' own namespace), not be in ANY harness's
+│                                         reservedNames() (loaded from reserved-names.txt), and be
+│                                         unique → PROBLEM_INVALID_IDENTIFIER /
+│                                         PROBLEM_DUPLICATE_PARAMETER_NAME; run by ProblemServiceImpl
+│                                         on create/update
 ├── judge/
 │   ├── JudgeClient.java                 — Adapter interface: run(program, language, stdin) →
 │   │                                     Judge0SubmissionResult, blocking (polls internally)
@@ -3022,7 +3029,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   ├── ProblemRepository.java         — JpaRepository<Problem, Integer> + JpaSpecificationExecutor
 │   │                                     + existsBySlug/existsBySlugAndIdNot/findBySlug
 │   ├── SubmissionRepository.java      — JpaRepository<Submission, Integer> +
-│   │                                     findByUserUuid(Pageable)/findByUserUuidAndProblem_Id(...)
+│   │                                     findByUserUuid(Pageable)/findByUserUuidAndProblem_Id(...)/
+│   │                                     countByProblem_Id (guards ProblemService#delete)
 │   └── spec/
 │       └── ProblemSpecification.java  — withFilters(difficulty, status, q) — optional
 │                                         equality/like predicates only
@@ -3049,7 +3057,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 ├── exception/
 │   └── DevPracticeErrorCode.java       — PROBLEM_NOT_FOUND, PROBLEM_SLUG_CONFLICT,
 │                                         PROBLEM_SIGNATURE_LOCKED, PROBLEM_TEST_CASE_ARITY_MISMATCH,
-│                                         SUBMISSION_NOT_FOUND
+│                                         PROBLEM_INVALID_IDENTIFIER, PROBLEM_DUPLICATE_PARAMETER_NAME,
+│                                         PROBLEM_HAS_SUBMISSIONS (409 — delete refused; archive
+│                                         instead), SUBMISSION_NOT_FOUND
 ├── dto/
 │   ├── ProblemResponse.java           — record: id, slug, title, description, difficulty, status,
 │   │                                     methodName, returnType, parameters
@@ -3057,7 +3067,11 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     (List<TestCaseResponse>), publishedAt, createdAt — used
 │   │                                     by both admin (all test cases) and public (sample-only,
 │   │                                     via ProblemMapper#toPublicResponse)
-│   ├── ProblemSummaryResponse.java    — record: id, slug, title, difficulty (list-view row shape)
+│   ├── ProblemSummaryResponse.java    — record: id, slug, title, difficulty (public list row shape)
+│   ├── AdminProblemSummaryResponse.java — record: ProblemSummaryResponse's fields + status,
+│   │                                     publishedAt, createdAt (admin list row shape, own type so
+│   │                                     the public list never gains admin-only fields; no
+│   │                                     test-case/parameter counts — lazy collections, N+1)
 │   ├── MethodParameterResponse.java / MethodParameterRequest.java — request carries no position
 │   │                                     field; derived from the request list's own index
 │   ├── TestCaseResponse.java / TestCaseRequest.java
@@ -3093,9 +3107,12 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
                                           userUuid
 
 dev-practice-service/src/main/resources/harness/
-├── java/       prelude.mustache, main.mustache, starter.mustache, JsonMini.java (verbatim include)
-├── python/     prelude.mustache, main.mustache, starter.mustache
-└── javascript/ prelude.mustache (empty), main.mustache, starter.mustache
+├── java/       prelude.mustache, main.mustache, starter.mustache, JsonMini.java (verbatim include),
+│               reserved-names.txt
+├── python/     prelude.mustache, main.mustache, starter.mustache, reserved-names.txt
+└── javascript/ prelude.mustache (empty), main.mustache, starter.mustache, reserved-names.txt
+                (reserved-names.txt: one name per line, # comments — the language's keywords plus
+                names that harness's generated code depends on, e.g. Python `self`, JS `require`)
 
 dev-practice-service/src/test/
 ├── java/.../harness/
@@ -3109,6 +3126,11 @@ dev-practice-service/src/test/
 │                                         fixture + an identity round-trip per ParamType per
 │                                         language, judged via the real OutputMatcher; skipped
 │                                         without Docker; *IT, so not part of a plain `mvn test`
+├── java/.../harness/SignatureNameValidatorTest.java — against the real harnesses/resource files:
+│                                         shape, per-language keywords, harness-owned names,
+│                                         case-sensitivity, duplicates
+├── java/.../service/impl/ProblemServiceImplTest.java — delete refused with submissions,
+│                                         reserved-name rejection on create, arity error message
 ├── java/.../judge/OutputMatcherTest.java — tolerance/exactness/structural cases
 ├── java/.../judge/impl/Judge0ClientTest.java — MockRestServiceServer as a scripted fake Judge0:
 │                                         submit/poll, line-wrapped base64, retry of 429/503/I/O

@@ -1,0 +1,60 @@
+# Names a problem's method or parameters may not use, because the generated JavaScript program
+# would no longer run. One name per line, case-sensitive; '#' starts a comment. Loaded by
+# LanguageHarness alongside this directory's templates.
+#
+# ECMAScript reserved words, including future/strict-mode reserved words (Judge0 CE's Node 12).
+await
+break
+case
+catch
+class
+const
+continue
+debugger
+default
+delete
+do
+else
+enum
+export
+extends
+false
+finally
+for
+function
+if
+implements
+import
+in
+instanceof
+interface
+let
+new
+null
+package
+private
+protected
+public
+return
+static
+super
+switch
+this
+throw
+true
+try
+typeof
+var
+void
+while
+with
+yield
+# Not assignable/bindable in strict mode.
+arguments
+eval
+# Harness-owned: the starter declares the method as `var <methodName> = function(...)` in the same
+# scope the generated entry point runs in, and that entry point calls these three. A method with one
+# of these names would replace them (`var require` hoists over Node's own require) and break the run.
+require
+JSON
+console

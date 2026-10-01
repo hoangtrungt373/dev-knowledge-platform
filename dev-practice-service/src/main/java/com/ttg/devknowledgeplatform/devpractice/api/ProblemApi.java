@@ -2,9 +2,9 @@ package com.ttg.devknowledgeplatform.devpractice.api;
 
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.devpractice.dto.AdminProblemSummaryResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.CreateProblemRequest;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
-import com.ttg.devknowledgeplatform.devpractice.dto.ProblemSummaryResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.UpdateProblemRequest;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
 
@@ -83,7 +83,7 @@ public interface ProblemApi {
      * @return {@code 200} with a paged list of problem summaries
      */
     @GetMapping
-    ResponseEntity<PagedResponse<ProblemSummaryResponse>> list(
+    ResponseEntity<PagedResponse<AdminProblemSummaryResponse>> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "id") String sortBy,

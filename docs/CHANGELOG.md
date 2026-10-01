@@ -230,7 +230,45 @@ section again. Full unabridged entry-by-entry history for all four lives in
   2.1.0). New test `polling.PollingTemplateTest` (`infra`'s first test class). Registered only via explicit
   `@Import(PollingTemplate.class)` — `dev-practice-service` is its first consumer.
 
+- **`gui`: new `@dev-practice` feature — admin screens for `dev-practice-service`'s problem
+  catalog** (`/admin/problems`, `/admin/problems/new`, `/admin/problems/:id/edit`, under the
+  `ADMIN`-guarded `AdminLayout`; new "Dev Practice → Problems" sidebar group and dashboard card).
+  `pages/ProblemListPage` (search, difficulty/status filters, status/difficulty chips, delete via
+  `ConfirmDialog`, `TablePagination`) and `pages/ProblemFormPage` (one page for create/edit: title,
+  Markdown description, method signature, test cases, difficulty/status sidebar).
+  `components/MethodSignatureEditor` (method name, return type, ordered parameters with up/down
+  reorder, a live signature preview, type picker showing a JSON example per `ParamType`),
+  `components/TestCaseEditor` (inline card per test case, "N of M arguments" hint, sample switch),
+  `components/JsonCodeField` (small CodeMirror JSON field). `utils/problemForm.ts` mirrors the
+  backend's rules client-side — test-case arity (`PROBLEM_TEST_CASE_ARITY_MISMATCH`) and the
+  published-signature lock (`PROBLEM_SIGNATURE_LOCKED`, with a Revert action) — plus two the
+  backend doesn't enforce: method/parameter names must be valid identifiers, parameter names must
+  be unique. New `@dev-practice/*` path alias (`tsconfig.json` + `vite.config.ts`).
+- **`dev-practice-service`: new `dto.AdminProblemSummaryResponse`** (id, slug, title, difficulty,
+  status, publishedAt, createdAt) + `ProblemMapper#toAdminSummaryResponse`.
+- **`dev-practice-service`: signature-name validation — `harness.SignatureNameValidator`.** A
+  problem's method and parameter names must (1) match `^[A-Za-z][A-Za-z0-9_]*$` (also enforced
+  field-level via `@Pattern` on `CreateProblemRequest`/`UpdateProblemRequest`/
+  `MethodParameterRequest`; a leading `_` is reserved for the harnesses' own locals), (2) not be
+  reserved by *any* language — new `resources/harness/{java,python,javascript}/reserved-names.txt`,
+  each language's keywords plus names its generated code depends on (Python `self`; JavaScript
+  `require`/`JSON`/`console`, which a `var <methodName>` declaration would otherwise shadow),
+  loaded by `LanguageHarness` at construction (new `reservedNames()`), and (3) be unique. New
+  error codes `PROBLEM_INVALID_IDENTIFIER` (`PROBLEM_005`), `PROBLEM_DUPLICATE_PARAMETER_NAME`
+  (`PROBLEM_006`). New tests `SignatureNameValidatorTest`, `ProblemServiceImplTest`.
+- **`dev-practice-service`: deleting a problem with submissions is refused** —
+  `ProblemServiceImpl#delete` checks new `SubmissionRepository#countByProblem_Id` first and throws
+  new `PROBLEM_HAS_SUBMISSIONS` (`PROBLEM_007`, 409, "archive it instead"). Deliberately no
+  `ON DELETE CASCADE` migration: submissions are users' own history.
+
 ### Changed
+
+- **`dev-practice-service`: `GET /api/v1/admin/problems` now returns `AdminProblemSummaryResponse`
+  rows instead of `ProblemSummaryResponse`** — the admin list needed `status`; the public list
+  (`/api/v1/public/problems`) keeps the lean `ProblemSummaryResponse` unchanged.
+- **`gui`: `MarkdownField` moved from `@content/components/` to `@shared/components/`** — its
+  second consumer (`@dev-practice`'s problem description) arrived; same promotion precedent as
+  `TableStatusRow`. `QuestionAnswerFormPage`'s import updated; component unchanged.
 
 - **`dev-practice-service`: `Judge0Client` moved onto `infra`'s `PollingTemplate` and Resilience4j,
   replacing its hand-written poll loop and Spring Retry.** Status polling now goes through
@@ -259,6 +297,12 @@ section again. Full unabridged entry-by-entry history for all four lives in
   pins the harness resources and golden files to `eol=lf`.
 
 ### Fixed
+
+- **`dev-practice-service`: `PROBLEM_TEST_CASE_ARITY_MISMATCH`'s API message was the raw test-case
+  input JSON**, not an explanation — `Validator.isTrue(..., testCase.input())` passed a lone
+  `String`, which binds to the `isTrue(..., String message)` overload and replaces the error code's
+  template. Now passes the input *and* the expected count, against a new template ("Test case input
+  {0} must be a JSON array with exactly {1} value(s), one per parameter").
 
 - **`dev-practice-service`: a correct `DOUBLE`/`DOUBLE_ARRAY` answer could be judged
   `WRONG_ANSWER`.** Comparison was Jackson `JsonNode.equals`, which is numeric-type-sensitive:

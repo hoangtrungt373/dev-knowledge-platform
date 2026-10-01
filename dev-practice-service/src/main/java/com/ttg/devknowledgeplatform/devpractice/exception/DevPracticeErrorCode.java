@@ -21,7 +21,15 @@ public enum DevPracticeErrorCode implements ErrorCode {
             "Cannot change a published problem's method name, return type, or parameters — move it back to DRAFT first",
             HttpStatus.CONFLICT),
     PROBLEM_TEST_CASE_ARITY_MISMATCH("PROBLEM_004",
-            "Test case input must be a JSON array with exactly one value per parameter", HttpStatus.BAD_REQUEST),
+            "Test case input {0} must be a JSON array with exactly {1} value(s), one per parameter",
+            HttpStatus.BAD_REQUEST),
+    PROBLEM_INVALID_IDENTIFIER("PROBLEM_005",
+            "''{0}'' can''t be used as a {1} name: {2}", HttpStatus.BAD_REQUEST),
+    PROBLEM_DUPLICATE_PARAMETER_NAME("PROBLEM_006",
+            "Parameter name ''{0}'' is used more than once", HttpStatus.BAD_REQUEST),
+    PROBLEM_HAS_SUBMISSIONS("PROBLEM_007",
+            "This problem already has {0} submission(s) and can''t be deleted — archive it instead",
+            HttpStatus.CONFLICT),
 
     // Submission errors (SUBMISSION_*)
     SUBMISSION_NOT_FOUND("SUBMISSION_001", "Submission not found", HttpStatus.NOT_FOUND);

@@ -21,7 +21,9 @@ import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.TestCase;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
 import com.ttg.devknowledgeplatform.devpractice.exception.DevPracticeErrorCode;
+import com.ttg.devknowledgeplatform.devpractice.harness.SignatureNameValidator;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
+import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.spec.ProblemSpecification;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemCommands;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemService;
@@ -37,11 +39,14 @@ import lombok.extern.slf4j.Slf4j;
 public class ProblemServiceImpl implements ProblemService {
 
     private final ProblemRepository problemRepository;
+    private final SubmissionRepository submissionRepository;
+    private final SignatureNameValidator signatureNameValidator;
     private final SlugService slugService;
     private final ObjectMapper objectMapper;
 
     @Override
     public Problem create(ProblemCommands.Create command, String authorUuid) {
+        validateSignatureNames(command.methodName(), command.parameters());
         validateTestCaseArity(command.parameters(), command.testCases());
 
         String slug = slugService.generateUniqueSlug(
@@ -93,6 +98,7 @@ public class ProblemServiceImpl implements ProblemService {
             Validator.isFalse(signatureChanged(problem, command), DevPracticeErrorCode.PROBLEM_SIGNATURE_LOCKED, id);
         }
 
+        validateSignatureNames(command.methodName(), command.parameters());
         validateTestCaseArity(command.parameters(), command.testCases());
 
         problem.setMethodName(command.methodName());
@@ -114,6 +120,12 @@ public class ProblemServiceImpl implements ProblemService {
     @Override
     public void delete(Integer id) {
         Problem problem = findById(id);
+        // FK_SUBMISSION_PROBLEM deliberately has no ON DELETE CASCADE: a submission is a user's own
+        // history, not part of the problem the way test cases/parameters are. Refuse cleanly here
+        // instead of letting the FK violation surface as a 500; ARCHIVED is the way to retire a
+        // problem people have already attempted.
+        long submissions = submissionRepository.countByProblem_Id(id);
+        Validator.isTrue(submissions == 0, DevPracticeErrorCode.PROBLEM_HAS_SUBMISSIONS, submissions);
         problemRepository.delete(problem);
         log.info("Deleted problem {}", id);
     }
@@ -158,6 +170,12 @@ public class ProblemServiceImpl implements ProblemService {
         return !current.equals(command.parameters());
     }
 
+    /** Delegates to {@link SignatureNameValidator} — every name must compile in every supported language. */
+    private void validateSignatureNames(String methodName, List<ProblemCommands.MethodParameterInput> parameters) {
+        signatureNameValidator.validate(methodName,
+                parameters.stream().map(ProblemCommands.MethodParameterInput::name).toList());
+    }
+
     /**
      * Every {@code TestCase.input} must be a JSON array with exactly one element per parameter —
      * checked against {@code parameters} (the *final* parameter list about to be persisted, whether
@@ -179,7 +197,9 @@ public class ProblemServiceImpl implements ProblemService {
             } catch (JsonProcessingException e) {
                 valid = false;
             }
-            Validator.isTrue(valid, DevPracticeErrorCode.PROBLEM_TEST_CASE_ARITY_MISMATCH, testCase.input());
+            // Two args, so this binds to the template-args overload — a lone String argument would
+            // bind to Validator's isTrue(..., String message) and become the whole message instead.
+            Validator.isTrue(valid, DevPracticeErrorCode.PROBLEM_TEST_CASE_ARITY_MISMATCH, testCase.input(), expected);
         }
     }
 
