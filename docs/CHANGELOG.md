@@ -253,7 +253,13 @@ section again. Full unabridged entry-by-entry history for all four lives in
   front-matter-plus-Markdown file shape as `content-service`'s Q&A seeds. The signature is parsed
   from the file's Java code template by `SignatureTemplateParserRegistry`, and the problem is
   created through `ProblemService.create`, so seed data passes every normal validation; idempotent
-  by slug. New `ProblemTagRepository#findByNameIgnoreCase`. New seed file
+  by slug. New `ProblemTagRepository#findByNameIgnoreCase`. **Plus `ProblemTagSeeder`** (extends
+  `infra`'s `CsvSeeder`, same shape as `ecommerce-service`'s `ProductTagSeeder`): the 18 starter
+  topics from new `data/csv/problem_tags.csv`, idempotent by name, created through
+  `ProblemTagService.create`; the runner calls it before `ProblemSeeder` (which resolves tags by
+  name). Replaces the `INSERT` that had been in `DKP-0055` — one source for the starter list, and
+  editing it no longer needs a migration. New test `ProblemTagSeederTest`; `ProblemSeederTest` now
+  only resolves tag names present in that CSV. New seed file
   `evaluate-reverse-polish-notation.md` (MEDIUM; Array/Math/Stack; `int evalRPN(String[] tokens)`;
   18 test cases, 2 shown as samples, every expected output computed by a reference
   implementation). New test `ProblemSeederTest` (runs every seeded test case through a reference
@@ -284,9 +290,9 @@ section again. Full unabridged entry-by-entry history for all four lives in
   Mirrors `ecommerce-service`'s Product Tags.
   - **Schema (`DKP-0055`):** `PROBLEM_TAG` (name, slug; case-insensitive name uniqueness via a
     `LOWER(NAME)` unique index) and an explicit `PROBLEM_TAG_ASSIGNMENT` join entity (audit
-    columns; cascades from `PROBLEM`, deliberately not from `PROBLEM_TAG`). Seeds the 18 NeetCode
-    topics (Array … Bit Manipulation), ids via `nextval()` so seeded rows take whole pooled-lo
-    blocks and never collide with Hibernate-allocated ids.
+    columns; cascades from `PROBLEM`, deliberately not from `PROBLEM_TAG`). Schema only — the
+    starter topics are seeded by `ProblemTagSeeder` (see the problem-seeding entry; an earlier
+    draft of `DKP-0055` inserted them itself, removed before the changeset ever ran anywhere).
   - **Backend:** entities `ProblemTag`/`ProblemTagAssignment` (`Problem.tagAssignments`),
     `ProblemTagRepository`/`ProblemTagAssignmentRepository`, `ProblemTagService` (+ impl),
     `ProblemTagApi` (`/api/v1/admin/problem-tags`: CRUD, paged list, `GET /all`) and

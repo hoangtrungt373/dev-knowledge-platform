@@ -56,11 +56,16 @@ class ProblemSeederTest {
     @BeforeEach
     void setUp() {
         when(slugService.toSlug(anyString())).thenAnswer(inv -> inv.<String>getArgument(0).toLowerCase().replace(' ', '-'));
+        // Only names the tag seeder's CSV actually provides resolve — so a problem file referencing a
+        // tag that isn't seeded fails this test, not a real startup.
+        List<String> seededTags = ProblemTagSeederTest.csvNames();
         when(tagRepository.findByNameIgnoreCase(anyString())).thenAnswer(inv -> {
             String name = inv.getArgument(0);
-            ProblemTag tag = ProblemTag.builder().name(name).slug(name.toLowerCase()).build();
-            tag.setId(name.hashCode());
-            return Optional.of(tag);
+            return seededTags.stream().filter(name::equalsIgnoreCase).findFirst().map(n -> {
+                ProblemTag tag = ProblemTag.builder().name(n).slug(n.toLowerCase()).build();
+                tag.setId(n.hashCode());
+                return tag;
+            });
         });
     }
 

@@ -134,7 +134,7 @@ public class ProblemSeeder implements Seeder {
         }
     }
 
-    /** Tags are referenced by name in seed files; every one must already exist (DKP-0055 seeds the topics). */
+    /** Tags are referenced by name in seed files; every one must already exist (ProblemTagSeeder runs first). */
     private Set<Integer> resolveTagIds(SeedProblem problem) {
         Set<Integer> ids = new LinkedHashSet<>();
         for (String name : problem.tags()) {

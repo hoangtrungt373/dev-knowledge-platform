@@ -3099,8 +3099,11 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │       │                                (Java templates only — no ambiguous types) → ProblemService
 │       │                                .create (all normal validation); idempotent by slug; tags
 │       │                                by name; author = all-zero placeholder UUID
+│       ├── ProblemTagSeeder.java      — CsvSeeder<String>: data/csv/problem_tags.csv (name), idempotent
+│       │                                by name, each via ProblemTagService.create
 │       └── DevPracticeDataSeedingRunner.java — ApplicationRunner, @ConditionalOnProperty
-│                                        app.seed.enabled (APP_SEED_ENABLED; true in application-local.yml)
+│                                        app.seed.enabled (APP_SEED_ENABLED; true in application-local.yml);
+│                                        ProblemTagSeeder then ProblemSeeder (tags resolved by name)
 ├── exception/
 │   └── DevPracticeErrorCode.java       — PROBLEM_NOT_FOUND, PROBLEM_SLUG_CONFLICT,
 │                                         PROBLEM_SIGNATURE_LOCKED, PROBLEM_TEST_CASE_ARITY_MISMATCH,
@@ -3165,6 +3168,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
                                           getById, list — every method takes @CurrentUserId String
                                           userUuid
 
+dev-practice-service/src/main/resources/data/csv/problem_tags.csv — the 18 starter topics
+(Array, String, Hash Table, Two Pointers, … Math, Bit Manipulation)
+
 dev-practice-service/src/main/resources/data/problems/
 └── evaluate-reverse-polish-notation.md — MEDIUM, tags Array/Math/Stack, Java template
     `int evalRPN(String[] tokens)`, 18 test cases (2 samples; truncation-toward-zero, operand
@@ -3228,8 +3234,8 @@ judging-result columns) +
 `2026/0.0.4/202609240001__0.0.4__DKP-0054__add_submission_judge_error_status.sql` (drops and
 re-creates `CKC_SUBMISSION_STATUS` to allow `JUDGE_ERROR`) +
 `2026/0.0.4/202610010001__0.0.4__DKP-0055__add_problem_tag_tables.sql` (`PROBLEM_TAG` +
-`PROBLEM_TAG_ASSIGNMENT`, assignment cascades from `PROBLEM` but not from `PROBLEM_TAG`; seeds the
-18 NeetCode topics, ids via `nextval()` so they occupy whole pooled-lo blocks — 1, 51, 101, …)), applied via the consolidated `services-liquibase` job in
+`PROBLEM_TAG_ASSIGNMENT`, assignment cascades from `PROBLEM` but not from `PROBLEM_TAG`; schema
+only — the starter topics come from `ProblemTagSeeder`)), applied via the consolidated `services-liquibase` job in
 `docker-compose.apps.yml` — no standalone single-service `*-liquibase.yml` file of its own (same as
 `ecommerce-service`/`identity-service`/`content-service`/`ai-service`). `TEST_CASE`/
 `METHOD_PARAMETER` both cascade from `PROBLEM` (`ON DELETE CASCADE`); `SUBMISSION`'s FK to `PROBLEM`

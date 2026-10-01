@@ -266,7 +266,10 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   admin input gets, and a bad file fails startup naming the file. Rules: write seed templates in
   **Java** (an ambiguous Python/JS type is an error — nobody is there to confirm it); seeding is
   idempotent **by slug**, so it never overwrites an admin's later edits, but renaming a seeded
-  title re-seeds it under the new slug; tags must already exist (DKP-0055's topics). Compute every
+  title re-seeds it under the new slug; tags are referenced by name and must be in
+  `data/csv/problem_tags.csv` (`ProblemTagSeeder` runs first; `ProblemSeederTest` fails on a
+  name that isn't). Like every startup seeder here, a seeded tag/problem an admin deletes comes
+  back on the next seeded startup — accepted, since seeding is off outside `local`. Compute every
   `expectedOutput` with a reference solution, never by hand — `ProblemSeederTest` does exactly this
   for the RPN problem (add the same kind of check when adding a problem).
 - **Problem tags (`ProblemTag` + `ProblemTagAssignment`, `DKP-0055`) follow `ecommerce-service`'s
@@ -280,8 +283,11 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   under the same kind of constraint and may share this latent bug — unverified); (3) the tag
   filter is an `EXISTS` subquery in `ProblemSpecification`, not a join + `distinct`. Update's
   `tagIds` is three-state (`null` unchanged / empty clears / set replaces); a tag can't be deleted
-  while assigned (`PROBLEM_TAG_IN_USE`). Seeded tag ids are 1, 51, 101, … by design (raw
-  `nextval()` against a pooled-lo sequence) — never hardcode ids in a seed changeset here.
+  while assigned (`PROBLEM_TAG_IN_USE`). The starter topics are seeded by `ProblemTagSeeder`
+  from `data/csv/problem_tags.csv`, not by `DKP-0055` (schema only). If seed rows ever do go into
+  a changeset here, take ids from `nextval()`, never hardcoded: ids are allocated pooled-lo
+  (`INCREMENT BY 50`, one `nextval()` reserves a block), so hardcoded ids would collide with
+  Hibernate's first block.
 - **A problem with submissions can't be deleted** — `PROBLEM_HAS_SUBMISSIONS` (409);
   `FK_SUBMISSION_PROBLEM` deliberately has no `ON DELETE CASCADE` (submissions are users' own
   history, unlike test cases/parameters). Archive instead. Don't "fix" this with a cascade
