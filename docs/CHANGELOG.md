@@ -246,6 +246,28 @@ section again. Full unabridged entry-by-entry history for all four lives in
   be unique. New `@dev-practice/*` path alias (`tsconfig.json` + `vite.config.ts`).
 - **`dev-practice-service`: new `dto.AdminProblemSummaryResponse`** (id, slug, title, difficulty,
   status, publishedAt, createdAt) + `ProblemMapper#toAdminSummaryResponse`.
+- **Code-template signature import — paste a LeetCode-style template, get the method signature
+  (`dev-practice-service` + `gui`).** E.g. `class Solution { public int evalRPN(String[] tokens) {} }`
+  → `evalRPN`, `INT`, `[tokens: STRING_ARRAY]`.
+  - **Backend:** new `POST /api/v1/admin/problems/parse-template` (`{language, code}` →
+    `ParsedSignatureResponse`; nothing persisted — the structured signature stays the source of
+    truth, and starter code for every language is still generated from it). New `harness`
+    Strategy `SignatureTemplateParser` with `JavaSignatureTemplateParser` (real AST via new
+    dependency `com.github.javaparser:javaparser-core:3.28.2`), `PythonSignatureTemplateParser`
+    (type hints required) and `JavaScriptSignatureTemplateParser` (JSDoc `@param`/`@return`
+    required), selected by `SignatureTemplateParserRegistry` (fails startup if a language lacks
+    one). Types resolve through `TypeDeclarationIndex`, which inverts each language's own
+    `TypeRenderer` — so parsing and starter rendering can't disagree, and a spelling that's
+    ambiguous in that language (Python `int` = INT/LONG; JS `number` = INT/LONG/DOUBLE, `number[]`
+    = INT_ARRAY/DOUBLE_ARRAY) returns the most common type plus `alternatives`. New error code
+    `PROBLEM_TEMPLATE_INVALID` (`PROBLEM_008`) with a fix-it message (no method, several methods,
+    method outside `Solution`, missing hint/JSDoc, unsupported type + the supported list). New test
+    `SignatureTemplateParserTest`, including a round trip of every harness's own starter code.
+  - **`gui`:** new `components/CodeTemplateImporter` above the signature editor in
+    `ProblemFormPage` (Java/Python/JavaScript toggle, CodeMirror editor, Parse button, inline error;
+    disabled while the signature is locked); parsing fills method name/return type/parameters, and
+    `MethodSignatureEditor` shows a warning under any type that was a guess until the admin changes
+    it. New dependencies `@codemirror/lang-java`, `@codemirror/lang-python`.
 - **Problem tags (topics such as Array, Math, Stack) — `dev-practice-service` + `gateway` + `gui`.**
   Mirrors `ecommerce-service`'s Product Tags.
   - **Schema (`DKP-0055`):** `PROBLEM_TAG` (name, slug; case-insensitive name uniqueness via a

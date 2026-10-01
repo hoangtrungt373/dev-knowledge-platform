@@ -243,6 +243,19 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   depend on a new non-`_` name, add that name to the language's file** — e.g. JavaScript's
   `require`/`JSON`/`console` are there because the starter's `var <methodName>` shares a scope with
   the entry point that calls them. A new language needs its own file (startup fails without it).
+- **Code-template parsing (`harness.SignatureTemplateParser` + one implementation per language,
+  `POST /api/v1/admin/problems/parse-template`) is the inverse of starter-code rendering — keep it
+  that way.** Never add a hand-written spelling → `ParamType` table to a parser: types resolve
+  through `TypeDeclarationIndex`, which is built from the language's own `TypeRenderer`, so a new
+  `ParamType` (or a changed spelling) is picked up by the parser automatically and
+  `SignatureTemplateParserTest`'s round trip (every harness's starter code must parse back to its
+  own signature) catches any drift. An ambiguous spelling isn't an error — it returns the first
+  matching `ParamType` plus `alternatives` for the admin to confirm. Adding a `ProgrammingLanguage`
+  now means four things together: harness, Judge0 language id, reserved-names file, and a template
+  parser (`SignatureTemplateParserRegistry` fails startup otherwise). Parsing persists nothing.
+  JavaParser quirk: a bare method (no class) parses into a synthetic `$COMPACT_CLASS` (Java 21+
+  compact source files) even at language level 17 — `JavaSignatureTemplateParser` treats
+  `$`-prefixed class names as "no class".
 - **Problem tags (`ProblemTag` + `ProblemTagAssignment`, `DKP-0055`) follow `ecommerce-service`'s
   Product Tags, with three deliberate differences:** (1) responses embed `tags: [{id, name, slug}]`
   rather than ids-only, so a problem list renders topics without a second lookup —

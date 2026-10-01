@@ -1,6 +1,15 @@
 import { httpClient } from '@shared/api/httpClient';
 import { PagedResponse } from '@shared/types';
-import { AdminProblemSummary, Difficulty, Problem, ProblemPayload, ProblemStatus, ProblemTag } from '../types';
+import {
+  AdminProblemSummary,
+  Difficulty,
+  ParsedSignature,
+  Problem,
+  ProblemPayload,
+  ProblemStatus,
+  ProblemTag,
+  ProgrammingLanguage,
+} from '../types';
 
 type ShowError = (msg: string) => void;
 
@@ -60,6 +69,12 @@ export const devPracticeApi = {
 
   deleteProblem(id: number, showError?: ShowError): Promise<void> {
     return httpClient.delete(`/api/v1/admin/problems/${id}`, showError);
+  },
+
+  /** Reads method name / return type / parameters out of a code template. Nothing is saved. Called
+   * without `showError` by the template importer, which shows the error inline instead. */
+  parseTemplate(language: ProgrammingLanguage, code: string, showError?: ShowError): Promise<ParsedSignature> {
+    return httpClient.post('/api/v1/admin/problems/parse-template', { language, code }, showError);
   },
 
   // ── Admin tag catalog (/api/v1/admin/problem-tags, ROLE_ADMIN) ──────────────

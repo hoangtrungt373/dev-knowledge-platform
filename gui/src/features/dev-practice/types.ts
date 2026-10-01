@@ -95,3 +95,16 @@ export interface ProblemPayload {
   /** The complete tag set — the form always sends it, so update never relies on "omitted = unchanged". */
   tagIds: number[];
 }
+
+/** `enums.ProgrammingLanguage` — a code template's language. */
+export type ProgrammingLanguage = 'JAVA' | 'PYTHON' | 'JAVASCRIPT';
+
+/** `ParsedSignatureResponse` — a signature read out of a code template. A non-empty
+ * `alternatives` list means the template's spelling was ambiguous (Python `int`, JavaScript
+ * `number`/`number[]`) and `type` is a best guess the admin should confirm. */
+export interface ParsedSignature {
+  methodName: string;
+  returnType: ParamType;
+  returnTypeAlternatives: ParamType[];
+  parameters: { name: string; type: ParamType; alternatives: ParamType[] }[];
+}

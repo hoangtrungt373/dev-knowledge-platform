@@ -24,6 +24,18 @@ import { ParamType } from '../types';
 import { PARAM_TYPE_LABEL, PARAM_TYPES } from '../constants';
 import { nextRowKey, ParamRow, ProblemFormErrors } from '../utils/problemForm';
 
+/** A type parsed from a template whose spelling also fits other types (Python `int`, JS `number`). */
+export interface TypeHint {
+  chosen: ParamType;
+  alternatives: ParamType[];
+}
+
+/** Parse hints by field: the return type, and each parameter by its row key. */
+export interface SignatureTypeHints {
+  returnType?: TypeHint;
+  params: Record<string, TypeHint>;
+}
+
 interface Props {
   methodName: string;
   onMethodNameChange: (value: string) => void;
@@ -36,16 +48,21 @@ interface Props {
   /** Restores the signature as last loaded, offered when a locked signature was edited anyway. */
   onRevert?: () => void;
   errors: ProblemFormErrors;
+  /** Shown under a type picker while it still holds the template's guessed type. */
+  typeHints?: SignatureTypeHints;
 }
 
 /** A type picker listing each ParamType with a JSON example, so the admin knows how test data
  * for that type has to look. */
-function TypeSelect({ label, value, onChange, disabled }: {
+function TypeSelect({ label, value, onChange, disabled, hint }: {
   label: string;
   value: ParamType;
   onChange: (value: ParamType) => void;
   disabled: boolean;
+  hint?: TypeHint;
 }): JSX.Element {
+  // Only while the admin hasn't changed it — picking another type is the confirmation.
+  const showHint = hint && hint.alternatives.length > 0 && hint.chosen === value;
   return (
     <FormControl size="small" sx={{ minWidth: 150 }} disabled={disabled}>
       <InputLabel>{label}</InputLabel>
@@ -67,6 +84,11 @@ function TypeSelect({ label, value, onChange, disabled }: {
           </MenuItem>
         ))}
       </Select>
+      {showHint && (
+        <FormHelperText sx={{ color: 'warning.main', mx: 0, maxWidth: 180 }}>
+          Guessed from the template — could also be {hint.alternatives.map(t => PARAM_TYPE_LABEL[t]).join(' or ')}
+        </FormHelperText>
+      )}
     </FormControl>
   );
 }
@@ -86,6 +108,7 @@ export default function MethodSignatureEditor({
   locked,
   onRevert,
   errors,
+  typeHints,
 }: Props): JSX.Element {
   const updateRow = (key: string, patch: Partial<ParamRow>) =>
     onParamsChange(params.map(p => (p.key === key ? { ...p, ...patch } : p)));
@@ -142,7 +165,13 @@ export default function MethodSignatureEditor({
           sx={{ flex: 1 }}
           inputProps={{ style: { fontFamily: 'monospace' } }}
         />
-        <TypeSelect label="Return type" value={returnType} onChange={onReturnTypeChange} disabled={locked} />
+        <TypeSelect
+          label="Return type"
+          value={returnType}
+          onChange={onReturnTypeChange}
+          disabled={locked}
+          hint={typeHints?.returnType}
+        />
       </Stack>
 
       <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'block', mb: 1 }}>
@@ -165,7 +194,13 @@ export default function MethodSignatureEditor({
               sx={{ flex: 1 }}
               inputProps={{ style: { fontFamily: 'monospace' } }}
             />
-            <TypeSelect label="Type" value={p.type} onChange={type => updateRow(p.key, { type })} disabled={locked} />
+            <TypeSelect
+              label="Type"
+              value={p.type}
+              onChange={type => updateRow(p.key, { type })}
+              disabled={locked}
+              hint={typeHints?.params[p.key]}
+            />
             <Tooltip title="Move up">
               <span>
                 <IconButton size="small" onClick={() => moveRow(index, -1)} disabled={locked || index === 0}>

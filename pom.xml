@@ -73,6 +73,9 @@
              GFM feature set gui's own react-markdown+remark-gfm already renders elsewhere in this
              app (@chat/components/MarkdownRenderer.tsx, @content/components/MarkdownField.tsx). -->
         <commonmark.version>0.21.0</commonmark.version>
+        <!-- dev-practice-service's JavaSignatureTemplateParser — reads a problem's Java code template
+             into a real AST to extract its method signature. -->
+        <javaparser.version>3.28.2</javaparser.version>
     </properties>
 
     <dependencyManagement>
@@ -170,6 +173,12 @@
                 <groupId>org.springdoc</groupId>
                 <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
                 <version>${springdoc.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.github.javaparser</groupId>
+                <artifactId>javaparser-core</artifactId>
+                <version>${javaparser.version}</version>
             </dependency>
 
             <!-- jsoup — HTML parsing/pretty-printing (dev-utils-service's HTML beautify operation),

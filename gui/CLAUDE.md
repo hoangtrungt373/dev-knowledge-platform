@@ -4464,6 +4464,14 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     only in the backend's `harness/*/reserved-names.txt`, and a rejected name (`class`, `def`,
     `self`, `require`, …) comes back as the save's error toast naming the language(s).
     Errors show only after the first save attempt, then track every edit live.
+  - **Code template import:** `components/CodeTemplateImporter.tsx` (above the signature editor):
+    Java/Python/JavaScript toggle + CodeMirror editor (`@codemirror/lang-java`/`lang-python`, added
+    for this) + Parse → `devPracticeApi.parseTemplate`. The template text is never saved — parsing
+    just fills methodName/returnType/parameters, which stay editable. Errors render inline (called
+    without `showError`), since the message says what to fix. When a type was a guess (Python
+    `int`, JS `number`/`number[]`), `ProblemFormPage` keeps a `SignatureTypeHints` map (by row key)
+    and `MethodSignatureEditor` shows "could also be …" under that picker **only while it still holds
+    the guessed type** — changing it is the confirmation. Disabled while the signature is locked.
   - **Tags:** `pages/ProblemTagListPage.tsx` + `components/ProblemTagFormDialog.tsx`
     (`/admin/problem-tags`, mirrors `@ecommerce`'s Product Tags page; delete refused server-side
     while a tag is in use). `ProblemFormPage` has a Chip-toggle picker loaded from

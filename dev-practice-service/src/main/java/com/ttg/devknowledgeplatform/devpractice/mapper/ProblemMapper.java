@@ -8,6 +8,7 @@ import org.mapstruct.Mapping;
 
 import com.ttg.devknowledgeplatform.devpractice.dto.AdminProblemSummaryResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.MethodParameterResponse;
+import com.ttg.devknowledgeplatform.devpractice.dto.ParsedSignatureResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemSummaryResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemTagResponse;
@@ -17,6 +18,7 @@ import com.ttg.devknowledgeplatform.devpractice.entity.MethodParameter;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTag;
 import com.ttg.devknowledgeplatform.devpractice.entity.TestCase;
+import com.ttg.devknowledgeplatform.devpractice.harness.ParsedSignature;
 
 @Mapper(componentModel = "spring")
 public interface ProblemMapper {
@@ -40,6 +42,14 @@ public interface ProblemMapper {
     ProblemTagResponse toResponse(ProblemTag tag);
 
     ProblemTagSummaryResponse toSummary(ProblemTag tag);
+
+    @Mapping(target = "returnType", source = "returnType.type")
+    @Mapping(target = "returnTypeAlternatives", source = "returnType.alternatives")
+    ParsedSignatureResponse toResponse(ParsedSignature signature);
+
+    @Mapping(target = "type", source = "type.type")
+    @Mapping(target = "alternatives", source = "type.alternatives")
+    ParsedSignatureResponse.Parameter toResponse(ParsedSignature.ParsedParameter parameter);
 
     /** A problem's tags, flattened out of its assignment rows and sorted by name for stable display. */
     default List<ProblemTagSummaryResponse> tagsOf(Problem problem) {

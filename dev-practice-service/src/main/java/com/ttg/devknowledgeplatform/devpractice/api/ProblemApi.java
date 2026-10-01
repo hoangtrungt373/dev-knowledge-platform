@@ -6,6 +6,8 @@ import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.dto.AdminProblemSummaryResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.CreateProblemRequest;
+import com.ttg.devknowledgeplatform.devpractice.dto.ParseTemplateRequest;
+import com.ttg.devknowledgeplatform.devpractice.dto.ParsedSignatureResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.UpdateProblemRequest;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
@@ -32,6 +34,18 @@ import com.ttg.devknowledgeplatform.common.annotation.CurrentUserId;
  */
 @RequestMapping("/api/v1/admin/problems")
 public interface ProblemApi {
+
+    /**
+     * Reads a method signature out of a code template (Java, Python with type hints, or JavaScript
+     * with JSDoc) so the admin form can fill its signature editor — e.g.
+     * {@code class Solution { public int evalRPN(String[] tokens) {} }}. Nothing is persisted.
+     *
+     * @param request the template's language and source
+     * @return {@code 200} with the parsed signature; {@code 400 PROBLEM_TEMPLATE_INVALID} with a
+     *         message saying what to fix (no method, missing type, unsupported type, ...)
+     */
+    @PostMapping("/parse-template")
+    ResponseEntity<ParsedSignatureResponse> parseTemplate(@Valid @RequestBody ParseTemplateRequest request);
 
     /**
      * Creates a new problem, owned (authored) by the calling admin.

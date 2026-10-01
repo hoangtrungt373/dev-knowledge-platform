@@ -2979,13 +2979,34 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     <% %> so JSDoc's {type} braces don't collide with Mustache
 │   ├── LanguageHarnessRegistry.java     — Map<ProgrammingLanguage, LanguageHarness> built from every
 │   │                                     LanguageHarness @Component Spring finds
-│   └── SignatureNameValidator.java      — @Component; method/parameter names must match
-│                                         IDENTIFIER_REGEX (ASCII letter first — `_` prefix is the
-│                                         harnesses' own namespace), not be in ANY harness's
-│                                         reservedNames() (loaded from reserved-names.txt), and be
-│                                         unique → PROBLEM_INVALID_IDENTIFIER /
-│                                         PROBLEM_DUPLICATE_PARAMETER_NAME; run by ProblemServiceImpl
-│                                         on create/update
+│   ├── SignatureNameValidator.java      — @Component; method/parameter names must match
+│   │                                     IDENTIFIER_REGEX (ASCII letter first — `_` prefix is the
+│   │                                     harnesses' own namespace), not be in ANY harness's
+│   │                                     reservedNames() (loaded from reserved-names.txt), and be
+│   │                                     unique → PROBLEM_INVALID_IDENTIFIER /
+│   │                                     PROBLEM_DUPLICATE_PARAMETER_NAME; run by ProblemServiceImpl
+│   │                                     on create/update
+│   ├── SignatureTemplateParser.java     — Strategy interface: read a code template's signature
+│   │                                     (method name, return type, parameters) → ParsedSignature
+│   ├── JavaSignatureTemplateParser.java — JavaParser AST (full class or bare method; exactly one
+│   │                                     non-static method; must be in class Solution). Note:
+│   │                                     JavaParser 3.28 wraps a bare method in a synthetic
+│   │                                     `$COMPACT_CLASS` (compact source file), treated as "no class"
+│   ├── PythonSignatureTemplateParser.java — `def name(self, a: T) -> R:` regex + bracket-aware
+│   │                                     splitting; type hints required; list[...]/typing. accepted
+│   ├── JavaScriptSignatureTemplateParser.java — `var f = function(..)`/`function f(..)`/arrow +
+│   │                                     the JSDoc @param/@return tags before it (types required);
+│   │                                     Array<T> accepted
+│   ├── TypeDeclarationIndex.java        — package-private: inverts a TypeRenderer (spelling →
+│   │                                     ParamTypes), so parser and harness share one type mapping;
+│   │                                     an ambiguous spelling (Python int, JS number/number[])
+│   │                                     returns its first ParamType + alternatives
+│   ├── ParsedSignature.java             — record (methodName, TypeChoice returnType, parameters);
+│   │                                     TypeChoice(type, alternatives)
+│   ├── TemplateParsing.java             — package-private helpers: invalid() → PROBLEM_TEMPLATE_INVALID,
+│   │                                     splitTopLevel (commas outside brackets)
+│   └── SignatureTemplateParserRegistry.java — @Component; parser per ProgrammingLanguage, fails
+│                                         startup if a language has none
 ├── judge/
 │   ├── JudgeClient.java                 — Adapter interface: run(program, language, stdin) →
 │   │                                     Judge0SubmissionResult, blocking (polls internally)
@@ -3086,6 +3107,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     by both admin (all test cases) and public (sample-only,
 │   │                                     via ProblemMapper#toPublicResponse)
 │   ├── ProblemSummaryResponse.java    — record: id, slug, title, difficulty (public list row shape)
+│   ├── ParseTemplateRequest.java / ParsedSignatureResponse.java — code-template parsing; the
+│   │                                     response flattens each TypeChoice to type + alternatives
 │   ├── ProblemTagResponse.java / ProblemTagSummaryResponse.java / ProblemTagRequest.java — tag
 │   │                                     DTOs; the summary {id, name, slug} is embedded as `tags`
 │   │                                     in ProblemResponse and both list-row DTOs (not ids-only)
@@ -3117,7 +3140,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 └── api/ (+ api/impl/)
     ├── ProblemApi.java (+ ProblemController.java)             — /api/v1/admin/problems: create,
     │                                     update, delete, getById, list (difficulty/status/q/tagIds
-    │                                     filters — tagIds repeated: ?tagIds=1&tagIds=2)
+    │                                     filters — tagIds repeated: ?tagIds=1&tagIds=2), and
+    │                                     POST /parse-template {language, code} → ParsedSignatureResponse
+    │                                     (nothing persisted; 400 PROBLEM_TEMPLATE_INVALID says what to fix)
     ├── ProblemTagApi.java (+ ProblemTagController.java)       — /api/v1/admin/problem-tags:
     │                                     create, update (rename), delete, list (paged, q), GET /all
     ├── PublicProblemTagApi.java (+ PublicProblemTagController.java) — /api/v1/public/problem-tags:
@@ -3152,6 +3177,10 @@ dev-practice-service/src/test/
 │                                         fixture + an identity round-trip per ParamType per
 │                                         language, judged via the real OutputMatcher; skipped
 │                                         without Docker; *IT, so not part of a plain `mvn test`
+├── java/.../harness/SignatureTemplateParserTest.java — the evalRPN template in all 3 languages;
+│                                         every harness's own starter code (two-sum, every-param-type)
+│                                         parses back to the same signature; accepted variations;
+│                                         admin-facing error messages
 ├── java/.../harness/SignatureNameValidatorTest.java — against the real harnesses/resource files:
 │                                         shape, per-language keywords, harness-owned names,
 │                                         case-sensitivity, duplicates

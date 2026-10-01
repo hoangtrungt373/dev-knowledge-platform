@@ -18,11 +18,14 @@ import com.ttg.devknowledgeplatform.devpractice.api.ProblemApi;
 import com.ttg.devknowledgeplatform.devpractice.dto.AdminProblemSummaryResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.CreateProblemRequest;
 import com.ttg.devknowledgeplatform.devpractice.dto.MethodParameterRequest;
+import com.ttg.devknowledgeplatform.devpractice.dto.ParseTemplateRequest;
+import com.ttg.devknowledgeplatform.devpractice.dto.ParsedSignatureResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.TestCaseRequest;
 import com.ttg.devknowledgeplatform.devpractice.dto.UpdateProblemRequest;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.harness.SignatureTemplateParserRegistry;
 import com.ttg.devknowledgeplatform.devpractice.mapper.ProblemMapper;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemCommands;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemService;
@@ -37,6 +40,7 @@ public class ProblemController implements ProblemApi {
 
     private final ProblemService problemService;
     private final ProblemMapper problemMapper;
+    private final SignatureTemplateParserRegistry templateParsers;
 
     @Override
     public ResponseEntity<ProblemResponse> create(String authorUuid, CreateProblemRequest request) {
@@ -56,6 +60,11 @@ public class ProblemController implements ProblemApi {
                 toTestCaseInputs(request.getTestCases()), request.getTagIds());
         Problem updated = problemService.update(id, command);
         return ResponseEntity.ok(problemMapper.toResponse(updated));
+    }
+
+    @Override
+    public ResponseEntity<ParsedSignatureResponse> parseTemplate(ParseTemplateRequest request) {
+        return ResponseEntity.ok(problemMapper.toResponse(templateParsers.parse(request.getLanguage(), request.getCode())));
     }
 
     @Override

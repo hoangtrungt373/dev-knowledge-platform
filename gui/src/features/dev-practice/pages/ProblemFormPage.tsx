@@ -15,7 +15,7 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { Difficulty, ParamType, Problem, ProblemStatus, ProblemTag } from '../types';
+import { Difficulty, ParamType, ParsedSignature, Problem, ProblemStatus, ProblemTag } from '../types';
 import { devPracticeApi } from '../api/devPracticeApi';
 import { DIFFICULTIES, DIFFICULTY_LABEL, STATUSES, STATUS_LABEL } from '../constants';
 import {
@@ -31,7 +31,8 @@ import {
   toPayload,
   validateProblemForm,
 } from '../utils/problemForm';
-import MethodSignatureEditor from '../components/MethodSignatureEditor';
+import MethodSignatureEditor, { SignatureTypeHints } from '../components/MethodSignatureEditor';
+import CodeTemplateImporter from '../components/CodeTemplateImporter';
 import TestCaseEditor from '../components/TestCaseEditor';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import FullPageLoader from '@shared/components/FullPageLoader';
@@ -66,6 +67,7 @@ export default function ProblemFormPage(): JSX.Element {
   const [testCases, setTestCases] = useState<TestCaseRow[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
   const [allTags, setAllTags] = useState<ProblemTag[]>([]);
+  const [typeHints, setTypeHints] = useState<SignatureTypeHints>({ params: {} });
 
   // What the server last returned — the signature lock compares against these, not against
   // whatever the form currently shows.
@@ -124,6 +126,28 @@ export default function ProblemFormPage(): JSX.Element {
     if (submitted) setErrors(runValidation());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted, title, description, methodName, params, testCases, signatureLocked, currentSignature]);
+
+  /** Replaces the signature with what the template declared, remembering which types were guesses. */
+  const applyParsedSignature = (parsed: ParsedSignature) => {
+    const rows: ParamRow[] = parsed.parameters.map(p => ({ key: nextRowKey(), name: p.name, type: p.type }));
+    const paramHints: Record<string, { chosen: ParamType; alternatives: ParamType[] }> = {};
+    parsed.parameters.forEach((p, i) => {
+      if (p.alternatives.length > 0) paramHints[rows[i].key] = { chosen: p.type, alternatives: p.alternatives };
+    });
+    setMethodName(parsed.methodName);
+    setReturnType(parsed.returnType);
+    setParams(rows);
+    setTypeHints({
+      returnType: parsed.returnTypeAlternatives.length > 0
+        ? { chosen: parsed.returnType, alternatives: parsed.returnTypeAlternatives }
+        : undefined,
+      params: paramHints,
+    });
+    const guesses = Object.keys(paramHints).length + (parsed.returnTypeAlternatives.length > 0 ? 1 : 0);
+    showSuccess(guesses === 0
+      ? `Signature filled from the template: ${parsed.methodName}(${parsed.parameters.length} parameter(s))`
+      : `Signature filled — ${guesses} type(s) were guessed, check the highlighted fields`);
+  };
 
   const toggleTag = (tagId: number) => {
     setSelectedTagIds(prev => {
@@ -219,6 +243,8 @@ export default function ProblemFormPage(): JSX.Element {
               placeholder="Describe the problem, constraints and examples. Supports Markdown."
             />
 
+            <CodeTemplateImporter disabled={signatureLocked} onParsed={applyParsedSignature} />
+
             <MethodSignatureEditor
               methodName={methodName}
               onMethodNameChange={setMethodName}
@@ -229,6 +255,7 @@ export default function ProblemFormPage(): JSX.Element {
               locked={signatureLocked}
               onRevert={isEdit ? revertSignature : undefined}
               errors={errors}
+              typeHints={typeHints}
             />
 
             <TestCaseEditor

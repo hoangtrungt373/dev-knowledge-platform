@@ -77,6 +77,16 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- JavaParser — JavaSignatureTemplateParser parses an admin-supplied Java code template
+             (e.g. `class Solution { public int evalRPN(String[] tokens) {} }`) into an AST to
+             extract method name / return type / parameters. A real parser rather than a regex, so
+             comments, annotations, `final` params and odd formatting don't break it. Version in
+             the root pom's dependencyManagement. -->
+        <dependency>
+            <groupId>com.github.javaparser</groupId>
+            <artifactId>javaparser-core</artifactId>
+        </dependency>
+
         <!-- JMustache — renders harness/{language}/*.mustache (the per-language program skeletons
              LanguageHarness wraps a submission in). Used directly rather than via
              spring-boot-starter-mustache, which would also auto-configure an HTML view resolver
