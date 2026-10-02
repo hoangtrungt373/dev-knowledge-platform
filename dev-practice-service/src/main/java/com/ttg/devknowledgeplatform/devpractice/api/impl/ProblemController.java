@@ -49,7 +49,7 @@ public class ProblemController implements ProblemApi {
                 request.getMethodName(), request.getReturnType(), toParameterInputs(request.getParameters()),
                 toTestCaseInputs(request.getTestCases()), request.getTagIds());
         Problem created = problemService.create(command, authorUuid);
-        return ResponseEntity.status(HttpStatus.CREATED).body(problemMapper.toResponse(created));
+        return ResponseEntity.status(HttpStatus.CREATED).body(toAdminResponse(created));
     }
 
     @Override
@@ -59,7 +59,7 @@ public class ProblemController implements ProblemApi {
                 request.getMethodName(), request.getReturnType(), toParameterInputs(request.getParameters()),
                 toTestCaseInputs(request.getTestCases()), request.getTagIds());
         Problem updated = problemService.update(id, command);
-        return ResponseEntity.ok(problemMapper.toResponse(updated));
+        return ResponseEntity.ok(toAdminResponse(updated));
     }
 
     @Override
@@ -75,7 +75,7 @@ public class ProblemController implements ProblemApi {
 
     @Override
     public ResponseEntity<ProblemResponse> getById(Integer id) {
-        return ResponseEntity.ok(problemMapper.toResponse(problemService.getById(id)));
+        return ResponseEntity.ok(toAdminResponse(problemService.getById(id)));
     }
 
     @Override
@@ -86,6 +86,11 @@ public class ProblemController implements ProblemApi {
         Page<AdminProblemSummaryResponse> responses = problemService.list(pageable, difficulty, status, q, tagIds)
                 .map(problemMapper::toAdminSummaryResponse);
         return ResponseEntity.ok(PagedResponse.from(responses));
+    }
+
+    /** The admin view also says whether the problem is verified (publishable) at its current contract. */
+    private ProblemResponse toAdminResponse(Problem problem) {
+        return problemMapper.toResponse(problem).withVerified(problemService.isVerified(problem));
     }
 
     private static List<ProblemCommands.TestCaseInput> toTestCaseInputs(List<TestCaseRequest> requests) {

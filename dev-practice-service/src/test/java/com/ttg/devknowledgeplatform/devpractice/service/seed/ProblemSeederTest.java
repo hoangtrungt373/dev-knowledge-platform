@@ -76,7 +76,7 @@ class ProblemSeederTest {
         ProblemCommands.Create command = captureCreated();
         assertThat(command.title()).isEqualTo("Evaluate Reverse Polish Notation");
         assertThat(command.difficulty()).isEqualTo(Difficulty.MEDIUM);
-        assertThat(command.status()).isEqualTo(ContentStatus.PUBLISHED);
+        assertThat(command.status()).isEqualTo(ContentStatus.DRAFT);
         assertThat(command.methodName()).isEqualTo("evalRPN");
         assertThat(command.returnType()).isEqualTo(ParamType.INT);
         assertThat(command.parameters())

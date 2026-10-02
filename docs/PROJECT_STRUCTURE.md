@@ -2906,7 +2906,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     methodName (String), returnType (ParamType), parameters
 │   │                                     (List<MethodParameter>, @OneToMany, cascade ALL +
 │   │                                     orphanRemoval, ordered by position), testCases
-│   │                                     (List<TestCase>, same cascade shape, ordered by id)
+│   │                                     (List<TestCase>, same cascade shape, ordered by id),
+│   │                                     contractVersion (Integer, default 1 — bumped on any
+│   │                                     signature/test-data change; not the @Version column)
 │   ├── MethodParameter.java           — problem (@ManyToOne), name (String), type (ParamType),
 │   │                                     position (Integer) — a signature's parameter order is
 │   │                                     semantically load-bearing, hence explicit position over
@@ -2928,7 +2930,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                         (SubmissionStatus, default PENDING — transitions once
 │                                         SubmissionJudgeEventListener judges it), passedTestCases/
 │                                         totalTestCases (Integer, nullable), errorMessage (TEXT,
-│                                         nullable)
+│                                         nullable), kind (SubmissionKind, default USER),
+│                                         contractVersion (Integer, nullable — the problem's
+│                                         contractVersion stamped when judging starts)
 ├── enums/
 │   ├── Difficulty.java                — EASY, MEDIUM, HARD; deliberately not
 │   │                                     common.enums.QuestionDifficulty
@@ -2945,11 +2949,13 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     Judge0-specific id didn't belong on a domain enum used
 │   │                                     well beyond the judge subsystem — see the enum's own
 │   │                                     Javadoc and Judge0Client's own Javadoc
-│   └── SubmissionStatus.java           — PENDING, RUNNING, ACCEPTED, WRONG_ANSWER, COMPILE_ERROR,
-│                                         RUNTIME_ERROR, TIME_LIMIT_EXCEEDED, JUDGE_ERROR (the judge
-│                                         backend failed — not a verdict on the code) — Phase 2's
-│                                         SubmissionJudgeEventListener now actually produces every
-│                                         value, not just PENDING
+│   ├── SubmissionStatus.java           — PENDING, RUNNING, ACCEPTED, WRONG_ANSWER, COMPILE_ERROR,
+│   │                                     RUNTIME_ERROR, TIME_LIMIT_EXCEEDED, JUDGE_ERROR (the judge
+│   │                                     backend failed — not a verdict on the code) — Phase 2's
+│   │                                     SubmissionJudgeEventListener now actually produces every
+│   │                                     value, not just PENDING
+│   └── SubmissionKind.java             — USER (learner attempt) / REFERENCE (admin verification
+│                                         run; allowed on DRAFT, hidden from the user API)
 ├── harness/
 │   ├── LanguageHarness.java            — abstract; final buildProgram(problem, userCode) is the fixed
 │   │                                     prelude → user-code → generated-main skeleton; the
@@ -3057,8 +3063,11 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   ├── ProblemRepository.java         — JpaRepository<Problem, Integer> + JpaSpecificationExecutor
 │   │                                     + existsBySlug/existsBySlugAndIdNot/findBySlug
 │   ├── SubmissionRepository.java      — JpaRepository<Submission, Integer> +
-│   │                                     findByUserUuid(Pageable)/findByUserUuidAndProblem_Id(...)/
-│   │                                     countByProblem_Id (guards ProblemService#delete)
+│   │                                     findByUserUuidAndKind/findByUserUuidAndKindAndProblem_Id/
+│   │                                     findByProblem_IdAndKind (paged), countByProblem_IdAndKind
+│   │                                     (USER count guards ProblemService#delete),
+│   │                                     existsByProblem_IdAndKindAndStatusAndContractVersion
+│   │                                     (isVerified), deleteByProblem_IdAndKind (REFERENCE cleanup)
 │   ├── ProblemTagRepository.java      — existsBySlug/…AndIdNot, existsByNameIgnoreCase/…AndIdNot,
 │   │                                     findByNameContainingIgnoreCase(Pageable)
 │   ├── ProblemTagAssignmentRepository.java — countByProblemTag_Id (guards tag delete)
@@ -3083,7 +3092,10 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     non-leaking posture as getPublishedBySlug; publishes
 │   │                                     SubmissionCreatedEvent after saving) + getSubmission
 │   │                                     (ownership-checked, same resolveOwnedX pattern as
-│   │                                     task-service's ProjectService) + listSubmissions
+│   │                                     task-service's ProjectService) + listSubmissions (USER
+│   │                                     only) + createReference (no publish check) /
+│   │                                     listReferenceSubmissions / getReferenceSubmission (must
+│   │                                     belong to the path's problem)
 │   ├── ProblemTagService.java (+ impl/) — tag catalog CRUD + listAll (sorted by name); delete
 │   │                                     refused while in use (PROBLEM_TAG_IN_USE)
 │   ├── ProblemCommands.java           — Create/Update records (+ tagIds: Create null = none;
@@ -3109,12 +3121,16 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                         PROBLEM_SIGNATURE_LOCKED, PROBLEM_TEST_CASE_ARITY_MISMATCH,
 │                                         PROBLEM_INVALID_IDENTIFIER, PROBLEM_DUPLICATE_PARAMETER_NAME,
 │                                         PROBLEM_HAS_SUBMISSIONS (409 — delete refused; archive
-│                                         instead), SUBMISSION_NOT_FOUND
+│                                         instead), PROBLEM_NOT_VERIFIED (409 — publish without an
+│                                         ACCEPTED reference at the current contractVersion),
+│                                         SUBMISSION_NOT_FOUND
 ├── dto/
 │   ├── ProblemResponse.java           — record: id, slug, title, description, difficulty, status,
 │   │                                     methodName, returnType, parameters
 │   │                                     (List<MethodParameterResponse>), testCases
-│   │                                     (List<TestCaseResponse>), publishedAt, createdAt — used
+│   │                                     (List<TestCaseResponse>), publishedAt, createdAt,
+│   │                                     contractVersion, verified (Boolean, admin responses only —
+│   │                                     omitted when null) — used
 │   │                                     by both admin (all test cases) and public (sample-only,
 │   │                                     via ProblemMapper#toPublicResponse)
 │   ├── ProblemSummaryResponse.java    — record: id, slug, title, difficulty (public list row shape)
@@ -3166,7 +3182,11 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
     │                                     wrapping, just the signature)
     └── SubmissionApi.java (+ SubmissionController.java)        — /api/v1/submissions: create,
                                           getById, list — every method takes @CurrentUserId String
-                                          userUuid
+                                          userUuid; USER submissions only
+    ├── ProblemReferenceSubmissionApi.java (+ ProblemReferenceSubmissionController.java) —
+                                          /api/v1/admin/problems/{problemId}/reference-submissions:
+                                          create (201, ReferenceSubmissionRequest), getById, list
+                                          (paged, newest first) — ROLE_ADMIN
 
 dev-practice-service/scripts/purge-seed-data.sql — dev utility (not a migration): TRUNCATE ...
 RESTART IDENTITY CASCADE of all 6 dev_practice tables, incl. SUBMISSION, so the seeders reseed
@@ -3210,7 +3230,14 @@ dev-practice-service/src/test/
 │                                         template, tags, sample count; every RPN test case checked
 │                                         against a reference solution; skip-if-exists
 ├── java/.../service/impl/ProblemServiceImplTest.java — delete refused with submissions,
-│                                         reserved-name rejection on create, arity error message
+│                                         reserved-name rejection on create, arity error message;
+│                                         publish verification (create-as-PUBLISHED refused, draft →
+│                                         published needs a current reference, live contract edit
+│                                         refused, draft edit bumps contractVersion, sample-flag
+│                                         toggle doesn't)
+├── java/.../service/impl/SubmissionServiceImplTest.java — user vs. reference: no user
+│                                         submissions to drafts, references judged on drafts, references
+│                                         invisible via the user API, reference/problem path mismatch
 ├── java/.../judge/OutputMatcherTest.java — tolerance/exactness/structural cases
 ├── java/.../judge/impl/Judge0ClientTest.java — MockRestServiceServer as a scripted fake Judge0:
 │                                         submit/poll, line-wrapped base64, retry of 429/503/I/O
@@ -3238,7 +3265,11 @@ judging-result columns) +
 re-creates `CKC_SUBMISSION_STATUS` to allow `JUDGE_ERROR`) +
 `2026/0.0.4/202610010001__0.0.4__DKP-0055__add_problem_tag_tables.sql` (`PROBLEM_TAG` +
 `PROBLEM_TAG_ASSIGNMENT`, assignment cascades from `PROBLEM` but not from `PROBLEM_TAG`; schema
-only — the starter topics come from `ProblemTagSeeder`)), applied via the consolidated `services-liquibase` job in
+only — the starter topics come from `ProblemTagSeeder`) +
+`2026/0.0.4/202610020001__0.0.4__DKP-0056__add_problem_verification_columns.sql`
+(`PROBLEM.CONTRACT_VERSION`, `SUBMISSION.KIND` + `CKC_SUBMISSION_KIND`, nullable
+`SUBMISSION.CONTRACT_VERSION`, partial index `IDX_SUBMISSION_ACCEPTED_REFERENCE` on
+`(PROBLEM_ID, CONTRACT_VERSION) WHERE KIND = 'REFERENCE' AND STATUS = 'ACCEPTED'`)), applied via the consolidated `services-liquibase` job in
 `docker-compose.apps.yml` — no standalone single-service `*-liquibase.yml` file of its own (same as
 `ecommerce-service`/`identity-service`/`content-service`/`ai-service`). `TEST_CASE`/
 `METHOD_PARAMETER` both cascade from `PROBLEM` (`ON DELETE CASCADE`); `SUBMISSION`'s FK to `PROBLEM`

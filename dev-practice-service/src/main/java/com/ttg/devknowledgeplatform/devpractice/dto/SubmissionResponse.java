@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.devpractice.dto;
 import java.time.Instant;
 
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
+import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionKind;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 
 public record SubmissionResponse(
@@ -15,5 +16,7 @@ public record SubmissionResponse(
         Integer passedTestCases,
         Integer totalTestCases,
         String errorMessage,
-        Instant submittedAt) {
+        Instant submittedAt,
+        SubmissionKind kind,
+        Integer contractVersion) {
 }

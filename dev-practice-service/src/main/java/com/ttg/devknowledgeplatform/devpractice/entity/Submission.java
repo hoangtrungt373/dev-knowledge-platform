@@ -2,6 +2,7 @@ package com.ttg.devknowledgeplatform.devpractice.entity;
 
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
+import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionKind;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 
 import jakarta.persistence.AttributeOverride;
@@ -82,4 +83,19 @@ public class Submission extends AbstractEntity {
 
     @Column(name = "ERROR_MESSAGE")
     private String errorMessage;
+
+    /** A user's attempt, or an admin's reference run that can verify the problem for publishing. */
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "KIND", length = 20, nullable = false)
+    @Builder.Default
+    private SubmissionKind kind = SubmissionKind.USER;
+
+    /**
+     * The problem's {@code contractVersion} this submission was judged against — stamped when judging
+     * loads the test cases, so it records exactly which test data the verdict is about. {@code null}
+     * until judging starts.
+     */
+    @Column(name = "CONTRACT_VERSION")
+    private Integer contractVersion;
 }

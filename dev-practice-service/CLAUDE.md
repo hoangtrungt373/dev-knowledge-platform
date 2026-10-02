@@ -17,7 +17,8 @@ instance — per-service-per-schema, see root `CLAUDE.md`'s Database Conventions
 `TEST_CASE`/`SUBMISSION` tables; `DKP-0053` — Phase 2's additive `METHOD_NAME`/`RETURN_TYPE`
 columns, the new `METHOD_PARAMETER` table, and `SUBMISSION`'s judging-result columns, per this
 repo's never-edit-an-already-run-changeset convention; `DKP-0054` — widens `CKC_SUBMISSION_STATUS`
-for `JUDGE_ERROR`). Routed through `gateway`'s
+for `JUDGE_ERROR`; `DKP-0055` — problem tags; `DKP-0056` — `PROBLEM.CONTRACT_VERSION`,
+`SUBMISSION.KIND`/`CONTRACT_VERSION` for publish verification). Routed through `gateway`'s
 `routing/GatewayRoutesConfig` (`devPracticeServiceRoutes()`) — `/api/v1/admin/problems/**` and
 `/api/v1/public/problems/**` (including `/starter-code`) are two more resource segments under the
 already-shared `/api/v1/admin/**`/`/api/v1/public/**` prefixes; `/api/v1/submissions/**` is a
@@ -76,7 +77,11 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
   `SubmissionStatus` (the full judging vocabulary — Phase 1 only ever produced `PENDING`; Phase 2's
   `SubmissionJudgeEventListener` now actually produces every other value too; `JUDGE_ERROR` is the
   one final value that isn't a verdict on the user's code — the judge backend failed. Adding a value
-  here needs a new changeset widening `CKC_SUBMISSION_STATUS`, like `DKP-0054`).
+  here needs a new changeset widening `CKC_SUBMISSION_STATUS`, like `DKP-0054`),
+  `SubmissionKind` (`USER` — a learner's attempt, owner-scoped via `/api/v1/submissions/**`;
+  `REFERENCE` — an admin's verification run via
+  `/api/v1/admin/problems/{id}/reference-submissions`, allowed against a `DRAFT` problem and never
+  visible through the user API, even to its own author; `CKC_SUBMISSION_KIND`, `DKP-0056`).
 - `harness/` — turns a submission's method body into a full program Judge0 can run.
   `LanguageHarness`'s `final buildProgram` is the fixed skeleton (prelude, user code, generated
   `main`); what varies per language is split in two:
@@ -130,7 +135,10 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
   `SubmissionCommands` — services return entities, never this module's own `dto/` classes (same
   rule as `content-service`'s `ArticleService`).
 - `api/` (interfaces) + `api/impl/` (controllers) — `ProblemApi` (admin CRUD), `PublicProblemApi`
-  (public browsing + `/starter-code`), `SubmissionApi` (owner-gated). `mapper/` —
+  (public browsing + `/starter-code`), `SubmissionApi` (owner-gated, `USER` submissions only),
+  `ProblemReferenceSubmissionApi` (admin: create/list/get `REFERENCE` submissions under
+  `/api/v1/admin/problems/{problemId}/reference-submissions` — already covered by the existing
+  `/api/v1/admin/problems/**` gateway route). `mapper/` —
   `ProblemMapper`/`SubmissionMapper` (MapStruct). The admin list returns its own
   `dto.AdminProblemSummaryResponse` (adds `status`/`publishedAt`/`createdAt`); the public list keeps
   the lean `ProblemSummaryResponse` — don't merge them, and don't add test-case/parameter counts to
@@ -184,15 +192,26 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
     change invalidates every already-submitted `sourceCode`'s ability to compile/run and every
     existing `TestCase`'s JSON encoding — this is the one part of the contract genuinely unsafe to
     change live.
-  - **`testCases` are deliberately never locked by publish status** — add/edit/remove freely,
-    published or not. Unlike the signature, a test-case edit never invalidates already-submitted
-    source code (only ever changes what counts as correct *going forward*), so there's no
-    correctness reason to require unpublishing first, and real judges (LeetCode et al.) add test
-    cases to live problems routinely. What *is* enforced unconditionally (`validateTestCaseArity`,
-    on every create/update, published or not): every `TestCase.input` must parse as a JSON array
+  - **Publishing requires proof the problem is solvable — an `ACCEPTED` `REFERENCE` submission
+    judged at the problem's current `contractVersion` (`DKP-0056`).** `Problem.contractVersion`
+    (not the `version` optimistic-locking column) is bumped by `ProblemServiceImpl#update` whenever
+    the signature or the test data changes (`signatureChanged`/`testDataChanged` — the ordered,
+    stripped `(input, expectedOutput)` list; toggling only `sample` doesn't count, since it changes
+    visibility, not correctness). `SubmissionJudgeEventListener` stamps the version it judged
+    against onto `Submission.contractVersion`, so a bump makes every older reference stale
+    automatically — no flag to forget to clear. `ProblemService#isVerified` is that one `exists`
+    query (partial index `IDX_SUBMISSION_ACCEPTED_REFERENCE`); admin responses expose it as
+    `ProblemResponse.verified`. `PROBLEM_NOT_VERIFIED` (409) is thrown when: `create` asks for
+    `PUBLISHED` directly (a problem without an id can't have a reference yet); `update` moves a
+    non-published problem to `PUBLISHED` while unverified; or `update` keeps a problem `PUBLISHED`
+    while changing its contract — **this reverses the old "test cases are never locked by publish
+    status" rule**: editing a live problem's test data is now save-as-`DRAFT` → run a reference →
+    publish, so a published problem's test data can never be wrong in a way nobody has checked.
+    Problems already `PUBLISHED` before `DKP-0056` stay live (no retroactive check) until their
+    contract is next edited. What's still enforced unconditionally (`validateTestCaseArity`, on
+    every create/update, published or not): every `TestCase.input` must parse as a JSON array
     whose length equals the *final* `parameters` list's size — `PROBLEM_TEST_CASE_ARITY_MISMATCH`
-    otherwise. This is what actually protects against a test case silently drifting out of sync
-    with a (possibly frozen) signature, now that the two aren't locked together.
+    otherwise.
   - **Accepted, unsolved trade-off:** editing/removing a `TestCase` never retroactively re-judges
     any `Submission` already graded against the old set — a `Submission`'s `passedTestCases`/
     `totalTestCases`/`status` are a one-time snapshot from whenever `SubmissionJudgeEventListener`
@@ -271,7 +290,10 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   name that isn't). Like every startup seeder here, a seeded tag/problem an admin deletes comes
   back on the next seeded startup — accepted, since seeding is off outside `local`. Compute every
   `expectedOutput` with a reference solution, never by hand — `ProblemSeederTest` does exactly this
-  for the RPN problem (add the same kind of check when adding a problem). To re-seed after
+  for the RPN problem (add the same kind of check when adding a problem). Seed files must say
+  `status: DRAFT` for now — `ProblemService.create` refuses `PUBLISHED` (see the verification rule
+  above); a planned `referenceSolution` field will let the seeder submit a reference and publish on
+  acceptance. To re-seed after
   editing a seed file, run `scripts/purge-seed-data.sql` (a plain dev utility outside
   `database/sql/`, so never a migration; mirrors `ecommerce-service`'s) — it `TRUNCATE ... RESTART
   IDENTITY CASCADE`s all 6 `dev_practice` tables, **including users' `SUBMISSION` history**, then
@@ -292,9 +314,11 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   a changeset here, take ids from `nextval()`, never hardcoded: ids are allocated pooled-lo
   (`INCREMENT BY 50`, one `nextval()` reserves a block), so hardcoded ids would collide with
   Hibernate's first block.
-- **A problem with submissions can't be deleted** — `PROBLEM_HAS_SUBMISSIONS` (409);
+- **A problem with `USER` submissions can't be deleted** — `PROBLEM_HAS_SUBMISSIONS` (409);
   `FK_SUBMISSION_PROBLEM` deliberately has no `ON DELETE CASCADE` (submissions are users' own
-  history, unlike test cases/parameters). Archive instead. Don't "fix" this with a cascade
+  history, unlike test cases/parameters). Archive instead. `REFERENCE` submissions don't block a
+  delete — they're the admin's verification scaffolding, so `ProblemServiceImpl#delete` removes
+  them explicitly (`deleteByProblem_IdAndKind`) right before the problem itself. Don't "fix" this with a cascade
   migration without asking — it was an explicit choice over that option.
 - **`Validator` overload trap**: `Validator.isTrue(cond, code, someString)` with exactly one
   `String` argument binds to the `(…, String message)` overload and *replaces* the error code's

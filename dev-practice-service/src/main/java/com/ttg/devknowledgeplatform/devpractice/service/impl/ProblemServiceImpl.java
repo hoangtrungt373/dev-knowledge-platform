@@ -25,6 +25,8 @@ import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTag;
 import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTagAssignment;
 import com.ttg.devknowledgeplatform.devpractice.entity.TestCase;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionKind;
+import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 import com.ttg.devknowledgeplatform.devpractice.exception.DevPracticeErrorCode;
 import com.ttg.devknowledgeplatform.devpractice.harness.SignatureNameValidator;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
@@ -56,9 +58,13 @@ public class ProblemServiceImpl implements ProblemService {
         validateSignatureNames(command.methodName(), command.parameters());
         validateTestCaseArity(command.parameters(), command.testCases());
 
+        ContentStatus status = command.status() != null ? command.status() : ContentStatus.DRAFT;
+        // A problem that doesn't exist yet can't have a reference submission, so it can never be
+        // created straight into PUBLISHED: create it as a draft, verify it, then publish.
+        Validator.isFalse(ContentStatus.PUBLISHED.equals(status), DevPracticeErrorCode.PROBLEM_NOT_VERIFIED);
+
         String slug = slugService.generateUniqueSlug(
                 command.title(), problemRepository::existsBySlug, DevPracticeErrorCode.PROBLEM_SLUG_CONFLICT);
-        ContentStatus status = command.status() != null ? command.status() : ContentStatus.DRAFT;
 
         Problem problem = Problem.builder()
                 .title(command.title())
@@ -99,15 +105,19 @@ public class ProblemServiceImpl implements ProblemService {
         // — and stays — PUBLISHED: a signature change invalidates every already-submitted
         // sourceCode's ability to compile/run and every existing TestCase's JSON encoding. Moving
         // the problem to DRAFT/ARCHIVED in this same request is the escape hatch (newStatus won't
-        // be PUBLISHED then, so this check doesn't fire) — see this module's CLAUDE.md. testCases
-        // are deliberately NOT part of this lock (see validateTestCaseArity below and its own
-        // Javadoc for why they're allowed to change freely).
+        // be PUBLISHED then, so this check doesn't fire) — see this module's CLAUDE.md. Test data
+        // isn't covered by this lock, but since DKP-0056 a test-data change while published is
+        // stopped by the verification check further down instead (it bumps contractVersion, which
+        // no existing reference submission matches). This check stays for its clearer message.
         if (ContentStatus.PUBLISHED.equals(prevStatus) && ContentStatus.PUBLISHED.equals(newStatus)) {
             Validator.isFalse(signatureChanged(problem, command), DevPracticeErrorCode.PROBLEM_SIGNATURE_LOCKED, id);
         }
 
         validateSignatureNames(command.methodName(), command.parameters());
         validateTestCaseArity(command.parameters(), command.testCases());
+
+        // Compared against the persisted state, so it must run before any field below is mutated.
+        boolean contractChanged = signatureChanged(problem, command) || testDataChanged(problem, command);
 
         problem.setMethodName(command.methodName());
         problem.setReturnType(command.returnType());
@@ -123,6 +133,20 @@ public class ProblemServiceImpl implements ProblemService {
             replaceTags(problem, command.tagIds());
         }
 
+        if (contractChanged) {
+            problem.setContractVersion(problem.getContractVersion() + 1);
+        }
+        // Publishing — or keeping a problem published through a contract change — requires an
+        // ACCEPTED reference at the (possibly just bumped) contract version. A contract change while
+        // published therefore always fails here: no reference can have been judged against a version
+        // that only exists from this save on. The escape hatch is the same as the signature lock's:
+        // save as DRAFT (the version bumps), run a reference, then publish. Throwing rolls the whole
+        // update back (rollbackFor = Throwable), bump included.
+        if (ContentStatus.PUBLISHED.equals(newStatus)
+                && (!ContentStatus.PUBLISHED.equals(prevStatus) || contractChanged)) {
+            Validator.isTrue(isVerified(problem), DevPracticeErrorCode.PROBLEM_NOT_VERIFIED);
+        }
+
         Problem updated = problemRepository.save(problem);
         log.info("Updated problem {}", id);
         return updated;
@@ -131,12 +155,15 @@ public class ProblemServiceImpl implements ProblemService {
     @Override
     public void delete(Integer id) {
         Problem problem = findById(id);
-        // FK_SUBMISSION_PROBLEM deliberately has no ON DELETE CASCADE: a submission is a user's own
-        // history, not part of the problem the way test cases/parameters are. Refuse cleanly here
+        // FK_SUBMISSION_PROBLEM deliberately has no ON DELETE CASCADE: a user's submission is their
+        // own history, not part of the problem the way test cases/parameters are. Refuse cleanly here
         // instead of letting the FK violation surface as a 500; ARCHIVED is the way to retire a
-        // problem people have already attempted.
-        long submissions = submissionRepository.countByProblem_Id(id);
+        // problem people have already attempted. Only USER submissions count — an admin's reference
+        // runs are part of authoring the problem, so they're deleted with it (explicitly, since the
+        // FK doesn't cascade) rather than blocking the delete.
+        long submissions = submissionRepository.countByProblem_IdAndKind(id, SubmissionKind.USER);
         Validator.isTrue(submissions == 0, DevPracticeErrorCode.PROBLEM_HAS_SUBMISSIONS, submissions);
+        submissionRepository.deleteByProblem_IdAndKind(id, SubmissionKind.REFERENCE);
         problemRepository.delete(problem);
         log.info("Deleted problem {}", id);
     }
@@ -156,6 +183,30 @@ public class ProblemServiceImpl implements ProblemService {
     @Override
     public Page<Problem> list(Pageable pageable, Difficulty difficulty, ContentStatus status, String q, Set<Integer> tagIds) {
         return problemRepository.findAll(ProblemSpecification.withFilters(difficulty, status, q, tagIds), pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isVerified(Problem problem) {
+        return problem.getId() != null && submissionRepository.existsByProblem_IdAndKindAndStatusAndContractVersion(
+                problem.getId(), SubmissionKind.REFERENCE, SubmissionStatus.ACCEPTED, problem.getContractVersion());
+    }
+
+    /**
+     * {@code true} if {@code command} would change any test case's input or expected output, or the
+     * number/order of test cases — compared against the persisted set. The {@code sample} flag is
+     * deliberately ignored: showing a case as an example doesn't change what a correct solution must
+     * return. Order counts (conservatively — reordering bumps the version too) because comparing as
+     * an ordered list is simple and exact, and a reorder is rare.
+     */
+    private boolean testDataChanged(Problem problem, ProblemCommands.Update command) {
+        List<List<String>> current = problem.getTestCases().stream()
+                .map(t -> List.of(t.getInput().strip(), t.getExpectedOutput().strip()))
+                .toList();
+        List<List<String>> incoming = command.testCases().stream()
+                .map(t -> List.of(t.input().strip(), t.expectedOutput().strip()))
+                .toList();
+        return !current.equals(incoming);
     }
 
     private Problem findById(Integer id) {

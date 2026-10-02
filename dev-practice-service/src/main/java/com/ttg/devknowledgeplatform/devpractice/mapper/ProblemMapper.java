@@ -23,8 +23,10 @@ import com.ttg.devknowledgeplatform.devpractice.harness.ParsedSignature;
 @Mapper(componentModel = "spring")
 public interface ProblemMapper {
 
+    /** {@code verified} is left null — admin controllers fill it via {@link ProblemResponse#withVerified}. */
     @Mapping(target = "createdAt", source = "dteCreation")
     @Mapping(target = "tags", expression = "java(tagsOf(problem))")
+    @Mapping(target = "verified", ignore = true)
     ProblemResponse toResponse(Problem problem);
 
     @Mapping(target = "tags", expression = "java(tagsOf(problem))")
@@ -69,8 +71,6 @@ public interface ProblemMapper {
         List<TestCaseResponse> sampleOnly = full.testCases().stream()
                 .filter(TestCaseResponse::sample)
                 .toList();
-        return new ProblemResponse(full.id(), full.slug(), full.title(), full.description(),
-                full.difficulty(), full.status(), full.methodName(), full.returnType(),
-                full.parameters(), sampleOnly, full.tags(), full.publishedAt(), full.createdAt());
+        return full.withTestCases(sampleOnly);
     }
 }

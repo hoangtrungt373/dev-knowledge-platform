@@ -122,6 +122,10 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
 
         submission.setStatus(SubmissionStatus.RUNNING);
         submission.setTotalTestCases(testCases.size());
+        // Recorded in the same transaction that loads the test cases above, so the stamp names
+        // exactly the test data this verdict is about — what makes an ACCEPTED reference verify the
+        // problem only at this contract version (see Problem#contractVersion).
+        submission.setContractVersion(problem.getContractVersion());
         submissionRepository.save(submission);
 
         return new JudgingInput(problem, submission.getLanguage(), submission.getSourceCode(), testCases);

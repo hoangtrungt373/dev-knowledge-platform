@@ -22,6 +22,24 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **`dev-practice-service`: publishing a problem now requires an accepted reference submission
+  (backend, Phase 1 of 3).** A problem can only reach `PUBLISHED` once an admin's `REFERENCE`
+  submission has been judged `ACCEPTED` against its *current* grading contract. New
+  `enums.SubmissionKind` (`USER`/`REFERENCE`); new `Problem.contractVersion` (bumped by
+  `ProblemServiceImpl#update` on any signature or test-data change — the sample flag alone
+  doesn't count) and `Submission.kind`/`contractVersion` (stamped by
+  `SubmissionJudgeEventListener` when judging starts, so a bump makes older references stale with
+  no flag to clear). New `ProblemService#isVerified`, new error code `PROBLEM_NOT_VERIFIED` (409),
+  new `ProblemResponse.contractVersion`/`verified` (the latter on admin responses only). New admin
+  endpoints `ProblemReferenceSubmissionApi` —
+  `POST/GET /api/v1/admin/problems/{problemId}/reference-submissions[/{submissionId}]` (allowed on
+  `DRAFT` problems; reference submissions never appear through `/api/v1/submissions/**`). New
+  migration `DKP-0056` (`PROBLEM.CONTRACT_VERSION`, `SUBMISSION.KIND` + `CKC_SUBMISSION_KIND`,
+  `SUBMISSION.CONTRACT_VERSION`, partial index `IDX_SUBMISSION_ACCEPTED_REFERENCE`). New
+  `SubmissionServiceImplTest` plus six publish-verification cases in `ProblemServiceImplTest`.
+  Not yet built: the admin GUI's reference-solution panel (Phase 2) and seed-file
+  `referenceSolution` + publish-on-accept (Phase 3).
+
 - **New module `dev-practice-service` — a LeetCode/NeetCode-style coding practice platform, Phase 1
   (problem catalog + submission persistence, no judging yet), own port `8088`.** Built directly
   standalone from day one, like `dev-utils-service` — never embedded in `gateway` at all, not part
@@ -340,6 +358,15 @@ section again. Full unabridged entry-by-entry history for all four lives in
   `ON DELETE CASCADE` migration: submissions are users' own history.
 
 ### Changed
+
+- **`dev-practice-service`: a published problem's test cases are no longer freely editable.**
+  Changing the signature *or* the test data of a `PUBLISHED` problem is now refused with
+  `PROBLEM_NOT_VERIFIED` — save it as `DRAFT`, run a reference solution, then publish again. Creating
+  a problem directly as `PUBLISHED` is refused too. Problems already published before `DKP-0056` stay
+  live until their contract is next edited. Until the Phase 2 GUI panel exists, the admin form's
+  Publish action returns 409 for any problem without a reference. Deleting a problem now ignores
+  (and removes) its `REFERENCE` submissions; only `USER` submissions block a delete. The seeded
+  Evaluate Reverse Polish Notation problem is now seeded as `DRAFT`.
 
 - **`dev-practice-service`: `GET /api/v1/admin/problems` now returns `AdminProblemSummaryResponse`
   rows instead of `ProblemSummaryResponse`** — the admin list needed `status`; the public list

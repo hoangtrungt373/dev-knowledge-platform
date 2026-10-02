@@ -52,7 +52,7 @@ class SubmissionJudgeEventListenerTest {
                 new OutputMatcher(new ObjectMapper()),
                 mock(PlatformTransactionManager.class));
 
-        Problem problem = Problem.builder().methodName("identity").returnType(ParamType.INT).build();
+        Problem problem = Problem.builder().methodName("identity").returnType(ParamType.INT).contractVersion(4).build();
         problem.getParameters().add(MethodParameter.builder()
                 .problem(problem).name("value").type(ParamType.INT).position(0).build());
         problem.getTestCases().add(TestCase.builder().problem(problem).input("[1]").expectedOutput("1").build());
@@ -74,6 +74,8 @@ class SubmissionJudgeEventListenerTest {
         assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.ACCEPTED);
         assertThat(submission.getPassedTestCases()).isEqualTo(2);
         assertThat(submission.getTotalTestCases()).isEqualTo(2);
+        // Stamped with the contract version of the test data it was judged against.
+        assertThat(submission.getContractVersion()).isEqualTo(4);
     }
 
     @Test

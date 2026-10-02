@@ -34,5 +34,12 @@ public interface ProblemService {
     /**
      * @param tagIds optional — matches a problem tagged with <em>any</em> of these ids; null/empty means no filter
      */
+    /**
+     * Whether {@code problem} has an {@code ACCEPTED} reference submission judged at its current
+     * {@code contractVersion} — the condition for publishing it. Not stored: derived on demand, so it
+     * can never drift from the submissions themselves.
+     */
+    boolean isVerified(Problem problem);
+
     Page<Problem> list(Pageable pageable, Difficulty difficulty, ContentStatus status, String q, Set<Integer> tagIds);
 }

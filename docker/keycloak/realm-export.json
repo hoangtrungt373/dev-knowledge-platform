@@ -113,7 +113,7 @@
       "alias": "google",
       "providerId": "google",
       "enabled": true,
-      "hideOnLoginPage": true,
+      "hideOnLogin": true,
       "trustEmail": true,
       "storeToken": false,
       "addReadTokenRoleOnCreate": false,

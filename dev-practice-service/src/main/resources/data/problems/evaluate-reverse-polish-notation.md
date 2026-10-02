@@ -4,7 +4,10 @@
 # Every expectedOutput was computed with a reference implementation, not by hand.
 title: Evaluate Reverse Polish Notation
 difficulty: MEDIUM
-status: PUBLISHED
+# DRAFT until Phase 3: publishing now requires an ACCEPTED reference submission (DKP-0056), which a
+# seed file can only provide once it carries a referenceSolution. Publish it from the admin GUI after
+# running a reference solution, or wait for the seeder to do it.
+status: DRAFT
 tags: [Array, Math, Stack]
 template:
   language: JAVA

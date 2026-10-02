@@ -107,6 +107,18 @@ public class Problem extends AbstractEntity {
     @Column(name = "RETURN_TYPE", length = 50, nullable = false)
     private ParamType returnType;
 
+    /**
+     * Bumped whenever the grading contract changes — the method signature, or any test case's input
+     * or expected output (not its {@code sample} flag, which doesn't affect solvability). A reference
+     * submission only verifies the problem at the version it was judged against, so an edit to the
+     * test data needs a fresh reference before the problem can be (re)published. Not to be confused
+     * with {@code version}, Hibernate's optimistic-locking counter, which changes on every save.
+     */
+    @NotNull
+    @Column(name = "CONTRACT_VERSION", nullable = false)
+    @Builder.Default
+    private Integer contractVersion = 1;
+
     @OrderBy("position ASC")
     @BatchSize(size = 32)
     @OneToMany(mappedBy = "problem", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)

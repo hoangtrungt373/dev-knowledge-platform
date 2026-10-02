@@ -31,6 +31,10 @@ public enum DevPracticeErrorCode implements ErrorCode {
             "This problem already has {0} submission(s) and can''t be deleted — archive it instead",
             HttpStatus.CONFLICT),
     PROBLEM_TEMPLATE_INVALID("PROBLEM_008", "Couldn''t read the code template: {0}", HttpStatus.BAD_REQUEST),
+    PROBLEM_NOT_VERIFIED("PROBLEM_009",
+            "This problem can''t be published yet: it has no accepted reference solution for its current "
+                    + "signature and test cases. Save it as Draft, run a reference solution, then publish",
+            HttpStatus.CONFLICT),
 
     // Problem tag errors (PROBLEM_TAG_*)
     PROBLEM_TAG_NOT_FOUND("PROBLEM_TAG_001", "Problem tag not found", HttpStatus.NOT_FOUND),
