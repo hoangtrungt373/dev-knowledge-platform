@@ -31,9 +31,13 @@ import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 import com.ttg.devknowledgeplatform.devpractice.exception.DevPracticeErrorCode;
 import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarnessRegistry;
 import com.ttg.devknowledgeplatform.devpractice.harness.PythonLanguageHarness;
+import com.ttg.devknowledgeplatform.devpractice.harness.SignatureNameValidator;
 import com.ttg.devknowledgeplatform.devpractice.judge.CaseJudge;
 import com.ttg.devknowledgeplatform.devpractice.judge.JudgeUnavailableException;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
+import com.ttg.devknowledgeplatform.devpractice.repository.ProblemTagRepository;
+import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
+import com.ttg.devknowledgeplatform.infra.service.SlugService;
 import com.ttg.devknowledgeplatform.devpractice.service.RunResult;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionCommands;
 
@@ -46,8 +50,13 @@ class CodeRunServiceImplTest {
 
     private final ProblemRepository problemRepository = mock(ProblemRepository.class);
     private final CaseJudge caseJudge = mock(CaseJudge.class);
+    // The real ProblemServiceImpl over the mocked repository: "a draft is not found" is its rule, and
+    // these tests should exercise it, not a stub of it.
+    private final ProblemServiceImpl problemService = new ProblemServiceImpl(problemRepository,
+            mock(SubmissionRepository.class), mock(ProblemTagRepository.class), mock(SignatureNameValidator.class),
+            mock(SlugService.class), new ObjectMapper());
     private final CodeRunServiceImpl service = new CodeRunServiceImpl(
-            problemRepository,
+            problemService,
             new LanguageHarnessRegistry(List.of(new PythonLanguageHarness())),
             caseJudge,
             new ObjectMapper(),

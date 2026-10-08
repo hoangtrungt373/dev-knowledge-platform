@@ -426,6 +426,20 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Changed
 
+- **`dev-practice-service`: cleanup pass — duplicated rules pulled into one place.** No API or schema
+  change. `Problem` gained `isPublished()`/`publish()` (replacing seven of nine
+  `ContentStatus.PUBLISHED.equals(...)` checks — the two left compare a requested status value, not a
+  problem — and two copies of the "stamp `publishedAt` once" logic).
+  New `ProblemService#getPublishedById`; `SubmissionServiceImpl` and `CodeRunServiceImpl` now go through
+  `ProblemService` instead of `ProblemRepository` plus their own status check, so the "a draft is not
+  found" rule exists once. New package-private `api/impl/SortParams` replaces four copies of
+  `buildSort` (the same helper is still copied in ~12 controllers of other services; not moved to
+  `common` until a second module adopts it). New `ProblemCommands.MethodParameterInput.inOrder`
+  replaces the index-as-position code duplicated in `ProblemController` and `ProblemSeeder`. Removed
+  dead code in `ProblemServiceImpl#create` (a `publishedAt` ternary that could never be true). Tests:
+  `SubmissionServiceImplTest`/`CodeRunServiceImplTest` now run against a real `ProblemServiceImpl` over
+  the mocked repository; two new `ProblemServiceImplTest` cases (re-publishing keeps the original
+  `publishedAt`; the published-by-id lookup hides a draft). 125 tests pass.
 - **`gui`: `@dev-practice` cleanup — duplication extracted, the two largest pages split.** No
   behavior change apart from small visual alignments. New components `DifficultyChip`, `TagChips`
   (max N + "+N" tooltip), `TagFilterSelect`, `SubmissionStatusChip`, `CodeBlock` (the monospace

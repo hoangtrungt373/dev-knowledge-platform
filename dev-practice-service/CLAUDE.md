@@ -360,6 +360,12 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   `JUDGE_UNAVAILABLE` (503, generic message; detail logged) — unlike a graded submission, which
   records `JUDGE_ERROR` on itself. Login is still required (the `/api/v1/submissions/**` rule), so
   the judge isn't open to anonymous traffic; there is no per-user rate limit yet.
+- **One "published or not found" rule**: a learner-facing lookup goes through
+  `ProblemService#getPublishedBySlug`/`#getPublishedById` (`SubmissionService`, `CodeRunService`), never
+  `problemRepository.findById` plus its own status check — so the non-leaking 404 for a draft lives in
+  one place. Status checks use `Problem#isPublished()`, and every transition into PUBLISHED goes
+  through `Problem#publish()` (stamps `publishedAt` only the first time, so a re-publish after
+  archiving keeps the original date). List controllers build their `Sort` with `api/impl/SortParams`.
 - **`Validator` overload trap**: `Validator.isTrue(cond, code, someString)` with exactly one
   `String` argument binds to the `(…, String message)` overload and *replaces* the error code's
   template rather than filling `{0}`. Cast to `(Object)` or pass two args when you mean a template

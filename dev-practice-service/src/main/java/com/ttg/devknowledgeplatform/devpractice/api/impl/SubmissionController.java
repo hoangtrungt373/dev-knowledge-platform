@@ -66,15 +66,10 @@ public class SubmissionController implements SubmissionApi {
     @Override
     public ResponseEntity<PagedResponse<SubmissionResponse>> list(
             String userUuid, int page, int size, String sortBy, String sortDir, Integer problemId) {
-        Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
+        Pageable pageable = PageRequest.of(page, size, SortParams.of(sortBy, sortDir, ALLOWED_SORT_FIELDS, "id", Sort.Direction.DESC));
         Page<SubmissionResponse> responses = submissionService.listSubmissions(userUuid, problemId, pageable)
                 .map(submissionMapper::toResponse);
         return ResponseEntity.ok(PagedResponse.from(responses));
     }
 
-    private Sort buildSort(String sortBy, String sortDir) {
-        String field = ALLOWED_SORT_FIELDS.contains(sortBy) ? sortBy : "id";
-        Sort.Direction direction = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
-        return Sort.by(direction, field);
-    }
 }

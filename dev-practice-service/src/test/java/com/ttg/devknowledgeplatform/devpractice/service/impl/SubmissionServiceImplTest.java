@@ -24,8 +24,12 @@ import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionKind;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 import com.ttg.devknowledgeplatform.devpractice.event.SubmissionCreatedEvent;
 import com.ttg.devknowledgeplatform.devpractice.exception.DevPracticeErrorCode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ttg.devknowledgeplatform.devpractice.harness.SignatureNameValidator;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
+import com.ttg.devknowledgeplatform.devpractice.repository.ProblemTagRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
+import com.ttg.devknowledgeplatform.infra.service.SlugService;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemProgress;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionCommands;
 
@@ -35,8 +39,13 @@ class SubmissionServiceImplTest {
     private final SubmissionRepository submissionRepository = mock(SubmissionRepository.class);
     private final ProblemRepository problemRepository = mock(ProblemRepository.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    // The real ProblemServiceImpl over the mocked repository: "a draft is not found" is its rule, and
+    // these tests should exercise it, not a stub of it.
+    private final ProblemServiceImpl problemService = new ProblemServiceImpl(problemRepository,
+            submissionRepository, mock(ProblemTagRepository.class), mock(SignatureNameValidator.class),
+            mock(SlugService.class), new ObjectMapper());
     private final SubmissionServiceImpl service =
-            new SubmissionServiceImpl(submissionRepository, problemRepository, eventPublisher);
+            new SubmissionServiceImpl(submissionRepository, problemService, eventPublisher);
 
     private final SubmissionCommands.Create command =
             new SubmissionCommands.Create(5, ProgrammingLanguage.JAVA, "class Solution {}");

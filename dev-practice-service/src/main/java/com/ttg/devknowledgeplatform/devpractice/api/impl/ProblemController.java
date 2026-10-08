@@ -2,7 +2,6 @@ package com.ttg.devknowledgeplatform.devpractice.api.impl;
 
 import java.util.List;
 import java.util.Set;
-import java.util.stream.IntStream;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -92,7 +91,7 @@ public class ProblemController implements ProblemApi {
     public ResponseEntity<PagedResponse<AdminProblemSummaryResponse>> list(
             int page, int size, String sortBy, String sortDir, Difficulty difficulty, ContentStatus status, String q,
             Set<Integer> tagIds) {
-        Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
+        Pageable pageable = PageRequest.of(page, size, SortParams.of(sortBy, sortDir, ALLOWED_SORT_FIELDS, "id", Sort.Direction.DESC));
         Page<AdminProblemSummaryResponse> responses = problemService.list(pageable, difficulty, status, q, tagIds)
                 .map(problemMapper::toAdminSummaryResponse);
         return ResponseEntity.ok(PagedResponse.from(responses));
@@ -111,15 +110,7 @@ public class ProblemController implements ProblemApi {
 
     /** A parameter's position is its index in the supplied list, not a client-specified field. */
     private static List<ProblemCommands.MethodParameterInput> toParameterInputs(List<MethodParameterRequest> requests) {
-        return IntStream.range(0, requests.size())
-                .mapToObj(i -> new ProblemCommands.MethodParameterInput(
-                        requests.get(i).getName(), requests.get(i).getType(), i))
-                .toList();
-    }
-
-    private Sort buildSort(String sortBy, String sortDir) {
-        String field = ALLOWED_SORT_FIELDS.contains(sortBy) ? sortBy : "id";
-        Sort.Direction direction = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
-        return Sort.by(direction, field);
+        return ProblemCommands.MethodParameterInput.inOrder(
+                requests, MethodParameterRequest::getName, MethodParameterRequest::getType);
     }
 }

@@ -32,6 +32,14 @@ public interface ProblemService {
     Problem getPublishedBySlug(String slug);
 
     /**
+     * A problem by id, but only if it's published — what a learner may submit to or run code
+     * against. A draft/archived problem is "not found", so its existence never leaks.
+     *
+     * @throws com.ttg.devknowledgeplatform.common.exception.BusinessException {@code PROBLEM_NOT_FOUND}
+     */
+    Problem getPublishedById(Integer id);
+
+    /**
      * @param tagIds optional — matches a problem tagged with <em>any</em> of these ids; null/empty means no filter
      */
     /**

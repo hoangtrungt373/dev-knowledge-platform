@@ -2898,7 +2898,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                         and unverified, so a wrong one is fixable via env var)
 ├── entity/
 │   ├── Problem.java                   — title, slug (unique, via infra's SlugService), description
-│   │                                     (TEXT), difficulty (Difficulty), status
+│   │                                     (TEXT), difficulty (Difficulty), status; domain methods
+│   │                                     isPublished() and publish() (stamps publishedAt once)
 │   │                                     (common.enums.ContentStatus — reused as-is, same
 │   │                                     DRAFT/PUBLISHED/ARCHIVED shape content-service's
 │   │                                     Article/QuestionAnswer already use), authorUuid (String,
@@ -3087,9 +3088,11 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                         ProblemTagAssignment (no join, so no duplicate rows and no
 │                                         distinct needed for paging/count)
 ├── service/
-│   ├── ProblemService.java (+ impl/)  — create/update/delete/getById + getPublishedBySlug (throws
-│   │                                     PROBLEM_NOT_FOUND for a draft/archived slug too — never a
-│   │                                     distinguishable "found but not visible") + list.
+│   ├── ProblemService.java (+ impl/)  — create/update/delete/getById + getPublishedBySlug /
+│   │                                     getPublishedById (throw PROBLEM_NOT_FOUND for a draft/
+│   │                                     archived problem too — never a distinguishable "found but
+│   │                                     not visible"; SubmissionService and CodeRunService use
+│   │                                     getPublishedById rather than the repository) + list.
 │   │                                     ProblemServiceImpl#update rejects any methodName/
 │   │                                     returnType/parameters change while the problem is (and
 │   │                                     stays) PUBLISHED (signatureChanged, PROBLEM_SIGNATURE_LOCKED)
@@ -3120,7 +3123,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     refused while in use (PROBLEM_TAG_IN_USE)
 │   ├── ProblemCommands.java           — Create/Update records (+ tagIds: Create null = none;
 │   │                                     Update null = unchanged, empty = clear) + nested
-│   │                                     TestCaseInput/MethodParameterInput records. ProblemServiceImpl
+│   │                                     TestCaseInput/MethodParameterInput records
+│   │                                     (MethodParameterInput.inOrder: position = list index, used
+│   │                                     by the controller and the seeder). ProblemServiceImpl
 │   │                                     applies tagIds by diffing (replaceTags), not clear-and-
 │   │                                     rebuild — Hibernate flushes INSERTs before orphan DELETEs,
 │   │                                     which would trip UK_PROBLEM_TAG_ASSIGNMENT_PAIR
@@ -3190,6 +3195,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                         passedTestCases/totalTestCases/errorMessage auto-map by
 │                                         matching field names, no explicit @Mapping needed
 └── api/ (+ api/impl/)
+    ├── impl/SortParams.java                                  — package-private: allow-listed
+    │                                     sortBy/sortDir → Sort, shared by the four list controllers
     ├── ProblemApi.java (+ ProblemController.java)             — /api/v1/admin/problems: create,
     │                                     update, delete, getById, list (difficulty/status/q/tagIds
     │                                     filters — tagIds repeated: ?tagIds=1&tagIds=2), and

@@ -37,7 +37,7 @@ public class PublicProblemController implements PublicProblemApi {
     @Override
     public ResponseEntity<PagedResponse<ProblemSummaryResponse>> list(
             int page, int size, String sortBy, String sortDir, Difficulty difficulty, String q, Set<Integer> tagIds) {
-        Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
+        Pageable pageable = PageRequest.of(page, size, SortParams.of(sortBy, sortDir, ALLOWED_SORT_FIELDS, "id", Sort.Direction.DESC));
         Page<ProblemSummaryResponse> responses =
                 problemService.list(pageable, difficulty, ContentStatus.PUBLISHED, q, tagIds)
                         .map(problemMapper::toSummaryResponse);
@@ -56,9 +56,4 @@ public class PublicProblemController implements PublicProblemApi {
         return ResponseEntity.ok(new StarterCodeResponse(language, code));
     }
 
-    private Sort buildSort(String sortBy, String sortDir) {
-        String field = ALLOWED_SORT_FIELDS.contains(sortBy) ? sortBy : "id";
-        Sort.Direction direction = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
-        return Sort.by(direction, field);
-    }
 }

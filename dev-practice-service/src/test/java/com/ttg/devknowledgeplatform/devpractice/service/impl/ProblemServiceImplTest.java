@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -189,6 +190,32 @@ class ProblemServiceImplTest {
 
         assertThat(service.publishIfVerified(5, 3)).isFalse();
         assertThat(problem.getStatus()).isEqualTo(ContentStatus.ARCHIVED);
+    }
+
+    @Test
+    void republishingAnArchivedProblemKeepsItsOriginalPublishDate() {
+        Problem problem = storedProblem(ContentStatus.ARCHIVED, 3);
+        Instant firstPublished = Instant.parse("2026-01-01T00:00:00Z");
+        problem.setPublishedAt(firstPublished);
+        when(problemRepository.findById(5)).thenReturn(Optional.of(problem));
+        when(problemRepository.save(problem)).thenReturn(problem);
+        when(submissionRepository.existsByProblem_IdAndKindAndStatusAndContractVersion(
+                5, SubmissionKind.REFERENCE, SubmissionStatus.ACCEPTED, 3)).thenReturn(true);
+
+        service.update(5, update(ContentStatus.PUBLISHED, "[1]", "1", true));
+
+        assertThat(problem.isPublished()).isTrue();
+        assertThat(problem.getPublishedAt()).isEqualTo(firstPublished);
+    }
+
+    @Test
+    void aDraftIsNotFoundByThePublishedLookup() {
+        when(problemRepository.findById(5)).thenReturn(Optional.of(storedProblem(ContentStatus.DRAFT, 1)));
+
+        assertThatThrownBy(() -> service.getPublishedById(5))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(DevPracticeErrorCode.PROBLEM_NOT_FOUND));
     }
 
     /** A persisted problem: signature solve(int a) -> int, one test case [1] -> 1. */

@@ -136,4 +136,21 @@ public class Problem extends AbstractEntity {
     @OneToMany(mappedBy = "problem", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<ProblemTagAssignment> tagAssignments = new ArrayList<>();
+
+    /** Whether learners can see this problem and submit to it. */
+    public boolean isPublished() {
+        return ContentStatus.PUBLISHED.equals(status);
+    }
+
+    /**
+     * Moves the problem to {@code PUBLISHED}. {@code publishedAt} is stamped the first time only, so a
+     * problem archived and published again keeps its original publish date. Callers check the publish
+     * rule (an accepted reference at the current contract version) first — this only changes state.
+     */
+    public void publish() {
+        status = ContentStatus.PUBLISHED;
+        if (publishedAt == null) {
+            publishedAt = Instant.now();
+        }
+    }
 }

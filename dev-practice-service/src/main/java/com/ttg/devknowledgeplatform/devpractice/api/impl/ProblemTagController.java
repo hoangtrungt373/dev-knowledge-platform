@@ -48,9 +48,8 @@ public class ProblemTagController implements ProblemTagApi {
     @Override
     public ResponseEntity<PagedResponse<ProblemTagResponse>> list(
             int page, int size, String sortBy, String sortDir, String q) {
-        String field = ALLOWED_SORT_FIELDS.contains(sortBy) ? sortBy : "name";
-        Sort.Direction direction = "desc".equalsIgnoreCase(sortDir) ? Sort.Direction.DESC : Sort.Direction.ASC;
-        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, field));
+        Pageable pageable = PageRequest.of(page, size,
+                SortParams.of(sortBy, sortDir, ALLOWED_SORT_FIELDS, "name", Sort.Direction.ASC));
         return ResponseEntity.ok(PagedResponse.from(problemTagService.list(pageable, q).map(problemMapper::toResponse)));
     }
 

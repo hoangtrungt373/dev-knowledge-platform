@@ -2,6 +2,8 @@ package com.ttg.devknowledgeplatform.devpractice.service;
 
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.IntStream;
 
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
@@ -37,5 +39,17 @@ public final class ProblemCommands {
 
     /** {@code position} is the parameter's index in the method signature (0-based, in order). */
     public record MethodParameterInput(String name, ParamType type, Integer position) {
+
+        /**
+         * Builds the inputs from an ordered list of anything carrying a name and a type — the list
+         * order <i>is</i> the signature order, so each position is simply its index. Used by every
+         * entry point (REST request, seed file), so none of them invents positions its own way.
+         */
+        public static <T> List<MethodParameterInput> inOrder(
+                List<T> items, Function<T, String> name, Function<T, ParamType> type) {
+            return IntStream.range(0, items.size())
+                    .mapToObj(i -> new MethodParameterInput(name.apply(items.get(i)), type.apply(items.get(i)), i))
+                    .toList();
+        }
     }
 }

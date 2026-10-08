@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
-import java.util.stream.IntStream;
 
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
@@ -133,10 +132,8 @@ public class ProblemSeeder implements Seeder {
         ParsedSignature signature = templateParsers.parse(problem.templateLanguage(), problem.templateCode());
         requireUnambiguous(signature, problem.title());
 
-        List<ProblemCommands.MethodParameterInput> parameters = IntStream.range(0, signature.parameters().size())
-                .mapToObj(i -> new ProblemCommands.MethodParameterInput(
-                        signature.parameters().get(i).name(), signature.parameters().get(i).type().type(), i))
-                .toList();
+        List<ProblemCommands.MethodParameterInput> parameters = ProblemCommands.MethodParameterInput.inOrder(
+                signature.parameters(), p -> p.name(), p -> p.type().type());
         // PUBLISHED is reached via the reference run (see the class Javadoc), never set directly.
         ContentStatus initialStatus = problem.status() == ContentStatus.PUBLISHED ? ContentStatus.DRAFT : problem.status();
         return new ProblemCommands.Create(problem.title(), problem.description(), problem.difficulty(),

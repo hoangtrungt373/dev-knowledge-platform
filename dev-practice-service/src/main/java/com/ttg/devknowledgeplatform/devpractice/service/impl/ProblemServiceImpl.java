@@ -1,10 +1,8 @@
 package com.ttg.devknowledgeplatform.devpractice.service.impl;
 
-import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -73,7 +71,6 @@ public class ProblemServiceImpl implements ProblemService {
                 .difficulty(command.difficulty())
                 .status(status)
                 .authorUuid(authorUuid)
-                .publishedAt(ContentStatus.PUBLISHED.equals(status) ? Instant.now() : null)
                 .methodName(command.methodName())
                 .returnType(command.returnType())
                 .build();
@@ -98,8 +95,9 @@ public class ProblemServiceImpl implements ProblemService {
         problem.setDescription(command.description());
         problem.setDifficulty(command.difficulty());
 
-        ContentStatus prevStatus = problem.getStatus();
-        ContentStatus newStatus = command.status() != null ? command.status() : prevStatus;
+        boolean wasPublished = problem.isPublished();
+        ContentStatus newStatus = command.status() != null ? command.status() : problem.getStatus();
+        boolean willBePublished = ContentStatus.PUBLISHED.equals(newStatus);
 
         // The grading contract (method name/return type/parameters) is frozen once a problem is
         // — and stays — PUBLISHED: a signature change invalidates every already-submitted
@@ -109,7 +107,7 @@ public class ProblemServiceImpl implements ProblemService {
         // isn't covered by this lock, but since DKP-0056 a test-data change while published is
         // stopped by the verification check further down instead (it bumps contractVersion, which
         // no existing reference submission matches). This check stays for its clearer message.
-        if (ContentStatus.PUBLISHED.equals(prevStatus) && ContentStatus.PUBLISHED.equals(newStatus)) {
+        if (wasPublished && willBePublished) {
             Validator.isFalse(signatureChanged(problem, command), DevPracticeErrorCode.PROBLEM_SIGNATURE_LOCKED, id);
         }
 
@@ -121,10 +119,10 @@ public class ProblemServiceImpl implements ProblemService {
 
         problem.setMethodName(command.methodName());
         problem.setReturnType(command.returnType());
-        problem.setStatus(newStatus);
-        if (ContentStatus.PUBLISHED.equals(newStatus) && !ContentStatus.PUBLISHED.equals(prevStatus)
-                && problem.getPublishedAt() == null) {
-            problem.setPublishedAt(Instant.now());
+        if (willBePublished) {
+            problem.publish();
+        } else {
+            problem.setStatus(newStatus);
         }
 
         replaceParameters(problem, command.parameters());
@@ -142,8 +140,7 @@ public class ProblemServiceImpl implements ProblemService {
         // that only exists from this save on. The escape hatch is the same as the signature lock's:
         // save as DRAFT (the version bumps), run a reference, then publish. Throwing rolls the whole
         // update back (rollbackFor = Throwable), bump included.
-        if (ContentStatus.PUBLISHED.equals(newStatus)
-                && (!ContentStatus.PUBLISHED.equals(prevStatus) || contractChanged)) {
+        if (willBePublished && (!wasPublished || contractChanged)) {
             Validator.isTrue(isVerified(problem), DevPracticeErrorCode.PROBLEM_NOT_VERIFIED);
         }
 
@@ -175,9 +172,14 @@ public class ProblemServiceImpl implements ProblemService {
 
     @Override
     public Problem getPublishedBySlug(String slug) {
-        Optional<Problem> problem = problemRepository.findBySlug(slug)
-                .filter(p -> ContentStatus.PUBLISHED.equals(p.getStatus()));
-        return Validator.notFound(problem, DevPracticeErrorCode.PROBLEM_NOT_FOUND, slug);
+        return Validator.notFound(problemRepository.findBySlug(slug).filter(Problem::isPublished),
+                DevPracticeErrorCode.PROBLEM_NOT_FOUND, slug);
+    }
+
+    @Override
+    public Problem getPublishedById(Integer id) {
+        return Validator.notFound(problemRepository.findById(id).filter(Problem::isPublished),
+                DevPracticeErrorCode.PROBLEM_NOT_FOUND, id);
     }
 
     @Override
@@ -199,10 +201,7 @@ public class ProblemServiceImpl implements ProblemService {
                     problemId, judgedContractVersion, problem.getContractVersion());
             return false;
         }
-        problem.setStatus(ContentStatus.PUBLISHED);
-        if (problem.getPublishedAt() == null) {
-            problem.setPublishedAt(Instant.now());
-        }
+        problem.publish();
         problemRepository.save(problem);
         log.info("Published problem {} after its reference solution was accepted", problemId);
         return true;

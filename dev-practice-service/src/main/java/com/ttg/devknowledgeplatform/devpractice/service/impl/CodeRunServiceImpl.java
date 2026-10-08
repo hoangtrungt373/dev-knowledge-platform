@@ -11,7 +11,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
@@ -20,8 +19,8 @@ import com.ttg.devknowledgeplatform.devpractice.exception.DevPracticeErrorCode;
 import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarnessRegistry;
 import com.ttg.devknowledgeplatform.devpractice.judge.CaseJudge;
 import com.ttg.devknowledgeplatform.devpractice.judge.JudgeUnavailableException;
-import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
 import com.ttg.devknowledgeplatform.devpractice.service.CodeRunService;
+import com.ttg.devknowledgeplatform.devpractice.service.ProblemService;
 import com.ttg.devknowledgeplatform.devpractice.service.RunResult;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionCommands;
 
@@ -47,19 +46,19 @@ public class CodeRunServiceImpl implements CodeRunService {
     static final int MAX_CUSTOM_INPUTS = 5;
     private static final int MAX_INPUT_LENGTH = 10_000;
 
-    private final ProblemRepository problemRepository;
+    private final ProblemService problemService;
     private final LanguageHarnessRegistry harnessRegistry;
     private final CaseJudge caseJudge;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate readOnlyTx;
 
     public CodeRunServiceImpl(
-            ProblemRepository problemRepository,
+            ProblemService problemService,
             LanguageHarnessRegistry harnessRegistry,
             CaseJudge caseJudge,
             ObjectMapper objectMapper,
             PlatformTransactionManager transactionManager) {
-        this.problemRepository = problemRepository;
+        this.problemService = problemService;
         this.harnessRegistry = harnessRegistry;
         this.caseJudge = caseJudge;
         this.objectMapper = objectMapper;
@@ -103,9 +102,7 @@ public class CodeRunServiceImpl implements CodeRunService {
 
     /** A draft/archived problem is "not found", same non-leaking posture as submitting to one. */
     private Problem loadPublished(Integer problemId) {
-        Problem problem = Validator.notFound(
-                problemRepository.findById(problemId).filter(p -> ContentStatus.PUBLISHED.equals(p.getStatus())),
-                DevPracticeErrorCode.PROBLEM_NOT_FOUND, problemId);
+        Problem problem = problemService.getPublishedById(problemId);
         // Initialized in place (never replaced — see the listener's orphan-removal note) so they stay
         // readable once the problem is detached after this transaction.
         Hibernate.initialize(problem.getParameters());

@@ -8,7 +8,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
@@ -17,9 +16,9 @@ import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionKind;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 import com.ttg.devknowledgeplatform.devpractice.event.SubmissionCreatedEvent;
 import com.ttg.devknowledgeplatform.devpractice.exception.DevPracticeErrorCode;
-import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemProgress;
+import com.ttg.devknowledgeplatform.devpractice.service.ProblemService;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionCommands;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionService;
 
@@ -33,17 +32,13 @@ import lombok.extern.slf4j.Slf4j;
 public class SubmissionServiceImpl implements SubmissionService {
 
     private final SubmissionRepository submissionRepository;
-    private final ProblemRepository problemRepository;
+    private final ProblemService problemService;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public Submission create(String userUuid, SubmissionCommands.Create command) {
-        Problem problem = findProblem(command.problemId());
-        // A draft/archived problem is treated as not found — same non-leaking posture as
-        // ProblemService#getPublishedBySlug — a caller can only submit against a problem that is
-        // actually visible to them.
-        Validator.isTrue(ContentStatus.PUBLISHED.equals(problem.getStatus()),
-                DevPracticeErrorCode.PROBLEM_NOT_FOUND, command.problemId());
+        // A learner can only submit to a problem visible to them; a draft is "not found".
+        Problem problem = problemService.getPublishedById(command.problemId());
         return saveAndJudge(problem, userUuid, command, SubmissionKind.USER, false);
     }
 
@@ -51,7 +46,7 @@ public class SubmissionServiceImpl implements SubmissionService {
     public Submission createReference(String adminUuid, SubmissionCommands.Create command, boolean publishOnAccept) {
         // No status check, unlike create: a reference run exists to verify a problem *before* it is
         // published. Admin-only by path (/api/v1/admin/**), not by anything checked here.
-        return saveAndJudge(findProblem(command.problemId()), adminUuid, command, SubmissionKind.REFERENCE, publishOnAccept);
+        return saveAndJudge(problemService.getById(command.problemId()), adminUuid, command, SubmissionKind.REFERENCE, publishOnAccept);
     }
 
     @Override
@@ -85,7 +80,7 @@ public class SubmissionServiceImpl implements SubmissionService {
     @Override
     @Transactional(readOnly = true)
     public Page<Submission> listReferenceSubmissions(Integer problemId, Pageable pageable) {
-        findProblem(problemId);
+        problemService.getById(problemId); // 404 for an unknown problem rather than an empty page
         return submissionRepository.findByProblem_IdAndKind(problemId, SubmissionKind.REFERENCE, pageable);
     }
 
@@ -119,10 +114,6 @@ public class SubmissionServiceImpl implements SubmissionService {
         eventPublisher.publishEvent(new SubmissionCreatedEvent(saved.getId()));
         log.info("{} submitted {} solution {} for problem {}", submitterUuid, kind, saved.getId(), problem.getId());
         return saved;
-    }
-
-    private Problem findProblem(Integer problemId) {
-        return Validator.notFound(problemRepository.findById(problemId), DevPracticeErrorCode.PROBLEM_NOT_FOUND, problemId);
     }
 
     private Submission findSubmission(Integer id) {
