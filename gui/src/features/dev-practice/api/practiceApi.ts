@@ -3,6 +3,7 @@ import { PagedResponse } from '@shared/types';
 import {
   Difficulty,
   Problem,
+  ProblemProgress,
   ProblemSummary,
   ProblemTagSummary,
   ProgrammingLanguage,
@@ -65,6 +66,11 @@ export const practiceApi = {
 
   submit(problemId: number, language: ProgrammingLanguage, sourceCode: string, showError?: ShowError): Promise<Submission> {
     return httpClient.post('/api/v1/submissions', { problemId, language, sourceCode }, showError);
+  },
+
+  /** Solved/attempted per problem the caller has submitted to (absent = never submitted). */
+  getProgress(showError?: ShowError): Promise<ProblemProgress[]> {
+    return httpClient.get('/api/v1/submissions/progress', showError);
   },
 
   getSubmission(id: number, showError?: ShowError): Promise<Submission> {

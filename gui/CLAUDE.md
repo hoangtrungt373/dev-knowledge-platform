@@ -4476,8 +4476,14 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     scroller engages).
   - The verdict names a failing test by number only (`passedTestCases + 1` — the judge stops at
     the first failure); a hidden test's input is never shown, and the public API never sends one.
-  - Not built yet: solved/attempted markers (Phase 2, needs a backend endpoint) and Run on samples/
-    custom input (Phase 3).
+  - **Solved/attempted markers**: `hooks/useProblemProgress` loads `GET /api/v1/submissions/progress`
+    once (only when logged in; a failure is silent — markers are a convenience) and exposes
+    `statusOf(id)`/`solvedCount`/`markJudged(id, accepted)`; `components/ProgressMarker` draws the
+    icon (green check / amber, nothing for untouched). The list shows it in its first column plus
+    "You've solved N"; the workspace header shows it and calls `markJudged` on each final verdict so
+    it updates without a refetch. Solved is sticky client-side too, matching the backend. No
+    "show only unsolved" filter: the list is paged server-side, so that needs a backend filter.
+  - Not built yet: Run on samples/custom input (Phase 3).
 - **`@dev-practice` — admin problem-catalog screens**
   (`/admin/problems`, `/new`, `/:id/edit`, nested under `AdminLayout` — "Dev Practice → Problems"
   sidebar group). `pages/ProblemListPage.tsx`/`ProblemFormPage.tsx` copy `@content`'s

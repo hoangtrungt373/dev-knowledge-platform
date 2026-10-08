@@ -23,6 +23,8 @@ import { practiceApi } from '../api/practiceApi';
 import { DIFFICULTY_COLOR, DIFFICULTY_LABEL } from '../constants';
 import { isInProgress, useSubmissionPolling } from '../hooks/useSubmissionPolling';
 import { useSolutionDrafts } from '../hooks/useSolutionDrafts';
+import { useProblemProgress } from '../hooks/useProblemProgress';
+import ProgressMarker from '../components/ProgressMarker';
 import SolutionEditor from '../components/SolutionEditor';
 import SampleTestCases from '../components/SampleTestCases';
 import SubmissionVerdict from '../components/SubmissionVerdict';
@@ -97,9 +99,14 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
     storageKey: `practice-draft:${slug}`,
   });
 
+  const progress = useProblemProgress();
+
   const { submission, gaveUp, track } = useSubmissionPolling(
     id => practiceApi.getSubmission(id),
-    () => setHistoryKey(k => k + 1),
+    final => {
+      setHistoryKey(k => k + 1);
+      progress.markJudged(final.problemId, final.status === 'ACCEPTED');
+    },
   );
 
   const judging = submitting || (isInProgress(submission) && !gaveUp);
@@ -154,6 +161,7 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
           color={DIFFICULTY_COLOR[problem.difficulty]}
           variant="outlined"
         />
+        <ProgressMarker status={progress.statusOf(problem.id)} />
       </Stack>
 
       <Box sx={{ flex: 1, minHeight: 0 }}>

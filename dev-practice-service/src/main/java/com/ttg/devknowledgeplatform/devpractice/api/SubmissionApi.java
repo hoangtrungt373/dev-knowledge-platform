@@ -1,8 +1,11 @@
 package com.ttg.devknowledgeplatform.devpractice.api;
 
+import java.util.List;
+
 import com.ttg.devknowledgeplatform.common.annotation.CurrentUserId;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.CreateSubmissionRequest;
+import com.ttg.devknowledgeplatform.devpractice.dto.ProblemProgressResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.SubmissionResponse;
 
 import jakarta.validation.Valid;
@@ -20,9 +23,9 @@ import org.springframework.web.bind.annotation.RequestParam;
  * not role, scopes every caller to their own submissions (see
  * {@link com.ttg.devknowledgeplatform.devpractice.service.impl.SubmissionServiceImpl}).
  *
- * <p><b>Phase 1 scope:</b> {@code create} persists a submission as {@code PENDING} — there is no
- * judging pipeline behind this endpoint yet. See {@code Submission}'s Javadoc and this module's
- * own {@code CLAUDE.md} for the planned follow-up phase.
+ * <p>{@code create} saves a submission as {@code PENDING} and returns at once; the judge runs
+ * asynchronously after commit ({@code SubmissionJudgeEventListener}), so clients poll
+ * {@link #getById} until the status is final.
  */
 @RequestMapping("/api/v1/submissions")
 public interface SubmissionApi {
@@ -37,6 +40,17 @@ public interface SubmissionApi {
     @PostMapping
     ResponseEntity<SubmissionResponse> create(
             @CurrentUserId String userUuid, @Valid @RequestBody CreateSubmissionRequest request);
+
+    /**
+     * The caller's standing on every problem they've submitted to — {@code SOLVED} or
+     * {@code ATTEMPTED}; problems never submitted to are absent. Small by nature (one row per problem
+     * touched), so it isn't paged; the learner GUI loads it once to mark the problem list.
+     *
+     * @param userUuid the authenticated caller's Keycloak subject id
+     * @return {@code 200} with one entry per problem the caller has submitted to
+     */
+    @GetMapping("/progress")
+    ResponseEntity<List<ProblemProgressResponse>> progress(@CurrentUserId String userUuid);
 
     /**
      * Returns one of the caller's own submissions by its primary key.

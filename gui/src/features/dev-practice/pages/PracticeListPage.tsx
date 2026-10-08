@@ -25,6 +25,8 @@ import SearchIcon from '@mui/icons-material/Search';
 import { Difficulty, ProblemSummary, ProblemTagSummary } from '../types';
 import { practiceApi } from '../api/practiceApi';
 import { DIFFICULTIES, DIFFICULTY_COLOR, DIFFICULTY_LABEL } from '../constants';
+import { useProblemProgress } from '../hooks/useProblemProgress';
+import ProgressMarker from '../components/ProgressMarker';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import TableStatusRow from '@shared/components/TableStatusRow';
 
@@ -61,6 +63,7 @@ export default function PracticeListPage(): JSX.Element {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [allTags, setAllTags] = useState<ProblemTagSummary[]>([]);
+  const progress = useProblemProgress();
 
   /** Applies filter changes to the URL; any filter change starts again from page 0. */
   const updateParams = (changes: { q?: string; difficulty?: string; tags?: number[]; page?: number }) =>
@@ -121,6 +124,7 @@ export default function PracticeListPage(): JSX.Element {
         <Typography variant="body2" color="text.secondary">
           Solve coding problems in Java, Python or JavaScript — {total} problem{total !== 1 ? 's' : ''}
           {q || difficulty || tagIds.length ? ' match your filters' : ''}.
+          {progress.solvedCount > 0 && ` You've solved ${progress.solvedCount}.`}
         </Typography>
       </Box>
 
@@ -168,6 +172,8 @@ export default function PracticeListPage(): JSX.Element {
         <Table size="small">
           <TableHead>
             <TableRow>
+              {/* Solved / attempted marker — empty for untouched problems and for logged-out visitors. */}
+              <TableCell sx={{ width: 48 }} aria-label="Status" />
               <TableCell sx={{ fontWeight: 700 }}>Title</TableCell>
               <TableCell sx={{ fontWeight: 700, width: 120 }}>Difficulty</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Topics</TableCell>
@@ -177,7 +183,7 @@ export default function PracticeListPage(): JSX.Element {
             <TableStatusRow
               loading={loading}
               isEmpty={problems.length === 0}
-              colSpan={3}
+              colSpan={4}
               emptyMessage="No problems match these filters."
             />
             {!loading && problems.map(problem => {
@@ -190,6 +196,9 @@ export default function PracticeListPage(): JSX.Element {
                   onClick={() => navigate(`/practice/${problem.slug}`)}
                   sx={{ cursor: 'pointer' }}
                 >
+                  <TableCell sx={{ pr: 0 }}>
+                    <ProgressMarker status={progress.statusOf(problem.id)} />
+                  </TableCell>
                   <TableCell>
                     <Typography variant="body2" fontWeight={600}>{problem.title}</Typography>
                   </TableCell>

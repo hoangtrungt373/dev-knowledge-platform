@@ -1,8 +1,12 @@
 package com.ttg.devknowledgeplatform.devpractice.repository;
 
+import java.util.List;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
@@ -31,6 +35,31 @@ public interface SubmissionRepository extends JpaRepository<Submission, Integer>
      */
     boolean existsByProblem_IdAndKindAndStatusAndContractVersion(
             Integer problemId, SubmissionKind kind, SubmissionStatus status, Integer contractVersion);
+
+    /**
+     * One row per problem the user has submitted to, with how many of those submissions were
+     * accepted — the raw material for "solved / attempted" markers. Aggregated in the database
+     * (one {@code GROUP BY}, backed by {@code IDX_SUBMISSION_USER}) rather than loading every
+     * submission row: a learner can have hundreds of attempts but only one status per problem.
+     */
+    @Query("""
+            select s.problem.id as problemId,
+                   sum(case when s.status = :accepted then 1 else 0 end) as acceptedCount
+            from Submission s
+            where s.userUuid = :userUuid and s.kind = :kind
+            group by s.problem.id
+            """)
+    List<ProblemAttemptSummary> summarizeByProblem(
+            @Param("userUuid") String userUuid,
+            @Param("kind") SubmissionKind kind,
+            @Param("accepted") SubmissionStatus accepted);
+
+    /** Spring Data interface projection for {@link #summarizeByProblem} — aliases map to getters. */
+    interface ProblemAttemptSummary {
+        Integer getProblemId();
+
+        Long getAcceptedCount();
+    }
 
     /** Removes a problem's reference runs before the problem itself is deleted (no FK cascade). */
     long deleteByProblem_IdAndKind(Integer problemId, SubmissionKind kind);

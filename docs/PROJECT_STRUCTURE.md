@@ -2956,8 +2956,10 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     backend failed — not a verdict on the code) — Phase 2's
 │   │                                     SubmissionJudgeEventListener now actually produces every
 │   │                                     value, not just PENDING
-│   └── SubmissionKind.java             — USER (learner attempt) / REFERENCE (admin verification
-│                                         run; allowed on DRAFT, hidden from the user API)
+│   ├── SubmissionKind.java             — USER (learner attempt) / REFERENCE (admin verification
+│   │                                     run; allowed on DRAFT, hidden from the user API)
+│   └── ProblemProgressStatus.java      — ATTEMPTED / SOLVED: a learner's standing on a problem,
+│                                         derived from their USER submissions, never stored
 ├── harness/
 │   ├── LanguageHarness.java            — abstract; final buildProgram(problem, userCode) is the fixed
 │   │                                     prelude → user-code → generated-main skeleton; the
@@ -3069,7 +3071,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     findByProblem_IdAndKind (paged), countByProblem_IdAndKind
 │   │                                     (USER count guards ProblemService#delete),
 │   │                                     existsByProblem_IdAndKindAndStatusAndContractVersion
-│   │                                     (isVerified), deleteByProblem_IdAndKind (REFERENCE cleanup)
+│   │                                     (isVerified), deleteByProblem_IdAndKind (REFERENCE cleanup),
+│   │                                     summarizeByProblem (@Query GROUP BY problem → accepted count,
+│   │                                     ProblemAttemptSummary projection; backs listProgress)
 │   ├── ProblemTagRepository.java      — existsBySlug/…AndIdNot, existsByNameIgnoreCase/…AndIdNot,
 │   │                                     findByNameContainingIgnoreCase(Pageable)
 │   ├── ProblemTagAssignmentRepository.java — countByProblemTag_Id (guards tag delete)
@@ -3102,7 +3106,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     only) + createReference(admin, command, publishOnAccept)
 │   │                                     (no publish check) /
 │   │                                     listReferenceSubmissions / getReferenceSubmission (must
-│   │                                     belong to the path's problem)
+│   │                                     belong to the path's problem) + listProgress(user) →
+│   │                                     List<ProblemProgress> (service record: problemId, status)
 │   ├── ProblemTagService.java (+ impl/) — tag catalog CRUD + listAll (sorted by name); delete
 │   │                                     refused while in use (PROBLEM_TAG_IN_USE)
 │   ├── ProblemCommands.java           — Create/Update records (+ tagIds: Create null = none;
@@ -3191,7 +3196,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
     │                                     wrapping, just the signature)
     └── SubmissionApi.java (+ SubmissionController.java)        — /api/v1/submissions: create,
                                           getById, list — every method takes @CurrentUserId String
-                                          userUuid; USER submissions only
+                                          userUuid; USER submissions only; GET /progress →
+                                          List<ProblemProgressResponse> {problemId, status}
     ├── ProblemReferenceSubmissionApi.java (+ ProblemReferenceSubmissionController.java) —
                                           /api/v1/admin/problems/{problemId}/reference-submissions:
                                           create (201, ReferenceSubmissionRequest), getById, list

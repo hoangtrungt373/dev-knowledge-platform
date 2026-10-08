@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
@@ -17,12 +18,15 @@ import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
+import com.ttg.devknowledgeplatform.devpractice.enums.ProblemProgressStatus;
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionKind;
+import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 import com.ttg.devknowledgeplatform.devpractice.event.SubmissionCreatedEvent;
 import com.ttg.devknowledgeplatform.devpractice.exception.DevPracticeErrorCode;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
+import com.ttg.devknowledgeplatform.devpractice.service.ProblemProgress;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionCommands;
 
 /** The user vs. reference split: who may submit to a draft, and who can see what. */
@@ -85,6 +89,23 @@ class SubmissionServiceImplTest {
         assertThatThrownBy(() -> service.getReferenceSubmission(5, 42))
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(DevPracticeErrorCode.SUBMISSION_NOT_FOUND));
+    }
+
+    @Test
+    void anyAcceptedSubmissionMakesAProblemSolvedOtherwiseItIsOnlyAttempted() {
+        when(submissionRepository.summarizeByProblem("user-1", SubmissionKind.USER, SubmissionStatus.ACCEPTED))
+                .thenReturn(List.of(summary(5, 2), summary(6, 0)));
+
+        assertThat(service.listProgress("user-1")).containsExactly(
+                new ProblemProgress(5, ProblemProgressStatus.SOLVED),
+                new ProblemProgress(6, ProblemProgressStatus.ATTEMPTED));
+    }
+
+    private static SubmissionRepository.ProblemAttemptSummary summary(int problemId, long accepted) {
+        return new SubmissionRepository.ProblemAttemptSummary() {
+            @Override public Integer getProblemId() { return problemId; }
+            @Override public Long getAcceptedCount() { return accepted; }
+        };
     }
 
     private static Problem problem(ContentStatus status) {

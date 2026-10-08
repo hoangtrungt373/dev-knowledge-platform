@@ -1,5 +1,6 @@
 package com.ttg.devknowledgeplatform.devpractice.api.impl;
 
+import java.util.List;
 import java.util.Set;
 
 import org.springframework.data.domain.Page;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.devpractice.api.SubmissionApi;
 import com.ttg.devknowledgeplatform.devpractice.dto.CreateSubmissionRequest;
+import com.ttg.devknowledgeplatform.devpractice.dto.ProblemProgressResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.SubmissionResponse;
 import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
 import com.ttg.devknowledgeplatform.devpractice.mapper.SubmissionMapper;
@@ -36,6 +38,13 @@ public class SubmissionController implements SubmissionApi {
                 request.getProblemId(), request.getLanguage(), request.getSourceCode());
         Submission created = submissionService.create(userUuid, command);
         return ResponseEntity.status(HttpStatus.CREATED).body(submissionMapper.toResponse(created));
+    }
+
+    @Override
+    public ResponseEntity<List<ProblemProgressResponse>> progress(String userUuid) {
+        return ResponseEntity.ok(submissionService.listProgress(userUuid).stream()
+                .map(submissionMapper::toResponse)
+                .toList());
     }
 
     @Override

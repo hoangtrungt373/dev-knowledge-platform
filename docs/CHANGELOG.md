@@ -22,6 +22,15 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **Learner progress markers (Phase 2).** `dev-practice-service`: new `GET /api/v1/submissions/progress`
+  (`SubmissionApi#progress`) — the caller's `SOLVED`/`ATTEMPTED` status per problem they've submitted
+  to, derived by one `GROUP BY` (`SubmissionRepository#summarizeByProblem` with an interface
+  projection; existing `IDX_SUBMISSION_USER`, no migration); new `ProblemProgressStatus` enum,
+  `service.ProblemProgress` record, `ProblemProgressResponse` DTO, `SubmissionService#listProgress`
+  (+1 test, 115 total). Already covered by the gateway's `/api/v1/submissions/**` route. `gui`: new
+  `hooks/useProblemProgress` and `components/ProgressMarker`; the practice list gets a status column
+  and a solved count, the workspace header a marker that updates when a verdict lands. Also fixed
+  `SubmissionApi`'s stale "no judging pipeline yet" Javadoc.
 - **`gui`: learner practice pages (Phase 1).** `/practice` — the published-problem catalog, filters
   (search, difficulty, topics) kept in the URL; `/practice/:slug` — a resizable workspace with the
   description, sample cases (`nums = [1,2,3,3]` style) and the learner's own submissions on the

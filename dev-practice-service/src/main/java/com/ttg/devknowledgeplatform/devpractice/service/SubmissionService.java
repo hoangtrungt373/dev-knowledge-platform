@@ -1,5 +1,7 @@
 package com.ttg.devknowledgeplatform.devpractice.service;
 
+import java.util.List;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -14,6 +16,13 @@ public interface SubmissionService {
 
     /** A user's attempt — only against a {@code PUBLISHED} problem (any other is "not found"). */
     Submission create(String userUuid, SubmissionCommands.Create command);
+
+    /**
+     * The caller's standing on every problem they've submitted to: {@code SOLVED} once any submission
+     * was accepted, {@code ATTEMPTED} otherwise. Problems never submitted to are absent. Counts
+     * {@code USER} submissions only — an admin's reference runs never mark a problem solved for them.
+     */
+    List<ProblemProgress> listProgress(String userUuid);
 
     /** One of the caller's own {@code USER} submissions — a reference submission is "not found" here. */
     Submission getSubmission(String userUuid, Integer id);

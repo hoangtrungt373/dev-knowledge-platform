@@ -1,5 +1,7 @@
 package com.ttg.devknowledgeplatform.devpractice.service.impl;
 
+import java.util.List;
+
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -10,12 +12,14 @@ import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.common.exception.Validator;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
+import com.ttg.devknowledgeplatform.devpractice.enums.ProblemProgressStatus;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionKind;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 import com.ttg.devknowledgeplatform.devpractice.event.SubmissionCreatedEvent;
 import com.ttg.devknowledgeplatform.devpractice.exception.DevPracticeErrorCode;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
+import com.ttg.devknowledgeplatform.devpractice.service.ProblemProgress;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionCommands;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionService;
 
@@ -58,6 +62,16 @@ public class SubmissionServiceImpl implements SubmissionService {
         Validator.isTrue(submission.getKind() == SubmissionKind.USER && submission.getUserUuid().equals(userUuid),
                 DevPracticeErrorCode.SUBMISSION_NOT_FOUND, id);
         return submission;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProblemProgress> listProgress(String userUuid) {
+        return submissionRepository.summarizeByProblem(userUuid, SubmissionKind.USER, SubmissionStatus.ACCEPTED).stream()
+                .map(row -> new ProblemProgress(row.getProblemId(), row.getAcceptedCount() > 0
+                        ? ProblemProgressStatus.SOLVED
+                        : ProblemProgressStatus.ATTEMPTED))
+                .toList();
     }
 
     @Override

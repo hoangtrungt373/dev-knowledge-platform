@@ -162,3 +162,12 @@ export interface ProblemSummary {
   /** Sorted by name. */
   tags: ProblemTagSummary[];
 }
+
+/** `enums.ProblemProgressStatus` — a learner's standing on a problem; absent = never submitted. */
+export type ProblemProgressStatus = 'ATTEMPTED' | 'SOLVED';
+
+/** `ProblemProgressResponse` — one problem the caller has submitted to. */
+export interface ProblemProgress {
+  problemId: number;
+  status: ProblemProgressStatus;
+}
