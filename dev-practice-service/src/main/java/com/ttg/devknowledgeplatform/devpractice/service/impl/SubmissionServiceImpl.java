@@ -40,14 +40,14 @@ public class SubmissionServiceImpl implements SubmissionService {
         // actually visible to them.
         Validator.isTrue(ContentStatus.PUBLISHED.equals(problem.getStatus()),
                 DevPracticeErrorCode.PROBLEM_NOT_FOUND, command.problemId());
-        return saveAndJudge(problem, userUuid, command, SubmissionKind.USER);
+        return saveAndJudge(problem, userUuid, command, SubmissionKind.USER, false);
     }
 
     @Override
-    public Submission createReference(String adminUuid, SubmissionCommands.Create command) {
+    public Submission createReference(String adminUuid, SubmissionCommands.Create command, boolean publishOnAccept) {
         // No status check, unlike create: a reference run exists to verify a problem *before* it is
         // published. Admin-only by path (/api/v1/admin/**), not by anything checked here.
-        return saveAndJudge(findProblem(command.problemId()), adminUuid, command, SubmissionKind.REFERENCE);
+        return saveAndJudge(findProblem(command.problemId()), adminUuid, command, SubmissionKind.REFERENCE, publishOnAccept);
     }
 
     @Override
@@ -87,7 +87,8 @@ public class SubmissionServiceImpl implements SubmissionService {
 
     /** Persists a PENDING submission and hands it to the asynchronous judge. */
     private Submission saveAndJudge(
-            Problem problem, String submitterUuid, SubmissionCommands.Create command, SubmissionKind kind) {
+            Problem problem, String submitterUuid, SubmissionCommands.Create command, SubmissionKind kind,
+            boolean publishOnAccept) {
         Submission saved = submissionRepository.save(Submission.builder()
                 .problem(problem)
                 .userUuid(submitterUuid)
@@ -95,6 +96,7 @@ public class SubmissionServiceImpl implements SubmissionService {
                 .sourceCode(command.sourceCode())
                 .status(SubmissionStatus.PENDING)
                 .kind(kind)
+                .publishOnAccept(publishOnAccept)
                 .build());
         // Published now, but only actually delivered after this transaction commits — see
         // SubmissionJudgeEventListener's Javadoc for why it listens with phase = AFTER_COMMIT

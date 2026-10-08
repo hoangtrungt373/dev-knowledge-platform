@@ -41,5 +41,17 @@ public interface ProblemService {
      */
     boolean isVerified(Problem problem);
 
+    /**
+     * Publishes a {@code DRAFT} problem on behalf of a just-ACCEPTED publish-on-accept reference run.
+     * Does nothing — returning {@code false} — when publishing would no longer reflect what was
+     * verified: the problem isn't a draft anymore (an admin published or archived it meanwhile), or
+     * its contract changed while the run was being judged ({@code judgedContractVersion} is stale).
+     *
+     * @param problemId             the problem to publish
+     * @param judgedContractVersion the contract version the accepted run was judged against
+     * @return {@code true} if the problem was published by this call
+     */
+    boolean publishIfVerified(Integer problemId, Integer judgedContractVersion);
+
     Page<Problem> list(Pageable pageable, Difficulty difficulty, ContentStatus status, String q, Set<Integer> tagIds);
 }

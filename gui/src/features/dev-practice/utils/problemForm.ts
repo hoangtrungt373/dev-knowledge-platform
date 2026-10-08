@@ -27,6 +27,8 @@ export interface Signature {
 export interface ProblemFormErrors {
   title?: string;
   description?: string;
+  /** Why the chosen status can't be saved (publishing an unverified contract). */
+  status?: string;
   methodName?: string;
   signature?: string;
   parameters?: string;
@@ -67,6 +69,16 @@ export function sameSignature(a: Signature, b: Signature): boolean {
     a.parameters.length === b.parameters.length &&
     a.parameters.every((p, i) => p.name === b.parameters[i].name && p.type === b.parameters[i].type)
   );
+}
+
+/**
+ * A comparable fingerprint of the grading contract — the signature plus the ordered test data —
+ * mirroring `ProblemServiceImpl#signatureChanged`/`#testDataChanged`: values are trimmed, and the
+ * `sample` flag is left out (it changes what users see, not what counts as correct). Two forms with
+ * the same fingerprint would leave the backend's `contractVersion` unchanged.
+ */
+export function contractFingerprint(signature: Signature, testCases: { input: string; expectedOutput: string }[]): string {
+  return JSON.stringify([signature, testCases.map(t => [t.input.trim(), t.expectedOutput.trim()])]);
 }
 
 /** Builds editable rows from a loaded problem (parameters sorted by their persisted position). */
@@ -110,6 +122,9 @@ interface ValidateInput {
   /** The signature as last loaded from the server (edit mode only). */
   originalSignature: Signature | null;
   currentSignature: Signature;
+  /** Set when the chosen status is PUBLISHED but the backend would refuse it — see
+   * `ProblemFormPage#publishBlockedReason`. */
+  publishBlockedReason?: string | null;
 }
 
 /**
@@ -162,12 +177,14 @@ export function validateProblemForm(v: ValidateInput): ProblemFormErrors {
     e.signature = 'The signature of a published problem can\'t change. Revert it, or set the status to Draft in the same save.';
   }
 
+  if (v.publishBlockedReason) e.status = v.publishBlockedReason;
+
   return e;
 }
 
 export function hasErrors(e: ProblemFormErrors): boolean {
   return Boolean(
-    e.title || e.description || e.methodName || e.signature || e.parameters || e.testCases ||
+    e.title || e.description || e.status || e.methodName || e.signature || e.parameters || e.testCases ||
       Object.keys(e.paramNames).length ||
       Object.keys(e.testCaseInputs).length ||
       Object.keys(e.testCaseOutputs).length,

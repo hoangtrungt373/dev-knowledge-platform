@@ -1,4 +1,4 @@
-import { Difficulty, ParamType, ProblemStatus } from './types';
+import { Difficulty, ParamType, ProblemStatus, ProgrammingLanguage, SubmissionStatus } from './types';
 
 // Shared by the list page (chips/filters) and the form page (selects), so a value never reads
 // differently between the two.
@@ -42,3 +42,39 @@ export const PARAM_TYPES: { value: ParamType; label: string; example: string }[]
 export const PARAM_TYPE_LABEL: Record<ParamType, string> = Object.fromEntries(
   PARAM_TYPES.map(t => [t.value, t.label]),
 ) as Record<ParamType, string>;
+
+export const LANGUAGES: { value: ProgrammingLanguage; label: string }[] = [
+  { value: 'JAVA', label: 'Java' },
+  { value: 'PYTHON', label: 'Python' },
+  { value: 'JAVASCRIPT', label: 'JavaScript' },
+];
+
+export const LANGUAGE_LABEL: Record<ProgrammingLanguage, string> = Object.fromEntries(
+  LANGUAGES.map(l => [l.value, l.label]),
+) as Record<ProgrammingLanguage, string>;
+
+/** Statuses that mean "the judge hasn't finished yet" — keep polling while a submission has one. */
+export const IN_PROGRESS_STATUSES: SubmissionStatus[] = ['PENDING', 'RUNNING'];
+
+export const SUBMISSION_STATUS_LABEL: Record<SubmissionStatus, string> = {
+  PENDING: 'Queued',
+  RUNNING: 'Running',
+  ACCEPTED: 'Accepted',
+  WRONG_ANSWER: 'Wrong answer',
+  COMPILE_ERROR: 'Compile error',
+  RUNTIME_ERROR: 'Runtime error',
+  TIME_LIMIT_EXCEEDED: 'Time limit exceeded',
+  JUDGE_ERROR: 'Judge error',
+};
+
+export const SUBMISSION_STATUS_COLOR: Record<SubmissionStatus, 'default' | 'info' | 'success' | 'error' | 'warning'> = {
+  PENDING: 'default',
+  RUNNING: 'info',
+  ACCEPTED: 'success',
+  WRONG_ANSWER: 'error',
+  COMPILE_ERROR: 'error',
+  RUNTIME_ERROR: 'error',
+  TIME_LIMIT_EXCEEDED: 'error',
+  // Not a verdict on the code — the judge backend failed.
+  JUDGE_ERROR: 'warning',
+};

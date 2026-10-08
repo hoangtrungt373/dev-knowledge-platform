@@ -66,6 +66,11 @@ export interface Problem {
   tags: ProblemTagSummary[];
   publishedAt: string | null;
   createdAt: string;
+  /** Bumped by the backend whenever the signature or the test data changes. */
+  contractVersion: number;
+  /** Admin responses only: an ACCEPTED reference submission exists at the current
+   * `contractVersion`, i.e. the problem may be published. */
+  verified?: boolean;
 }
 
 /** `AdminProblemSummaryResponse` — one row of the admin list. */
@@ -98,6 +103,45 @@ export interface ProblemPayload {
 
 /** `enums.ProgrammingLanguage` — a code template's language. */
 export type ProgrammingLanguage = 'JAVA' | 'PYTHON' | 'JAVASCRIPT';
+
+/** `enums.SubmissionStatus` — PENDING/RUNNING are the only non-final values. */
+export type SubmissionStatus =
+  | 'PENDING'
+  | 'RUNNING'
+  | 'ACCEPTED'
+  | 'WRONG_ANSWER'
+  | 'COMPILE_ERROR'
+  | 'RUNTIME_ERROR'
+  | 'TIME_LIMIT_EXCEEDED'
+  | 'JUDGE_ERROR';
+
+/** `enums.SubmissionKind` — a learner's attempt vs. an admin's verification run. */
+export type SubmissionKind = 'USER' | 'REFERENCE';
+
+/** `SubmissionResponse`. */
+export interface Submission {
+  id: number;
+  problemId: number;
+  problemTitle: string;
+  language: ProgrammingLanguage;
+  sourceCode: string;
+  status: SubmissionStatus;
+  passedTestCases: number | null;
+  totalTestCases: number | null;
+  errorMessage: string | null;
+  submittedAt: string;
+  kind: SubmissionKind;
+  /** The problem's `contractVersion` this was judged against; null until judging starts. */
+  contractVersion: number | null;
+  /** REFERENCE only: publish the draft problem once this run is ACCEPTED. */
+  publishOnAccept: boolean;
+}
+
+/** `StarterCodeResponse`. */
+export interface StarterCode {
+  language: ProgrammingLanguage;
+  code: string;
+}
 
 /** `ParsedSignatureResponse` — a signature read out of a code template. A non-empty
  * `alternatives` list means the template's spelling was ambiguous (Python `int`, JavaScript

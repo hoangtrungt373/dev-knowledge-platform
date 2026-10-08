@@ -16,4 +16,7 @@ public class ReferenceSubmissionRequest {
 
     @NotBlank(message = "Source code is required")
     private String sourceCode;
+
+    /** Publish the problem automatically if this run is ACCEPTED while it's still a draft. Optional. */
+    private boolean publishOnAccept;
 }

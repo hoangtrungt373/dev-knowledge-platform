@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.devpractice.event;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.hibernate.Hibernate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -10,7 +11,6 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import com.ttg.devknowledgeplatform.devpractice.entity.MethodParameter;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
 import com.ttg.devknowledgeplatform.devpractice.entity.TestCase;
@@ -23,6 +23,7 @@ import com.ttg.devknowledgeplatform.devpractice.judge.JudgeUnavailableException;
 import com.ttg.devknowledgeplatform.devpractice.judge.Judge0SubmissionResult;
 import com.ttg.devknowledgeplatform.devpractice.judge.OutputMatcher;
 import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
+import com.ttg.devknowledgeplatform.devpractice.service.ProblemService;
 
 import com.ttg.devknowledgeplatform.infra.event.AsyncEventHandler;
 
@@ -60,6 +61,11 @@ import lombok.extern.slf4j.Slf4j;
  * one remaining gap: if {@link #saveOutcome} itself fails, e.g. the database is down, or the process
  * dies mid-judging, the row still stays {@code RUNNING} — that needs a stale-{@code RUNNING} sweeper,
  * not handled here.)
+ *
+ * <p><b>Publish-on-accept:</b> an {@code ACCEPTED} run flagged {@link Submission#getPublishOnAccept()}
+ * publishes its problem in the same transaction that saves the verdict, via
+ * {@link ProblemService#publishIfVerified} — which re-checks that the problem is still a draft at the
+ * judged contract version, so an edit made while judging can't be published unverified.
  */
 @Component
 @Slf4j
@@ -70,14 +76,17 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
     private final JudgeClient judgeClient;
     private final OutputMatcher outputMatcher;
     private final TransactionTemplate transactionTemplate;
+    private final ProblemService problemService;
 
     public SubmissionJudgeEventListener(
             SubmissionRepository submissionRepository,
+            ProblemService problemService,
             LanguageHarnessRegistry harnessRegistry,
             JudgeClient judgeClient,
             OutputMatcher outputMatcher,
             PlatformTransactionManager transactionManager) {
         this.submissionRepository = submissionRepository;
+        this.problemService = problemService;
         this.harnessRegistry = harnessRegistry;
         this.judgeClient = judgeClient;
         this.outputMatcher = outputMatcher;
@@ -112,13 +121,15 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
         }
 
         Problem problem = submission.getProblem();
-        // Copy the lazy collections into plain lists while the session is still open — the
-        // returned JudgingInput outlives this transaction, so problem/testCases become detached
-        // the moment this method returns; already-initialized associations stay readable on a
-        // detached entity, an un-touched lazy proxy would not.
-        List<MethodParameter> parameters = new ArrayList<>(problem.getParameters());
+        // Load the lazy collections while the session is still open — the returned JudgingInput
+        // outlives this transaction, so problem becomes detached the moment this method returns;
+        // an already-initialized collection stays readable on a detached entity, an untouched lazy
+        // one would not. Initialize in place, never replace: Problem.parameters is orphanRemoval,
+        // and swapping a managed entity's collection for a new list makes Hibernate refuse to
+        // commit ("A collection with cascade=all-delete-orphan was no longer referenced by the
+        // owning entity instance") — it tracks that exact collection object to compute deletions.
+        Hibernate.initialize(problem.getParameters());
         List<TestCase> testCases = new ArrayList<>(problem.getTestCases());
-        problem.setParameters(parameters);
 
         submission.setStatus(SubmissionStatus.RUNNING);
         submission.setTotalTestCases(testCases.size());
@@ -180,6 +191,9 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
             submission.setPassedTestCases(outcome.passedTestCases());
             submission.setErrorMessage(outcome.errorMessage());
             submissionRepository.save(submission);
+            if (outcome.status() == SubmissionStatus.ACCEPTED && Boolean.TRUE.equals(submission.getPublishOnAccept())) {
+                problemService.publishIfVerified(submission.getProblem().getId(), submission.getContractVersion());
+            }
         });
     }
 

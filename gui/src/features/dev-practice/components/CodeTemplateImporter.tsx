@@ -12,18 +12,11 @@ import {
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import CodeMirror from '@uiw/react-codemirror';
 import { EditorView } from '@codemirror/view';
-import { java } from '@codemirror/lang-java';
-import { python } from '@codemirror/lang-python';
-import { javascript } from '@codemirror/lang-javascript';
 import { ParsedSignature, ProgrammingLanguage } from '../types';
 import { devPracticeApi } from '../api/devPracticeApi';
 import SubmitButton from '@shared/components/SubmitButton';
-
-const LANGUAGES: { value: ProgrammingLanguage; label: string }[] = [
-  { value: 'JAVA', label: 'Java' },
-  { value: 'PYTHON', label: 'Python' },
-  { value: 'JAVASCRIPT', label: 'JavaScript' },
-];
+import { LANGUAGES } from '../constants';
+import { LANGUAGE_EXTENSIONS } from '../utils/codeLanguages';
 
 // What each language's template has to look like — Python needs type hints and JavaScript needs
 // JSDoc, since neither spells types in the signature itself.
@@ -32,8 +25,6 @@ const PLACEHOLDERS: Record<ProgrammingLanguage, string> = {
   PYTHON: 'class Solution:\n    def evalRPN(self, tokens: List[str]) -> int:\n        pass',
   JAVASCRIPT: '/**\n * @param {string[]} tokens\n * @return {number}\n */\nvar evalRPN = function(tokens) {\n\n};',
 };
-
-const LANGUAGE_EXTENSIONS = { JAVA: java, PYTHON: python, JAVASCRIPT: javascript } as const;
 
 const chrome = EditorView.theme({
   '&': { fontSize: '0.8rem' },

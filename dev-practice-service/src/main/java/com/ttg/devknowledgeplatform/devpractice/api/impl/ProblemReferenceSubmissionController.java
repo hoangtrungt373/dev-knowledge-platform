@@ -28,7 +28,7 @@ public class ProblemReferenceSubmissionController implements ProblemReferenceSub
         SubmissionCommands.Create command =
                 new SubmissionCommands.Create(problemId, request.getLanguage(), request.getSourceCode());
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(submissionMapper.toResponse(submissionService.createReference(adminUuid, command)));
+                .body(submissionMapper.toResponse(submissionService.createReference(adminUuid, command, request.isPublishOnAccept())));
     }
 
     @Override

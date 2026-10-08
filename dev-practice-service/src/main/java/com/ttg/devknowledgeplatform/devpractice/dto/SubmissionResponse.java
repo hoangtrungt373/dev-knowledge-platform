@@ -18,5 +18,7 @@ public record SubmissionResponse(
         String errorMessage,
         Instant submittedAt,
         SubmissionKind kind,
-        Integer contractVersion) {
+        Integer contractVersion,
+        // REFERENCE only: the run was asked to publish its draft problem once ACCEPTED.
+        Boolean publishOnAccept) {
 }

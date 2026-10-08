@@ -26,9 +26,12 @@ public interface SubmissionService {
      * Once judged {@code ACCEPTED}, it verifies the problem at the contract version it was judged
      * against.
      *
+     * @param publishOnAccept also publish the problem if this run is ACCEPTED and the problem is
+     *                        still a DRAFT at the judged contract version (see
+     *                        {@code ProblemService#publishIfVerified})
      * @throws com.ttg.devknowledgeplatform.common.exception.ResourceNotFoundException {@code PROBLEM_NOT_FOUND}
      */
-    Submission createReference(String adminUuid, SubmissionCommands.Create command);
+    Submission createReference(String adminUuid, SubmissionCommands.Create command, boolean publishOnAccept);
 
     /** Every admin's reference runs for one problem, for the verification panel. */
     Page<Submission> listReferenceSubmissions(Integer problemId, Pageable pageable);

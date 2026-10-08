@@ -37,8 +37,33 @@ section again. Full unabridged entry-by-entry history for all four lives in
   migration `DKP-0056` (`PROBLEM.CONTRACT_VERSION`, `SUBMISSION.KIND` + `CKC_SUBMISSION_KIND`,
   `SUBMISSION.CONTRACT_VERSION`, partial index `IDX_SUBMISSION_ACCEPTED_REFERENCE`). New
   `SubmissionServiceImplTest` plus six publish-verification cases in `ProblemServiceImplTest`.
-  Not yet built: the admin GUI's reference-solution panel (Phase 2) and seed-file
-  `referenceSolution` + publish-on-accept (Phase 3).
+  Seed-file `referenceSolution` + publish-on-accept landed in Phase 3 (below).
+- **`dev-practice-service` + `gui`: reference-solution panel on the admin problem form (Phase 2 of
+  3).** New `components/ReferenceSolutionPanel.tsx` (edit mode): language toggle + CodeMirror editor
+  pre-filled with starter code, "Run reference" submits a REFERENCE submission and polls it until
+  judged, then shows the verdict (passed/total, error output), a Verified chip, and the last 5 runs
+  (marked current/outdated by `contractVersion`, with "Load code"). New backend endpoint
+  `GET /api/v1/admin/problems/{id}/starter-code?language=` (any status — the public one only serves
+  published problems). GUI types/API/constants for submissions (`Submission`, `SubmissionStatus`,
+  `SubmissionKind`, `StarterCode`, `Problem.contractVersion`/`verified`), new
+  `utils/problemForm.ts#contractFingerprint` and `utils/codeLanguages.ts`.
+- **`dev-practice-service`: publish-on-accept + seed reference solutions (Phase 3 of 3).** New
+  migration `DKP-0057` (`SUBMISSION.PUBLISH_ON_ACCEPT`), `Submission.publishOnAccept`, new
+  `ProblemService#publishIfVerified(problemId, judgedContractVersion)`, called by
+  `SubmissionJudgeEventListener` for an ACCEPTED publish-on-accept run (no-op unless the problem is
+  still `DRAFT` at the judged contract version). `SubmissionService#createReference` gained a
+  `publishOnAccept` parameter; `ReferenceSubmissionRequest` gained an optional `publishOnAccept`
+  field. Seed files gained `referenceSolution: {language, code}` — required for `status: PUBLISHED`,
+  which `ProblemSeeder` now reaches by creating a `DRAFT` and submitting the solution as a
+  publish-on-accept reference. Evaluate Reverse Polish Notation carries a Java reference and is
+  `status: PUBLISHED` again. `ProblemSeederTest` now compiles that reference with `javax.tools` and
+  runs it against every test case (replacing its own copy of the solution); new tests for
+  `publishIfVerified` and the listener's publish hook (113 tests total).
+- **`gui` reference-solution panel: "Publish if accepted" checkbox.** Shown for draft problems;
+  sends the reference request's `publishOnAccept` flag, so verifying and publishing is one step. The
+  page refetches the problem afterwards and updates only its saved state and status field, then
+  shows whether it was actually published. `SubmissionResponse` gained `publishOnAccept` so the
+  panel learns it from the polled submission.
 
 - **New module `dev-practice-service` — a LeetCode/NeetCode-style coding practice platform, Phase 1
   (problem catalog + submission persistence, no judging yet), own port `8088`.** Built directly
@@ -366,7 +391,14 @@ section again. Full unabridged entry-by-entry history for all four lives in
   live until their contract is next edited. Until the Phase 2 GUI panel exists, the admin form's
   Publish action returns 409 for any problem without a reference. Deleting a problem now ignores
   (and removes) its `REFERENCE` submissions; only `USER` submissions block a delete. The seeded
-  Evaluate Reverse Polish Notation problem is now seeded as `DRAFT`.
+  Evaluate Reverse Polish Notation problem was seeded as `DRAFT` until Phase 3 restored
+  `PUBLISHED` via publish-on-accept.
+- **`gui` admin problem form: publishing is gated and saving no longer leaves the page.** The
+  Published status option is disabled (with the reason shown under it) until the saved problem is
+  verified and the form has no unsaved signature/test-case changes, which replaces the Phase 1 "409 on
+  Publish" gap. Creating a problem now opens its edit page (to run a reference next), and saving an
+  existing problem stays on the page instead of returning to the list. `CodeTemplateImporter` now
+  takes its language list and CodeMirror language map from shared `constants.ts`/`utils/codeLanguages.ts`.
 
 - **`dev-practice-service`: `GET /api/v1/admin/problems` now returns `AdminProblemSummaryResponse`
   rows instead of `ProblemSummaryResponse`** — the admin list needed `status`; the public list
@@ -403,6 +435,15 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Fixed
 
+- **`dev-practice-service`: every judging run failed on a real database** with `JpaSystemException: A
+  collection with cascade="all-delete-orphan" was no longer referenced by the owning entity instance:
+  Problem.parameters`. `SubmissionJudgeEventListener#loadAndMarkRunning` replaced the managed
+  problem's orphan-removal `parameters` collection with a copied list to keep it readable after
+  detaching; Hibernate refuses to commit a swapped orphan-removal collection, so the transaction rolled
+  back and the submission stayed `PENDING`. Unit tests (mocked repository) couldn't see it; it surfaced
+  on the first real run, the Phase 3 seeder's reference submission. Now initialized in place
+  (`Hibernate.initialize`); `SubmissionJudgeEventListenerTest` asserts the collection instance is
+  unchanged.
 - **Keycloak crash-looped on a fresh database: `docker/keycloak/realm-export.json` used
   `hideOnLoginPage`**, a field name Keycloak 26 (`quay.io/keycloak/keycloak:26.0`) no longer knows
   — its importer fails on unknown fields (`Unrecognized field "hideOnLoginPage"`). Renamed to

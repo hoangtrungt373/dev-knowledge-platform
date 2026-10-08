@@ -9,8 +9,10 @@ import com.ttg.devknowledgeplatform.devpractice.dto.CreateProblemRequest;
 import com.ttg.devknowledgeplatform.devpractice.dto.ParseTemplateRequest;
 import com.ttg.devknowledgeplatform.devpractice.dto.ParsedSignatureResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
+import com.ttg.devknowledgeplatform.devpractice.dto.StarterCodeResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.UpdateProblemRequest;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 
 import jakarta.validation.Valid;
 
@@ -85,6 +87,18 @@ public interface ProblemApi {
      */
     @GetMapping("/{id}")
     ResponseEntity<ProblemResponse> getById(@PathVariable Integer id);
+
+    /**
+     * Returns the method-signature stub for a problem in any status — the admin counterpart of the
+     * public {@code /starter-code} endpoint, which only serves published problems. The admin form
+     * uses it to pre-fill the reference-solution editor of a draft.
+     *
+     * @param id       problem primary key
+     * @param language language to render the stub in
+     * @return {@code 200} with the starter code, rendered from the problem's <em>saved</em> signature
+     */
+    @GetMapping("/{id}/starter-code")
+    ResponseEntity<StarterCodeResponse> getStarterCode(@PathVariable Integer id, @RequestParam ProgrammingLanguage language);
 
     /**
      * Returns a paginated, optionally filtered list of problems, in any status.

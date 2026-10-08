@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  Alert,
   Box,
   Button,
   FormControl,
@@ -18,6 +19,7 @@ import { Difficulty, ParamType, ParsedSignature, Problem, ProblemStatus, Problem
 import { devPracticeApi } from '../api/devPracticeApi';
 import { DIFFICULTIES, DIFFICULTY_LABEL, STATUSES, STATUS_LABEL } from '../constants';
 import {
+  contractFingerprint,
   EMPTY_ERRORS,
   hasErrors,
   nextRowKey,
@@ -33,6 +35,7 @@ import {
 import MethodSignatureEditor, { SignatureTypeHints } from '../components/MethodSignatureEditor';
 import CodeTemplateImporter from '../components/CodeTemplateImporter';
 import TestCaseEditor from '../components/TestCaseEditor';
+import ReferenceSolutionPanel from '../components/ReferenceSolutionPanel';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import FullPageLoader from '@shared/components/FullPageLoader';
 import SubmitButton from '@shared/components/SubmitButton';
@@ -41,6 +44,7 @@ import TagPicker from '@shared/components/TagPicker';
 import { useStagedTagPicker } from '@shared/hooks/useStagedTagPicker';
 
 const LIST_PATH = '/admin/problems';
+const editPath = (id: number) => `${LIST_PATH}/${id}/edit`;
 
 function formatDateTime(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
@@ -51,6 +55,11 @@ function formatDateTime(iso: string | null): string {
  * Main column: title, description, method signature, test cases. Sidebar: difficulty, status, a
  * tag chip picker, and (edit mode) read-only slug/dates. The whole problem, including every parameter and test case,
  * is sent in one create/update call — the backend replaces both lists wholesale.
+ *
+ * Publishing needs an ACCEPTED reference solution at the problem's current contract version
+ * (`ReferenceSolutionPanel`), and a reference can only be judged against a *saved* problem — so a
+ * new problem is always created as a Draft and the page then moves to its edit view, and saving an
+ * existing problem stays on the page (re-seeded from the response) instead of returning to the list.
  */
 export default function ProblemFormPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
@@ -85,25 +94,32 @@ export default function ProblemFormPage(): JSX.Element {
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
 
+  /** Seeds every field from a server response — on first load, and again after each save. */
+  const applyProblem = (problem: Problem) => {
+    const rows = rowsFromProblem(problem);
+    setTitle(problem.title);
+    setDescription(problem.description);
+    setDifficulty(problem.difficulty);
+    setStatus(problem.status);
+    setMethodName(problem.methodName);
+    setReturnType(problem.returnType);
+    setParams(rows.params);
+    setTestCases(rows.testCases);
+    setSelectedTagIds(new Set(problem.tags.map(t => t.id)));
+    setLoaded(problem);
+    setOriginalSignature(signatureOf(problem.methodName, problem.returnType, rows.params));
+  };
+
   useEffect(() => {
     if (!isEdit || !id) return;
+    // Also runs when a just-created problem's page switches from /new to /:id/edit.
+    setLoading(true);
     devPracticeApi.getProblem(Number(id), showError)
-      .then(problem => {
-        const rows = rowsFromProblem(problem);
-        setTitle(problem.title);
-        setDescription(problem.description);
-        setDifficulty(problem.difficulty);
-        setStatus(problem.status);
-        setMethodName(problem.methodName);
-        setReturnType(problem.returnType);
-        setParams(rows.params);
-        setTestCases(rows.testCases);
-        setSelectedTagIds(new Set(problem.tags.map(t => t.id)));
-        setLoaded(problem);
-        setOriginalSignature(signatureOf(problem.methodName, problem.returnType, rows.params));
-      })
+      .then(applyProblem)
       .catch(() => navigate(LIST_PATH))
       .finally(() => setLoading(false));
+    // applyProblem only calls state setters, which are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, isEdit, showError, navigate]);
 
   // Mirrors ProblemServiceImpl's own rule: the lock only applies while the problem was PUBLISHED
@@ -115,10 +131,35 @@ export default function ProblemFormPage(): JSX.Element {
     [methodName, returnType, params],
   );
 
+  // Does the form hold signature/test-data edits the server hasn't seen? A reference is judged
+  // against the saved problem, so it can't verify those until they're saved.
+  const savedContract = useMemo(
+    () => (loaded && originalSignature ? contractFingerprint(originalSignature, loaded.testCases) : null),
+    [loaded, originalSignature],
+  );
+  const contractDirty = savedContract !== null && savedContract !== contractFingerprint(currentSignature, testCases);
+
+  // Mirrors ProblemServiceImpl's publish rule: PUBLISHED needs an ACCEPTED reference at the current
+  // contract version. A problem that's already published may stay published as long as its contract
+  // isn't touched (problems published before DKP-0056 stay live without one). Null = allowed.
+  const publishBlockedReason = useMemo((): string | null => {
+    if (!loaded) return 'Create the problem as a Draft first, then run a reference solution to publish it.';
+    if (contractDirty) {
+      return loaded.status === 'PUBLISHED'
+        ? 'Changing the signature or test cases of a published problem needs re-verification: set the status to Draft, save, run a reference solution, then publish.'
+        : 'Save the signature/test-case changes as a Draft and run a reference solution before publishing.';
+    }
+    if (loaded.status !== 'PUBLISHED' && !loaded.verified) {
+      return 'Run a reference solution that passes every test case before publishing.';
+    }
+    return null;
+  }, [loaded, contractDirty]);
+
   const runValidation = () =>
     validateProblemForm({
       title, description, methodName, params, testCases,
       signatureLocked, originalSignature, currentSignature,
+      publishBlockedReason: status === 'PUBLISHED' ? publishBlockedReason : null,
     });
 
   // Before the first save attempt, errors only appear on submit; after it, they track every edit
@@ -126,7 +167,7 @@ export default function ProblemFormPage(): JSX.Element {
   useEffect(() => {
     if (submitted) setErrors(runValidation());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submitted, title, description, methodName, params, testCases, signatureLocked, currentSignature]);
+  }, [submitted, title, description, status, methodName, params, testCases, signatureLocked, currentSignature, publishBlockedReason]);
 
   /** Replaces the signature with what the template declared, remembering which types were guesses. */
   const applyParsedSignature = (parsed: ParsedSignature) => {
@@ -148,6 +189,30 @@ export default function ProblemFormPage(): JSX.Element {
     showSuccess(guesses === 0
       ? `Signature filled from the template: ${parsed.methodName}(${parsed.parameters.length} parameter(s))`
       : `Signature filled — ${guesses} type(s) were guessed, check the highlighted fields`);
+  };
+
+  /**
+   * A reference was just ACCEPTED at the current contract version. A plain run only flips
+   * `verified` locally. A "publish if accepted" run may have published the problem server-side
+   * (in the same transaction as the verdict), so the saved problem is refetched to learn the real
+   * status — but only `loaded` and the status field are updated, never the other form fields, so
+   * unsaved edits (title, description, …) survive.
+   */
+  const handleVerified = async (publishRequested: boolean) => {
+    const markVerified = () => setLoaded(prev => (prev ? { ...prev, verified: true } : prev));
+    if (!publishRequested || !loaded) {
+      markVerified();
+      return;
+    }
+    try {
+      const fresh = await devPracticeApi.getProblem(loaded.id, showError);
+      setLoaded(fresh);
+      // Otherwise the next Save would send the old status and silently unpublish it again.
+      setStatus(fresh.status);
+      if (fresh.status === 'PUBLISHED') showSuccess('Reference accepted — the problem is now published');
+    } catch {
+      markVerified();
+    }
   };
 
   const revertSignature = () => {
@@ -179,13 +244,20 @@ export default function ProblemFormPage(): JSX.Element {
         testCases,
       );
       if (isEdit && id) {
-        await devPracticeApi.updateProblem(Number(id), payload, showError);
-        showSuccess('Problem updated');
+        // Stay on the page: the usual next step after saving a draft is running a reference.
+        applyProblem(await devPracticeApi.updateProblem(Number(id), payload, showError));
+        setSubmitted(false);
+        setErrors(EMPTY_ERRORS);
+        showSuccess('Problem saved');
       } else {
-        await devPracticeApi.createProblem(payload, showError);
-        showSuccess('Problem created');
+        const created = await devPracticeApi.createProblem(payload, showError);
+        showSuccess('Problem created — run a reference solution to be able to publish it');
+        // /new and /:id/edit render the same component, so React keeps this instance: reset the
+        // submit state here; the load effect re-seeds the fields once `id` changes.
+        setSubmitted(false);
+        setErrors(EMPTY_ERRORS);
+        navigate(editPath(created.id), { replace: true });
       }
-      navigate(LIST_PATH);
     } catch {
       // showError already called
     } finally {
@@ -261,6 +333,19 @@ export default function ProblemFormPage(): JSX.Element {
               returnType={returnType}
               errors={errors}
             />
+
+            {loaded ? (
+              <ReferenceSolutionPanel
+                problem={loaded}
+                contractDirty={contractDirty}
+                onVerified={handleVerified}
+              />
+            ) : (
+              <Alert severity="info">
+                Create the problem as a Draft first — you can then run a reference solution here, which
+                is required before it can be published.
+              </Alert>
+            )}
           </Stack>
         </Box>
 
@@ -287,12 +372,29 @@ export default function ProblemFormPage(): JSX.Element {
                     value={status}
                     onChange={e => setStatus(e.target.value as ProblemStatus)}
                   >
-                    {STATUSES.map(s => <MenuItem key={s} value={s}>{STATUS_LABEL[s]}</MenuItem>)}
+                    {STATUSES.map(s => (
+                      <MenuItem
+                        key={s}
+                        value={s}
+                        // The current value stays selectable, so a published problem whose contract
+                        // was just edited still shows its status (and the reason it can't stay).
+                        disabled={s === 'PUBLISHED' && publishBlockedReason !== null && status !== 'PUBLISHED'}
+                      >
+                        {STATUS_LABEL[s]}
+                      </MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
-                <Typography variant="caption" color="text.secondary">
-                  Only published problems are visible to users and accept submissions.
-                </Typography>
+                {/* Shown live, not only after a save attempt: red when it blocks the chosen status. */}
+                {publishBlockedReason ? (
+                  <Typography variant="caption" color={status === 'PUBLISHED' ? 'error' : 'text.secondary'}>
+                    {publishBlockedReason}
+                  </Typography>
+                ) : (
+                  <Typography variant="caption" color="text.secondary">
+                    Only published problems are visible to users and accept submissions.
+                  </Typography>
+                )}
               </Stack>
             </Paper>
 

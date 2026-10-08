@@ -57,9 +57,10 @@ class SubmissionServiceImplTest {
             return s;
         });
 
-        Submission created = service.createReference("admin-1", command);
+        Submission created = service.createReference("admin-1", command, true);
 
         assertThat(created.getKind()).isEqualTo(SubmissionKind.REFERENCE);
+        assertThat(created.getPublishOnAccept()).isTrue();
         assertThat(created.getUserUuid()).isEqualTo("admin-1");
         verify(eventPublisher).publishEvent(new SubmissionCreatedEvent(42));
     }

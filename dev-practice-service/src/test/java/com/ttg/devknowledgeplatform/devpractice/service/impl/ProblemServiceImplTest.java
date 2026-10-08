@@ -160,6 +160,37 @@ class ProblemServiceImplTest {
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
+    @Test
+    void publishOnAcceptPublishesAVerifiedDraft() {
+        Problem problem = storedProblem(ContentStatus.DRAFT, 3);
+        when(problemRepository.findById(5)).thenReturn(Optional.of(problem));
+        when(submissionRepository.existsByProblem_IdAndKindAndStatusAndContractVersion(
+                5, SubmissionKind.REFERENCE, SubmissionStatus.ACCEPTED, 3)).thenReturn(true);
+
+        assertThat(service.publishIfVerified(5, 3)).isTrue();
+        assertThat(problem.getStatus()).isEqualTo(ContentStatus.PUBLISHED);
+        assertThat(problem.getPublishedAt()).isNotNull();
+    }
+
+    @Test
+    void publishOnAcceptLeavesADraftEditedDuringJudgingAlone() {
+        // Judged at v3, but the admin saved a test-data change (v4) while it was running.
+        Problem problem = storedProblem(ContentStatus.DRAFT, 4);
+        when(problemRepository.findById(5)).thenReturn(Optional.of(problem));
+
+        assertThat(service.publishIfVerified(5, 3)).isFalse();
+        assertThat(problem.getStatus()).isEqualTo(ContentStatus.DRAFT);
+    }
+
+    @Test
+    void publishOnAcceptNeverRepublishesAnArchivedProblem() {
+        Problem problem = storedProblem(ContentStatus.ARCHIVED, 3);
+        when(problemRepository.findById(5)).thenReturn(Optional.of(problem));
+
+        assertThat(service.publishIfVerified(5, 3)).isFalse();
+        assertThat(problem.getStatus()).isEqualTo(ContentStatus.ARCHIVED);
+    }
+
     /** A persisted problem: signature solve(int a) -> int, one test case [1] -> 1. */
     private static Problem storedProblem(ContentStatus status, int contractVersion) {
         Problem problem = Problem.builder().title("Title").description("Description").difficulty(Difficulty.EASY)

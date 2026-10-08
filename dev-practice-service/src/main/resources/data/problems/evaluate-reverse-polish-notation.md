@@ -4,10 +4,10 @@
 # Every expectedOutput was computed with a reference implementation, not by hand.
 title: Evaluate Reverse Polish Notation
 difficulty: MEDIUM
-# DRAFT until Phase 3: publishing now requires an ACCEPTED reference submission (DKP-0056), which a
-# seed file can only provide once it carries a referenceSolution. Publish it from the admin GUI after
-# running a reference solution, or wait for the seeder to do it.
-status: DRAFT
+# PUBLISHED is reached through verification, not set directly: the seeder creates the problem as a
+# DRAFT, submits referenceSolution as a publish-on-accept reference run, and the judge publishes it
+# once every test case passes (DKP-0056/0057). If the judge is unreachable it stays a DRAFT.
+status: PUBLISHED
 tags: [Array, Math, Stack]
 template:
   language: JAVA
@@ -15,6 +15,27 @@ template:
     class Solution {
         public int evalRPN(String[] tokens) {
 
+        }
+    }
+# A complete solution, judged like any submission. Written for Judge0's OpenJDK 13 (no arrow-switch),
+# using only java.util — the harness prelude imports it. ProblemSeederTest compiles and runs this
+# exact code against every test case below, so a wrong expectedOutput fails the build.
+referenceSolution:
+  language: JAVA
+  code: |
+    class Solution {
+        public int evalRPN(String[] tokens) {
+            Deque<Integer> stack = new ArrayDeque<>();
+            for (String token : tokens) {
+                switch (token) {
+                    case "+": stack.push(stack.pop() + stack.pop()); break;
+                    case "*": stack.push(stack.pop() * stack.pop()); break;
+                    case "-": { int b = stack.pop(); stack.push(stack.pop() - b); break; }
+                    case "/": { int b = stack.pop(); stack.push(stack.pop() / b); break; }
+                    default: stack.push(Integer.parseInt(token));
+                }
+            }
+            return stack.pop();
         }
     }
 testCases:

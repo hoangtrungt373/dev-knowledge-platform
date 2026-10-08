@@ -98,4 +98,14 @@ public class Submission extends AbstractEntity {
      */
     @Column(name = "CONTRACT_VERSION")
     private Integer contractVersion;
+
+    /**
+     * REFERENCE only: publish the problem automatically if this run is judged {@code ACCEPTED} —
+     * see {@code ProblemService#publishIfVerified}. Persisted because the verdict arrives
+     * asynchronously, long after the request that asked for it has returned.
+     */
+    @NotNull
+    @Column(name = "PUBLISH_ON_ACCEPT", nullable = false)
+    @Builder.Default
+    private Boolean publishOnAccept = false;
 }

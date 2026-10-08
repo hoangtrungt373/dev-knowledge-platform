@@ -21,10 +21,13 @@ import com.ttg.devknowledgeplatform.devpractice.dto.MethodParameterRequest;
 import com.ttg.devknowledgeplatform.devpractice.dto.ParseTemplateRequest;
 import com.ttg.devknowledgeplatform.devpractice.dto.ParsedSignatureResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
+import com.ttg.devknowledgeplatform.devpractice.dto.StarterCodeResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.TestCaseRequest;
 import com.ttg.devknowledgeplatform.devpractice.dto.UpdateProblemRequest;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
+import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarnessRegistry;
 import com.ttg.devknowledgeplatform.devpractice.harness.SignatureTemplateParserRegistry;
 import com.ttg.devknowledgeplatform.devpractice.mapper.ProblemMapper;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemCommands;
@@ -41,6 +44,7 @@ public class ProblemController implements ProblemApi {
     private final ProblemService problemService;
     private final ProblemMapper problemMapper;
     private final SignatureTemplateParserRegistry templateParsers;
+    private final LanguageHarnessRegistry harnessRegistry;
 
     @Override
     public ResponseEntity<ProblemResponse> create(String authorUuid, CreateProblemRequest request) {
@@ -76,6 +80,12 @@ public class ProblemController implements ProblemApi {
     @Override
     public ResponseEntity<ProblemResponse> getById(Integer id) {
         return ResponseEntity.ok(toAdminResponse(problemService.getById(id)));
+    }
+
+    @Override
+    public ResponseEntity<StarterCodeResponse> getStarterCode(Integer id, ProgrammingLanguage language) {
+        String code = harnessRegistry.get(language).renderStarterCode(problemService.getById(id));
+        return ResponseEntity.ok(new StarterCodeResponse(language, code));
     }
 
     @Override

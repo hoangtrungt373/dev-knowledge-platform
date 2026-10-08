@@ -9,6 +9,8 @@ import {
   ProblemStatus,
   ProblemTag,
   ProgrammingLanguage,
+  StarterCode,
+  Submission,
 } from '../types';
 
 type ShowError = (msg: string) => void;
@@ -75,6 +77,39 @@ export const devPracticeApi = {
    * without `showError` by the template importer, which shows the error inline instead. */
   parseTemplate(language: ProgrammingLanguage, code: string, showError?: ShowError): Promise<ParsedSignature> {
     return httpClient.post('/api/v1/admin/problems/parse-template', { language, code }, showError);
+  },
+
+  /** Starter code for any status (the public endpoint only serves published problems), rendered
+   * from the problem's *saved* signature. */
+  getStarterCode(problemId: number, language: ProgrammingLanguage, showError?: ShowError): Promise<StarterCode> {
+    return httpClient.get(`/api/v1/admin/problems/${problemId}/starter-code?language=${language}`, showError);
+  },
+
+  // ── Reference submissions (/api/v1/admin/problems/{id}/reference-submissions) ──
+  // An admin's proof that a problem is solvable. Judged asynchronously like a user submission —
+  // `create` returns it PENDING; poll `getReferenceSubmission` until the status is final.
+
+  createReferenceSubmission(
+    problemId: number,
+    language: ProgrammingLanguage,
+    sourceCode: string,
+    publishOnAccept: boolean,
+    showError?: ShowError,
+  ): Promise<Submission> {
+    return httpClient.post(
+      `/api/v1/admin/problems/${problemId}/reference-submissions`,
+      { language, sourceCode, publishOnAccept },
+      showError,
+    );
+  },
+
+  getReferenceSubmission(problemId: number, submissionId: number, showError?: ShowError): Promise<Submission> {
+    return httpClient.get(`/api/v1/admin/problems/${problemId}/reference-submissions/${submissionId}`, showError);
+  },
+
+  /** Newest first. */
+  listReferenceSubmissions(problemId: number, size: number, showError?: ShowError): Promise<PagedResponse<Submission>> {
+    return httpClient.get(`/api/v1/admin/problems/${problemId}/reference-submissions?page=0&size=${size}`, showError);
   },
 
   // ── Admin tag catalog (/api/v1/admin/problem-tags, ROLE_ADMIN) ──────────────

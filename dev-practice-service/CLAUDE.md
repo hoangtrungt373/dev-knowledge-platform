@@ -18,7 +18,8 @@ instance — per-service-per-schema, see root `CLAUDE.md`'s Database Conventions
 columns, the new `METHOD_PARAMETER` table, and `SUBMISSION`'s judging-result columns, per this
 repo's never-edit-an-already-run-changeset convention; `DKP-0054` — widens `CKC_SUBMISSION_STATUS`
 for `JUDGE_ERROR`; `DKP-0055` — problem tags; `DKP-0056` — `PROBLEM.CONTRACT_VERSION`,
-`SUBMISSION.KIND`/`CONTRACT_VERSION` for publish verification). Routed through `gateway`'s
+`SUBMISSION.KIND`/`CONTRACT_VERSION` for publish verification; `DKP-0057` —
+`SUBMISSION.PUBLISH_ON_ACCEPT`). Routed through `gateway`'s
 `routing/GatewayRoutesConfig` (`devPracticeServiceRoutes()`) — `/api/v1/admin/problems/**` and
 `/api/v1/public/problems/**` (including `/starter-code`) are two more resource segments under the
 already-shared `/api/v1/admin/**`/`/api/v1/public/**` prefixes; `/api/v1/submissions/**` is a
@@ -134,7 +135,9 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
 - `service/` — `ProblemService`/`SubmissionService` (+ `impl/`), `ProblemCommands`/
   `SubmissionCommands` — services return entities, never this module's own `dto/` classes (same
   rule as `content-service`'s `ArticleService`).
-- `api/` (interfaces) + `api/impl/` (controllers) — `ProblemApi` (admin CRUD), `PublicProblemApi`
+- `api/` (interfaces) + `api/impl/` (controllers) — `ProblemApi` (admin CRUD, plus
+  `GET /{id}/starter-code` for any status — the public one 404s for a draft, and the admin form needs
+  a draft's starter to pre-fill its reference-solution editor), `PublicProblemApi`
   (public browsing + `/starter-code`), `SubmissionApi` (owner-gated, `USER` submissions only),
   `ProblemReferenceSubmissionApi` (admin: create/list/get `REFERENCE` submissions under
   `/api/v1/admin/problems/{problemId}/reference-submissions` — already covered by the existing
@@ -201,7 +204,14 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
     against onto `Submission.contractVersion`, so a bump makes every older reference stale
     automatically — no flag to forget to clear. `ProblemService#isVerified` is that one `exists`
     query (partial index `IDX_SUBMISSION_ACCEPTED_REFERENCE`); admin responses expose it as
-    `ProblemResponse.verified`. `PROBLEM_NOT_VERIFIED` (409) is thrown when: `create` asks for
+    `ProblemResponse.verified`. **Publish-on-accept** (`DKP-0057`): a REFERENCE run created with
+    `publishOnAccept` (the seeder always; the admin API via an optional request field, which the
+    GUI panel's "Publish if accepted" checkbox sets; echoed back on `SubmissionResponse`) makes
+    `SubmissionJudgeEventListener#saveOutcome` call `ProblemService#publishIfVerified` in the same
+    transaction as the ACCEPTED verdict — which re-checks the problem is still `DRAFT` and still at
+    the judged `contractVersion`, so an edit or archive made while judging is never overridden. A
+    persisted column, not an in-memory callback, because the verdict arrives on another thread long
+    after the request returned. `PROBLEM_NOT_VERIFIED` (409) is thrown when: `create` asks for
     `PUBLISHED` directly (a problem without an id can't have a reference yet); `update` moves a
     non-published problem to `PUBLISHED` while unverified; or `update` keeps a problem `PUBLISHED`
     while changing its contract — **this reverses the old "test cases are never locked by publish
@@ -290,10 +300,17 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   name that isn't). Like every startup seeder here, a seeded tag/problem an admin deletes comes
   back on the next seeded startup — accepted, since seeding is off outside `local`. Compute every
   `expectedOutput` with a reference solution, never by hand — `ProblemSeederTest` does exactly this
-  for the RPN problem (add the same kind of check when adding a problem). Seed files must say
-  `status: DRAFT` for now — `ProblemService.create` refuses `PUBLISHED` (see the verification rule
-  above); a planned `referenceSolution` field will let the seeder submit a reference and publish on
-  acceptance. To re-seed after
+  for the RPN problem (add the same kind of check when adding a problem). **`status: PUBLISHED`
+  requires a `referenceSolution: {language, code}`** (startup fails without one): the seeder creates
+  the problem as `DRAFT`, submits the solution as a publish-on-accept REFERENCE run, and the judge
+  publishes it seconds later once every case passes. If Judge0 rejects it or is unreachable (no
+  RapidAPI key) the problem just stays `DRAFT` — and isn't retried, since seeding skips existing
+  slugs; run a reference from the admin form instead. A `referenceSolution` on a `DRAFT` file
+  verifies without publishing. Write it for Judge0's **OpenJDK 13** (no arrow-`switch`, no
+  records/text blocks), using only `java.util` (the harness prelude imports it).
+  `ProblemSeederTest` compiles the file's own `referenceSolution` with `javax.tools` and runs it
+  against every test case, so the seed file is the single source of the solution — but on the test
+  JDK, not 13. To re-seed after
   editing a seed file, run `scripts/purge-seed-data.sql` (a plain dev utility outside
   `database/sql/`, so never a migration; mirrors `ecommerce-service`'s) — it `TRUNCATE ... RESTART
   IDENTITY CASCADE`s all 6 `dev_practice` tables, **including users' `SUBMISSION` history**, then
@@ -376,7 +393,8 @@ as unverified until the IT runs somewhere with Docker.
   — the webhook-callback alternative discussed in Phase 1 planning was explicitly not chosen this
   round (simpler, no new inbound-auth surface to design).
 - Only one seeded problem so far (Evaluate Reverse Polish Notation — see the seeding rule above).
-  The admin GUI exists (`gui`'s `@dev-practice` feature, `/admin/problems`); the public
+  The admin GUI exists (`gui`'s `@dev-practice` feature, `/admin/problems`, including the
+  reference-solution panel that verifies a problem before it can be published); the public
   problem/submission GUI doesn't yet.
 - `Submission` result columns (`passedTestCases`/`totalTestCases`/`errorMessage`) are surfaced on
   `SubmissionResponse` but there's no polling/websocket push to the GUI for "judging finished" —

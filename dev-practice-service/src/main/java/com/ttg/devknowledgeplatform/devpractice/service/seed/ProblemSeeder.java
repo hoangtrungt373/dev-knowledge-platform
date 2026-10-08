@@ -18,6 +18,7 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
+import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTag;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
@@ -27,6 +28,8 @@ import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemTagRepository;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemCommands;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemService;
+import com.ttg.devknowledgeplatform.devpractice.service.SubmissionCommands;
+import com.ttg.devknowledgeplatform.devpractice.service.SubmissionService;
 import com.ttg.devknowledgeplatform.infra.service.SlugService;
 import com.ttg.devknowledgeplatform.infra.service.seed.Seeder;
 
@@ -49,6 +52,15 @@ import lombok.extern.slf4j.Slf4j;
  * it): a problem whose slug already exists is skipped, so re-running seeds nothing twice and never
  * overwrites a problem an admin has since edited. Renaming a seeded problem's title in its file would
  * seed it again under the new slug — change the file's {@code title} only on a fresh database.
+ *
+ * <p><b>Publishing goes through verification too.</b> A problem can't be created straight into
+ * {@code PUBLISHED} (see {@code ProblemService#create}), so a file asking for {@code status: PUBLISHED}
+ * must carry a {@code referenceSolution}: the problem is created as a {@code DRAFT}, the solution is
+ * submitted as a publish-on-accept REFERENCE run, and the judge publishes it once that run is
+ * {@code ACCEPTED} — asynchronously, a few seconds after startup. If the judge rejects it or is
+ * unreachable (e.g. no RapidAPI key), the problem simply stays a draft and the run shows up in the
+ * admin form's reference panel; since seeding is idempotent by slug, it isn't retried on the next
+ * startup. A {@code referenceSolution} on a {@code DRAFT} file verifies it without publishing.
  */
 @Slf4j
 @Component
@@ -64,6 +76,7 @@ public class ProblemSeeder implements Seeder {
     private final ProblemRepository problemRepository;
     private final ProblemTagRepository problemTagRepository;
     private final ProblemService problemService;
+    private final SubmissionService submissionService;
     private final SignatureTemplateParserRegistry templateParsers;
     private final SlugService slugService;
 
@@ -94,8 +107,17 @@ public class ProblemSeeder implements Seeder {
                 log.debug("ProblemSeeder: '{}' already exists, skipping", problem.title());
                 continue;
             }
+            if (problem.status() == ContentStatus.PUBLISHED && problem.referenceSolution() == null) {
+                throw new IllegalStateException(file.getFilename() + ": status PUBLISHED needs a referenceSolution "
+                        + "(a problem is only published once a reference solution is accepted)");
+            }
             try {
-                problemService.create(toCommand(problem), SEED_AUTHOR_UUID);
+                Problem saved = problemService.create(toCommand(problem), SEED_AUTHOR_UUID);
+                if (problem.referenceSolution() != null) {
+                    submissionService.createReference(SEED_AUTHOR_UUID, new SubmissionCommands.Create(saved.getId(),
+                                    problem.referenceSolution().language(), problem.referenceSolution().code()),
+                            problem.status() == ContentStatus.PUBLISHED);
+                }
             } catch (ApiException e) {
                 // A seed file is developer-authored: failing startup with the file's name beats
                 // half-seeding or silently skipping it.
@@ -115,8 +137,10 @@ public class ProblemSeeder implements Seeder {
                 .mapToObj(i -> new ProblemCommands.MethodParameterInput(
                         signature.parameters().get(i).name(), signature.parameters().get(i).type().type(), i))
                 .toList();
+        // PUBLISHED is reached via the reference run (see the class Javadoc), never set directly.
+        ContentStatus initialStatus = problem.status() == ContentStatus.PUBLISHED ? ContentStatus.DRAFT : problem.status();
         return new ProblemCommands.Create(problem.title(), problem.description(), problem.difficulty(),
-                problem.status(), signature.methodName(), signature.returnType().type(), parameters,
+                initialStatus, signature.methodName(), signature.returnType().type(), parameters,
                 problem.testCases(), resolveTagIds(problem));
     }
 
@@ -163,6 +187,7 @@ public class ProblemSeeder implements Seeder {
         Map<String, Object> meta = yaml.load(parts[1]);
         Map<String, Object> template = (Map<String, Object>) require(meta, "template", file);
         List<Map<String, Object>> testCases = (List<Map<String, Object>>) require(meta, "testCases", file);
+        Map<String, Object> reference = (Map<String, Object>) meta.get("referenceSolution");
 
         return new SeedProblem(
                 (String) require(meta, "title", file),
@@ -177,7 +202,10 @@ public class ProblemSeeder implements Seeder {
                                 String.valueOf(require(tc, "input", file)),
                                 String.valueOf(require(tc, "expectedOutput", file)),
                                 Boolean.TRUE.equals(tc.get("sample"))))
-                        .toList());
+                        .toList(),
+                reference == null ? null : new ReferenceSolution(
+                        ProgrammingLanguage.valueOf((String) require(reference, "language", file)),
+                        (String) require(reference, "code", file)));
     }
 
     private static Object require(Map<String, Object> map, String key, Resource file) {
@@ -197,6 +225,11 @@ public class ProblemSeeder implements Seeder {
             List<String> tags,
             ProgrammingLanguage templateLanguage,
             String templateCode,
-            List<ProblemCommands.TestCaseInput> testCases) {
+            List<ProblemCommands.TestCaseInput> testCases,
+            ReferenceSolution referenceSolution) {
+    }
+
+    /** A complete, accepted-by-the-judge solution for a seed problem; {@code null} on the record when absent. */
+    record ReferenceSolution(ProgrammingLanguage language, String code) {
     }
 }

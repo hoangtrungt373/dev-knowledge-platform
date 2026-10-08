@@ -186,6 +186,29 @@ public class ProblemServiceImpl implements ProblemService {
     }
 
     @Override
+    public boolean publishIfVerified(Integer problemId, Integer judgedContractVersion) {
+        Problem problem = getById(problemId);
+        if (!ContentStatus.DRAFT.equals(problem.getStatus())) {
+            log.info("Publish-on-accept skipped for problem {}: it is {} now, not DRAFT", problemId, problem.getStatus());
+            return false;
+        }
+        // Re-checked here rather than trusted from the caller: the problem may have been edited
+        // (version bumped) between the run being judged and this transaction.
+        if (!problem.getContractVersion().equals(judgedContractVersion) || !isVerified(problem)) {
+            log.info("Publish-on-accept skipped for problem {}: judged at contract v{}, current is v{}",
+                    problemId, judgedContractVersion, problem.getContractVersion());
+            return false;
+        }
+        problem.setStatus(ContentStatus.PUBLISHED);
+        if (problem.getPublishedAt() == null) {
+            problem.setPublishedAt(Instant.now());
+        }
+        problemRepository.save(problem);
+        log.info("Published problem {} after its reference solution was accepted", problemId);
+        return true;
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public boolean isVerified(Problem problem) {
         return problem.getId() != null && submissionRepository.existsByProblem_IdAndKindAndStatusAndContractVersion(

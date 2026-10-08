@@ -2932,7 +2932,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                         totalTestCases (Integer, nullable), errorMessage (TEXT,
 │                                         nullable), kind (SubmissionKind, default USER),
 │                                         contractVersion (Integer, nullable — the problem's
-│                                         contractVersion stamped when judging starts)
+│                                         contractVersion stamped when judging starts),
+│                                         publishOnAccept (Boolean, default false — REFERENCE: publish
+│                                         the DRAFT problem once ACCEPTED)
 ├── enums/
 │   ├── Difficulty.java                — EASY, MEDIUM, HARD; deliberately not
 │   │                                     common.enums.QuestionDifficulty
@@ -3083,8 +3085,12 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     ProblemServiceImpl#update rejects any methodName/
 │   │                                     returnType/parameters change while the problem is (and
 │   │                                     stays) PUBLISHED (signatureChanged, PROBLEM_SIGNATURE_LOCKED)
-│   │                                     — testCases stay editable regardless of publish status,
-│   │                                     but validateTestCaseArity always checks every
+│   │                                     — and any signature or test-data change bumps
+│   │                                     contractVersion; publishing (or staying published through a
+│   │                                     contract change) needs isVerified (PROBLEM_NOT_VERIFIED).
+│   │                                     publishIfVerified(id, judgedVersion) publishes a DRAFT for a
+│   │                                     publish-on-accept run (no-op if no longer DRAFT or stale).
+│   │                                     validateTestCaseArity always checks every
 │   │                                     TestCase.input parses as a JSON array matching the final
 │   │                                     parameters list's size (PROBLEM_TEST_CASE_ARITY_MISMATCH),
 │   │                                     on both create and update
@@ -3093,7 +3099,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     SubmissionCreatedEvent after saving) + getSubmission
 │   │                                     (ownership-checked, same resolveOwnedX pattern as
 │   │                                     task-service's ProjectService) + listSubmissions (USER
-│   │                                     only) + createReference (no publish check) /
+│   │                                     only) + createReference(admin, command, publishOnAccept)
+│   │                                     (no publish check) /
 │   │                                     listReferenceSubmissions / getReferenceSubmission (must
 │   │                                     belong to the path's problem)
 │   ├── ProblemTagService.java (+ impl/) — tag catalog CRUD + listAll (sorted by name); delete
@@ -3169,7 +3176,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
     │                                     update, delete, getById, list (difficulty/status/q/tagIds
     │                                     filters — tagIds repeated: ?tagIds=1&tagIds=2), and
     │                                     POST /parse-template {language, code} → ParsedSignatureResponse
-    │                                     (nothing persisted; 400 PROBLEM_TEMPLATE_INVALID says what to fix)
+    │                                     (nothing persisted; 400 PROBLEM_TEMPLATE_INVALID says what to fix),
+    │                                     GET /{id}/starter-code?language= (any status — the public one is
+    │                                     published-only; pre-fills the admin reference-solution editor)
     ├── ProblemTagApi.java (+ ProblemTagController.java)       — /api/v1/admin/problem-tags:
     │                                     create, update (rename), delete, list (paged, q), GET /all
     ├── PublicProblemTagApi.java (+ PublicProblemTagController.java) — /api/v1/public/problem-tags:
@@ -3227,8 +3236,10 @@ dev-practice-service/src/test/
 │                                         shape, per-language keywords, harness-owned names,
 │                                         case-sensitivity, duplicates
 ├── java/.../service/seed/ProblemSeederTest.java — loads the real seed files: signature from the
-│                                         template, tags, sample count; every RPN test case checked
-│                                         against a reference solution; skip-if-exists
+│                                         template, tags, sample count, created as DRAFT + a
+│                                         publish-on-accept reference run; the file's own
+│                                         referenceSolution compiled (javax.tools) and run against
+│                                         every RPN test case; skip-if-exists
 ├── java/.../service/impl/ProblemServiceImplTest.java — delete refused with submissions,
 │                                         reserved-name rejection on create, arity error message;
 │                                         publish verification (create-as-PUBLISHED refused, draft →
@@ -3269,7 +3280,9 @@ only — the starter topics come from `ProblemTagSeeder`) +
 `2026/0.0.4/202610020001__0.0.4__DKP-0056__add_problem_verification_columns.sql`
 (`PROBLEM.CONTRACT_VERSION`, `SUBMISSION.KIND` + `CKC_SUBMISSION_KIND`, nullable
 `SUBMISSION.CONTRACT_VERSION`, partial index `IDX_SUBMISSION_ACCEPTED_REFERENCE` on
-`(PROBLEM_ID, CONTRACT_VERSION) WHERE KIND = 'REFERENCE' AND STATUS = 'ACCEPTED'`)), applied via the consolidated `services-liquibase` job in
+`(PROBLEM_ID, CONTRACT_VERSION) WHERE KIND = 'REFERENCE' AND STATUS = 'ACCEPTED'`) +
+`2026/0.0.4/202610030001__0.0.4__DKP-0057__add_submission_publish_on_accept.sql`
+(`SUBMISSION.PUBLISH_ON_ACCEPT BOOLEAN NOT NULL DEFAULT FALSE`)), applied via the consolidated `services-liquibase` job in
 `docker-compose.apps.yml` — no standalone single-service `*-liquibase.yml` file of its own (same as
 `ecommerce-service`/`identity-service`/`content-service`/`ai-service`). `TEST_CASE`/
 `METHOD_PARAMETER` both cascade from `PROBLEM` (`ON DELETE CASCADE`); `SUBMISSION`'s FK to `PROBLEM`

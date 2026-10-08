@@ -4490,6 +4490,31 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   - `components/JsonCodeField.tsx` is a small CodeMirror JSON field local to this feature (no
     shared CodeMirror wrapper exists; `@dev-utils/config/codeMirrorConfig` isn't imported from
     outside that feature). Promote it to `@shared` if a second feature needs one.
+  - **Publishing needs a verified reference solution** (backend `DKP-0056`, see
+    `dev-practice-service/CLAUDE.md`). `components/ReferenceSolutionPanel.tsx` (edit mode only — a
+    reference needs a saved problem id) lets the admin pick a language, edit code pre-filled from
+    `GET /admin/problems/{id}/starter-code` (the *saved* signature; an untouched starter is
+    refreshed when `contractVersion` changes, typed code never is), submit it as a REFERENCE
+    submission and **poll** it (`POLL_INTERVAL_MS`/`MAX_POLLS`) until the judge's status is final —
+    judging is async server-side. An ACCEPTED run at the current `contractVersion` flips the page's
+    `loaded.verified` locally (no refetch, so unsaved edits survive). **"Publish if accepted"**
+    checkbox (draft problems only; button reads "Run & publish") sends the backend's
+    `publishOnAccept` flag — the judge publishes the problem itself once the run is ACCEPTED. For
+    such a run the page's `handleVerified` **does** refetch the problem, but applies only `loaded` and
+    the status field (never the other fields), so it learns whether publishing really happened (the
+    backend skips it if the problem stopped being a draft) without losing unsaved edits — and so the
+    next Save doesn't send a stale Draft status that would unpublish it again. The panel disables Run while
+    `contractDirty` — `utils/problemForm.ts#contractFingerprint` mirrors the backend's
+    `signatureChanged`/`testDataChanged` (trimmed, ordered, `sample` ignored), keep the two in sync.
+    `ProblemFormPage#publishBlockedReason` mirrors `ProblemServiceImpl`'s publish rule: it disables
+    the Published status option (unless already selected), explains why under the select, and blocks
+    the save via `errors.status`. **Flow change that came with it**: create always lands on the new
+    problem's edit page (`/new` and `/:id/edit` reuse the same component instance — the load effect
+    re-seeds on `id` change, which is why it sets `loading` itself), and an update **stays on the
+    page**, re-seeded from the response via `applyProblem`, instead of returning to the list —
+    saving a draft is usually followed by running a reference. `utils/codeLanguages.ts` holds the
+    language → CodeMirror extension map both editors use; `constants.ts` holds `LANGUAGES` and the
+    submission status labels/colors.
   - Server-side field errors still arrive as the standard `showError` toast — `validationErrors`
     isn't mapped onto fields anywhere in this app, and this feature doesn't start that pattern.
   - Verified via a clean `tsc --noEmit` (only the documented pre-existing errors) and a successful
