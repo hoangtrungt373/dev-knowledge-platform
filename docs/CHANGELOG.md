@@ -22,6 +22,19 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **`gui`: learner practice pages (Phase 1).** `/practice` — the published-problem catalog, filters
+  (search, difficulty, topics) kept in the URL; `/practice/:slug` — a resizable workspace with the
+  description, sample cases (`nums = [1,2,3,3]` style) and the learner's own submissions on the
+  left, and a Java/Python/JavaScript editor pre-filled with starter code, Submit and a live verdict on
+  the right. Public to browse; submitting needs a login. Drafts persist per problem in
+  `localStorage`; a "Reset" restores the starter code. New NavBar "Practice" button. New files:
+  `api/practiceApi.ts`, `pages/PracticeListPage.tsx`, `pages/ProblemWorkspacePage.tsx`,
+  `components/SolutionEditor.tsx`, `SampleTestCases.tsx`, `SubmissionVerdict.tsx`,
+  `SubmissionHistory.tsx`, `hooks/useSubmissionPolling.ts`, `hooks/useSolutionDrafts.ts`, type
+  `ProblemSummary`. The admin `ReferenceSolutionPanel` now uses the same two hooks and editor instead
+  of its own copies. Promoted to `@shared`: `components/MarkdownView.tsx` (extracted from
+  `MarkdownField`'s preview, which now uses it) and `components/ResizeHandle.tsx` (moved from `@tasks`).
+  No backend change — every endpoint already existed.
 - **`dev-practice-service`: second seed problem, Contains Duplicate** (`data/problems/contains-duplicate.md`,
   EASY, `boolean containsDuplicate(int[] nums)`, 16 test cases incl. the empty array and ±10^9, Java
   HashSet `referenceSolution`, `status: PUBLISHED` via publish-on-accept). New `Sorting` topic in

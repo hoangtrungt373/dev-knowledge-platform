@@ -10,6 +10,7 @@ import LightModeIcon from '@mui/icons-material/LightMode';
 import StorefrontIcon from '@mui/icons-material/Storefront';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import CodeIcon from '@mui/icons-material/Code';
+import SchoolIcon from '@mui/icons-material/School';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { authService } from '@auth/services/authService';
 import { useFriendRequestsCount } from '@friends/hooks/useFriendRequestsCount';
@@ -116,6 +117,16 @@ export default function NavBar({ mode, onToggleMode }: NavBarProps): JSX.Element
           sx={{ mr: 0.5 }}
         >
           Dev Utils
+        </NavButton>
+
+        {/* Practice is public to browse too — logging in is only needed to submit a solution. */}
+        <NavButton
+          active={isActive('/practice')}
+          startIcon={<SchoolIcon fontSize="small" />}
+          onClick={() => navigate('/practice')}
+          sx={{ mr: 0.5 }}
+        >
+          Practice
         </NavButton>
 
         {isAuthed && (

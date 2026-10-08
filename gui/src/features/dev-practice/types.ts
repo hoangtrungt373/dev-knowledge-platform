@@ -152,3 +152,13 @@ export interface ParsedSignature {
   returnTypeAlternatives: ParamType[];
   parameters: { name: string; type: ParamType; alternatives: ParamType[] }[];
 }
+
+/** `ProblemSummaryResponse` — one row of the public (learner) problem list. Published problems only. */
+export interface ProblemSummary {
+  id: number;
+  slug: string;
+  title: string;
+  difficulty: Difficulty;
+  /** Sorted by name. */
+  tags: ProblemTagSummary[];
+}

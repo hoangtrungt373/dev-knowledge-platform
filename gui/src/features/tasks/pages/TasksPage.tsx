@@ -16,7 +16,7 @@ import TaskQuickAdd from '../components/TaskQuickAdd';
 import { TASK_ROW_ACTIONS_GUTTER_PX } from '../components/TaskRow';
 import SortableTaskRow from '../components/SortableTaskRow';
 import TaskDetailPanel from '../components/TaskDetailPanel';
-import ResizeHandle from '../components/ResizeHandle';
+import ResizeHandle from '@shared/components/ResizeHandle';
 import { taskApi } from '../api/taskApi';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import { useTaskOrder } from '../hooks/useTaskOrder';

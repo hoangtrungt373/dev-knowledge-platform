@@ -29,6 +29,8 @@ import OrderHistoryPage from '@ecommerce/pages/orders/OrderHistoryPage';
 import OrderDetailPage from '@ecommerce/pages/orders/OrderDetailPage';
 import AddressBookPage from '@ecommerce/pages/AddressBookPage';
 import DevUtilsPage from '@dev-utils/pages/DevUtilsPage';
+import PracticeListPage from '@dev-practice/pages/PracticeListPage';
+import ProblemWorkspacePage from '@dev-practice/pages/ProblemWorkspacePage';
 import ProblemListPage from '@dev-practice/pages/ProblemListPage';
 import ProblemFormPage from '@dev-practice/pages/ProblemFormPage';
 import ProblemTagListPage from '@dev-practice/pages/ProblemTagListPage';
@@ -92,6 +94,12 @@ function App() {
                 gating. Each tool has its own URL via the hash (#json-format, #yaml-to-json, etc.
                 — see DevUtilsPage.tsx), not a second-level route — this is still one <Route>. */}
             <Route path="/dev-utils" element={<DevUtilsPage />} />
+
+            {/* Practice — public to browse and read, like /shop (dev-practice-service's
+                /api/v1/public/problems/** is permitAll); only submitting needs a login, which the
+                workspace's own Submit button handles rather than a PrivateRoute. */}
+            <Route path="/practice" element={<PracticeListPage />} />
+            <Route path="/practice/:slug" element={<ProblemWorkspacePage />} />
 
             {/* Protected user routes */}
             {/* /dashboard is kept as a redirect, not removed — AuthCallback.tsx/AdminLogin.tsx/

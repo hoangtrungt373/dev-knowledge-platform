@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Box,
@@ -9,43 +9,20 @@ import {
   FormControlLabel,
   Paper,
   Stack,
-  ToggleButton,
-  ToggleButtonGroup,
   Typography,
-  useTheme,
 } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import VerifiedIcon from '@mui/icons-material/Verified';
-import CodeMirror from '@uiw/react-codemirror';
-import { EditorView } from '@codemirror/view';
-import { Problem, ProgrammingLanguage, Submission } from '../types';
+import { Problem, Submission } from '../types';
 import { devPracticeApi } from '../api/devPracticeApi';
-import {
-  IN_PROGRESS_STATUSES,
-  LANGUAGE_LABEL,
-  LANGUAGES,
-  SUBMISSION_STATUS_COLOR,
-  SUBMISSION_STATUS_LABEL,
-} from '../constants';
-import { LANGUAGE_EXTENSIONS } from '../utils/codeLanguages';
+import { LANGUAGE_LABEL, SUBMISSION_STATUS_COLOR, SUBMISSION_STATUS_LABEL } from '../constants';
+import { isInProgress, useSubmissionPolling } from '../hooks/useSubmissionPolling';
+import { useSolutionDrafts } from '../hooks/useSolutionDrafts';
+import SolutionEditor from './SolutionEditor';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import SubmitButton from '@shared/components/SubmitButton';
 
-// Judge0 via RapidAPI usually finishes in a few seconds per test case; ~2 minutes covers a slow
-// queue. Past that the submission isn't lost — it's still judging server-side, and reopening the
-// page shows its final status in the history list.
-const POLL_INTERVAL_MS = 1500;
-const MAX_POLLS = 80;
 const HISTORY_SIZE = 5;
-
-const chrome = EditorView.theme({
-  '&': { fontSize: '0.8rem' },
-  '&.cm-focused': { outline: 'none' },
-});
-
-function isInProgress(s: Submission | null): boolean {
-  return s !== null && IN_PROGRESS_STATUSES.includes(s.status);
-}
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
@@ -72,25 +49,19 @@ interface Props {
  * an untouched starter is refreshed when that signature changes, but typed code is never replaced.
  */
 export default function ReferenceSolutionPanel({ problem, contractDirty, onVerified }: Props): JSX.Element {
-  const theme = useTheme();
   const { showError } = useNotification();
-  const [language, setLanguage] = useState<ProgrammingLanguage>('JAVA');
-  const [codes, setCodes] = useState<Partial<Record<ProgrammingLanguage, string>>>({});
-  // Starters fetched for the current contract version (cleared when it changes, which triggers a
-  // re-fetch) vs. the starter each editor was last filled with (never cleared) — the latter is what
-  // tells an untouched editor apart from typed code.
-  const [starters, setStarters] = useState<Partial<Record<ProgrammingLanguage, string>>>({});
-  const lastFilledStarter = useRef<Partial<Record<ProgrammingLanguage, string>>>({});
-  const [current, setCurrent] = useState<Submission | null>(null);
+  // Not persisted (no storageKey): a reference is a one-off verification, not a learner's draft.
+  const drafts = useSolutionDrafts({
+    loadStarter: language => devPracticeApi.getStarterCode(problem.id, language).then(s => s.code),
+    // A new contract version means a new saved signature: re-fetch the starters.
+    starterVersion: problem.contractVersion,
+  });
+  const { language, code } = drafts;
   const [submitting, setSubmitting] = useState(false);
-  const [pollGaveUp, setPollGaveUp] = useState(false);
   const [history, setHistory] = useState<Submission[]>([]);
   const [publishOnAccept, setPublishOnAccept] = useState(false);
   // Publish-on-accept only means something for a draft (the backend ignores it otherwise).
   const canPublishOnAccept = problem.status === 'DRAFT';
-
-  const code = codes[language] ?? '';
-  const extensions = useMemo(() => [chrome, LANGUAGE_EXTENSIONS[language]()], [language]);
   const verified = Boolean(problem.verified) && !contractDirty;
 
   const loadHistory = useCallback(() => {
@@ -101,66 +72,20 @@ export default function ReferenceSolutionPanel({ problem, contractDirty, onVerif
 
   useEffect(loadHistory, [loadHistory]);
 
-  // A new contract version means a new saved signature: drop every cached starter so the current
-  // language's is re-fetched below.
-  useEffect(() => {
-    setStarters({});
-  }, [problem.contractVersion]);
-
-  useEffect(() => {
-    if (starters[language] !== undefined) return;
-    let cancelled = false;
-    devPracticeApi.getStarterCode(problem.id, language)
-      .then(({ code: starter }) => {
-        if (cancelled) return;
-        const previous = lastFilledStarter.current[language];
-        lastFilledStarter.current[language] = starter;
-        setStarters(prev => ({ ...prev, [language]: starter }));
-        // Only fill an editor nobody has typed into: empty, or still showing the old starter.
-        setCodes(prev => (prev[language] === undefined || prev[language] === previous
-          ? { ...prev, [language]: starter }
-          : prev));
-      })
-      .catch(() => { /* leave the editor empty; the admin can still type a full solution */ });
-    return () => { cancelled = true; };
-  }, [problem.id, language, starters]);
-
-  // Poll the in-flight submission until the judge reaches a final status.
-  useEffect(() => {
-    if (!current || !isInProgress(current)) return;
-    let cancelled = false;
-    let polls = 0;
-    let timer: ReturnType<typeof setTimeout>;
-    const tick = async () => {
-      polls += 1;
-      try {
-        const next = await devPracticeApi.getReferenceSubmission(problem.id, current.id);
-        if (cancelled) return;
-        if (isInProgress(next)) {
-          if (polls >= MAX_POLLS) setPollGaveUp(true);
-          else timer = setTimeout(tick, POLL_INTERVAL_MS);
-          return;
-        }
-        setCurrent(next);
-        loadHistory();
-        if (next.status === 'ACCEPTED' && next.contractVersion === problem.contractVersion) {
-          onVerified(Boolean(next.publishOnAccept));
-        }
-      } catch {
-        if (!cancelled && polls < MAX_POLLS) timer = setTimeout(tick, POLL_INTERVAL_MS);
+  const { submission: current, gaveUp: pollGaveUp, track } = useSubmissionPolling(
+    id => devPracticeApi.getReferenceSubmission(problem.id, id),
+    next => {
+      loadHistory();
+      if (next.status === 'ACCEPTED' && next.contractVersion === problem.contractVersion) {
+        onVerified(Boolean(next.publishOnAccept));
       }
-    };
-    timer = setTimeout(tick, POLL_INTERVAL_MS);
-    return () => { cancelled = true; clearTimeout(timer); };
-    // Re-arm only when a different submission starts, not on every status update of the same one.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id]);
+    },
+  );
 
   const handleRun = async () => {
     setSubmitting(true);
-    setPollGaveUp(false);
     try {
-      setCurrent(await devPracticeApi.createReferenceSubmission(
+      track(await devPracticeApi.createReferenceSubmission(
         problem.id, language, code, canPublishOnAccept && publishOnAccept, showError,
       ));
     } catch {
@@ -194,27 +119,12 @@ export default function ReferenceSolutionPanel({ problem, contractDirty, onVerif
         </Alert>
       )}
 
-      <Stack direction="row" justifyContent="flex-end" sx={{ mb: 1 }}>
-        <ToggleButtonGroup
-          size="small"
-          exclusive
-          value={language}
-          onChange={(_, v: ProgrammingLanguage | null) => { if (v) setLanguage(v); }}
-        >
-          {LANGUAGES.map(l => <ToggleButton key={l.value} value={l.value}>{l.label}</ToggleButton>)}
-        </ToggleButtonGroup>
-      </Stack>
-
-      <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
-        <CodeMirror
-          value={code}
-          onChange={v => setCodes(prev => ({ ...prev, [language]: v }))}
-          theme={theme.palette.mode === 'dark' ? 'dark' : 'light'}
-          extensions={extensions}
-          minHeight="200px"
-          maxHeight="420px"
-        />
-      </Box>
+      <SolutionEditor
+        language={language}
+        onLanguageChange={drafts.setLanguage}
+        code={code}
+        onCodeChange={drafts.setCode}
+      />
 
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 1.5 }}>
         <Box>
@@ -280,8 +190,8 @@ export default function ReferenceSolutionPanel({ problem, contractDirty, onVerif
                 <Button
                   size="small"
                   onClick={() => {
-                    setLanguage(s.language);
-                    setCodes(prev => ({ ...prev, [s.language]: s.sourceCode }));
+                    drafts.setLanguage(s.language);
+                    drafts.setCodeFor(s.language, s.sourceCode);
                   }}
                 >
                   Load code

@@ -26,14 +26,16 @@ gui/src/
 │   │                        beautify. One page (Tabs, one per operation), genuinely public — see
 │   │                        its own rules-section entry below
 │   └── dev-practice/     — fronts dev-practice-service: admin problem-catalog screens (list +
-│                            create/edit form). Public problem/submission pages not built yet
+│                            create/edit form) + the learner pages (/practice list, /practice/:slug
+│                            workspace)
 ├── app/          — app shell: App.tsx (routes), main.tsx, theme.ts, NavBar, GuestRoute/PrivateRoute,
 │                    admin-shell/ (AdminLayout, AdminDashboard — the admin nav frame + landing page),
 │                    account-shell/ (AccountLayout — the shopper's own Profile+Addresses sidebar)
 └── shared/        — httpClient, common.types-equivalent (types.ts, incl. PagedResponse), the
                       NotificationContext, storage.ts (STORAGE_KEYS), colors.ts, errorHandler.ts,
                       useSubmitGuard, ConfirmDialog, FullPageLoader, EmptyState, SubmitButton,
-                      TableStatusRow, SectionStatus, UploadingOverlay, UnsavedChangesDialog +
+                      TableStatusRow, SectionStatus, UploadingOverlay, MarkdownView, ResizeHandle,
+                      UnsavedChangesDialog +
                       hooks/useUnsavedChangesGuard (leave-page warning), MarkdownField (moved from
                       @content once @dev-practice became its second consumer), TagPicker +
                       hooks/useStagedTagPicker (the form "Tags" section, shared by @ecommerce's
@@ -237,7 +239,8 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     hand-rolling pointer-event drag logic, which has real edge cases: pointer capture, keyboard
     resize, min/max clamping, touch support). `TasksPage.tsx` wraps the 3 columns in
     `<Group orientation="horizontal">` / `<Panel id="tasks-sidebar"|"task-content"|"task-detail">` /
-    `components/ResizeHandle.tsx` (the library's `Separator`, styled). **The installed version (4.x)
+    `@shared/components/ResizeHandle.tsx` (the library's `Separator`, styled — promoted from
+    `@tasks/components/` once `@dev-practice`'s workspace became its second user). **The installed version (4.x)
     renamed the whole API** from the commonly-referenced older docs for this library —
     `Group`/`Panel`/`Separator`, not `PanelGroup`/`Panel`/`PanelResizeHandle` — don't assume the
     older names from memory when touching this again; check `node_modules/react-resizable-panels/dist/react-resizable-panels.d.ts`
@@ -3224,7 +3227,7 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     the second idea from the original design discussion; #1, the viewport-relative height work
     above, was accepted and built first; #3, a Monaco/CodeMirror editor swap, is still unbuilt).**
     - **Deliberately hand-rolled with plain Pointer Events, not built on
-      `@tasks/components/ResizeHandle.tsx`'s `react-resizable-panels`-based one, despite that
+      `@shared/components/ResizeHandle.tsx`'s `react-resizable-panels`-based one, despite that
       dependency already being installed.** Read the installed package's own compiled source
       (`node_modules/react-resizable-panels/dist/react-resizable-panels.js`) rather than assuming
       from its docs: its `Group` container's own default style is `height: '100%', width: '100%',
@@ -3262,7 +3265,7 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       `localStorage` only on `pointerup`/double-click/keypress — never on every `pointermove` tick
       — the same "save on release, not on every intermediate drag position" convention
       `react-resizable-panels`' own `onLayoutChanged` callback documents as the recommended point
-      to persist a layout. Visually mirrors `@tasks/components/ResizeHandle.tsx`'s own look (a 4–8px
+      to persist a layout. Visually mirrors `@shared/components/ResizeHandle.tsx`'s own look (a 4–8px
       hit target, a thin 1px centered line widening/recoloring to `primary.main` on hover/drag/
       focus) without being the same component, since it isn't wired to the same library.
     - **Hidden below the `md` breakpoint** (`display: { xs: 'none', md: 'block' }`) — below that
@@ -4450,7 +4453,32 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       Docker in this sandbox, so the actual on-screen result (every panel's Paste/Copy/Download/
       Maximize buttons, the inline error boxes, and the corrected sample text) is unverified in a
       real browser.
-- **`@dev-practice` — fronts `dev-practice-service`; admin problem-catalog screens only so far**
+- **`@dev-practice` — learner pages** (`/practice`, `/practice/:slug`; public like `/shop` — only
+  submitting needs a login, handled by the workspace's own "Log in to submit" button, not a
+  `PrivateRoute`; NavBar "Practice" button is unconditional). `api/practiceApi.ts` is the learner
+  half (public catalog + own submissions), kept apart from the admin `devPracticeApi.ts` like
+  `@ecommerce`'s `shopApi`/`ecommerceApi`.
+  - `pages/PracticeListPage.tsx`: every filter lives in the URL (`?q=&difficulty=&tag=1&tag=2&page=`),
+    the URL is the single source of truth (no mirrored filter state), search is debounced 300ms.
+  - `pages/ProblemWorkspacePage.tsx`: a `react-resizable-panels` split (widths persisted via
+    `useDefaultLayout`, id `practice-workspace-layout`) — left: Description (`@shared/MarkdownView`
+    + `components/SampleTestCases`, which renders `[[1,2]]` as `nums = [1,2]`) | Submissions
+    (`components/SubmissionHistory`, own submissions, "Load code"); right: `components/SolutionEditor`
+    + `components/SubmissionVerdict` + Submit. **Rendered with `key={slug}`** — React Router keeps
+    the component when only `:slug` changes, and all workspace state belongs to one problem.
+  - **Shared with the admin reference panel, don't fork them**: `hooks/useSubmissionPolling` (poll a
+    submission until final, keyed on its id, `onFinal` callback), `hooks/useSolutionDrafts` (one
+    draft per language pre-filled with starter code; an untouched starter is refreshed when
+    `starterVersion` changes, typed code never is; optional `storageKey` persists drafts — the
+    workspace uses `practice-draft:<slug>` — together with the starters they were filled from, so a
+    stale untouched draft is still refreshed on a later visit) and `components/SolutionEditor`
+    (language toggle + CodeMirror; `sizing="fill"` uses the absolute-inset trick so CodeMirror's
+    scroller engages).
+  - The verdict names a failing test by number only (`passedTestCases + 1` — the judge stops at
+    the first failure); a hidden test's input is never shown, and the public API never sends one.
+  - Not built yet: solved/attempted markers (Phase 2, needs a backend endpoint) and Run on samples/
+    custom input (Phase 3).
+- **`@dev-practice` — admin problem-catalog screens**
   (`/admin/problems`, `/new`, `/:id/edit`, nested under `AdminLayout` — "Dev Practice → Problems"
   sidebar group). `pages/ProblemListPage.tsx`/`ProblemFormPage.tsx` copy `@content`'s
   `QuestionAnswerListPage`/`FormPage` shape (filters, `TableStatusRow`, `ConfirmDialog`,
