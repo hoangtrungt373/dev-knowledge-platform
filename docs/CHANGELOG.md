@@ -22,6 +22,13 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **`dev-practice-service`: second seed problem, Contains Duplicate** (`data/problems/contains-duplicate.md`,
+  EASY, `boolean containsDuplicate(int[] nums)`, 16 test cases incl. the empty array and ±10^9, Java
+  HashSet `referenceSolution`, `status: PUBLISHED` via publish-on-accept). New `Sorting` topic in
+  `problem_tags.csv` (19 now; `ProblemTagSeeder` adds it to an existing database on the next seeded
+  startup). `ProblemSeederTest` rewritten to be generic: every seed file's reference is compiled and
+  run against its own test cases (arguments converted by `ParamType`, results compared as JSON), so
+  later seed files need no test changes (114 tests).
 - **`dev-practice-service`: publishing a problem now requires an accepted reference submission
   (backend, Phase 1 of 3).** A problem can only reach `PUBLISHED` once an admin's `REFERENCE`
   submission has been judged `ACCEPTED` against its *current* grading contract. New

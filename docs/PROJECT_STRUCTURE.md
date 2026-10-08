@@ -3200,10 +3200,13 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 dev-practice-service/scripts/purge-seed-data.sql — dev utility (not a migration): TRUNCATE ...
 RESTART IDENTITY CASCADE of all 6 dev_practice tables, incl. SUBMISSION, so the seeders reseed
 
-dev-practice-service/src/main/resources/data/csv/problem_tags.csv — the 18 starter topics
-(Array, String, Hash Table, Two Pointers, … Math, Bit Manipulation)
+dev-practice-service/src/main/resources/data/csv/problem_tags.csv — the 19 starter topics
+(Array, String, Hash Table, Sorting, Two Pointers, … Math, Bit Manipulation)
 
 dev-practice-service/src/main/resources/data/problems/
+├── contains-duplicate.md — EASY, tags Array/Hash Table/Sorting, Java template
+│   `boolean containsDuplicate(int[] nums)`, 16 test cases (2 samples; empty array, non-adjacent
+│   duplicate, ±x not duplicates, ±10^9 extremes), HashSet reference solution
 └── evaluate-reverse-polish-notation.md — MEDIUM, tags Array/Math/Stack, Java template
     `int evalRPN(String[] tokens)`, 18 test cases (2 samples; truncation-toward-zero, operand
     order, single operand, deep stack, ±200 extremes)
@@ -3239,7 +3242,8 @@ dev-practice-service/src/test/
 │                                         template, tags, sample count, created as DRAFT + a
 │                                         publish-on-accept reference run; the file's own
 │                                         referenceSolution compiled (javax.tools) and run against
-│                                         every RPN test case; skip-if-exists
+│                                         every test case of every seed file (arguments typed by
+│                                         the signature, compared as JSON); skip-if-exists
 ├── java/.../service/impl/ProblemServiceImplTest.java — delete refused with submissions,
 │                                         reserved-name rejection on create, arity error message;
 │                                         publish verification (create-as-PUBLISHED refused, draft →

@@ -300,7 +300,10 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   name that isn't). Like every startup seeder here, a seeded tag/problem an admin deletes comes
   back on the next seeded startup — accepted, since seeding is off outside `local`. Compute every
   `expectedOutput` with a reference solution, never by hand — `ProblemSeederTest` does exactly this
-  for the RPN problem (add the same kind of check when adding a problem). **`status: PUBLISHED`
+  for **every** seed file, generically: it compiles each file's `referenceSolution` (`javax.tools`),
+  converts each test case's JSON arguments by the parsed signature's `ParamType`s, and compares the
+  result as JSON — a new seed file is covered with no test change (its exhaustive `javaType` switch
+  is the one place a new `ParamType` must be taught first). **`status: PUBLISHED`
   requires a `referenceSolution: {language, code}`** (startup fails without one): the seeder creates
   the problem as `DRAFT`, submits the solution as a publish-on-accept REFERENCE run, and the judge
   publishes it seconds later once every case passes. If Judge0 rejects it or is unreachable (no
@@ -392,7 +395,8 @@ as unverified until the IT runs somewhere with Docker.
 - Result delivery is polling only (`Judge0Client` blocks internally on `GET /submissions/{token}`)
   — the webhook-callback alternative discussed in Phase 1 planning was explicitly not chosen this
   round (simpler, no new inbound-auth surface to design).
-- Only one seeded problem so far (Evaluate Reverse Polish Notation — see the seeding rule above).
+- Two seeded problems so far (Evaluate Reverse Polish Notation, Contains Duplicate — see the
+  seeding rule above).
   The admin GUI exists (`gui`'s `@dev-practice` feature, `/admin/problems`, including the
   reference-solution panel that verifies a problem before it can be published); the public
   problem/submission GUI doesn't yet.

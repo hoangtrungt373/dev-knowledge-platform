@@ -29,19 +29,19 @@ class ProblemTagSeederTest {
     void createsEveryTagThatDoesNotExistYetThroughTheService() {
         when(tagRepository.existsByNameIgnoreCase("Array")).thenReturn(true);
 
-        assertThat(seeder.seed()).isEqualTo(17);
+        assertThat(seeder.seed()).isEqualTo(18);
 
         verify(tagService, never()).create("Array");
         verify(tagService).create("Dynamic Programming");
-        verify(tagService, times(17)).create(anyString());
+        verify(tagService, times(18)).create(anyString());
     }
 
     @Test
-    void theCsvHasEighteenDistinctNonBlankNames() {
+    void theCsvHasOnlyDistinctNonBlankNames() {
         List<String> names = csvNames();
 
-        assertThat(names).hasSize(18).allMatch(n -> !n.isBlank());
-        assertThat(names.stream().map(n -> n.toLowerCase(Locale.ROOT)).distinct()).hasSize(18);
+        assertThat(names).hasSize(19).allMatch(n -> !n.isBlank());
+        assertThat(names.stream().map(n -> n.toLowerCase(Locale.ROOT)).distinct()).hasSize(19);
     }
 
     /** The CSV's tag names — also what {@link ProblemSeederTest} resolves seed problems' tags against. */
