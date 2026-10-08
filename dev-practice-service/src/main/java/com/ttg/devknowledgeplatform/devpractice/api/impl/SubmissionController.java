@@ -15,9 +15,12 @@ import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.devpractice.api.SubmissionApi;
 import com.ttg.devknowledgeplatform.devpractice.dto.CreateSubmissionRequest;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemProgressResponse;
+import com.ttg.devknowledgeplatform.devpractice.dto.RunRequest;
+import com.ttg.devknowledgeplatform.devpractice.dto.RunResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.SubmissionResponse;
 import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
 import com.ttg.devknowledgeplatform.devpractice.mapper.SubmissionMapper;
+import com.ttg.devknowledgeplatform.devpractice.service.CodeRunService;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionCommands;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionService;
 
@@ -31,6 +34,7 @@ public class SubmissionController implements SubmissionApi {
 
     private final SubmissionService submissionService;
     private final SubmissionMapper submissionMapper;
+    private final CodeRunService codeRunService;
 
     @Override
     public ResponseEntity<SubmissionResponse> create(String userUuid, CreateSubmissionRequest request) {
@@ -38,6 +42,13 @@ public class SubmissionController implements SubmissionApi {
                 request.getProblemId(), request.getLanguage(), request.getSourceCode());
         Submission created = submissionService.create(userUuid, command);
         return ResponseEntity.status(HttpStatus.CREATED).body(submissionMapper.toResponse(created));
+    }
+
+    @Override
+    public ResponseEntity<RunResponse> run(RunRequest request) {
+        SubmissionCommands.Run command = new SubmissionCommands.Run(request.getProblemId(), request.getLanguage(),
+                request.getSourceCode(), request.getCustomInputs());
+        return ResponseEntity.ok(submissionMapper.toResponse(codeRunService.run(command)));
     }
 
     @Override

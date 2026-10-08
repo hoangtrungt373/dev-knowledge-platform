@@ -44,7 +44,16 @@ public enum DevPracticeErrorCode implements ErrorCode {
             "This tag is used by {0} problem(s) — remove it from them before deleting it", HttpStatus.CONFLICT),
 
     // Submission errors (SUBMISSION_*)
-    SUBMISSION_NOT_FOUND("SUBMISSION_001", "Submission not found", HttpStatus.NOT_FOUND);
+    SUBMISSION_NOT_FOUND("SUBMISSION_001", "Submission not found", HttpStatus.NOT_FOUND),
+    SUBMISSION_RUN_INPUT_INVALID("SUBMISSION_002",
+            "Custom input {0} isn''t valid: {1}", HttpStatus.BAD_REQUEST),
+    SUBMISSION_RUN_TOO_MANY_INPUTS("SUBMISSION_003",
+            "At most {0} custom inputs can be run at once", HttpStatus.BAD_REQUEST),
+    // Not a verdict on the code — the judge backend itself couldn't be reached (Run only; a graded
+    // submission records JUDGE_ERROR on the submission instead, since it's judged asynchronously).
+    JUDGE_UNAVAILABLE("JUDGE_001",
+            "The judge is temporarily unavailable, so your code couldn''t be run. Please try again in a moment",
+            HttpStatus.SERVICE_UNAVAILABLE);
 
     private final String code;
     private final String message;

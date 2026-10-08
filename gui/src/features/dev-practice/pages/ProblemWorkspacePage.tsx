@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  Alert,
   Box,
   Button,
   Chip,
   IconButton,
+  LinearProgress,
   Paper,
   Stack,
   Tab,
@@ -15,10 +17,11 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import SendIcon from '@mui/icons-material/Send';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import LoginIcon from '@mui/icons-material/Login';
 import SearchOffIcon from '@mui/icons-material/SearchOff';
 import { Group, Panel, useDefaultLayout } from 'react-resizable-panels';
-import { Problem } from '../types';
+import { Problem, RunResult, Submission } from '../types';
 import { practiceApi } from '../api/practiceApi';
 import { DIFFICULTY_COLOR, DIFFICULTY_LABEL } from '../constants';
 import { isInProgress, useSubmissionPolling } from '../hooks/useSubmissionPolling';
@@ -29,6 +32,9 @@ import SolutionEditor from '../components/SolutionEditor';
 import SampleTestCases from '../components/SampleTestCases';
 import SubmissionVerdict from '../components/SubmissionVerdict';
 import SubmissionHistory from '../components/SubmissionHistory';
+import RunCaseEditor from '../components/RunCaseEditor';
+import RunResultView from '../components/RunResultView';
+import { casesFromSamples, toInputJson } from '../utils/runCases';
 import { authService } from '@auth/services/authService';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import FullPageLoader from '@shared/components/FullPageLoader';
@@ -42,12 +48,59 @@ const LIST_PATH = '/practice';
 // The dense NavBar is 48px tall; the workspace fills the rest of the viewport.
 const NAVBAR_HEIGHT_PX = 48;
 
+// Mirrors CodeRunServiceImpl.MAX_CUSTOM_INPUTS — the backend rejects more inputs per run.
+const MAX_RUN_CASES = 5;
+
 type LeftTab = 'description' | 'submissions';
+type ConsoleTab = 'testcase' | 'result';
+
+/** What the last Run produced: a result, or a message (bad input, judge unavailable). */
+type RunOutcome =
+  | { kind: 'result'; result: RunResult; runId: number }
+  | { kind: 'error'; message: string };
+
+interface ConsoleResultProps {
+  lastAction: 'run' | 'submit' | null;
+  running: boolean;
+  runOutcome: RunOutcome | null;
+  submission: Submission | null;
+  gaveUp: boolean;
+  problem: Problem;
+}
+
+/** The console's Result tab: whichever of Run or Submit the learner started last. */
+function ConsoleResult({ lastAction, running, runOutcome, submission, gaveUp, problem }: ConsoleResultProps): JSX.Element {
+  if (lastAction === 'submit' && submission) {
+    return <SubmissionVerdict submission={submission} gaveUp={gaveUp} />;
+  }
+  if (lastAction === 'run') {
+    if (running) {
+      return (
+        <Box>
+          <Typography variant="body2" fontWeight={700}>Running your cases…</Typography>
+          <LinearProgress sx={{ mt: 1 }} />
+        </Box>
+      );
+    }
+    if (runOutcome?.kind === 'error') return <Alert severity="error">{runOutcome.message}</Alert>;
+    if (runOutcome?.kind === 'result') {
+      // Keyed per run so the selected-case chip starts again at Case 1 for each new result.
+      return <RunResultView key={runOutcome.runId} result={runOutcome.result} parameters={problem.parameters} />;
+    }
+  }
+  return (
+    <Typography variant="body2" color="text.secondary">
+      Run your code on the test cases, or submit it to be judged — the result appears here.
+    </Typography>
+  );
+}
 
 /**
  * The learner's workspace for one problem — `/practice/:slug`, public to read; submitting needs a
  * login. A resizable split (widths remembered per browser): description, sample cases and the
- * learner's own submissions on the left; the editor, verdict and Submit button on the right.
+ * learner's own submissions on the left; the editor, a console (editable test cases for Run, and the
+ * latest Run/Submit result) and the Run/Submit buttons on the right. Run tries the console's cases
+ * without saving (synchronous); Submit is graded on every test and judged asynchronously.
  *
  * Drafts are kept in `localStorage` per problem (and per language within it), so a reload or a
  * later visit picks up where the learner stopped. Judging is asynchronous, so a submission is
@@ -73,6 +126,15 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
   const [historyKey, setHistoryKey] = useState(0);
   const [confirmReset, setConfirmReset] = useState(false);
 
+  // ── Run console (Testcase | Result) ──
+  const [consoleTab, setConsoleTab] = useState<ConsoleTab>('testcase');
+  // One JSON value per parameter per case, pre-filled from the samples once the problem loads.
+  const [runCases, setRunCases] = useState<string[][]>([]);
+  const [running, setRunning] = useState(false);
+  const [runOutcome, setRunOutcome] = useState<RunOutcome | null>(null);
+  // Which action the Result tab shows: the last one the learner started.
+  const [lastAction, setLastAction] = useState<'run' | 'submit' | null>(null);
+
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: 'practice-workspace-layout',
     storage: window.localStorage,
@@ -86,7 +148,11 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
     // No showError: a missing (or unpublished — the backend can't tell them apart on purpose) problem
     // gets its own "not found" page rather than a toast.
     practiceApi.getProblem(slug)
-      .then(p => { if (!cancelled) setProblem(p); })
+      .then(p => {
+        if (cancelled) return;
+        setProblem(p);
+        setRunCases(casesFromSamples(p));
+      })
       .catch(() => { if (!cancelled) setNotFound(true); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -110,9 +176,34 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
   );
 
   const judging = submitting || (isInProgress(submission) && !gaveUp);
+  // Run and Submit share the editor's code and the console, so one blocks the other.
+  const busy = judging || running;
+
+  /**
+   * Runs the console's cases without saving anything. Every case is sent as a custom input — the
+   * backend still checks any that equals a sample against that sample's answer, so the untouched
+   * pre-filled cases come back passed/failed while edited ones just show their output.
+   */
+  const handleRun = async () => {
+    if (!problem) return;
+    setLastAction('run');
+    setConsoleTab('result');
+    setRunning(true);
+    try {
+      const result = await practiceApi.run(problem.id, drafts.language, drafts.code, runCases.map(toInputJson));
+      setRunOutcome({ kind: 'result', result, runId: Date.now() });
+    } catch (e) {
+      // Not a toast: a bad custom input's message ("Custom input #2 isn't valid: …") belongs next to it.
+      setRunOutcome({ kind: 'error', message: e instanceof Error ? e.message : 'The run failed' });
+    } finally {
+      setRunning(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!problem) return;
+    setLastAction('submit');
+    setConsoleTab('result');
     setSubmitting(true);
     try {
       track(await practiceApi.submit(problem.id, drafts.language, drafts.code, showError));
@@ -240,28 +331,66 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
                 />
               </Box>
 
-              {submission && (
-                <Box sx={{ maxHeight: '35%', overflow: 'auto', flexShrink: 0 }}>
-                  <SubmissionVerdict submission={submission} gaveUp={gaveUp} />
+              {/* ── Console: editable cases for Run, and the latest Run/Submit result ── */}
+              <Box sx={{ height: '40%', minHeight: 180, display: 'flex', flexDirection: 'column', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                <Tabs
+                  value={consoleTab}
+                  onChange={(_, v: ConsoleTab) => setConsoleTab(v)}
+                  sx={{ minHeight: 36, borderBottom: 1, borderColor: 'divider', '& .MuiTab-root': { minHeight: 36, py: 0 } }}
+                >
+                  <Tab value="testcase" label="Testcase" />
+                  <Tab value="result" label="Result" />
+                </Tabs>
+                <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.5 }}>
+                  {consoleTab === 'testcase' ? (
+                    <RunCaseEditor
+                      parameters={problem.parameters}
+                      cases={runCases}
+                      onChange={setRunCases}
+                      onReset={() => setRunCases(casesFromSamples(problem))}
+                      maxCases={MAX_RUN_CASES}
+                      disabled={busy}
+                    />
+                  ) : (
+                    <ConsoleResult
+                      lastAction={lastAction}
+                      running={running}
+                      runOutcome={runOutcome}
+                      submission={submission}
+                      gaveUp={gaveUp}
+                      problem={problem}
+                    />
+                  )}
                 </Box>
-              )}
+              </Box>
 
-              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ flexShrink: 0 }}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ flexShrink: 0 }}>
                 <Typography variant="caption" color="text.secondary">
-                  Your code is judged against every test case, including hidden ones.
+                  Run tries your cases without saving · Submit judges every test, hidden ones included.
                 </Typography>
                 {isAuthed ? (
-                  <SubmitButton
-                    saving={judging}
-                    onClick={handleSubmit}
-                    label="Submit"
-                    startIcon={<SendIcon />}
-                    disabled={!drafts.code.trim()}
-                  />
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      variant="outlined"
+                      startIcon={<PlayArrowIcon />}
+                      onClick={handleRun}
+                      disabled={busy || !drafts.code.trim() || runCases.length === 0}
+                    >
+                      {running ? 'Running…' : 'Run'}
+                    </Button>
+                    <SubmitButton
+                      saving={judging}
+                      onClick={handleSubmit}
+                      label="Submit"
+                      startIcon={<SendIcon />}
+                      disabled={running || !drafts.code.trim()}
+                    />
+                  </Stack>
                 ) : (
                   // Draft code is in localStorage, so it is still here after logging in and coming back.
+                  // Run needs a login too: it uses the same judge, which isn't open to anonymous traffic.
                   <Button variant="contained" startIcon={<LoginIcon />} onClick={() => navigate('/login')}>
-                    Log in to submit
+                    Log in to run &amp; submit
                   </Button>
                 )}
               </Stack>

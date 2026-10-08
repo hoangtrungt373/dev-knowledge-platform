@@ -18,10 +18,8 @@ import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarness;
 import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarnessRegistry;
-import com.ttg.devknowledgeplatform.devpractice.judge.JudgeClient;
+import com.ttg.devknowledgeplatform.devpractice.judge.CaseJudge;
 import com.ttg.devknowledgeplatform.devpractice.judge.JudgeUnavailableException;
-import com.ttg.devknowledgeplatform.devpractice.judge.Judge0SubmissionResult;
-import com.ttg.devknowledgeplatform.devpractice.judge.OutputMatcher;
 import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemService;
 
@@ -73,8 +71,7 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
 
     private final SubmissionRepository submissionRepository;
     private final LanguageHarnessRegistry harnessRegistry;
-    private final JudgeClient judgeClient;
-    private final OutputMatcher outputMatcher;
+    private final CaseJudge caseJudge;
     private final TransactionTemplate transactionTemplate;
     private final ProblemService problemService;
 
@@ -82,14 +79,12 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
             SubmissionRepository submissionRepository,
             ProblemService problemService,
             LanguageHarnessRegistry harnessRegistry,
-            JudgeClient judgeClient,
-            OutputMatcher outputMatcher,
+            CaseJudge caseJudge,
             PlatformTransactionManager transactionManager) {
         this.submissionRepository = submissionRepository;
         this.problemService = problemService;
         this.harnessRegistry = harnessRegistry;
-        this.judgeClient = judgeClient;
-        this.outputMatcher = outputMatcher;
+        this.caseJudge = caseJudge;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -161,23 +156,12 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
 
         int passed = 0;
         for (TestCase testCase : input.testCases()) {
-            Judge0SubmissionResult result = judgeClient.run(program, input.language(), testCase.getInput());
-
-            SubmissionStatus failure = switch (result.status()) {
-                case COMPILATION_ERROR -> SubmissionStatus.COMPILE_ERROR;
-                case TIME_LIMIT_EXCEEDED -> SubmissionStatus.TIME_LIMIT_EXCEEDED;
-                case RUNTIME_ERROR, INTERNAL_ERROR, EXEC_FORMAT_ERROR -> SubmissionStatus.RUNTIME_ERROR;
-                case ACCEPTED -> outputMatcher.matches(
-                        result.stdout(), testCase.getExpectedOutput(), input.problem().getReturnType())
-                        ? null : SubmissionStatus.WRONG_ANSWER;
-                // Judge0 only reports WRONG_ANSWER when we supply expected_output (we never do —
-                // see Judge0SubmissionResult's Javadoc), and IN_QUEUE/PROCESSING are non-final
-                // statuses JudgeClient#run never returns; both are defensive fallbacks only.
-                case IN_QUEUE, PROCESSING, WRONG_ANSWER -> SubmissionStatus.RUNTIME_ERROR;
-            };
-
-            if (failure != null) {
-                return new JudgingOutcome(failure, passed, errorMessageOf(result));
+            // What one run means (status mapping, output comparison) lives in CaseJudge, shared with
+            // CodeRunService's unsaved Run so the two can never disagree on a verdict.
+            CaseJudge.CaseResult result = caseJudge.run(program, input.language(), testCase.getInput(),
+                    testCase.getExpectedOutput(), input.problem().getReturnType());
+            if (!result.passed()) {
+                return new JudgingOutcome(result.status(), passed, result.diagnostic());
             }
             passed++;
         }
@@ -195,16 +179,6 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
                 problemService.publishIfVerified(submission.getProblem().getId(), submission.getContractVersion());
             }
         });
-    }
-
-    private static String errorMessageOf(Judge0SubmissionResult result) {
-        if (result.compileOutput() != null && !result.compileOutput().isBlank()) {
-            return result.compileOutput();
-        }
-        if (result.stderr() != null && !result.stderr().isBlank()) {
-            return result.stderr();
-        }
-        return result.message();
     }
 
     private record JudgingInput(

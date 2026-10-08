@@ -25,6 +25,7 @@ import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarnessRegistry;
 import com.ttg.devknowledgeplatform.devpractice.harness.PythonLanguageHarness;
+import com.ttg.devknowledgeplatform.devpractice.judge.CaseJudge;
 import com.ttg.devknowledgeplatform.devpractice.judge.JudgeClient;
 import com.ttg.devknowledgeplatform.devpractice.judge.JudgeUnavailableException;
 import com.ttg.devknowledgeplatform.devpractice.judge.Judge0Status;
@@ -53,8 +54,7 @@ class SubmissionJudgeEventListenerTest {
                 repository,
                 problemService,
                 new LanguageHarnessRegistry(List.of(new PythonLanguageHarness())),
-                judgeClient,
-                new OutputMatcher(new ObjectMapper()),
+                new CaseJudge(judgeClient, new OutputMatcher(new ObjectMapper())),
                 mock(PlatformTransactionManager.class));
 
         Problem problem = Problem.builder().methodName("identity").returnType(ParamType.INT).contractVersion(4).build();

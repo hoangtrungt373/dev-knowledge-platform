@@ -171,3 +171,21 @@ export interface ProblemProgress {
   problemId: number;
   status: ProblemProgressStatus;
 }
+
+/** `RunResponse.CaseResponse` — one input of an unsaved run. */
+export interface RunCaseResult {
+  /** The JSON argument array that ran. */
+  input: string;
+  /** Known for a sample (or an input identical to one); null for other custom input. */
+  expectedOutput: string | null;
+  actualOutput: string | null;
+  status: SubmissionStatus;
+  /** true/false when an answer was known; null otherwise. */
+  passed: boolean | null;
+  diagnostic: string | null;
+}
+
+/** `RunResponse` — the result of an unsaved run; stops early after a compile error. */
+export interface RunResult {
+  cases: RunCaseResult[];
+}

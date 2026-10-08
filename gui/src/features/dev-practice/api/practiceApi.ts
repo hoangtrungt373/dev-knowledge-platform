@@ -7,6 +7,7 @@ import {
   ProblemSummary,
   ProblemTagSummary,
   ProgrammingLanguage,
+  RunResult,
   StarterCode,
   Submission,
 } from '../types';
@@ -66,6 +67,16 @@ export const practiceApi = {
 
   submit(problemId: number, language: ProgrammingLanguage, sourceCode: string, showError?: ShowError): Promise<Submission> {
     return httpClient.post('/api/v1/submissions', { problemId, language, sourceCode }, showError);
+  },
+
+  /**
+   * Runs code without saving: no customInputs = the sample cases (answers checked); otherwise those
+   * JSON argument arrays (an input identical to a sample is still checked). Synchronous — resolves
+   * once every input is judged. Called without showError by the workspace, which shows a bad input's
+   * message inline in its console.
+   */
+  run(problemId: number, language: ProgrammingLanguage, sourceCode: string, customInputs?: string[], showError?: ShowError): Promise<RunResult> {
+    return httpClient.post('/api/v1/submissions/run', { problemId, language, sourceCode, customInputs }, showError);
   },
 
   /** Solved/attempted per problem the caller has submitted to (absent = never submitted). */

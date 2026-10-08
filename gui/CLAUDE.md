@@ -4483,7 +4483,15 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     "You've solved N"; the workspace header shows it and calls `markJudged` on each final verdict so
     it updates without a refetch. Solved is sticky client-side too, matching the backend. No
     "show only unsolved" filter: the list is paged server-side, so that needs a backend filter.
-  - Not built yet: Run on samples/custom input (Phase 3).
+  - **Run (Phase 3)**: the workspace's right pane has a console under the editor — **Testcase**
+    (`components/RunCaseEditor`: a chip per case, one field per parameter, pre-filled from the
+    samples via `utils/runCases#casesFromSamples`, max 5 = the backend's limit, "Sample cases" resets)
+    and **Result** (whichever of Run or Submit the learner started last: `components/RunResultView`
+    or `SubmissionVerdict`). Run always sends every case as a custom input (`toInputJson`); the backend
+    still checks an unchanged sample against its answer, so passed/failed shows for those and plain
+    output for edited ones. Run is synchronous (no polling) and its errors (bad input, judge down)
+    render inline in Result, not as a toast. Run and Submit block each other; both need a login.
+    `utils/runCases#argumentLines` (`nums = [1,2]` formatting) is shared with `SampleTestCases`.
 - **`@dev-practice` — admin problem-catalog screens**
   (`/admin/problems`, `/new`, `/:id/edit`, nested under `AdminLayout` — "Dev Practice → Problems"
   sidebar group). `pages/ProblemListPage.tsx`/`ProblemFormPage.tsx` copy `@content`'s

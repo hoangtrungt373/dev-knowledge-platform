@@ -6,6 +6,8 @@ import com.ttg.devknowledgeplatform.common.annotation.CurrentUserId;
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.CreateSubmissionRequest;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemProgressResponse;
+import com.ttg.devknowledgeplatform.devpractice.dto.RunRequest;
+import com.ttg.devknowledgeplatform.devpractice.dto.RunResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.SubmissionResponse;
 
 import jakarta.validation.Valid;
@@ -40,6 +42,20 @@ public interface SubmissionApi {
     @PostMapping
     ResponseEntity<SubmissionResponse> create(
             @CurrentUserId String userUuid, @Valid @RequestBody CreateSubmissionRequest request);
+
+    /**
+     * Runs code without saving anything — against the problem's sample cases (answers checked) or the
+     * request's custom inputs (output only). Synchronous: the response arrives once every input has
+     * been judged, typically a few seconds. Leaves no submission and doesn't affect progress; hidden
+     * test cases are never used. Login is still required (enforced by the security config for
+     * {@code /api/v1/submissions/**}), so the judge isn't open to anonymous traffic.
+     *
+     * @param request problem, language, code and optional custom inputs
+     * @return {@code 200} with one result per input; {@code 400 SUBMISSION_RUN_*} for bad inputs;
+     *         {@code 404} for a problem that isn't published; {@code 503 JUDGE_UNAVAILABLE}
+     */
+    @PostMapping("/run")
+    ResponseEntity<RunResponse> run(@Valid @RequestBody RunRequest request);
 
     /**
      * The caller's standing on every problem they've submitted to — {@code SOLVED} or

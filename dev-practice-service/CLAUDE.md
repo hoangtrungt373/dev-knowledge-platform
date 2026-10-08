@@ -101,6 +101,10 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
   JSDoc's `{type}` braces collide with Mustache's; and a backslash in a template is a literal
   backslash in the generated program — no Java-string escaping layer anymore, so write `"\\A"` in a
   template exactly as it should appear in the generated Java.
+- `judge/CaseJudge` — **the one place that decides what a single run means** (Judge0 status →
+  `SubmissionStatus`, then `OutputMatcher` when an answer is known; `expectedOutput == null` = run
+  only). Used by both `SubmissionJudgeEventListener` (graded, stops at the first failure) and
+  `CodeRunService` (Run, reports every case) — never re-implement that mapping in either caller.
 - `judge/` — `JudgeClient` (an **Adapter**, Structural pattern, in front of Judge0's HTTP API) +
   `judge.impl.Judge0Client` (the `RestClient`-backed implementation, works unmodified against
   either Judge0 CE's hosted RapidAPI instance — the default, see the "Phase 2" section below — or a
@@ -141,7 +145,8 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
   (public browsing + `/starter-code`), `SubmissionApi` (owner-gated, `USER` submissions only — plus
   `GET /progress`: the caller's `SOLVED`/`ATTEMPTED` status per problem they submitted to, derived on
   the fly by one `GROUP BY` (`SubmissionRepository#summarizeByProblem`, an interface projection),
-  never stored; solved stays solved even if the test cases change later),
+  never stored; solved stays solved even if the test cases change later — and `POST /run`, see the
+  Run rule below),
   `ProblemReferenceSubmissionApi` (admin: create/list/get `REFERENCE` submissions under
   `/api/v1/admin/problems/{problemId}/reference-submissions` — already covered by the existing
   `/api/v1/admin/problems/**` gateway route). `mapper/` —
@@ -343,6 +348,18 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   delete — they're the admin's verification scaffolding, so `ProblemServiceImpl#delete` removes
   them explicitly (`deleteByProblem_IdAndKind`) right before the problem itself. Don't "fix" this with a cascade
   migration without asking — it was an explicit choice over that option.
+- **Run (`POST /api/v1/submissions/run`, `service.CodeRunService`) is synchronous and saves
+  nothing** — no `Submission` row, no history, no effect on progress; hidden test cases are never
+  used. No `customInputs` = run the published problem's samples (answers checked); with them (max
+  `CodeRunServiceImpl.MAX_CUSTOM_INPUTS` = 5, each a JSON array with one value per parameter —
+  `SUBMISSION_RUN_INPUT_INVALID`/`_TOO_MANY_INPUTS` otherwise) they run instead, and one equal to a
+  sample (compared as parsed JSON) keeps that sample's answer — the GUI pre-fills its cases from the
+  samples. Cases run **sequentially** (parallel calls hit RapidAPI's rate limit) and stop after a
+  compile error. Same transaction shape as the judge listener: a short read-only
+  `TransactionTemplate` load, then judge calls with no connection held. An unreachable judge is
+  `JUDGE_UNAVAILABLE` (503, generic message; detail logged) — unlike a graded submission, which
+  records `JUDGE_ERROR` on itself. Login is still required (the `/api/v1/submissions/**` rule), so
+  the judge isn't open to anonymous traffic; there is no per-user rate limit yet.
 - **`Validator` overload trap**: `Validator.isTrue(cond, code, someString)` with exactly one
   `String` argument binds to the `(…, String message)` overload and *replaces* the error code's
   template rather than filling `{0}`. Cast to `(Object)` or pass two args when you mean a template

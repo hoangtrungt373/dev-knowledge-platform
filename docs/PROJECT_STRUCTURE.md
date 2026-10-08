@@ -3027,6 +3027,10 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     EXEC_FORMAT_ERROR; ACCEPTED here never means "matched
 │   │                                     expected output" — see its own Javadoc
 │   ├── Judge0SubmissionResult.java      — record: status, stdout, stderr, compileOutput, message
+│   ├── CaseJudge.java                   — @Component: one input through a built program → CaseResult
+│   │                                     (status, stdout, diagnostic); Judge0 status mapping + output
+│   │                                     compare (skipped when expectedOutput is null). Shared by
+│   │                                     SubmissionJudgeEventListener and CodeRunService
 │   ├── OutputMatcher.java               — @Component: structural, return-type-aware JSON compare of
 │   │                                     stdout vs. TestCase.expectedOutput — DOUBLE/DOUBLE_ARRAY
 │   │                                     within 1e-5 (abs, or relative above 1), every other numeric
@@ -3108,6 +3112,10 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     listReferenceSubmissions / getReferenceSubmission (must
 │   │                                     belong to the path's problem) + listProgress(user) →
 │   │                                     List<ProblemProgress> (service record: problemId, status)
+│   ├── CodeRunService.java (+ impl/)  — run(SubmissionCommands.Run) → RunResult: samples or custom
+│   │                                     inputs (≤5, arity-checked; one equal to a sample keeps its
+│   │                                     answer), sequential via CaseJudge, nothing persisted,
+│   │                                     read-only TransactionTemplate load then no connection held
 │   ├── ProblemTagService.java (+ impl/) — tag catalog CRUD + listAll (sorted by name); delete
 │   │                                     refused while in use (PROBLEM_TAG_IN_USE)
 │   ├── ProblemCommands.java           — Create/Update records (+ tagIds: Create null = none;
@@ -3135,8 +3143,13 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                         PROBLEM_HAS_SUBMISSIONS (409 — delete refused; archive
 │                                         instead), PROBLEM_NOT_VERIFIED (409 — publish without an
 │                                         ACCEPTED reference at the current contractVersion),
-│                                         SUBMISSION_NOT_FOUND
+│                                         SUBMISSION_NOT_FOUND, SUBMISSION_RUN_INPUT_INVALID (400),
+│                                         SUBMISSION_RUN_TOO_MANY_INPUTS (400), JUDGE_UNAVAILABLE (503)
 ├── dto/
+│   ├── RunRequest.java                — problemId, language, sourceCode, customInputs (optional
+│   │                                     JSON argument arrays)
+│   ├── RunResponse.java               — record: cases (CaseResponse: input, expectedOutput,
+│   │                                     actualOutput, status, passed, diagnostic)
 │   ├── ProblemResponse.java           — record: id, slug, title, description, difficulty, status,
 │   │                                     methodName, returnType, parameters
 │   │                                     (List<MethodParameterResponse>), testCases
@@ -3197,7 +3210,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
     └── SubmissionApi.java (+ SubmissionController.java)        — /api/v1/submissions: create,
                                           getById, list — every method takes @CurrentUserId String
                                           userUuid; USER submissions only; GET /progress →
-                                          List<ProblemProgressResponse> {problemId, status}
+                                          List<ProblemProgressResponse> {problemId, status};
+                                          POST /run → RunResponse (synchronous, unsaved)
     ├── ProblemReferenceSubmissionApi.java (+ ProblemReferenceSubmissionController.java) —
                                           /api/v1/admin/problems/{problemId}/reference-submissions:
                                           create (201, ReferenceSubmissionRequest), getById, list
@@ -3256,6 +3270,11 @@ dev-practice-service/src/test/
 │                                         published needs a current reference, live contract edit
 │                                         refused, draft edit bumps contractVersion, sample-flag
 │                                         toggle doesn't)
+├── java/.../service/impl/CodeRunServiceImplTest.java — samples judged against answers (all of
+│                                         them), hidden ones never run, custom inputs run without an
+│                                         answer unless equal to a sample, stop after compile error,
+│                                         arity/JSON/count validation, draft = not found, judge
+│                                         unavailable → JUDGE_UNAVAILABLE
 ├── java/.../service/impl/SubmissionServiceImplTest.java — user vs. reference: no user
 │                                         submissions to drafts, references judged on drafts, references
 │                                         invisible via the user API, reference/problem path mismatch

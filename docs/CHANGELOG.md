@@ -22,6 +22,19 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **Run code without submitting (learner Phase 3).** `dev-practice-service`: new
+  `POST /api/v1/submissions/run` (`SubmissionApi#run`, `service.CodeRunService` + impl) — runs a
+  learner's code synchronously against the published problem's sample cases, or up to 5 custom JSON
+  inputs (an input equal to a sample keeps that sample's answer), and saves nothing; new DTOs
+  `RunRequest`/`RunResponse`, `service.RunResult`, `SubmissionCommands.Run`, error codes
+  `SUBMISSION_RUN_INPUT_INVALID`, `SUBMISSION_RUN_TOO_MANY_INPUTS`, `JUDGE_UNAVAILABLE` (503). The
+  per-case judging (Judge0 status mapping + output comparison) moved out of
+  `SubmissionJudgeEventListener` into a new `judge.CaseJudge` component both now use. New
+  `CodeRunServiceImplTest` (8 tests; 123 total). Covered by the existing gateway route; no migration.
+  `gui`: the workspace gets a Testcase/Result console under the editor and a **Run** button next to
+  Submit — new `components/RunCaseEditor.tsx`, `components/RunResultView.tsx`, `utils/runCases.ts`
+  (`argumentLines` moved there from `SampleTestCases`), types `RunResult`/`RunCaseResult`,
+  `practiceApi.run`.
 - **Learner progress markers (Phase 2).** `dev-practice-service`: new `GET /api/v1/submissions/progress`
   (`SubmissionApi#progress`) — the caller's `SOLVED`/`ATTEMPTED` status per problem they've submitted
   to, derived by one `GROUP BY` (`SubmissionRepository#summarizeByProblem` with an interface
