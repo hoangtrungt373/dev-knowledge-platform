@@ -33,7 +33,8 @@ gui/src/
 └── shared/        — httpClient, common.types-equivalent (types.ts, incl. PagedResponse), the
                       NotificationContext, storage.ts (STORAGE_KEYS), colors.ts, errorHandler.ts,
                       useSubmitGuard, ConfirmDialog, FullPageLoader, EmptyState, SubmitButton,
-                      TableStatusRow, SectionStatus, UploadingOverlay, MarkdownField (moved from
+                      TableStatusRow, SectionStatus, UploadingOverlay, UnsavedChangesDialog +
+                      hooks/useUnsavedChangesGuard (leave-page warning), MarkdownField (moved from
                       @content once @dev-practice became its second consumer), TagPicker +
                       hooks/useStagedTagPicker (the form "Tags" section, shared by @ecommerce's
                       product form and @dev-practice's problem form)
@@ -47,7 +48,12 @@ Cross-directory imports use path aliases (`@shared/*`, `@app/*`, `@auth/*`, `@ch
 `../../` traversal — imports within a single feature (e.g. a page importing its own feature's
 `api/`) stay relative (`../api/chatApi`), only *cross*-feature imports use the alias.
 
-- Routing: `react-router-dom` v6, wired up in `app/App.tsx`. **No route-level code-splitting today**
+- Routing: `react-router-dom` v6, wired up in `app/App.tsx`. **`main.tsx` mounts a data router**
+  (`createBrowserRouter([{ path: '*', element: <App /> }])` + `RouterProvider`), not
+  `<BrowserRouter>` — switched so data-router-only hooks work (`useBlocker`, for
+  `@shared/hooks/useUnsavedChangesGuard`). The single catch-all route just renders `<App/>`, whose
+  own `<Routes>` still do all real routing (React Router's documented incremental-migration step);
+  don't revert to `<BrowserRouter>` — `useBlocker` throws under it. Loaders/actions aren't used. **No route-level code-splitting today**
   — every page component is still a static import (`React.lazy`/`Suspense` was tried and reverted;
   see `docs/CHANGELOG-ARCHIVE.md`/git history if picking this back up — the diagnosis, that every
   OIDC redirect round trip (`Login.tsx`'s/`AdminLogin.tsx`'s/social login's `window.location.href`
@@ -4515,6 +4521,27 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     saving a draft is usually followed by running a reference. `utils/codeLanguages.ts` holds the
     language → CodeMirror extension map both editors use; `constants.ts` holds `LANGUAGES` and the
     submission status labels/colors.
+  - **`ProblemFormPage`'s main column is tabbed** — Details / Signature / Test cases (n) /
+    Reference solution (`utils/problemForm.ts#FORM_TABS`); the sidebar (Settings incl. status,
+    Tags, Details) stays outside the tabs, always visible. **Tab panels are hidden with
+    `display: none`, never unmounted** — the reference panel must keep polling the judge, and every
+    CodeMirror editor must keep its text/undo history, while another tab is open; don't switch to
+    conditional rendering. The open tab is the `?tab=` search param (`replace`, so tab switches
+    don't pile up history; `details` = no param), so a reload or shared link keeps it, and a
+    freshly created problem lands on `?tab=reference`. `tabsWithErrors` maps field errors to tabs
+    (red marker on the tab label) and a failed save jumps to `firstTabWithErrors` unless the open
+    tab already has one — keep that map in sync when adding a field error. `errors.status` belongs
+    to no tab (it's shown in the sidebar). The Reference tab shows a green verified icon instead.
+  - **Unsaved-changes guard**: `ProblemFormPage` compares `formSnapshot(current)` with
+    `formSnapshot(baseline)` (`utils/problemForm.ts` — trimmed like `toPayload`, tag ids sorted,
+    staged tag names and the `sample` flag included). `baseline` is the last loaded/saved problem
+    (`snapshotFieldsOf`), `NEW_PROBLEM_FIELDS` in create mode (keep it equal to the `useState`
+    defaults), `null` while loading. A publish-on-accept run moves the baseline's status with the
+    server's. While dirty, the shared `useUnsavedChangesGuard` blocks leaving the page (in-app
+    navigation → `UnsavedChangesDialog`; reload/close → the browser's own `beforeunload` prompt)
+    and the header shows "Unsaved changes". Only a pathname change is blocked, so `?tab=`
+    switches never are. Create's own navigate to the edit page calls `allowNextNavigation()` first.
+    Any other form wanting the same guard: `useUnsavedChangesGuard(isDirty)` + `<UnsavedChangesDialog>`.
   - Server-side field errors still arrive as the standard `showError` toast — `validationErrors`
     isn't mapped onto fields anywhere in this app, and this feature doesn't start that pattern.
   - Verified via a clean `tsc --noEmit` (only the documented pre-existing errors) and a successful

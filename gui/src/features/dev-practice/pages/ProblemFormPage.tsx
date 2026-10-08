@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -11,16 +11,27 @@ import {
   Paper,
   Select,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import VerifiedIcon from '@mui/icons-material/Verified';
 import { Difficulty, ParamType, ParsedSignature, Problem, ProblemStatus, ProblemTag } from '../types';
 import { devPracticeApi } from '../api/devPracticeApi';
 import { DIFFICULTIES, DIFFICULTY_LABEL, STATUSES, STATUS_LABEL } from '../constants';
 import {
   contractFingerprint,
   EMPTY_ERRORS,
+  firstTabWithErrors,
+  formSnapshot,
+  FormSnapshotFields,
+  FORM_TABS,
+  FormTab,
+  isFormTab,
+  tabsWithErrors,
   hasErrors,
   nextRowKey,
   ParamRow,
@@ -28,6 +39,7 @@ import {
   rowsFromProblem,
   Signature,
   signatureOf,
+  snapshotFieldsOf,
   TestCaseRow,
   toPayload,
   validateProblemForm,
@@ -41,10 +53,36 @@ import FullPageLoader from '@shared/components/FullPageLoader';
 import SubmitButton from '@shared/components/SubmitButton';
 import MarkdownField from '@shared/components/MarkdownField';
 import TagPicker from '@shared/components/TagPicker';
+import UnsavedChangesDialog from '@shared/components/UnsavedChangesDialog';
+import { useUnsavedChangesGuard } from '@shared/hooks/useUnsavedChangesGuard';
 import { useStagedTagPicker } from '@shared/hooks/useStagedTagPicker';
 
 const LIST_PATH = '/admin/problems';
+
+/** What a brand-new form holds before any typing — the "clean" state in create mode. Must match the
+ * `useState` initial values below, or a fresh /new page would already count as having changes. */
+const NEW_PROBLEM_FIELDS: FormSnapshotFields = {
+  title: '', description: '', difficulty: 'EASY', status: 'DRAFT', methodName: '', returnType: 'INT',
+  parameters: [{ name: '', type: 'INT' }], testCases: [], tagIds: [], stagedTagNames: [],
+};
 const editPath = (id: number) => `${LIST_PATH}/${id}/edit`;
+
+const TAB_LABEL: Record<FormTab, string> = {
+  details: 'Details',
+  signature: 'Signature',
+  testCases: 'Test cases',
+  reference: 'Reference solution',
+};
+
+/** One tab's content. Hidden with `display: none`, never unmounted: the reference panel keeps
+ * polling the judge and every CodeMirror editor keeps its text/undo history while another tab is open. */
+function TabPanel({ active, children }: { active: boolean; children: ReactNode }): JSX.Element {
+  return (
+    <Box role="tabpanel" sx={{ display: active ? 'block' : 'none', pt: 3 }}>
+      <Stack spacing={3}>{children}</Stack>
+    </Box>
+  );
+}
 
 function formatDateTime(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
@@ -65,6 +103,17 @@ export default function ProblemFormPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const isEdit = id !== undefined;
   const navigate = useNavigate();
+  // The open tab lives in the URL (?tab=signature), so a reload or a shared link keeps it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const activeTab: FormTab = isFormTab(tabParam) ? tabParam : 'details';
+  const setActiveTab = (tab: FormTab) =>
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (tab === 'details') next.delete('tab');
+      else next.set('tab', tab);
+      return next;
+    }, { replace: true });
   const { showError, showSuccess } = useNotification();
 
   const [title, setTitle] = useState('');
@@ -81,12 +130,15 @@ export default function ProblemFormPage(): JSX.Element {
     loadTags: () => devPracticeApi.listAllProblemTags(showError),
     createTag: name => devPracticeApi.createProblemTag(name, showError),
   });
-  const { selectedTagIds, setSelectedTagIds, resolveStagedTagIds, clearStagedTagNames } = problemTags;
+  const { selectedTagIds, setSelectedTagIds, resolveStagedTagIds, clearStagedTagNames, stagedTagNames } = problemTags;
   const [typeHints, setTypeHints] = useState<SignatureTypeHints>({ params: {} });
 
   // What the server last returned — the signature lock compares against these, not against
   // whatever the form currently shows.
   const [loaded, setLoaded] = useState<Problem | null>(null);
+  // The form's "clean" state for the unsaved-changes guard: the last loaded/saved problem, or the
+  // empty defaults in create mode. Null while an edit page is still loading (nothing to lose yet).
+  const [baseline, setBaseline] = useState<FormSnapshotFields | null>(() => (isEdit ? null : NEW_PROBLEM_FIELDS));
   const [originalSignature, setOriginalSignature] = useState<Signature | null>(null);
 
   const [errors, setErrors] = useState<ProblemFormErrors>(EMPTY_ERRORS);
@@ -107,6 +159,7 @@ export default function ProblemFormPage(): JSX.Element {
     setTestCases(rows.testCases);
     setSelectedTagIds(new Set(problem.tags.map(t => t.id)));
     setLoaded(problem);
+    setBaseline(snapshotFieldsOf(problem));
     setOriginalSignature(signatureOf(problem.methodName, problem.returnType, rows.params));
   };
 
@@ -209,6 +262,9 @@ export default function ProblemFormPage(): JSX.Element {
       setLoaded(fresh);
       // Otherwise the next Save would send the old status and silently unpublish it again.
       setStatus(fresh.status);
+      // The status changed server-side, not as an edit here — move the baseline with it, or the guard
+      // would count the just-published status as an unsaved change.
+      setBaseline(prev => (prev ? { ...prev, status: fresh.status } : prev));
       if (fresh.status === 'PUBLISHED') showSuccess('Reference accepted — the problem is now published');
     } catch {
       markVerified();
@@ -228,6 +284,10 @@ export default function ProblemFormPage(): JSX.Element {
     const e = runValidation();
     setErrors(e);
     if (hasErrors(e)) {
+      // Errors can sit in a tab that isn't open — take the admin to the first one. (A status-only
+      // error lives in the always-visible sidebar, so there's no tab to switch to.)
+      const errorTab = firstTabWithErrors(e);
+      if (errorTab && !tabsWithErrors(e).has(activeTab)) setActiveTab(errorTab);
       showError('Please fix the highlighted fields');
       return;
     }
@@ -256,7 +316,10 @@ export default function ProblemFormPage(): JSX.Element {
         // submit state here; the load effect re-seeds the fields once `id` changes.
         setSubmitted(false);
         setErrors(EMPTY_ERRORS);
-        navigate(editPath(created.id), { replace: true });
+        // Straight to the Reference tab: running a reference is the next step towards publishing.
+        // The form still differs from the create-mode baseline until the edit page reloads it.
+        allowNextNavigation();
+        navigate(`${editPath(created.id)}?tab=reference`, { replace: true });
       }
     } catch {
       // showError already called
@@ -265,18 +328,41 @@ export default function ProblemFormPage(): JSX.Element {
     }
   };
 
+  const isDirty = useMemo(() => baseline !== null && formSnapshot(baseline) !== formSnapshot({
+    title, description, difficulty, status, methodName, returnType,
+    parameters: params, testCases, tagIds: [...selectedTagIds], stagedTagNames,
+  }), [baseline, title, description, difficulty, status, methodName, returnType, params, testCases, selectedTagIds, stagedTagNames]);
+  const { blocker, allowNextNavigation } = useUnsavedChangesGuard(isDirty);
+
+  // `errors` is only filled after the first save attempt, so tabs stay unflagged until then — the
+  // same "errors appear on submit, then track live" rule as the fields themselves.
+  const errorTabs = tabsWithErrors(errors);
+  const referenceVerified = Boolean(loaded?.verified) && !contractDirty;
+
+  const tabLabel = (tab: FormTab): string =>
+    tab === 'testCases' ? `${TAB_LABEL[tab]} (${testCases.length})` : TAB_LABEL[tab];
+
+  /** A red marker when the tab holds an error; the Reference tab shows its verified state instead. */
+  const tabIcon = (tab: FormTab) => {
+    if (errorTabs.has(tab)) return <ErrorOutlineIcon fontSize="small" color="error" />;
+    if (tab === 'reference' && referenceVerified) return <VerifiedIcon fontSize="small" color="success" />;
+    return undefined;
+  };
+
   if (loading) {
     return <FullPageLoader />;
   }
 
   return (
     <Box sx={{ p: 3 }}>
+      <UnsavedChangesDialog blocker={blocker} />
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
         <Stack direction="row" alignItems="center" spacing={1}>
           <IconButton size="small" onClick={() => navigate(LIST_PATH)} title="Back to list">
             <ArrowBackIcon fontSize="small" />
           </IconButton>
           <Typography variant="h5" fontWeight={700}>{isEdit ? 'Edit Problem' : 'New Problem'}</Typography>
+          {isDirty && <Typography variant="caption" color="warning.main">Unsaved changes</Typography>}
         </Stack>
         <Stack direction="row" spacing={1}>
           <Button variant="outlined" onClick={() => navigate(LIST_PATH)} disabled={saving}>Cancel</Button>
@@ -287,7 +373,22 @@ export default function ProblemFormPage(): JSX.Element {
       <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start' }}>
         {/* ── Main content ── */}
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Stack spacing={3}>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs value={activeTab} onChange={(_, v: FormTab) => setActiveTab(v)} variant="scrollable">
+              {FORM_TABS.map(tab => (
+                <Tab
+                  key={tab}
+                  value={tab}
+                  label={tabLabel(tab)}
+                  icon={tabIcon(tab)}
+                  iconPosition="end"
+                  sx={{ minHeight: 48 }}
+                />
+              ))}
+            </Tabs>
+          </Box>
+
+          <TabPanel active={activeTab === 'details'}>
             <TextField
               label="Title"
               value={title}
@@ -310,7 +411,9 @@ export default function ProblemFormPage(): JSX.Element {
               helperText={errors.description}
               placeholder="Describe the problem, constraints and examples. Supports Markdown."
             />
+          </TabPanel>
 
+          <TabPanel active={activeTab === 'signature'}>
             <CodeTemplateImporter disabled={signatureLocked} onParsed={applyParsedSignature} />
 
             <MethodSignatureEditor
@@ -325,7 +428,9 @@ export default function ProblemFormPage(): JSX.Element {
               errors={errors}
               typeHints={typeHints}
             />
+          </TabPanel>
 
+          <TabPanel active={activeTab === 'testCases'}>
             <TestCaseEditor
               rows={testCases}
               onChange={setTestCases}
@@ -333,7 +438,9 @@ export default function ProblemFormPage(): JSX.Element {
               returnType={returnType}
               errors={errors}
             />
+          </TabPanel>
 
+          <TabPanel active={activeTab === 'reference'}>
             {loaded ? (
               <ReferenceSolutionPanel
                 problem={loaded}
@@ -346,7 +453,7 @@ export default function ProblemFormPage(): JSX.Element {
                 is required before it can be published.
               </Alert>
             )}
-          </Stack>
+          </TabPanel>
         </Box>
 
         {/* ── Sidebar ── */}

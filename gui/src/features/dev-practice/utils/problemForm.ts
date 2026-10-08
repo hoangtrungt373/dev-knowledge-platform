@@ -182,6 +182,84 @@ export function validateProblemForm(v: ValidateInput): ProblemFormErrors {
   return e;
 }
 
+/** Every field the problem form can edit, in a plain shape both the form state and a saved
+ * `Problem` can be turned into — the input to {@link formSnapshot}. */
+export interface FormSnapshotFields {
+  title: string;
+  description: string;
+  difficulty: Problem['difficulty'];
+  status: Problem['status'];
+  methodName: string;
+  returnType: ParamType;
+  parameters: { name: string; type: ParamType }[];
+  testCases: { input: string; expectedOutput: string; sample: boolean }[];
+  tagIds: number[];
+  /** Tag names queued in the picker, not created yet — a change the admin would lose by leaving. */
+  stagedTagNames: string[];
+}
+
+/**
+ * A comparable string of everything the form edits, for the unsaved-changes guard. Normalized the
+ * way `toPayload` sends it (trimmed text, tag ids order-independent), so only edits that would change
+ * what Save sends count — retyping a value or adding a trailing space doesn't. Unlike
+ * {@link contractFingerprint}, the `sample` flag *does* count here: it's still an unsaved edit.
+ */
+export function formSnapshot(f: FormSnapshotFields): string {
+  return JSON.stringify({
+    ...f,
+    title: f.title.trim(),
+    description: f.description.trim(),
+    methodName: f.methodName.trim(),
+    parameters: f.parameters.map(p => ({ name: p.name.trim(), type: p.type })),
+    testCases: f.testCases.map(t => ({ input: t.input.trim(), expectedOutput: t.expectedOutput.trim(), sample: t.sample })),
+    tagIds: [...f.tagIds].sort((a, b) => a - b),
+  });
+}
+
+/** The snapshot fields of a saved problem — the form's "clean" state after a load or save. */
+export function snapshotFieldsOf(problem: Problem): FormSnapshotFields {
+  return {
+    title: problem.title,
+    description: problem.description,
+    difficulty: problem.difficulty,
+    status: problem.status,
+    methodName: problem.methodName,
+    returnType: problem.returnType,
+    parameters: [...problem.parameters].sort((a, b) => a.position - b.position).map(p => ({ name: p.name, type: p.type })),
+    testCases: problem.testCases.map(t => ({ input: t.input, expectedOutput: t.expectedOutput, sample: t.sample })),
+    tagIds: problem.tags.map(t => t.id),
+    stagedTagNames: [],
+  };
+}
+
+/** The problem form's main-column tabs, in display order. Also the `?tab=` URL values. */
+export const FORM_TABS = ['details', 'signature', 'testCases', 'reference'] as const;
+export type FormTab = (typeof FORM_TABS)[number];
+
+export function isFormTab(value: string | null): value is FormTab {
+  return value !== null && (FORM_TABS as readonly string[]).includes(value);
+}
+
+/**
+ * Which tabs hold at least one field error, so a tab can flag errors the admin can't currently see.
+ * `status` is absent on purpose: it lives in the always-visible sidebar, not in a tab.
+ */
+export function tabsWithErrors(e: ProblemFormErrors): Set<FormTab> {
+  const tabs = new Set<FormTab>();
+  if (e.title || e.description) tabs.add('details');
+  if (e.methodName || e.signature || e.parameters || Object.keys(e.paramNames).length) tabs.add('signature');
+  if (e.testCases || Object.keys(e.testCaseInputs).length || Object.keys(e.testCaseOutputs).length) {
+    tabs.add('testCases');
+  }
+  return tabs;
+}
+
+/** The first tab (in display order) holding an error — where a failed save takes the admin. */
+export function firstTabWithErrors(e: ProblemFormErrors): FormTab | null {
+  const tabs = tabsWithErrors(e);
+  return FORM_TABS.find(t => tabs.has(t)) ?? null;
+}
+
 export function hasErrors(e: ProblemFormErrors): boolean {
   return Boolean(
     e.title || e.description || e.status || e.methodName || e.signature || e.parameters || e.testCases ||

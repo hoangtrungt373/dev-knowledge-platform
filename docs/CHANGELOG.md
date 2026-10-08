@@ -384,6 +384,22 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Changed
 
+- **`gui`: unsaved-changes warning on the admin problem form, plus a data router.** New shared
+  `@shared/hooks/useUnsavedChangesGuard` (React Router `useBlocker` for in-app navigation — pathname
+  changes only, so `?tab=` switches pass — plus a `beforeunload` prompt for reload/close) and
+  `@shared/components/UnsavedChangesDialog` ("Leave without saving?", on `ConfirmDialog`).
+  `ProblemFormPage` decides dirtiness with new `utils/problemForm.ts#formSnapshot`/
+  `snapshotFieldsOf` against the last loaded/saved problem and shows an "Unsaved changes" hint.
+  `main.tsx` moved from `<BrowserRouter>` to `createBrowserRouter` + `RouterProvider` with one
+  catch-all route rendering the existing `<App/>` — required by `useBlocker`; `App.tsx`'s
+  `<Routes>` are unchanged.
+- **`gui` admin problem form is tabbed.** `ProblemFormPage`'s main column splits into Details /
+  Signature / Test cases (n) / Reference solution tabs (MUI `Tabs`); the Settings/Tags/Details
+  sidebar stays always visible. Hidden tabs stay mounted, so a running reference keeps being polled
+  and editors keep their contents. The open tab is kept in `?tab=`; tabs holding a validation error
+  get a red marker and a failed save opens the first one; the Reference tab shows a verified icon.
+  Creating a problem now lands on its Reference tab. New `utils/problemForm.ts` helpers `FORM_TABS`,
+  `isFormTab`, `tabsWithErrors`, `firstTabWithErrors`.
 - **`dev-practice-service`: a published problem's test cases are no longer freely editable.**
   Changing the signature *or* the test data of a `PUBLISHED` problem is now refused with
   `PROBLEM_NOT_VERIFIED` — save it as `DRAFT`, run a reference solution, then publish again. Creating
