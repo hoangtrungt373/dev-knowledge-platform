@@ -426,6 +426,22 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Changed
 
+- **`gui`: `@dev-practice` cleanup — duplication extracted, the two largest pages split.** No
+  behavior change apart from small visual alignments. New components `DifficultyChip`, `TagChips`
+  (max N + "+N" tooltip), `TagFilterSelect`, `SubmissionStatusChip`, `CodeBlock` (the monospace
+  `pre` block used five times), `LanguageToggle`, `ConsoleResult`, `ProblemFormSidebar`; new hooks
+  `useCodeRun` (Run state), `usePublishedProblem`, `useFormTab` (`?tab=` param); new
+  `utils/format.ts` (`formatDate`/`formatDateTime`, replacing five local copies); `codeLanguages.ts`
+  gained `editorChrome`/`useCodeMirrorTheme` (three editors had their own copy). Pure rules moved into
+  `utils/problemForm.ts`: `publishBlockedReason`, `signatureFromTemplate`, and the `TypeHint`/
+  `SignatureTypeHints` types (out of `MethodSignatureEditor`). Both API files use the shared
+  `@shared/utils/queryString#buildQueryString` instead of a local `buildQuery`/hand-built query
+  strings; `ProblemListPage` uses `@shared/hooks/useDebouncedValue`; `MAX_TAG_CHIPS`/`MAX_RUN_CASES`
+  moved to `constants.ts`; `problemForm.ts` reuses `runCases#orderedParameters`. Nested ternaries
+  in `ReferenceSolutionPanel`/`RunResultView` became named helpers. `ProblemFormPage` 546 → 427
+  lines, `ProblemWorkspacePage` 412 → 312; 19 files changed, net −299 lines before the 12 new files.
+  Visible differences: sample cases now use the same Input/Expected blocks as the Run result, and the
+  reference panel's status chips are as wide as the learner history's (120px).
 - **`gui`: unsaved-changes warning on the admin problem form, plus a data router.** New shared
   `@shared/hooks/useUnsavedChangesGuard` (React Router `useBlocker` for in-app navigation — pathname
   changes only, so `?tab=` switches pass — plus a `beforeunload` prompt for reload/close) and

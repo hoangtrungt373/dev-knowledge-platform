@@ -29,12 +29,9 @@ import { useSubmitGuard } from '@shared/hooks/useSubmitGuard';
 import { useDebouncedValue } from '@shared/hooks/useDebouncedValue';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
 import TableStatusRow from '@shared/components/TableStatusRow';
+import { formatDate } from '../utils/format';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
 
 /** Admin catalog of problem tags (topics) — `/admin/problem-tags`. Mirrors @ecommerce's
  * ProductTagListPage: search, create/rename in a dialog, delete refused server-side while in use. */

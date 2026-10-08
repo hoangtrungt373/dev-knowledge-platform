@@ -4588,6 +4588,18 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     isn't mapped onto fields anywhere in this app, and this feature doesn't start that pattern.
   - Verified via a clean `tsc --noEmit` (only the documented pre-existing errors) and a successful
     `vite build` only — not exercised in a real browser.
+- **`@dev-practice` shared building blocks — reuse these instead of re-rolling them** (extracted in a
+  cleanup pass once each had 2–5 copies): `components/DifficultyChip`, `TagChips` (`max` → "+N"
+  tooltip; `MAX_TAG_CHIPS` in `constants.ts`), `TagFilterSelect` (multi-select, ANY-match),
+  `SubmissionStatusChip`, `CodeBlock` (`'panel'` = tinted value block, `'plain'` = inside an
+  `Alert`), `LanguageToggle`; `utils/format.ts` for every date; `utils/codeLanguages.ts`'s
+  `editorChrome(fontSize, extra?)` + `useCodeMirrorTheme()` for every CodeMirror in this feature;
+  `@shared/utils/queryString#buildQueryString` for query strings (repeated `tagIds` included).
+  Pure form rules live in `utils/problemForm.ts` (`publishBlockedReason`, `signatureFromTemplate`,
+  validation, snapshots) so the page only wires state. The workspace's Run state is
+  `hooks/useCodeRun` (cases, running, outcome; `MAX_RUN_CASES` mirrors the backend), its loading is
+  `hooks/usePublishedProblem`; the admin form's tab is `hooks/useFormTab`, its sidebar
+  `components/ProblemFormSidebar`.
 - **Two separate backend origins, not one — don't assume `VITE_BACKEND_URL` covers everything.**
   `gateway` (`VITE_BACKEND_URL`, default `http://localhost:8080`) covers everything over plain
   HTTP now, including SSE streaming chat — `@shared/api/httpClient.ts`, almost every feature's

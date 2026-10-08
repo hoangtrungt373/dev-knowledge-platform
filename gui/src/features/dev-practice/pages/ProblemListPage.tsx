@@ -3,11 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
-  Checkbox,
   Chip,
   IconButton,
   InputAdornment,
-  ListItemText,
   MenuItem,
   Paper,
   Select,
@@ -29,27 +27,17 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
 import { AdminProblemSummary, Difficulty, ProblemStatus, ProblemTag } from '../types';
 import { devPracticeApi } from '../api/devPracticeApi';
-import {
-  DIFFICULTIES,
-  DIFFICULTY_COLOR,
-  DIFFICULTY_LABEL,
-  STATUSES,
-  STATUS_COLOR,
-  STATUS_LABEL,
-} from '../constants';
+import { DIFFICULTIES, DIFFICULTY_LABEL, MAX_TAG_CHIPS, STATUSES, STATUS_COLOR, STATUS_LABEL } from '../constants';
+import { formatDate } from '../utils/format';
+import DifficultyChip from '../components/DifficultyChip';
+import TagChips from '../components/TagChips';
+import TagFilterSelect from '../components/TagFilterSelect';
 import { useNotification } from '@shared/contexts/NotificationContext';
+import { useDebouncedValue } from '@shared/hooks/useDebouncedValue';
 import ConfirmDialog from '@shared/components/ConfirmDialog';
 import TableStatusRow from '@shared/components/TableStatusRow';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
-// Beyond this many, a row shows "+N" instead of more chips, so long tag lists don't blow up row height.
-const MAX_TAG_CHIPS = 3;
-
-function formatDate(iso: string | null): string {
-  return iso
-    ? new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
-    : '—';
-}
 
 /** Admin list of every coding problem, in any status — `/admin/problems`. */
 export default function ProblemListPage(): JSX.Element {
@@ -63,7 +51,7 @@ export default function ProblemListPage(): JSX.Element {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
+  const search = useDebouncedValue(searchInput, 300);
   const [difficultyFilter, setDifficultyFilter] = useState<Difficulty | ''>('');
   const [statusFilter, setStatusFilter] = useState<ProblemStatus | ''>('');
   const [tagFilter, setTagFilter] = useState<number[]>([]);
@@ -76,10 +64,7 @@ export default function ProblemListPage(): JSX.Element {
     devPracticeApi.listAllProblemTags(showError).then(setAllTags).catch(() => {});
   }, [showError]);
 
-  useEffect(() => {
-    const t = setTimeout(() => { setSearch(searchInput); setPage(0); }, 300);
-    return () => clearTimeout(t);
-  }, [searchInput]);
+  useEffect(() => { setPage(0); }, [search]);
 
   // Same quiet-refetch-after-delete behavior as the other admin list pages: only the
   // page/search/filter-driven load blanks the table to a spinner.
@@ -169,31 +154,13 @@ export default function ProblemListPage(): JSX.Element {
           <MenuItem value="">All statuses</MenuItem>
           {STATUSES.map(s => <MenuItem key={s} value={s}>{STATUS_LABEL[s]}</MenuItem>)}
         </Select>
-        {/* Matches problems with ANY selected tag (the backend's OR semantics). */}
-        <Select
-          multiple
-          value={tagFilter}
-          onChange={e => {
-            const value = e.target.value;
-            setTagFilter(typeof value === 'string' ? [] : (value as number[]));
-            setPage(0);
-          }}
-          displayEmpty
-          size="small"
+        <TagFilterSelect
+          tags={allTags}
+          selectedIds={tagFilter}
+          onChange={ids => { setTagFilter(ids); setPage(0); }}
+          allLabel="All tags"
           sx={{ minWidth: 180, maxWidth: 320 }}
-          renderValue={selected =>
-            selected.length === 0
-              ? 'All tags'
-              : allTags.filter(t => selected.includes(t.id)).map(t => t.name).join(', ')
-          }
-        >
-          {allTags.map(tag => (
-            <MenuItem key={tag.id} value={tag.id}>
-              <Checkbox size="small" checked={tagFilter.includes(tag.id)} sx={{ p: 0.5, mr: 1 }} />
-              <ListItemText primary={tag.name} />
-            </MenuItem>
-          ))}
-        </Select>
+        />
       </Stack>
 
       <TableContainer component={Paper}>
@@ -232,28 +199,10 @@ export default function ProblemListPage(): JSX.Element {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Chip
-                      label={DIFFICULTY_LABEL[p.difficulty]}
-                      color={DIFFICULTY_COLOR[p.difficulty]}
-                      variant="outlined"
-                      size="small"
-                    />
+                    <DifficultyChip difficulty={p.difficulty} />
                   </TableCell>
                   <TableCell sx={{ maxWidth: 260 }}>
-                    {p.tags.length === 0 ? (
-                      <Typography variant="body2" color="text.disabled">—</Typography>
-                    ) : (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {p.tags.slice(0, MAX_TAG_CHIPS).map(t => (
-                          <Chip key={t.id} label={t.name} size="small" />
-                        ))}
-                        {p.tags.length > MAX_TAG_CHIPS && (
-                          <Tooltip title={p.tags.slice(MAX_TAG_CHIPS).map(t => t.name).join(', ')}>
-                            <Chip label={`+${p.tags.length - MAX_TAG_CHIPS}`} size="small" variant="outlined" />
-                          </Tooltip>
-                        )}
-                      </Box>
-                    )}
+                    <TagChips tags={p.tags} max={MAX_TAG_CHIPS} emptyDash />
                   </TableCell>
                   <TableCell>
                     <Chip label={STATUS_LABEL[p.status]} color={STATUS_COLOR[p.status]} variant="outlined" size="small" />

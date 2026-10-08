@@ -1,27 +1,11 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import {
-  Alert,
-  Box,
-  Button,
-  FormControl,
-  IconButton,
-  InputLabel,
-  MenuItem,
-  Paper,
-  Select,
-  Stack,
-  Tab,
-  Tabs,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Alert, Box, Button, IconButton, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import VerifiedIcon from '@mui/icons-material/Verified';
 import { Difficulty, ParamType, ParsedSignature, Problem, ProblemStatus, ProblemTag } from '../types';
 import { devPracticeApi } from '../api/devPracticeApi';
-import { DIFFICULTIES, DIFFICULTY_LABEL, STATUSES, STATUS_LABEL } from '../constants';
 import {
   contractFingerprint,
   EMPTY_ERRORS,
@@ -30,34 +14,38 @@ import {
   FormSnapshotFields,
   FORM_TABS,
   FormTab,
-  isFormTab,
-  tabsWithErrors,
   hasErrors,
   nextRowKey,
   ParamRow,
   ProblemFormErrors,
+  publishBlockedReason as publishBlockedReasonOf,
   rowsFromProblem,
   Signature,
+  signatureFromTemplate,
   signatureOf,
+  SignatureTypeHints,
   snapshotFieldsOf,
+  tabsWithErrors,
   TestCaseRow,
   toPayload,
   validateProblemForm,
 } from '../utils/problemForm';
-import MethodSignatureEditor, { SignatureTypeHints } from '../components/MethodSignatureEditor';
+import { useFormTab } from '../hooks/useFormTab';
+import MethodSignatureEditor from '../components/MethodSignatureEditor';
 import CodeTemplateImporter from '../components/CodeTemplateImporter';
 import TestCaseEditor from '../components/TestCaseEditor';
 import ReferenceSolutionPanel from '../components/ReferenceSolutionPanel';
+import ProblemFormSidebar from '../components/ProblemFormSidebar';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import FullPageLoader from '@shared/components/FullPageLoader';
 import SubmitButton from '@shared/components/SubmitButton';
 import MarkdownField from '@shared/components/MarkdownField';
-import TagPicker from '@shared/components/TagPicker';
 import UnsavedChangesDialog from '@shared/components/UnsavedChangesDialog';
 import { useUnsavedChangesGuard } from '@shared/hooks/useUnsavedChangesGuard';
 import { useStagedTagPicker } from '@shared/hooks/useStagedTagPicker';
 
 const LIST_PATH = '/admin/problems';
+const editPath = (id: number) => `${LIST_PATH}/${id}/edit`;
 
 /** What a brand-new form holds before any typing — the "clean" state in create mode. Must match the
  * `useState` initial values below, or a fresh /new page would already count as having changes. */
@@ -65,7 +53,6 @@ const NEW_PROBLEM_FIELDS: FormSnapshotFields = {
   title: '', description: '', difficulty: 'EASY', status: 'DRAFT', methodName: '', returnType: 'INT',
   parameters: [{ name: '', type: 'INT' }], testCases: [], tagIds: [], stagedTagNames: [],
 };
-const editPath = (id: number) => `${LIST_PATH}/${id}/edit`;
 
 const TAB_LABEL: Record<FormTab, string> = {
   details: 'Details',
@@ -84,15 +71,12 @@ function TabPanel({ active, children }: { active: boolean; children: ReactNode }
   );
 }
 
-function formatDateTime(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
-}
-
 /**
  * Create/edit page for one coding problem — `/admin/problems/new` and `/admin/problems/:id/edit`.
- * Main column: title, description, method signature, test cases. Sidebar: difficulty, status, a
- * tag chip picker, and (edit mode) read-only slug/dates. The whole problem, including every parameter and test case,
- * is sent in one create/update call — the backend replaces both lists wholesale.
+ * Main column: tabs for the details, method signature, test cases and reference solution. Sidebar
+ * (`ProblemFormSidebar`): difficulty, status, tags, and (edit mode) read-only slug/dates. The whole
+ * problem, including every parameter and test case, is sent in one create/update call — the backend
+ * replaces both lists wholesale.
  *
  * Publishing needs an ACCEPTED reference solution at the problem's current contract version
  * (`ReferenceSolutionPanel`), and a reference can only be judged against a *saved* problem — so a
@@ -103,17 +87,7 @@ export default function ProblemFormPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const isEdit = id !== undefined;
   const navigate = useNavigate();
-  // The open tab lives in the URL (?tab=signature), so a reload or a shared link keeps it.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const tabParam = searchParams.get('tab');
-  const activeTab: FormTab = isFormTab(tabParam) ? tabParam : 'details';
-  const setActiveTab = (tab: FormTab) =>
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev);
-      if (tab === 'details') next.delete('tab');
-      else next.set('tab', tab);
-      return next;
-    }, { replace: true });
+  const [activeTab, setActiveTab] = useFormTab();
   const { showError, showSuccess } = useNotification();
 
   const [title, setTitle] = useState('');
@@ -163,6 +137,12 @@ export default function ProblemFormPage(): JSX.Element {
     setOriginalSignature(signatureOf(problem.methodName, problem.returnType, rows.params));
   };
 
+  /** Back to "errors only appear on the next save attempt" — after a successful save. */
+  const resetSubmitState = () => {
+    setSubmitted(false);
+    setErrors(EMPTY_ERRORS);
+  };
+
   useEffect(() => {
     if (!isEdit || !id) return;
     // Also runs when a just-created problem's page switches from /new to /:id/edit.
@@ -191,22 +171,7 @@ export default function ProblemFormPage(): JSX.Element {
     [loaded, originalSignature],
   );
   const contractDirty = savedContract !== null && savedContract !== contractFingerprint(currentSignature, testCases);
-
-  // Mirrors ProblemServiceImpl's publish rule: PUBLISHED needs an ACCEPTED reference at the current
-  // contract version. A problem that's already published may stay published as long as its contract
-  // isn't touched (problems published before DKP-0056 stay live without one). Null = allowed.
-  const publishBlockedReason = useMemo((): string | null => {
-    if (!loaded) return 'Create the problem as a Draft first, then run a reference solution to publish it.';
-    if (contractDirty) {
-      return loaded.status === 'PUBLISHED'
-        ? 'Changing the signature or test cases of a published problem needs re-verification: set the status to Draft, save, run a reference solution, then publish.'
-        : 'Save the signature/test-case changes as a Draft and run a reference solution before publishing.';
-    }
-    if (loaded.status !== 'PUBLISHED' && !loaded.verified) {
-      return 'Run a reference solution that passes every test case before publishing.';
-    }
-    return null;
-  }, [loaded, contractDirty]);
+  const publishBlockedReason = publishBlockedReasonOf(loaded, contractDirty);
 
   const runValidation = () =>
     validateProblemForm({
@@ -224,24 +189,14 @@ export default function ProblemFormPage(): JSX.Element {
 
   /** Replaces the signature with what the template declared, remembering which types were guesses. */
   const applyParsedSignature = (parsed: ParsedSignature) => {
-    const rows: ParamRow[] = parsed.parameters.map(p => ({ key: nextRowKey(), name: p.name, type: p.type }));
-    const paramHints: Record<string, { chosen: ParamType; alternatives: ParamType[] }> = {};
-    parsed.parameters.forEach((p, i) => {
-      if (p.alternatives.length > 0) paramHints[rows[i].key] = { chosen: p.type, alternatives: p.alternatives };
-    });
+    const { params: rows, hints, guessCount } = signatureFromTemplate(parsed);
     setMethodName(parsed.methodName);
     setReturnType(parsed.returnType);
     setParams(rows);
-    setTypeHints({
-      returnType: parsed.returnTypeAlternatives.length > 0
-        ? { chosen: parsed.returnType, alternatives: parsed.returnTypeAlternatives }
-        : undefined,
-      params: paramHints,
-    });
-    const guesses = Object.keys(paramHints).length + (parsed.returnTypeAlternatives.length > 0 ? 1 : 0);
-    showSuccess(guesses === 0
+    setTypeHints(hints);
+    showSuccess(guessCount === 0
       ? `Signature filled from the template: ${parsed.methodName}(${parsed.parameters.length} parameter(s))`
-      : `Signature filled — ${guesses} type(s) were guessed, check the highlighted fields`);
+      : `Signature filled — ${guessCount} type(s) were guessed, check the highlighted fields`);
   };
 
   /**
@@ -273,10 +228,9 @@ export default function ProblemFormPage(): JSX.Element {
 
   const revertSignature = () => {
     if (!loaded) return;
-    const rows = rowsFromProblem(loaded);
     setMethodName(loaded.methodName);
     setReturnType(loaded.returnType);
-    setParams(rows.params);
+    setParams(rowsFromProblem(loaded).params);
   };
 
   const handleSubmit = async () => {
@@ -306,16 +260,14 @@ export default function ProblemFormPage(): JSX.Element {
       if (isEdit && id) {
         // Stay on the page: the usual next step after saving a draft is running a reference.
         applyProblem(await devPracticeApi.updateProblem(Number(id), payload, showError));
-        setSubmitted(false);
-        setErrors(EMPTY_ERRORS);
+        resetSubmitState();
         showSuccess('Problem saved');
       } else {
         const created = await devPracticeApi.createProblem(payload, showError);
         showSuccess('Problem created — run a reference solution to be able to publish it');
         // /new and /:id/edit render the same component, so React keeps this instance: reset the
         // submit state here; the load effect re-seeds the fields once `id` changes.
-        setSubmitted(false);
-        setErrors(EMPTY_ERRORS);
+        resetSubmitState();
         // Straight to the Reference tab: running a reference is the next step towards publishing.
         // The form still differs from the create-mode baseline until the edit page reloads it.
         allowNextNavigation();
@@ -458,87 +410,16 @@ export default function ProblemFormPage(): JSX.Element {
 
         {/* ── Sidebar ── */}
         <Box sx={{ width: 260, flexShrink: 0 }}>
-          <Stack spacing={2}>
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Settings</Typography>
-              <Stack spacing={1.5}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Difficulty</InputLabel>
-                  <Select
-                    label="Difficulty"
-                    value={difficulty}
-                    onChange={e => setDifficulty(e.target.value as Difficulty)}
-                  >
-                    {DIFFICULTIES.map(d => <MenuItem key={d} value={d}>{DIFFICULTY_LABEL[d]}</MenuItem>)}
-                  </Select>
-                </FormControl>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Status</InputLabel>
-                  <Select
-                    label="Status"
-                    value={status}
-                    onChange={e => setStatus(e.target.value as ProblemStatus)}
-                  >
-                    {STATUSES.map(s => (
-                      <MenuItem
-                        key={s}
-                        value={s}
-                        // The current value stays selectable, so a published problem whose contract
-                        // was just edited still shows its status (and the reason it can't stay).
-                        disabled={s === 'PUBLISHED' && publishBlockedReason !== null && status !== 'PUBLISHED'}
-                      >
-                        {STATUS_LABEL[s]}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                {/* Shown live, not only after a save attempt: red when it blocks the chosen status. */}
-                {publishBlockedReason ? (
-                  <Typography variant="caption" color={status === 'PUBLISHED' ? 'error' : 'text.secondary'}>
-                    {publishBlockedReason}
-                  </Typography>
-                ) : (
-                  <Typography variant="caption" color="text.secondary">
-                    Only published problems are visible to users and accept submissions.
-                  </Typography>
-                )}
-              </Stack>
-            </Paper>
-
-            {/* Tags — the same shared section as @ecommerce's ProductFormPage: an "Existing tags"
-                Chip-toggle-cloud plus a "New tags" queue, created only when the problem itself is
-                saved (see handleSubmit). Renaming/deleting a real tag still happens on
-                /admin/problem-tags — this section is add-only. */}
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Tags</Typography>
-              <TagPicker
-                picker={problemTags}
-                stagedHint={`Created when you ${isEdit ? 'save' : 'create'} the problem.`}
-              />
-            </Paper>
-
-            {loaded && (
-              <Paper variant="outlined" sx={{ p: 2 }}>
-                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Details</Typography>
-                <Stack spacing={1}>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">Slug</Typography>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                      {loaded.slug}
-                    </Typography>
-                  </Box>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">Created</Typography>
-                    <Typography variant="body2">{formatDateTime(loaded.createdAt)}</Typography>
-                  </Box>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">Published</Typography>
-                    <Typography variant="body2">{formatDateTime(loaded.publishedAt)}</Typography>
-                  </Box>
-                </Stack>
-              </Paper>
-            )}
-          </Stack>
+          <ProblemFormSidebar
+            difficulty={difficulty}
+            onDifficultyChange={setDifficulty}
+            status={status}
+            onStatusChange={setStatus}
+            publishBlockedReason={publishBlockedReason}
+            tagPicker={problemTags}
+            isEdit={isEdit}
+            loaded={loaded}
+          />
         </Box>
       </Box>
     </Box>

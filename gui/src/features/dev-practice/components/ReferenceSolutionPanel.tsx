@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
+  AlertColor,
   Box,
   Button,
   Checkbox,
@@ -15,17 +16,22 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import VerifiedIcon from '@mui/icons-material/Verified';
 import { Problem, Submission } from '../types';
 import { devPracticeApi } from '../api/devPracticeApi';
-import { LANGUAGE_LABEL, SUBMISSION_STATUS_COLOR, SUBMISSION_STATUS_LABEL } from '../constants';
+import { LANGUAGE_LABEL, SUBMISSION_STATUS_LABEL } from '../constants';
 import { isInProgress, useSubmissionPolling } from '../hooks/useSubmissionPolling';
 import { useSolutionDrafts } from '../hooks/useSolutionDrafts';
+import { formatDateTime } from '../utils/format';
 import SolutionEditor from './SolutionEditor';
+import SubmissionStatusChip from './SubmissionStatusChip';
+import CodeBlock from './CodeBlock';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import SubmitButton from '@shared/components/SubmitButton';
 
 const HISTORY_SIZE = 5;
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+/** Which saved version of the problem a past run was judged against. */
+function versionLabel(judgedVersion: number | null, currentVersion: number): string {
+  if (judgedVersion === null) return 'not judged yet';
+  return `v${judgedVersion} (${judgedVersion === currentVersion ? 'current' : 'outdated'})`;
 }
 
 interface Props {
@@ -172,20 +178,11 @@ export default function ReferenceSolutionPanel({ problem, contractDirty, onVerif
           <Stack spacing={0.75} sx={{ mt: 1 }}>
             {history.map(s => (
               <Stack key={s.id} direction="row" alignItems="center" spacing={1}>
-                <Chip
-                  label={SUBMISSION_STATUS_LABEL[s.status]}
-                  color={SUBMISSION_STATUS_COLOR[s.status]}
-                  size="small"
-                  sx={{ minWidth: 110 }}
-                />
+                <SubmissionStatusChip status={s.status} />
                 <Typography variant="body2" sx={{ minWidth: 80 }}>{LANGUAGE_LABEL[s.language]}</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-                  {s.contractVersion === null
-                    ? 'not judged yet'
-                    : s.contractVersion === problem.contractVersion
-                      ? `v${s.contractVersion} (current)`
-                      : `v${s.contractVersion} (outdated)`}
-                  {' · '}{formatTime(s.submittedAt)}
+                  {versionLabel(s.contractVersion, problem.contractVersion)}
+                  {' · '}{formatDateTime(s.submittedAt)}
                 </Typography>
                 <Button
                   size="small"
@@ -203,6 +200,26 @@ export default function ReferenceSolutionPanel({ problem, contractDirty, onVerif
       )}
     </Paper>
   );
+}
+
+/** What an ACCEPTED reference run did to the problem, given the status the page now shows. */
+function acceptedOutcome(publishRequested: boolean, problemStatus: Problem['status']): string {
+  if (!publishRequested) return 'The problem is verified. You can now set its status to Published and save.';
+  switch (problemStatus) {
+    case 'PUBLISHED':
+      return 'The problem is verified and has been published.';
+    case 'DRAFT':
+      return 'The problem is verified — publishing…';
+    case 'ARCHIVED':
+      return 'The problem is verified, but it was not published: it is no longer a draft.';
+  }
+}
+
+/** Accepted at the current version = success; accepted against an old version, or a judge failure
+ * (not a verdict on the code) = warning; anything else = the code is wrong. */
+function resultSeverity(submission: Submission, stale: boolean): AlertColor {
+  if (submission.status === 'ACCEPTED') return stale ? 'warning' : 'success';
+  return submission.status === 'JUDGE_ERROR' ? 'warning' : 'error';
 }
 
 /** The verdict of the run just started from this panel. */
@@ -227,29 +244,17 @@ function SubmissionResult({ submission, pollGaveUp, contractVersion, problemStat
   const accepted = submission.status === 'ACCEPTED';
   const stale = submission.contractVersion !== contractVersion;
   return (
-    <Alert severity={accepted && !stale ? 'success' : accepted ? 'warning' : submission.status === 'JUDGE_ERROR' ? 'warning' : 'error'} sx={{ mt: 1.5 }}>
+    <Alert severity={resultSeverity(submission, stale)} sx={{ mt: 1.5 }}>
       <Typography variant="body2" fontWeight={700}>
         {SUBMISSION_STATUS_LABEL[submission.status]} — {passed}/{total} test cases passed
       </Typography>
       {accepted && !stale && (
-        <Typography variant="body2">
-          {!submission.publishOnAccept
-            ? 'The problem is verified. You can now set its status to Published and save.'
-            : problemStatus === 'PUBLISHED'
-              ? 'The problem is verified and has been published.'
-              : problemStatus === 'DRAFT'
-                ? 'The problem is verified — publishing…'
-                : 'The problem is verified, but it was not published: it is no longer a draft.'}
-        </Typography>
+        <Typography variant="body2">{acceptedOutcome(Boolean(submission.publishOnAccept), problemStatus)}</Typography>
       )}
       {accepted && stale && (
         <Typography variant="body2">This run was judged against an older version of the problem — run it again.</Typography>
       )}
-      {submission.errorMessage && (
-        <Box component="pre" sx={{ m: 0, mt: 1, whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.75rem' }}>
-          {submission.errorMessage}
-        </Box>
-      )}
+      {submission.errorMessage && <CodeBlock variant="plain">{submission.errorMessage}</CodeBlock>}
     </Alert>
   );
 }

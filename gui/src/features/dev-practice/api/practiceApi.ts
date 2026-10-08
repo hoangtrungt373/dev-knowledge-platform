@@ -1,5 +1,6 @@
 import { httpClient } from '@shared/api/httpClient';
 import { PagedResponse } from '@shared/types';
+import { buildQueryString } from '@shared/utils/queryString';
 import {
   Difficulty,
   Problem,
@@ -33,16 +34,17 @@ export const practiceApi = {
   // ── Public catalog (/api/v1/public/problems, no auth) ─────────────────────────
 
   listProblems(params: PracticeProblemListParams, showError?: ShowError): Promise<PagedResponse<ProblemSummary>> {
-    const q = new URLSearchParams();
-    q.set('page', String(params.page ?? 0));
-    q.set('size', String(params.size ?? 20));
-    // Oldest first: a stable, curriculum-like order (the backend allows sorting by id only).
-    q.set('sortBy', 'id');
-    q.set('sortDir', 'asc');
-    if (params.difficulty) q.set('difficulty', params.difficulty);
-    if (params.q) q.set('q', params.q);
-    params.tagIds?.forEach(id => q.append('tagIds', String(id)));
-    return httpClient.get(`/api/v1/public/problems?${q}`, showError);
+    const query = buildQueryString({
+      page: params.page ?? 0,
+      size: params.size ?? 20,
+      // Oldest first: a stable, curriculum-like order (the backend allows sorting by id only).
+      sortBy: 'id',
+      sortDir: 'asc',
+      difficulty: params.difficulty,
+      q: params.q,
+      tagIds: params.tagIds,
+    });
+    return httpClient.get(`/api/v1/public/problems${query}`, showError);
   },
 
   /** Every topic, sorted by name — for the list's tag filter. */
@@ -90,9 +92,7 @@ export const practiceApi = {
 
   /** The caller's own submissions for one problem, newest first. */
   listSubmissions(problemId: number, size: number, showError?: ShowError): Promise<PagedResponse<Submission>> {
-    return httpClient.get(
-      `/api/v1/submissions?problemId=${problemId}&page=0&size=${size}&sortBy=id&sortDir=desc`,
-      showError,
-    );
+    const query = buildQueryString({ problemId, page: 0, size, sortBy: 'id', sortDir: 'desc' });
+    return httpClient.get(`/api/v1/submissions${query}`, showError);
   },
 };

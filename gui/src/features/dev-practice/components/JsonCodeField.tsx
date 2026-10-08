@@ -1,15 +1,14 @@
 import { useMemo } from 'react';
-import { Box, FormHelperText, Typography, useTheme } from '@mui/material';
+import { Box, FormHelperText, Typography } from '@mui/material';
 import CodeMirror from '@uiw/react-codemirror';
 import { json } from '@codemirror/lang-json';
 import { EditorView } from '@codemirror/view';
+import { editorChrome, useCodeMirrorTheme } from '../utils/codeLanguages';
 
 // Matches a small MUI TextField's own text size/inset, so a JSON field sits naturally next to the
 // plain TextFields on the same form. `outline: none` drops CodeMirror's own dotted focus box — the
 // wrapping Box draws the focus/error border instead (same fix @dev-utils' editorChromeTheme makes).
-const fieldChrome = EditorView.theme({
-  '&': { fontSize: '0.8rem' },
-  '&.cm-focused': { outline: 'none' },
+const fieldChrome = editorChrome('0.8rem', {
   '.cm-content': { padding: '8px 0' },
   '.cm-line': { padding: '0 10px' },
 });
@@ -39,7 +38,7 @@ export default function JsonCodeField({
   helperText,
   disabled,
 }: Props): JSX.Element {
-  const theme = useTheme();
+  const cmTheme = useCodeMirrorTheme();
   const extensions = useMemo(() => [fieldChrome, json(), EditorView.lineWrapping], []);
 
   return (
@@ -66,7 +65,7 @@ export default function JsonCodeField({
           onChange={onChange}
           placeholder={placeholder}
           editable={!disabled}
-          theme={theme.palette.mode === 'dark' ? 'dark' : 'light'}
+          theme={cmTheme}
           extensions={extensions}
           basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
           minHeight="36px"

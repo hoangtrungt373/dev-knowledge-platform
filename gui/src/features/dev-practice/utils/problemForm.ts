@@ -1,4 +1,5 @@
-import { ParamType, Problem, ProblemPayload } from '../types';
+import { ParamType, ParsedSignature, Problem, ProblemPayload } from '../types';
+import { orderedParameters } from './runCases';
 
 /** One editable parameter row. `key` is a stable, client-only React key — rows are reordered and
  * removed, so the list index can't serve as one. */
@@ -21,6 +22,18 @@ export interface Signature {
   methodName: string;
   returnType: ParamType;
   parameters: { name: string; type: ParamType }[];
+}
+
+/** A type parsed from a template whose spelling also fits other types (Python `int`, JS `number`). */
+export interface TypeHint {
+  chosen: ParamType;
+  alternatives: ParamType[];
+}
+
+/** Parse hints by field: the return type, and each parameter by its row key. */
+export interface SignatureTypeHints {
+  returnType?: TypeHint;
+  params: Record<string, TypeHint>;
 }
 
 /** Field-level form errors. Row errors are keyed by the row's own `key`. */
@@ -81,12 +94,60 @@ export function contractFingerprint(signature: Signature, testCases: { input: st
   return JSON.stringify([signature, testCases.map(t => [t.input.trim(), t.expectedOutput.trim()])]);
 }
 
+/**
+ * Turns a parsed code template into fresh parameter rows plus the type guesses to flag: a type whose
+ * template spelling also fits others (Python `int`, JavaScript `number`) gets a hint, keyed by the
+ * new row's key. `guessCount` counts the return type too.
+ */
+export function signatureFromTemplate(parsed: ParsedSignature): {
+  params: ParamRow[];
+  hints: SignatureTypeHints;
+  guessCount: number;
+} {
+  const params: ParamRow[] = parsed.parameters.map(p => ({ key: nextRowKey(), name: p.name, type: p.type }));
+  const paramHints: Record<string, TypeHint> = {};
+  parsed.parameters.forEach((p, i) => {
+    if (p.alternatives.length > 0) paramHints[params[i].key] = { chosen: p.type, alternatives: p.alternatives };
+  });
+  const returnGuessed = parsed.returnTypeAlternatives.length > 0;
+  return {
+    params,
+    hints: {
+      returnType: returnGuessed ? { chosen: parsed.returnType, alternatives: parsed.returnTypeAlternatives } : undefined,
+      params: paramHints,
+    },
+    guessCount: Object.keys(paramHints).length + (returnGuessed ? 1 : 0),
+  };
+}
+
+/**
+ * Why the form can't be saved as PUBLISHED right now, or `null` when it can — mirrors
+ * `ProblemServiceImpl`'s publish rule: publishing needs an ACCEPTED reference solution at the
+ * problem's current contract version, so the problem must be saved (a reference needs an id) and its
+ * signature/test data must have no unsaved edits. A problem that's already published may stay
+ * published as long as its contract isn't touched (problems published before DKP-0056 stay live
+ * without a reference).
+ *
+ * @param saved the problem as last loaded/saved, or null in create mode
+ * @param contractDirty whether the form holds signature/test-data edits the server hasn't seen
+ */
+export function publishBlockedReason(saved: Problem | null, contractDirty: boolean): string | null {
+  if (!saved) return 'Create the problem as a Draft first, then run a reference solution to publish it.';
+  if (contractDirty) {
+    return saved.status === 'PUBLISHED'
+      ? 'Changing the signature or test cases of a published problem needs re-verification: set the status to Draft, save, run a reference solution, then publish.'
+      : 'Save the signature/test-case changes as a Draft and run a reference solution before publishing.';
+  }
+  if (saved.status !== 'PUBLISHED' && !saved.verified) {
+    return 'Run a reference solution that passes every test case before publishing.';
+  }
+  return null;
+}
+
 /** Builds editable rows from a loaded problem (parameters sorted by their persisted position). */
 export function rowsFromProblem(problem: Problem): { params: ParamRow[]; testCases: TestCaseRow[] } {
   return {
-    params: [...problem.parameters]
-      .sort((a, b) => a.position - b.position)
-      .map(p => ({ key: nextRowKey(), name: p.name, type: p.type })),
+    params: orderedParameters(problem.parameters).map(p => ({ key: nextRowKey(), name: p.name, type: p.type })),
     testCases: problem.testCases.map(t => ({
       key: nextRowKey(),
       input: t.input,
@@ -225,7 +286,7 @@ export function snapshotFieldsOf(problem: Problem): FormSnapshotFields {
     status: problem.status,
     methodName: problem.methodName,
     returnType: problem.returnType,
-    parameters: [...problem.parameters].sort((a, b) => a.position - b.position).map(p => ({ name: p.name, type: p.type })),
+    parameters: orderedParameters(problem.parameters).map(p => ({ name: p.name, type: p.type })),
     testCases: problem.testCases.map(t => ({ input: t.input, expectedOutput: t.expectedOutput, sample: t.sample })),
     tagIds: problem.tags.map(t => t.id),
     stagedTagNames: [],

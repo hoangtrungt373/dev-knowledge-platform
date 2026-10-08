@@ -1,22 +1,12 @@
 import { useMemo, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Paper,
-  Stack,
-  ToggleButton,
-  ToggleButtonGroup,
-  Typography,
-  useTheme,
-} from '@mui/material';
+import { Alert, Box, Paper, Stack, Typography } from '@mui/material';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import CodeMirror from '@uiw/react-codemirror';
-import { EditorView } from '@codemirror/view';
 import { ParsedSignature, ProgrammingLanguage } from '../types';
 import { devPracticeApi } from '../api/devPracticeApi';
 import SubmitButton from '@shared/components/SubmitButton';
-import { LANGUAGES } from '../constants';
-import { LANGUAGE_EXTENSIONS } from '../utils/codeLanguages';
+import { editorChrome, LANGUAGE_EXTENSIONS, useCodeMirrorTheme } from '../utils/codeLanguages';
+import LanguageToggle from './LanguageToggle';
 
 // What each language's template has to look like — Python needs type hints and JavaScript needs
 // JSDoc, since neither spells types in the signature itself.
@@ -26,10 +16,7 @@ const PLACEHOLDERS: Record<ProgrammingLanguage, string> = {
   JAVASCRIPT: '/**\n * @param {string[]} tokens\n * @return {number}\n */\nvar evalRPN = function(tokens) {\n\n};',
 };
 
-const chrome = EditorView.theme({
-  '&': { fontSize: '0.8rem' },
-  '&.cm-focused': { outline: 'none' },
-});
+const chrome = editorChrome('0.8rem');
 
 interface Props {
   /** True while the signature is locked (published problem) — parsing would only be rejected. */
@@ -45,7 +32,7 @@ interface Props {
  * A parse error is shown inline (it says exactly what to fix), not as a toast.
  */
 export default function CodeTemplateImporter({ disabled, onParsed }: Props): JSX.Element {
-  const theme = useTheme();
+  const cmTheme = useCodeMirrorTheme();
   const [language, setLanguage] = useState<ProgrammingLanguage>('JAVA');
   const [code, setCode] = useState('');
   const [parsing, setParsing] = useState(false);
@@ -74,15 +61,11 @@ export default function CodeTemplateImporter({ disabled, onParsed }: Props): JSX
             Paste the method users implement — the signature below is filled from it.
           </Typography>
         </Box>
-        <ToggleButtonGroup
-          size="small"
-          exclusive
+        <LanguageToggle
           value={language}
-          onChange={(_, v: ProgrammingLanguage | null) => { if (v) { setLanguage(v); setError(null); } }}
+          onChange={v => { setLanguage(v); setError(null); }}
           disabled={disabled}
-        >
-          {LANGUAGES.map(l => <ToggleButton key={l.value} value={l.value}>{l.label}</ToggleButton>)}
-        </ToggleButtonGroup>
+        />
       </Stack>
 
       <Box sx={{ border: 1, borderColor: error ? 'error.main' : 'divider', borderRadius: 1, overflow: 'hidden' }}>
@@ -91,7 +74,7 @@ export default function CodeTemplateImporter({ disabled, onParsed }: Props): JSX
           onChange={v => { setCode(v); setError(null); }}
           placeholder={PLACEHOLDERS[language]}
           editable={!disabled}
-          theme={theme.palette.mode === 'dark' ? 'dark' : 'light'}
+          theme={cmTheme}
           extensions={extensions}
           minHeight="120px"
           maxHeight="320px"

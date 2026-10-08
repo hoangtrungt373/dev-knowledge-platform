@@ -1,19 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  IconButton,
-  LinearProgress,
-  Paper,
-  Stack,
-  Tab,
-  Tabs,
-  Tooltip,
-  Typography,
-} from '@mui/material';
+import { Box, Button, IconButton, Paper, Stack, Tab, Tabs, Tooltip, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import SendIcon from '@mui/icons-material/Send';
@@ -21,20 +8,21 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import LoginIcon from '@mui/icons-material/Login';
 import SearchOffIcon from '@mui/icons-material/SearchOff';
 import { Group, Panel, useDefaultLayout } from 'react-resizable-panels';
-import { Problem, RunResult, Submission } from '../types';
 import { practiceApi } from '../api/practiceApi';
-import { DIFFICULTY_COLOR, DIFFICULTY_LABEL } from '../constants';
+import { MAX_RUN_CASES } from '../constants';
 import { isInProgress, useSubmissionPolling } from '../hooks/useSubmissionPolling';
 import { useSolutionDrafts } from '../hooks/useSolutionDrafts';
 import { useProblemProgress } from '../hooks/useProblemProgress';
+import { usePublishedProblem } from '../hooks/usePublishedProblem';
+import { useCodeRun } from '../hooks/useCodeRun';
 import ProgressMarker from '../components/ProgressMarker';
+import DifficultyChip from '../components/DifficultyChip';
+import TagChips from '../components/TagChips';
 import SolutionEditor from '../components/SolutionEditor';
 import SampleTestCases from '../components/SampleTestCases';
-import SubmissionVerdict from '../components/SubmissionVerdict';
 import SubmissionHistory from '../components/SubmissionHistory';
 import RunCaseEditor from '../components/RunCaseEditor';
-import RunResultView from '../components/RunResultView';
-import { casesFromSamples, toInputJson } from '../utils/runCases';
+import ConsoleResult from '../components/ConsoleResult';
 import { authService } from '@auth/services/authService';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import FullPageLoader from '@shared/components/FullPageLoader';
@@ -48,63 +36,19 @@ const LIST_PATH = '/practice';
 // The dense NavBar is 48px tall; the workspace fills the rest of the viewport.
 const NAVBAR_HEIGHT_PX = 48;
 
-// Mirrors CodeRunServiceImpl.MAX_CUSTOM_INPUTS — the backend rejects more inputs per run.
-const MAX_RUN_CASES = 5;
-
 type LeftTab = 'description' | 'submissions';
 type ConsoleTab = 'testcase' | 'result';
-
-/** What the last Run produced: a result, or a message (bad input, judge unavailable). */
-type RunOutcome =
-  | { kind: 'result'; result: RunResult; runId: number }
-  | { kind: 'error'; message: string };
-
-interface ConsoleResultProps {
-  lastAction: 'run' | 'submit' | null;
-  running: boolean;
-  runOutcome: RunOutcome | null;
-  submission: Submission | null;
-  gaveUp: boolean;
-  problem: Problem;
-}
-
-/** The console's Result tab: whichever of Run or Submit the learner started last. */
-function ConsoleResult({ lastAction, running, runOutcome, submission, gaveUp, problem }: ConsoleResultProps): JSX.Element {
-  if (lastAction === 'submit' && submission) {
-    return <SubmissionVerdict submission={submission} gaveUp={gaveUp} />;
-  }
-  if (lastAction === 'run') {
-    if (running) {
-      return (
-        <Box>
-          <Typography variant="body2" fontWeight={700}>Running your cases…</Typography>
-          <LinearProgress sx={{ mt: 1 }} />
-        </Box>
-      );
-    }
-    if (runOutcome?.kind === 'error') return <Alert severity="error">{runOutcome.message}</Alert>;
-    if (runOutcome?.kind === 'result') {
-      // Keyed per run so the selected-case chip starts again at Case 1 for each new result.
-      return <RunResultView key={runOutcome.runId} result={runOutcome.result} parameters={problem.parameters} />;
-    }
-  }
-  return (
-    <Typography variant="body2" color="text.secondary">
-      Run your code on the test cases, or submit it to be judged — the result appears here.
-    </Typography>
-  );
-}
 
 /**
  * The learner's workspace for one problem — `/practice/:slug`, public to read; submitting needs a
  * login. A resizable split (widths remembered per browser): description, sample cases and the
  * learner's own submissions on the left; the editor, a console (editable test cases for Run, and the
  * latest Run/Submit result) and the Run/Submit buttons on the right. Run tries the console's cases
- * without saving (synchronous); Submit is graded on every test and judged asynchronously.
+ * without saving (synchronous, `useCodeRun`); Submit is graded on every test and judged
+ * asynchronously (`useSubmissionPolling`, shared with the admin reference panel).
  *
  * Drafts are kept in `localStorage` per problem (and per language within it), so a reload or a
- * later visit picks up where the learner stopped. Judging is asynchronous, so a submission is
- * polled (`useSubmissionPolling`, shared with the admin reference panel) until the verdict lands.
+ * later visit picks up where the learner stopped.
  */
 export default function ProblemWorkspacePage(): JSX.Element {
   const { slug = '' } = useParams<{ slug: string }>();
@@ -118,22 +62,14 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
   const { showError } = useNotification();
   const isAuthed = authService.isAuthenticated();
 
-  const [problem, setProblem] = useState<Problem | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const { problem, loading, notFound } = usePublishedProblem(slug);
   const [leftTab, setLeftTab] = useState<LeftTab>('description');
+  const [consoleTab, setConsoleTab] = useState<ConsoleTab>('testcase');
+  // Which action the Result tab shows: the last one the learner started.
+  const [lastAction, setLastAction] = useState<'run' | 'submit' | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
   const [confirmReset, setConfirmReset] = useState(false);
-
-  // ── Run console (Testcase | Result) ──
-  const [consoleTab, setConsoleTab] = useState<ConsoleTab>('testcase');
-  // One JSON value per parameter per case, pre-filled from the samples once the problem loads.
-  const [runCases, setRunCases] = useState<string[][]>([]);
-  const [running, setRunning] = useState(false);
-  const [runOutcome, setRunOutcome] = useState<RunOutcome | null>(null);
-  // Which action the Result tab shows: the last one the learner started.
-  const [lastAction, setLastAction] = useState<'run' | 'submit' | null>(null);
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: 'practice-workspace-layout',
@@ -141,30 +77,13 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
     panelIds: ['practice-problem', 'practice-editor'],
   });
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setNotFound(false);
-    // No showError: a missing (or unpublished — the backend can't tell them apart on purpose) problem
-    // gets its own "not found" page rather than a toast.
-    practiceApi.getProblem(slug)
-      .then(p => {
-        if (cancelled) return;
-        setProblem(p);
-        setRunCases(casesFromSamples(p));
-      })
-      .catch(() => { if (!cancelled) setNotFound(true); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [slug]);
-
   const drafts = useSolutionDrafts({
     loadStarter: language => practiceApi.getStarterCode(slug, language).then(s => s.code),
     starterVersion: slug,
     // One storage entry per problem, holding every language's draft and the last language used.
     storageKey: `practice-draft:${slug}`,
   });
-
+  const codeRun = useCodeRun(problem);
   const progress = useProblemProgress();
 
   const { submission, gaveUp, track } = useSubmissionPolling(
@@ -177,33 +96,23 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
 
   const judging = submitting || (isInProgress(submission) && !gaveUp);
   // Run and Submit share the editor's code and the console, so one blocks the other.
-  const busy = judging || running;
+  const busy = judging || codeRun.running;
+  const hasCode = drafts.code.trim() !== '';
 
-  /**
-   * Runs the console's cases without saving anything. Every case is sent as a custom input — the
-   * backend still checks any that equals a sample against that sample's answer, so the untouched
-   * pre-filled cases come back passed/failed while edited ones just show their output.
-   */
-  const handleRun = async () => {
-    if (!problem) return;
-    setLastAction('run');
+  /** Both actions show their result in the console's Result tab. */
+  const startAction = (action: 'run' | 'submit') => {
+    setLastAction(action);
     setConsoleTab('result');
-    setRunning(true);
-    try {
-      const result = await practiceApi.run(problem.id, drafts.language, drafts.code, runCases.map(toInputJson));
-      setRunOutcome({ kind: 'result', result, runId: Date.now() });
-    } catch (e) {
-      // Not a toast: a bad custom input's message ("Custom input #2 isn't valid: …") belongs next to it.
-      setRunOutcome({ kind: 'error', message: e instanceof Error ? e.message : 'The run failed' });
-    } finally {
-      setRunning(false);
-    }
+  };
+
+  const handleRun = () => {
+    startAction('run');
+    void codeRun.run(drafts.language, drafts.code);
   };
 
   const handleSubmit = async () => {
     if (!problem) return;
-    setLastAction('submit');
-    setConsoleTab('result');
+    startAction('submit');
     setSubmitting(true);
     try {
       track(await practiceApi.submit(problem.id, drafts.language, drafts.code, showError));
@@ -246,12 +155,7 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
           </IconButton>
         </Tooltip>
         <Typography variant="h6" fontWeight={700} noWrap>{problem.title}</Typography>
-        <Chip
-          size="small"
-          label={DIFFICULTY_LABEL[problem.difficulty]}
-          color={DIFFICULTY_COLOR[problem.difficulty]}
-          variant="outlined"
-        />
+        <DifficultyChip difficulty={problem.difficulty} />
         <ProgressMarker status={progress.statusOf(problem.id)} />
       </Stack>
 
@@ -274,11 +178,7 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
               <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 2.5 }}>
                 {leftTab === 'description' ? (
                   <Stack spacing={2.5}>
-                    {problem.tags.length > 0 && (
-                      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                        {problem.tags.map(t => <Chip key={t.id} size="small" label={t.name} />)}
-                      </Stack>
-                    )}
+                    <TagChips tags={problem.tags} />
                     <MarkdownView content={problem.description} />
                     <SampleTestCases parameters={problem.parameters} testCases={problem.testCases} />
                   </Stack>
@@ -304,7 +204,7 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
 
           <ResizeHandle />
 
-          {/* ── Right: editor, verdict, submit ── */}
+          {/* ── Right: editor, console, actions ── */}
           <Panel id="practice-editor" defaultSize="55" minSize="30">
             <Paper variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column', p: 1.5, gap: 1.5 }}>
               <Box sx={{ flex: 1, minHeight: 0 }}>
@@ -345,20 +245,20 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
                   {consoleTab === 'testcase' ? (
                     <RunCaseEditor
                       parameters={problem.parameters}
-                      cases={runCases}
-                      onChange={setRunCases}
-                      onReset={() => setRunCases(casesFromSamples(problem))}
+                      cases={codeRun.cases}
+                      onChange={codeRun.setCases}
+                      onReset={codeRun.resetCases}
                       maxCases={MAX_RUN_CASES}
                       disabled={busy}
                     />
                   ) : (
                     <ConsoleResult
                       lastAction={lastAction}
-                      running={running}
-                      runOutcome={runOutcome}
+                      running={codeRun.running}
+                      runOutcome={codeRun.outcome}
                       submission={submission}
                       gaveUp={gaveUp}
-                      problem={problem}
+                      parameters={problem.parameters}
                     />
                   )}
                 </Box>
@@ -374,16 +274,16 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
                       variant="outlined"
                       startIcon={<PlayArrowIcon />}
                       onClick={handleRun}
-                      disabled={busy || !drafts.code.trim() || runCases.length === 0}
+                      disabled={busy || !hasCode || codeRun.cases.length === 0}
                     >
-                      {running ? 'Running…' : 'Run'}
+                      {codeRun.running ? 'Running…' : 'Run'}
                     </Button>
                     <SubmitButton
                       saving={judging}
                       onClick={handleSubmit}
                       label="Submit"
                       startIcon={<SendIcon />}
-                      disabled={running || !drafts.code.trim()}
+                      disabled={codeRun.running || !hasCode}
                     />
                   </Stack>
                 ) : (

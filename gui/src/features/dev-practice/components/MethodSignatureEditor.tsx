@@ -22,19 +22,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import LockIcon from '@mui/icons-material/Lock';
 import { ParamType } from '../types';
 import { PARAM_TYPE_LABEL, PARAM_TYPES } from '../constants';
-import { nextRowKey, ParamRow, ProblemFormErrors } from '../utils/problemForm';
-
-/** A type parsed from a template whose spelling also fits other types (Python `int`, JS `number`). */
-export interface TypeHint {
-  chosen: ParamType;
-  alternatives: ParamType[];
-}
-
-/** Parse hints by field: the return type, and each parameter by its row key. */
-export interface SignatureTypeHints {
-  returnType?: TypeHint;
-  params: Record<string, TypeHint>;
-}
+import { nextRowKey, ParamRow, ProblemFormErrors, SignatureTypeHints, TypeHint } from '../utils/problemForm';
 
 interface Props {
   methodName: string;

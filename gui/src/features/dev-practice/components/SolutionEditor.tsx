@@ -1,15 +1,11 @@
 import { ReactNode, useMemo } from 'react';
-import { Box, Stack, ToggleButton, ToggleButtonGroup, useTheme } from '@mui/material';
+import { Box, Stack } from '@mui/material';
 import CodeMirror from '@uiw/react-codemirror';
-import { EditorView } from '@codemirror/view';
 import { ProgrammingLanguage } from '../types';
-import { LANGUAGES } from '../constants';
-import { LANGUAGE_EXTENSIONS } from '../utils/codeLanguages';
+import { editorChrome, LANGUAGE_EXTENSIONS, useCodeMirrorTheme } from '../utils/codeLanguages';
+import LanguageToggle from './LanguageToggle';
 
-const chrome = EditorView.theme({
-  '&': { fontSize: '0.85rem' },
-  '&.cm-focused': { outline: 'none' },
-});
+const chrome = editorChrome('0.85rem');
 
 interface Props {
   language: ProgrammingLanguage;
@@ -41,7 +37,7 @@ export default function SolutionEditor({
   toolbar,
   readOnly = false,
 }: Props): JSX.Element {
-  const theme = useTheme();
+  const cmTheme = useCodeMirrorTheme();
   const extensions = useMemo(() => [chrome, LANGUAGE_EXTENSIONS[language]()], [language]);
   const fill = sizing === 'fill';
 
@@ -49,14 +45,7 @@ export default function SolutionEditor({
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: 0, ...(fill && { height: '100%' }) }}>
       <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={1} sx={{ mb: 1 }}>
         {toolbar}
-        <ToggleButtonGroup
-          size="small"
-          exclusive
-          value={language}
-          onChange={(_, v: ProgrammingLanguage | null) => { if (v) onLanguageChange(v); }}
-        >
-          {LANGUAGES.map(l => <ToggleButton key={l.value} value={l.value}>{l.label}</ToggleButton>)}
-        </ToggleButtonGroup>
+        <LanguageToggle value={language} onChange={onLanguageChange} />
       </Stack>
 
       <Box
@@ -75,7 +64,7 @@ export default function SolutionEditor({
           value={code}
           onChange={onCodeChange}
           readOnly={readOnly}
-          theme={theme.palette.mode === 'dark' ? 'dark' : 'light'}
+          theme={cmTheme}
           extensions={extensions}
           {...(fill
             ? { height: '100%', style: { position: 'absolute', inset: 0 } }

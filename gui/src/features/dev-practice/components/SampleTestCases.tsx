@@ -1,6 +1,7 @@
 import { Box, Paper, Stack, Typography } from '@mui/material';
 import { MethodParameter, TestCase } from '../types';
 import { argumentLines } from '../utils/runCases';
+import CodeBlock from './CodeBlock';
 
 interface Props {
   parameters: MethodParameter[];
@@ -16,17 +17,12 @@ export default function SampleTestCases({ parameters, testCases }: Props): JSX.E
       <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Sample test cases</Typography>
       <Stack spacing={1}>
         {testCases.map((tc, i) => (
-          <Paper key={tc.id} variant="outlined" sx={{ p: 1.5, bgcolor: 'action.hover' }}>
-            <Typography variant="caption" color="text.secondary" fontWeight={700}>Case {i + 1}</Typography>
-            <Box component="pre" sx={{ m: 0, mt: 0.5, fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-              {argumentLines(tc.input, parameters).join('\n')}
-            </Box>
-            <Typography variant="caption" color="text.secondary" fontWeight={700} component="div" sx={{ mt: 1 }}>
-              Expected
-            </Typography>
-            <Box component="pre" sx={{ m: 0, fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-              {tc.expectedOutput}
-            </Box>
+          <Paper key={tc.id} variant="outlined" sx={{ p: 1.5 }}>
+            <Typography variant="body2" fontWeight={700} sx={{ mb: 1 }}>Case {i + 1}</Typography>
+            <Stack spacing={1}>
+              <CodeBlock label="Input">{argumentLines(tc.input, parameters).join('\n')}</CodeBlock>
+              <CodeBlock label="Expected">{tc.expectedOutput}</CodeBlock>
+            </Stack>
           </Paper>
         ))}
       </Stack>

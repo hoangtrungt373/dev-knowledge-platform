@@ -1,15 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Box, Button, Chip, Divider, Stack, Typography } from '@mui/material';
+import { Box, Button, Divider, Stack, Typography } from '@mui/material';
 import { ProgrammingLanguage, Submission } from '../types';
 import { practiceApi } from '../api/practiceApi';
-import { LANGUAGE_LABEL, SUBMISSION_STATUS_COLOR, SUBMISSION_STATUS_LABEL } from '../constants';
+import { LANGUAGE_LABEL } from '../constants';
+import { formatDateTime } from '../utils/format';
+import SubmissionStatusChip from './SubmissionStatusChip';
 import SectionStatus from '@shared/components/SectionStatus';
 
 const HISTORY_SIZE = 50;
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
 
 interface Props {
   problemId: number;
@@ -51,19 +49,14 @@ export default function SubmissionHistory({ problemId, refreshKey, onLoadCode }:
     <Stack divider={<Divider />}>
       {submissions.map(s => (
         <Stack key={s.id} direction="row" alignItems="center" spacing={1.5} sx={{ py: 1.25 }}>
-          <Chip
-            size="small"
-            label={SUBMISSION_STATUS_LABEL[s.status]}
-            color={SUBMISSION_STATUS_COLOR[s.status]}
-            sx={{ minWidth: 120 }}
-          />
+          <SubmissionStatusChip status={s.status} />
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="body2">
               {LANGUAGE_LABEL[s.language]}
               {s.totalTestCases != null && s.passedTestCases != null
                 && ` · ${s.passedTestCases}/${s.totalTestCases} passed`}
             </Typography>
-            <Typography variant="caption" color="text.secondary">{formatTime(s.submittedAt)}</Typography>
+            <Typography variant="caption" color="text.secondary">{formatDateTime(s.submittedAt)}</Typography>
           </Box>
           <Button size="small" onClick={() => onLoadCode(s.language, s.sourceCode)}>Load code</Button>
         </Stack>

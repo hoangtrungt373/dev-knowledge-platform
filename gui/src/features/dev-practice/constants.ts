@@ -4,6 +4,9 @@ import { Difficulty, ParamType, ProblemStatus, ProgrammingLanguage, SubmissionSt
 // differently between the two.
 
 export const DIFFICULTIES: Difficulty[] = ['EASY', 'MEDIUM', 'HARD'];
+
+/** A list row shows at most this many tag chips, then "+N" — so long tag lists don't change row height. */
+export const MAX_TAG_CHIPS = 3;
 export const STATUSES: ProblemStatus[] = ['DRAFT', 'PUBLISHED', 'ARCHIVED'];
 
 export const DIFFICULTY_LABEL: Record<Difficulty, string> = { EASY: 'Easy', MEDIUM: 'Medium', HARD: 'Hard' };
@@ -52,6 +55,9 @@ export const LANGUAGES: { value: ProgrammingLanguage; label: string }[] = [
 export const LANGUAGE_LABEL: Record<ProgrammingLanguage, string> = Object.fromEntries(
   LANGUAGES.map(l => [l.value, l.label]),
 ) as Record<ProgrammingLanguage, string>;
+
+/** At most this many cases per Run — mirrors `CodeRunServiceImpl.MAX_CUSTOM_INPUTS`; the backend rejects more. */
+export const MAX_RUN_CASES = 5;
 
 /** Statuses that mean "the judge hasn't finished yet" — keep polling while a submission has one. */
 export const IN_PROGRESS_STATUSES: SubmissionStatus[] = ['PENDING', 'RUNNING'];

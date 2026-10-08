@@ -1,5 +1,6 @@
 import { httpClient } from '@shared/api/httpClient';
 import { PagedResponse } from '@shared/types';
+import { buildQueryString, QueryParams } from '@shared/utils/queryString';
 import {
   AdminProblemSummary,
   Difficulty,
@@ -14,15 +15,6 @@ import {
 } from '../types';
 
 type ShowError = (msg: string) => void;
-
-function buildQuery(params: Record<string, string | number | undefined>): string {
-  const q = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== '') q.set(k, String(v));
-  });
-  const s = q.toString();
-  return s ? `?${s}` : '';
-}
 
 export interface ProblemListParams {
   page?: number;
@@ -50,11 +42,7 @@ export const devPracticeApi = {
   // ── Admin problem catalog (/api/v1/admin/problems, ROLE_ADMIN) ──────────────
 
   listProblems(params: ProblemListParams, showError?: ShowError): Promise<PagedResponse<AdminProblemSummary>> {
-    const { tagIds, ...scalar } = params;
-    const q = new URLSearchParams(buildQuery(scalar as Record<string, string | number | undefined>).slice(1));
-    tagIds?.forEach(id => q.append('tagIds', String(id)));
-    const query = q.toString();
-    return httpClient.get(`/api/v1/admin/problems${query ? `?${query}` : ''}`, showError);
+    return httpClient.get(`/api/v1/admin/problems${buildQueryString(params as QueryParams)}`, showError);
   },
 
   getProblem(id: number, showError?: ShowError): Promise<Problem> {
@@ -115,10 +103,7 @@ export const devPracticeApi = {
   // ── Admin tag catalog (/api/v1/admin/problem-tags, ROLE_ADMIN) ──────────────
 
   listProblemTags(params: ProblemTagListParams, showError?: ShowError): Promise<PagedResponse<ProblemTag>> {
-    return httpClient.get(
-      `/api/v1/admin/problem-tags${buildQuery(params as Record<string, string | number | undefined>)}`,
-      showError,
-    );
+    return httpClient.get(`/api/v1/admin/problem-tags${buildQueryString(params as QueryParams)}`, showError);
   },
 
   /** Every tag, sorted by name — for the problem form's picker and the list's tag filter. */

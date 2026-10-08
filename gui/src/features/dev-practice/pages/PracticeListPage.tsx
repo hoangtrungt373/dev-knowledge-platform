@@ -2,10 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box,
-  Checkbox,
-  Chip,
   InputAdornment,
-  ListItemText,
   MenuItem,
   Paper,
   Select,
@@ -18,21 +15,21 @@ import {
   TablePagination,
   TableRow,
   TextField,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import { Difficulty, ProblemSummary, ProblemTagSummary } from '../types';
 import { practiceApi } from '../api/practiceApi';
-import { DIFFICULTIES, DIFFICULTY_COLOR, DIFFICULTY_LABEL } from '../constants';
+import { DIFFICULTIES, DIFFICULTY_LABEL, MAX_TAG_CHIPS } from '../constants';
 import { useProblemProgress } from '../hooks/useProblemProgress';
 import ProgressMarker from '../components/ProgressMarker';
+import DifficultyChip from '../components/DifficultyChip';
+import TagChips from '../components/TagChips';
+import TagFilterSelect from '../components/TagFilterSelect';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import TableStatusRow from '@shared/components/TableStatusRow';
 
 const PAGE_SIZE = 20;
-// Beyond this many, a row shows "+N" instead of more chips (same rule as the admin list).
-const MAX_TAG_CHIPS = 3;
 
 function isDifficulty(value: string | null): value is Difficulty {
   return value !== null && (DIFFICULTIES as string[]).includes(value);
@@ -115,8 +112,6 @@ export default function PracticeListPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, q, difficulty, tagKey, showError]);
 
-  const tagName = (id: number) => allTags.find(t => t.id === id)?.name ?? `#${id}`;
-
   return (
     <Box sx={{ p: 3, maxWidth: 1100, mx: 'auto' }}>
       <Box sx={{ mb: 2.5 }}>
@@ -147,25 +142,13 @@ export default function PracticeListPage(): JSX.Element {
           <MenuItem value="">All difficulties</MenuItem>
           {DIFFICULTIES.map(d => <MenuItem key={d} value={d}>{DIFFICULTY_LABEL[d]}</MenuItem>)}
         </Select>
-        <Select
-          size="small"
-          multiple
-          displayEmpty
-          value={tagIds}
-          onChange={e => {
-            const value = e.target.value;
-            updateParams({ tags: typeof value === 'string' ? [] : value });
-          }}
-          renderValue={selected => (selected.length === 0 ? 'All topics' : selected.map(tagName).join(', '))}
+        <TagFilterSelect
+          tags={allTags}
+          selectedIds={tagIds}
+          onChange={ids => updateParams({ tags: ids })}
+          allLabel="All topics"
           sx={{ minWidth: 200, maxWidth: { sm: 300 } }}
-        >
-          {allTags.map(t => (
-            <MenuItem key={t.id} value={t.id}>
-              <Checkbox size="small" checked={tagIds.includes(t.id)} />
-              <ListItemText primary={t.name} />
-            </MenuItem>
-          ))}
-        </Select>
+        />
       </Stack>
 
       <TableContainer component={Paper} variant="outlined">
@@ -186,10 +169,7 @@ export default function PracticeListPage(): JSX.Element {
               colSpan={4}
               emptyMessage="No problems match these filters."
             />
-            {!loading && problems.map(problem => {
-              const shown = problem.tags.slice(0, MAX_TAG_CHIPS);
-              const hidden = problem.tags.slice(MAX_TAG_CHIPS);
-              return (
+            {!loading && problems.map(problem => (
                 <TableRow
                   key={problem.id}
                   hover
@@ -203,26 +183,13 @@ export default function PracticeListPage(): JSX.Element {
                     <Typography variant="body2" fontWeight={600}>{problem.title}</Typography>
                   </TableCell>
                   <TableCell>
-                    <Chip
-                      size="small"
-                      label={DIFFICULTY_LABEL[problem.difficulty]}
-                      color={DIFFICULTY_COLOR[problem.difficulty]}
-                      variant="outlined"
-                    />
+                    <DifficultyChip difficulty={problem.difficulty} />
                   </TableCell>
                   <TableCell>
-                    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                      {shown.map(t => <Chip key={t.id} size="small" label={t.name} />)}
-                      {hidden.length > 0 && (
-                        <Tooltip title={hidden.map(t => t.name).join(', ')}>
-                          <Chip size="small" variant="outlined" label={`+${hidden.length}`} />
-                        </Tooltip>
-                      )}
-                    </Stack>
+                    <TagChips tags={problem.tags} max={MAX_TAG_CHIPS} />
                   </TableCell>
                 </TableRow>
-              );
-            })}
+            ))}
           </TableBody>
         </Table>
         <TablePagination
