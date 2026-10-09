@@ -83,13 +83,16 @@ class Judge0ClientTest {
                 .andRespond(json("{\"submissions\":[{\"token\":\"tok-1\",\"status_id\":2}]}"));
         // Judge0's Ruby Base64.encode64 wraps output and ends it with a newline — "[0,1]\n" here.
         server.expect(once(), requestTo(startsWith(POLL_URL_PREFIX + "tok-1")))
-                .andRespond(json("{\"submissions\":[{\"token\":\"tok-1\",\"status_id\":3,\"stdout\":\"WzAs\\nMV0K\\n\"}]}"));
+                .andRespond(json("{\"submissions\":[{\"token\":\"tok-1\",\"status_id\":3,\"stdout\":\"WzAs\\nMV0K\\n\","
+                        + "\"time\":\"0.042\",\"memory\":9472}]}"));
 
         List<Judge0SubmissionResult> results = client.runAll(List.of(java("class Main {}", "[1]")));
 
         assertThat(results).singleElement().satisfies(r -> {
             assertThat(r.status()).isEqualTo(Judge0Status.ACCEPTED);
             assertThat(r.stdout()).isEqualTo("[0,1]\n");
+            assertThat(r.runtimeMs()).as("CPU seconds → whole milliseconds, exactly").isEqualTo(42);
+            assertThat(r.memoryKb()).isEqualTo(9472);
         });
         server.verify();
     }

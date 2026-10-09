@@ -3,7 +3,7 @@ import { Box, Button, Divider, Stack, Typography } from '@mui/material';
 import { ProgrammingLanguage, Submission } from '../types';
 import { practiceApi } from '../api/practiceApi';
 import { LANGUAGE_LABEL } from '../constants';
-import { formatDateTime } from '../utils/format';
+import { formatDateTime, submissionStats } from '../utils/format';
 import SubmissionStatusChip from './SubmissionStatusChip';
 import SectionStatus from '@shared/components/SectionStatus';
 
@@ -55,6 +55,7 @@ export default function SubmissionHistory({ problemId, refreshKey, onLoadCode }:
               {LANGUAGE_LABEL[s.language]}
               {s.totalTestCases != null && s.passedTestCases != null
                 && ` · ${s.passedTestCases}/${s.totalTestCases} passed`}
+              {submissionStats(s) && ` · ${submissionStats(s)}`}
             </Typography>
             <Typography variant="caption" color="text.secondary">{formatDateTime(s.submittedAt)}</Typography>
           </Box>

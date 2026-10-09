@@ -11,5 +11,6 @@ package com.ttg.devknowledgeplatform.devpractice.judge;
  * @param message       Judge0's own diagnostic message (e.g. for an internal error), or {@code null}
  */
 public record Judge0SubmissionResult(
-        Judge0Status status, String stdout, String stderr, String compileOutput, String message) {
+        Judge0Status status, String stdout, String stderr, String compileOutput, String message,
+        Integer runtimeMs, Integer memoryKb) {
 }

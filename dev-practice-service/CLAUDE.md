@@ -19,7 +19,7 @@ columns, the new `METHOD_PARAMETER` table, and `SUBMISSION`'s judging-result col
 repo's never-edit-an-already-run-changeset convention; `DKP-0054` — widens `CKC_SUBMISSION_STATUS`
 for `JUDGE_ERROR`; `DKP-0055` — problem tags; `DKP-0056` — `PROBLEM.CONTRACT_VERSION`,
 `SUBMISSION.KIND`/`CONTRACT_VERSION` for publish verification; `DKP-0057` —
-`SUBMISSION.PUBLISH_ON_ACCEPT`). Routed through `gateway`'s
+`SUBMISSION.PUBLISH_ON_ACCEPT`; `DKP-0058` — `SUBMISSION.RUNTIME_MS`/`MEMORY_KB`). Routed through `gateway`'s
 `routing/GatewayRoutesConfig` (`devPracticeServiceRoutes()`) — `/api/v1/admin/problems/**` and
 `/api/v1/public/problems/**` (including `/starter-code`) are two more resource segments under the
 already-shared `/api/v1/admin/**`/`/api/v1/public/**` prefixes; `/api/v1/submissions/**` is a
@@ -384,6 +384,14 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   `JUDGE_UNAVAILABLE` (503, generic message; detail logged) — unlike a graded submission, which
   records `JUDGE_ERROR` on itself. Login is still required (the `/api/v1/submissions/**` rule), so
   the judge isn't open to anonymous traffic; there is no per-user rate limit yet.
+- **Runtime and memory (`DKP-0058`) are stored for ACCEPTED submissions only** — the slowest test
+  case's CPU time (`Submission.runtimeMs`, from Judge0's `time` in seconds, parsed as `BigDecimal` so
+  `"0.042"` is exactly 42 ms) and the highest peak memory (`memoryKb`, Judge0's `memory`), each a
+  maximum taken independently over the test cases. A failing submission keeps both null: its runtime
+  isn't a score, and since batching it ran cases past the failure anyway. NULL also means "not
+  measured" for older rows. Both numbers include the language runtime's own start-up and the
+  harness's JSON parsing (JVM ≈ 100 ms / 30 MB baseline), so they compare solutions within one
+  language, not across languages — the GUI doesn't claim otherwise. Run results don't carry them.
 - **One "published or not found" rule**: a learner-facing lookup goes through
   `ProblemService#getPublishedBySlug`/`#getPublishedById` (`SubmissionService`, `CodeRunService`), never
   `problemRepository.findById` plus its own status check — so the non-leaking 404 for a draft lives in

@@ -35,9 +35,9 @@ import lombok.ToString;
  * <p>Judged asynchronously by {@code event.SubmissionJudgeEventListener} after creation — a
  * submission is created and returned to the caller as {@link SubmissionStatus#PENDING}
  * immediately, then transitions to its final status once every {@link TestCase} has been run
- * through Judge0 (via {@code judge.JudgeClient}) or the first failing test case is hit, whichever
- * comes first (grading stops at the first failure, same as a real judge). {@code passedTestCases}/
- * {@code totalTestCases} record how far it got; {@code errorMessage} carries a compiler error or
+ * through Judge0 (via {@code judge.JudgeClient}, all in one batch); the verdict is the first failing
+ * test case, same as a real judge. {@code passedTestCases}/{@code totalTestCases} record how far it
+ * got before that failure; {@code errorMessage} carries a compiler error or
  * runtime stderr detail for a non-{@code ACCEPTED} result, {@code null} otherwise.
  */
 @Entity
@@ -83,6 +83,18 @@ public class Submission extends AbstractEntity {
 
     @Column(name = "ERROR_MESSAGE")
     private String errorMessage;
+
+    /**
+     * ACCEPTED only: the slowest test case's CPU time in milliseconds, as Judge0 measured it. Includes
+     * the language runtime's own start-up and the harness's JSON parsing, so it compares solutions in
+     * the same language, not across languages. {@code null} for any other status, or if not measured.
+     */
+    @Column(name = "RUNTIME_MS")
+    private Integer runtimeMs;
+
+    /** ACCEPTED only: the highest peak memory of any test case, in KB (runtime included, as above). */
+    @Column(name = "MEMORY_KB")
+    private Integer memoryKb;
 
     /** A user's attempt, or an admin's reference run that can verify the problem for publishing. */
     @NotNull

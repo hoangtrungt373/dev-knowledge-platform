@@ -135,6 +135,10 @@ export interface Submission {
   contractVersion: number | null;
   /** REFERENCE only: publish the draft problem once this run is ACCEPTED. */
   publishOnAccept: boolean;
+  /** ACCEPTED only: the slowest test case's CPU time in ms, as measured by the judge. */
+  runtimeMs: number | null;
+  /** ACCEPTED only: the highest peak memory of any test case, in KB. */
+  memoryKb: number | null;
 }
 
 /** `StarterCodeResponse`. */

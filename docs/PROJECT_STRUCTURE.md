@@ -2936,7 +2936,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                         contractVersion (Integer, nullable — the problem's
 │                                         contractVersion stamped when judging starts),
 │                                         publishOnAccept (Boolean, default false — REFERENCE: publish
-│                                         the DRAFT problem once ACCEPTED)
+│                                         the DRAFT problem once ACCEPTED), runtimeMs/memoryKb
+│                                         (Integer, nullable — ACCEPTED only: slowest test's CPU ms /
+│                                         highest peak memory KB, from Judge0's time/memory)
 ├── enums/
 │   ├── Difficulty.java                — EASY, MEDIUM, HARD; deliberately not
 │   │                                     common.enums.QuestionDifficulty
@@ -3197,7 +3199,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     pattern); both replace-all on update
 │   ├── SubmissionResponse.java        — record: id, problemId, problemTitle, language, sourceCode,
 │   │                                     status, passedTestCases, totalTestCases, errorMessage,
-│   │                                     submittedAt
+│   │                                     submittedAt, kind, contractVersion, publishOnAccept,
+│   │                                     runtimeMs, memoryKb
 │   ├── CreateSubmissionRequest.java   — @Data: problemId, language, sourceCode
 │   └── StarterCodeResponse.java       — record: language, code
 ├── mapper/
@@ -3338,7 +3341,9 @@ only — the starter topics come from `ProblemTagSeeder`) +
 `SUBMISSION.CONTRACT_VERSION`, partial index `IDX_SUBMISSION_ACCEPTED_REFERENCE` on
 `(PROBLEM_ID, CONTRACT_VERSION) WHERE KIND = 'REFERENCE' AND STATUS = 'ACCEPTED'`) +
 `2026/0.0.4/202610030001__0.0.4__DKP-0057__add_submission_publish_on_accept.sql`
-(`SUBMISSION.PUBLISH_ON_ACCEPT BOOLEAN NOT NULL DEFAULT FALSE`)), applied via the consolidated `services-liquibase` job in
+(`SUBMISSION.PUBLISH_ON_ACCEPT BOOLEAN NOT NULL DEFAULT FALSE`) +
+`2026/0.0.4/202610090001__0.0.4__DKP-0058__add_submission_runtime_memory.sql`
+(`SUBMISSION.RUNTIME_MS`/`MEMORY_KB INTEGER`, nullable — NULL = not measured)), applied via the consolidated `services-liquibase` job in
 `docker-compose.apps.yml` — no standalone single-service `*-liquibase.yml` file of its own (same as
 `ecommerce-service`/`identity-service`/`content-service`/`ai-service`). `TEST_CASE`/
 `METHOD_PARAMETER` both cascade from `PROBLEM` (`ON DELETE CASCADE`); `SUBMISSION`'s FK to `PROBLEM`

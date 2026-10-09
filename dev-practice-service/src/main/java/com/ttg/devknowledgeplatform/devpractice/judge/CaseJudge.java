@@ -60,7 +60,7 @@ public class CaseJudge {
             // JudgeClient#runAll never returns; both are defensive fallbacks only.
             case IN_QUEUE, PROCESSING, WRONG_ANSWER -> SubmissionStatus.RUNTIME_ERROR;
         };
-        return new CaseResult(status, result.stdout(), diagnosticOf(result));
+        return new CaseResult(status, result.stdout(), diagnosticOf(result), result.runtimeMs(), result.memoryKb());
     }
 
     /**
@@ -77,7 +77,7 @@ public class CaseJudge {
         if (!ran.passed() || outputMatcher.matches(ran.stdout(), expectedOutput, returnType)) {
             return ran;
         }
-        return new CaseResult(SubmissionStatus.WRONG_ANSWER, ran.stdout(), ran.diagnostic());
+        return new CaseResult(SubmissionStatus.WRONG_ANSWER, ran.stdout(), ran.diagnostic(), ran.runtimeMs(), ran.memoryKb());
     }
 
     /** The most useful diagnostic Judge0 returned: compiler output, else stderr, else its own message. */
@@ -109,8 +109,11 @@ public class CaseJudge {
      * @param status       {@code ACCEPTED} when it ran cleanly (and matched, if an answer was given)
      * @param stdout       what the program printed — the encoded return value, or {@code null}
      * @param diagnostic   compiler output / stderr / judge message, or {@code null}
+     * @param runtimeMs    the program's CPU time in milliseconds, as Judge0 measured it, or {@code null}
+     * @param memoryKb     its peak memory in kilobytes, or {@code null}
      */
-    public record CaseResult(SubmissionStatus status, String stdout, String diagnostic) {
+    public record CaseResult(SubmissionStatus status, String stdout, String diagnostic,
+                             Integer runtimeMs, Integer memoryKb) {
 
         public boolean passed() {
             return status == SubmissionStatus.ACCEPTED;

@@ -2,6 +2,8 @@ package com.ttg.devknowledgeplatform.devpractice.event;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.function.Function;
 
 import org.hibernate.Hibernate;
 import org.springframework.scheduling.annotation.Async;
@@ -166,12 +168,20 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
         int passed = 0;
         for (CaseJudge.CaseResult result : results) {
             if (!result.passed()) {
-                return new JudgingOutcome(result.status(), passed, result.diagnostic());
+                return new JudgingOutcome(result.status(), passed, result.diagnostic(), null, null);
             }
             passed++;
         }
 
-        return new JudgingOutcome(SubmissionStatus.ACCEPTED, passed, null);
+        // Accepted: report the worst case, the way a judge's "Runtime" reads — the slowest test and the
+        // hungriest one (not necessarily the same test).
+        return new JudgingOutcome(SubmissionStatus.ACCEPTED, passed, null,
+                maxOf(results, CaseJudge.CaseResult::runtimeMs), maxOf(results, CaseJudge.CaseResult::memoryKb));
+    }
+
+    /** The largest non-null value, or {@code null} if Judge0 measured none. */
+    private static Integer maxOf(List<CaseJudge.CaseResult> results, Function<CaseJudge.CaseResult, Integer> measure) {
+        return results.stream().map(measure).filter(Objects::nonNull).max(Integer::compare).orElse(null);
     }
 
     private void saveOutcome(Integer submissionId, JudgingOutcome outcome) {
@@ -179,6 +189,8 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
             submission.setStatus(outcome.status());
             submission.setPassedTestCases(outcome.passedTestCases());
             submission.setErrorMessage(outcome.errorMessage());
+            submission.setRuntimeMs(outcome.runtimeMs());
+            submission.setMemoryKb(outcome.memoryKb());
             submissionRepository.save(submission);
             if (outcome.status() == SubmissionStatus.ACCEPTED && Boolean.TRUE.equals(submission.getPublishOnAccept())) {
                 problemService.publishIfVerified(submission.getProblem().getId(), submission.getContractVersion());
@@ -190,7 +202,9 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
             Problem problem, ProgrammingLanguage language, String sourceCode, List<TestCase> testCases) {
     }
 
-    private record JudgingOutcome(SubmissionStatus status, Integer passedTestCases, String errorMessage) {
+    /** {@code runtimeMs}/{@code memoryKb} are set for an ACCEPTED outcome only. */
+    private record JudgingOutcome(SubmissionStatus status, Integer passedTestCases, String errorMessage,
+                                  Integer runtimeMs, Integer memoryKb) {
 
         /**
          * Judging couldn't complete. {@code passedTestCases} is left null rather than a partial count —
@@ -198,6 +212,7 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
          * deliberately generic; the operator-facing cause is logged instead.
          */
         static final JudgingOutcome JUDGE_ERROR = new JudgingOutcome(SubmissionStatus.JUDGE_ERROR, null,
-                "The judge is temporarily unavailable, so this submission could not be judged. Please resubmit.");
+                "The judge is temporarily unavailable, so this submission could not be judged. Please resubmit.",
+                null, null);
     }
 }

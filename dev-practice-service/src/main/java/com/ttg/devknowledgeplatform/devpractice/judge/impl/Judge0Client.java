@@ -1,5 +1,7 @@
 package com.ttg.devknowledgeplatform.devpractice.judge.impl;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -98,7 +100,7 @@ public class Judge0Client implements JudgeClient {
             HttpServerErrorException.GatewayTimeout.class,
             ResourceAccessException.class);
 
-    private static final String STATUS_FIELDS = "token,stdout,stderr,status_id,compile_output,message";
+    private static final String STATUS_FIELDS = "token,stdout,stderr,status_id,compile_output,message,time,memory";
 
     private final RestClient restClient;
     private final JudgeClientProperties properties;
@@ -210,10 +212,28 @@ public class Judge0Client implements JudgeClient {
     private Judge0SubmissionResult toResult(GetSubmissionResponse status) {
         if (!isFinal(status)) {
             return new Judge0SubmissionResult(Judge0Status.INTERNAL_ERROR, null, null, null,
-                    "Timed out waiting for Judge0 after " + properties.getMaxPollAttempts() + " polls");
+                    "Timed out waiting for Judge0 after " + properties.getMaxPollAttempts() + " polls", null, null);
         }
         return new Judge0SubmissionResult(Judge0Status.fromId(status.statusId()), decode(status.stdout()),
-                decode(status.stderr()), decode(status.compileOutput()), decode(status.message()));
+                decode(status.stderr()), decode(status.compileOutput()), decode(status.message()),
+                toMillis(status.time()), status.memory());
+    }
+
+    /**
+     * Judge0's {@code time} is the program's CPU time in seconds, as a decimal string ({@code "0.042"});
+     * {@code null} when it never ran (e.g. a compile error). Parsed as {@link BigDecimal}, not
+     * {@code double}, so {@code "0.042"} becomes exactly 42 ms rather than 41.999...
+     */
+    private static Integer toMillis(String seconds) {
+        if (seconds == null || seconds.isBlank()) {
+            return null;
+        }
+        try {
+            return new BigDecimal(seconds.strip()).movePointRight(3).setScale(0, RoundingMode.HALF_UP).intValueExact();
+        } catch (NumberFormatException | ArithmeticException e) {
+            log.warn("Ignoring unreadable Judge0 time '{}'", seconds);
+            return null;
+        }
     }
 
     /**
@@ -274,12 +294,15 @@ public class Judge0Client implements JudgeClient {
     private record BatchStatusResponse(List<GetSubmissionResponse> submissions) {
     }
 
+    /** {@code time}: CPU seconds as a decimal string; {@code memory}: KB. Both null if it never ran. */
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record GetSubmissionResponse(
             String token,
             String stdout, String stderr,
             @JsonProperty("compile_output") String compileOutput,
             String message,
-            @JsonProperty("status_id") int statusId) {
+            @JsonProperty("status_id") int statusId,
+            String time,
+            Integer memory) {
     }
 }

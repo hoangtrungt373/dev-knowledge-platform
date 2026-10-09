@@ -145,7 +145,7 @@ class SubmissionJudgeEventListenerTest {
                 .problem(submission.getProblem()).input("[3]").expectedOutput("3").build());
         // Case 2 fails, case 3 fails differently — the verdict must name case 2 (one passed before it).
         when(judgeClient.runAll(any())).thenReturn(List.of(accepted("1"), accepted("9"),
-                new Judge0SubmissionResult(Judge0Status.RUNTIME_ERROR, null, "boom", null, null)));
+                new Judge0SubmissionResult(Judge0Status.RUNTIME_ERROR, null, "boom", null, null, 5, 8000)));
 
         listener.onEvent(new SubmissionCreatedEvent(7));
 
@@ -153,9 +153,36 @@ class SubmissionJudgeEventListenerTest {
         assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.WRONG_ANSWER);
         assertThat(submission.getPassedTestCases()).isEqualTo(1);
         assertThat(submission.getTotalTestCases()).isEqualTo(3);
+        assertThat(submission.getRuntimeMs()).as("a failed run's runtime isn't a score").isNull();
+        assertThat(submission.getMemoryKb()).isNull();
+    }
+
+    @Test
+    void anAcceptedSubmissionRecordsItsSlowestRuntimeAndHighestMemory() {
+        // The slowest case and the hungriest one differ — each maximum is taken on its own.
+        when(judgeClient.runAll(any())).thenReturn(List.of(
+                new Judge0SubmissionResult(Judge0Status.ACCEPTED, "1", null, null, null, 42, 9_000),
+                new Judge0SubmissionResult(Judge0Status.ACCEPTED, "2", null, null, null, 17, 12_500)));
+
+        listener.onEvent(new SubmissionCreatedEvent(7));
+
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.ACCEPTED);
+        assertThat(submission.getRuntimeMs()).isEqualTo(42);
+        assertThat(submission.getMemoryKb()).isEqualTo(12_500);
+    }
+
+    @Test
+    void unmeasuredRunsLeaveRuntimeAndMemoryEmpty() {
+        when(judgeClient.runAll(any())).thenReturn(List.of(accepted("1"), accepted("2")));
+
+        listener.onEvent(new SubmissionCreatedEvent(7));
+
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.ACCEPTED);
+        assertThat(submission.getRuntimeMs()).isNull();
+        assertThat(submission.getMemoryKb()).isNull();
     }
 
     private static Judge0SubmissionResult accepted(String stdout) {
-        return new Judge0SubmissionResult(Judge0Status.ACCEPTED, stdout, null, null, null);
+        return new Judge0SubmissionResult(Judge0Status.ACCEPTED, stdout, null, null, null, null, null);
     }
 }

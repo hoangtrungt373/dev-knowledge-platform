@@ -19,7 +19,7 @@ import { devPracticeApi } from '../api/devPracticeApi';
 import { LANGUAGE_LABEL, SUBMISSION_STATUS_LABEL } from '../constants';
 import { isInProgress, useSubmissionPolling } from '../hooks/useSubmissionPolling';
 import { useSolutionDrafts } from '../hooks/useSolutionDrafts';
-import { formatDateTime } from '../utils/format';
+import { formatDateTime, submissionStats } from '../utils/format';
 import SolutionEditor from './SolutionEditor';
 import SubmissionStatusChip from './SubmissionStatusChip';
 import CodeBlock from './CodeBlock';
@@ -248,6 +248,7 @@ function SubmissionResult({ submission, pollGaveUp, contractVersion, problemStat
       <Typography variant="body2" fontWeight={700}>
         {SUBMISSION_STATUS_LABEL[submission.status]} — {passed}/{total} test cases passed
       </Typography>
+      {submissionStats(submission) && <Typography variant="body2">{submissionStats(submission)}</Typography>}
       {accepted && !stale && (
         <Typography variant="body2">{acceptedOutcome(Boolean(submission.publishOnAccept), problemStatus)}</Typography>
       )}

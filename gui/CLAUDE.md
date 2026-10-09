@@ -4474,6 +4474,10 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     stale untouched draft is still refreshed on a later visit) and `components/SolutionEditor`
     (language toggle + CodeMirror; `sizing="fill"` uses the absolute-inset trick so CodeMirror's
     scroller engages).
+  - **Runtime/memory**: `Submission.runtimeMs`/`memoryKb` (ACCEPTED only, else null) render as
+    "Runtime 12 ms · Memory 40.2 MB" via `utils/format.ts#submissionStats` — in the learner's verdict,
+    their submission history rows, and the admin reference panel's result. Format through that helper,
+    never inline.
   - The verdict names a failing test by number only (`passedTestCases + 1` — the judge stops at
     the first failure); a hidden test's input is never shown, and the public API never sends one.
   - **Solved/attempted markers**: `hooks/useProblemProgress` loads `GET /api/v1/submissions/progress`

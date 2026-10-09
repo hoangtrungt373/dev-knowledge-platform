@@ -164,7 +164,7 @@ class CodeRunServiceImplTest {
     void whenTheReferenceFailsOnAnInputThereIsNoAnswerToCheck() {
         givenAPublishedProblemWithAReference();
         learnerRuns.put("[-1]", ran("-1"));
-        referenceRuns.put("[-1]", new Judge0SubmissionResult(Judge0Status.RUNTIME_ERROR, null, "ValueError", null, null));
+        referenceRuns.put("[-1]", new Judge0SubmissionResult(Judge0Status.RUNTIME_ERROR, null, "ValueError", null, null, null, null));
 
         RunResult run = service.run(command(List.of("[-1]")));
 
@@ -294,11 +294,11 @@ class CodeRunServiceImplTest {
 
     /** A clean run that printed {@code stdout}. */
     private static Judge0SubmissionResult ran(String stdout) {
-        return new Judge0SubmissionResult(Judge0Status.ACCEPTED, stdout, null, null, null);
+        return new Judge0SubmissionResult(Judge0Status.ACCEPTED, stdout, null, null, null, 10, 9000);
     }
 
     private static Judge0SubmissionResult compileError() {
-        return new Judge0SubmissionResult(Judge0Status.COMPILATION_ERROR, null, null, "SyntaxError", null);
+        return new Judge0SubmissionResult(Judge0Status.COMPILATION_ERROR, null, null, "SyntaxError", null, null, null);
     }
 
     /** identity(value: int) -> int, two sample cases ([1]→1, [2]→2) and one hidden one ([99]→99). */

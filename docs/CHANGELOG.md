@@ -22,6 +22,15 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **Runtime and memory per accepted submission.** `dev-practice-service`: Judge0's `time`/`memory`
+  are now requested and read (`Judge0SubmissionResult`/`CaseJudge.CaseResult` gained
+  `runtimeMs`/`memoryKb`; CPU seconds parsed as `BigDecimal` to whole ms). An ACCEPTED submission stores
+  the slowest test case's runtime and the highest peak memory — new nullable `SUBMISSION.RUNTIME_MS`/
+  `MEMORY_KB` columns (`DKP-0058`), exposed on `SubmissionResponse`; any other status leaves them null.
+  Tests: `Judge0ClientTest` checks the parsing, two new `SubmissionJudgeEventListenerTest` cases (136
+  tests). `gui`: `Submission.runtimeMs`/`memoryKb`, `utils/format.ts` gained `formatRuntime`/
+  `formatMemory`/`submissionStats`, shown as "Runtime 12 ms · Memory 40.2 MB" in `SubmissionVerdict`,
+  `SubmissionHistory` and the reference panel's result.
 - **Judge0 batch submissions (Phase 2 of the Run console work).** `dev-practice-service`:
   `JudgeClient` is now batch-only — `runAll(List<JudgeRequest>)` replaces `run(program, language,
   stdin)`. `Judge0Client` sends chunks of the new `app.judge0.max-batch-size` (default 20, Judge0's own

@@ -20,5 +20,8 @@ public record SubmissionResponse(
         SubmissionKind kind,
         Integer contractVersion,
         // REFERENCE only: the run was asked to publish its draft problem once ACCEPTED.
-        Boolean publishOnAccept) {
+        Boolean publishOnAccept,
+        // ACCEPTED only: slowest test case's CPU time (ms) and highest peak memory (KB); null otherwise.
+        Integer runtimeMs,
+        Integer memoryKb) {
 }
