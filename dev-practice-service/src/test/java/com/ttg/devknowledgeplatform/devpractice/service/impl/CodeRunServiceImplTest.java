@@ -3,18 +3,16 @@ package com.ttg.devknowledgeplatform.devpractice.service.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
@@ -37,29 +35,52 @@ import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarnessRegistry;
 import com.ttg.devknowledgeplatform.devpractice.harness.PythonLanguageHarness;
 import com.ttg.devknowledgeplatform.devpractice.harness.SignatureNameValidator;
 import com.ttg.devknowledgeplatform.devpractice.judge.CaseJudge;
+import com.ttg.devknowledgeplatform.devpractice.judge.Judge0Status;
+import com.ttg.devknowledgeplatform.devpractice.judge.Judge0SubmissionResult;
 import com.ttg.devknowledgeplatform.devpractice.judge.JudgeClient;
+import com.ttg.devknowledgeplatform.devpractice.judge.JudgeClient.JudgeRequest;
 import com.ttg.devknowledgeplatform.devpractice.judge.JudgeUnavailableException;
 import com.ttg.devknowledgeplatform.devpractice.judge.OutputMatcher;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemTagRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
-import com.ttg.devknowledgeplatform.infra.service.SlugService;
 import com.ttg.devknowledgeplatform.devpractice.service.RunResult;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionCommands;
+import com.ttg.devknowledgeplatform.infra.service.SlugService;
 
 /**
  * Run's contract: samples are judged against their answers (every one, not stopping at a failure),
- * custom inputs against the reference solution's answer, hidden cases are never touched, and bad inputs / unpublished problems /
- * an unreachable judge become clear business errors. The judge itself is mocked; the harness is real.
+ * custom inputs against the reference solution's answer, hidden cases are never touched, a Run is at
+ * most two judge batches, and bad inputs / unpublished problems / an unreachable judge become clear
+ * business errors.
+ *
+ * <p>Only the judge backend is faked — a lambda {@link JudgeClient} answering each request by its
+ * stdin, with separate answers for the learner's and the reference's program. Everything above it is
+ * real: the harness, {@link CaseJudge}'s status mapping, {@link OutputMatcher}'s comparison.
  */
 class CodeRunServiceImplTest {
 
-    /** Marks the reference solution's program apart from the learner's in judge-call stubs. */
+    /** Marks the reference solution's program apart from the learner's. */
     private static final String REFERENCE_CODE = "class Solution:\n    def identity(self, value):\n        return value  # reference";
+
+    private final Map<String, Judge0SubmissionResult> learnerRuns = new HashMap<>();
+    private final Map<String, Judge0SubmissionResult> referenceRuns = new HashMap<>();
+    /** Every batch the service sent, in order. */
+    private final List<List<JudgeRequest>> batches = new ArrayList<>();
+    private RuntimeException judgeFailure;
+
+    private final JudgeClient fakeJudge = requests -> {
+        if (judgeFailure != null) {
+            throw judgeFailure;
+        }
+        batches.add(requests);
+        return requests.stream()
+                .map(r -> (isReference(r) ? referenceRuns : learnerRuns).getOrDefault(r.stdin(), ran("0")))
+                .toList();
+    };
 
     private final ProblemRepository problemRepository = mock(ProblemRepository.class);
     private final SubmissionRepository submissionRepository = mock(SubmissionRepository.class);
-    private final CaseJudge caseJudge = mock(CaseJudge.class);
     // The real ProblemServiceImpl over the mocked repository: "a draft is not found" is its rule, and
     // these tests should exercise it, not a stub of it.
     private final ProblemServiceImpl problemService = new ProblemServiceImpl(problemRepository,
@@ -69,30 +90,32 @@ class CodeRunServiceImplTest {
             problemService,
             submissionRepository,
             new LanguageHarnessRegistry(List.of(new PythonLanguageHarness())),
-            caseJudge,
+            new CaseJudge(fakeJudge, new OutputMatcher(new ObjectMapper())),
             new ObjectMapper(),
             mock(PlatformTransactionManager.class));
 
     @Test
     void judgesEverySampleCaseAgainstItsAnswerAndNeverRunsHiddenOnes() {
-        when(problemRepository.findById(5)).thenReturn(Optional.of(problem(ContentStatus.PUBLISHED)));
-        when(caseJudge.run(anyString(), any(), anyString(), anyString(), any()))
-                .thenReturn(result(SubmissionStatus.ACCEPTED, "1"), result(SubmissionStatus.WRONG_ANSWER, "3"));
+        givenAPublishedProblem();
+        learnerRuns.put("[1]", ran("1"));
+        learnerRuns.put("[2]", ran("3"));
 
         RunResult run = service.run(command(null));
 
         assertThat(run.cases()).extracting(RunResult.Case::input).containsExactly("[1]", "[2]");
         assertThat(run.cases()).extracting(RunResult.Case::passed).containsExactly(true, false);
+        assertThat(run.cases().get(1).status()).isEqualTo(SubmissionStatus.WRONG_ANSWER);
         assertThat(run.cases().get(1).expectedOutput()).isEqualTo("2");
         assertThat(run.cases().get(1).actualOutput()).isEqualTo("3");
-        verify(caseJudge, never()).run(anyString(), any(), eq("[99]"), anyString(), any());
+        assertThat(run.cases()).extracting(RunResult.Case::expectedSource).containsOnly(ExpectedSource.SAMPLE);
+        assertThat(batches).as("both samples in one batch, the hidden case in none").singleElement()
+                .satisfies(batch -> assertThat(batch).extracting(JudgeRequest::stdin).containsExactly("[1]", "[2]"));
     }
 
     @Test
     void withoutAReferenceSolutionACustomInputIsOnlyRun() {
-        when(problemRepository.findById(5)).thenReturn(Optional.of(problem(ContentStatus.PUBLISHED)));
-        when(caseJudge.run(anyString(), any(), eq("[42]"), isNull(), any()))
-                .thenReturn(result(SubmissionStatus.ACCEPTED, "42"));
+        givenAPublishedProblem();
+        learnerRuns.put("[42]", ran("42"));
 
         RunResult run = service.run(command(List.of(" [42] ")));
 
@@ -103,13 +126,14 @@ class CodeRunServiceImplTest {
             assertThat(c.actualOutput()).isEqualTo("42");
             assertThat(c.expectedSource()).isEqualTo(ExpectedSource.UNAVAILABLE);
         });
+        assertThat(batches).hasSize(1);
     }
 
     @Test
     void aCustomInputIsJudgedAgainstTheReferenceSolutionsAnswer() {
         givenAPublishedProblemWithAReference();
-        whenLearnerReturns("[42]", result(SubmissionStatus.ACCEPTED, "41"));
-        whenReferenceReturns("[42]", result(SubmissionStatus.ACCEPTED, "42\n"));
+        learnerRuns.put("[42]", ran("41"));
+        referenceRuns.put("[42]", ran("42\n"));
 
         RunResult run = service.run(command(List.of("[42]")));
 
@@ -125,8 +149,8 @@ class CodeRunServiceImplTest {
     @Test
     void aCustomInputMatchingTheReferencePasses() {
         givenAPublishedProblemWithAReference();
-        whenLearnerReturns("[7]", result(SubmissionStatus.ACCEPTED, "7"));
-        whenReferenceReturns("[7]", result(SubmissionStatus.ACCEPTED, "7"));
+        learnerRuns.put("[7]", ran("7"));
+        referenceRuns.put("[7]", ran("7"));
 
         RunResult run = service.run(command(List.of("[7]")));
 
@@ -139,8 +163,8 @@ class CodeRunServiceImplTest {
     @Test
     void whenTheReferenceFailsOnAnInputThereIsNoAnswerToCheck() {
         givenAPublishedProblemWithAReference();
-        whenLearnerReturns("[-1]", result(SubmissionStatus.ACCEPTED, "-1"));
-        whenReferenceReturns("[-1]", new CaseJudge.CaseResult(SubmissionStatus.RUNTIME_ERROR, null, "ValueError"));
+        learnerRuns.put("[-1]", ran("-1"));
+        referenceRuns.put("[-1]", new Judge0SubmissionResult(Judge0Status.RUNTIME_ERROR, null, "ValueError", null, null));
 
         RunResult run = service.run(command(List.of("[-1]")));
 
@@ -156,21 +180,24 @@ class CodeRunServiceImplTest {
     @Test
     void theReferenceIsNotRunWhenTheLearnersCodeDoesNotCompile() {
         givenAPublishedProblemWithAReference();
-        whenLearnerReturns("[3]", new CaseJudge.CaseResult(SubmissionStatus.COMPILE_ERROR, null, "SyntaxError"));
+        learnerRuns.put("[3]", compileError());
+        learnerRuns.put("[4]", compileError());
 
         RunResult run = service.run(command(List.of("[3]", "[4]")));
 
-        assertThat(run.cases()).singleElement()
-                .satisfies(c -> assertThat(c.expectedSource()).isEqualTo(ExpectedSource.UNAVAILABLE));
-        verify(caseJudge, never()).run(argThat((String p) -> p != null && p.contains("# reference")), any(), anyString(), any(), any());
+        assertThat(run.cases()).as("one program, one compile error — reported once").singleElement().satisfies(c -> {
+            assertThat(c.status()).isEqualTo(SubmissionStatus.COMPILE_ERROR);
+            assertThat(c.diagnostic()).isEqualTo("SyntaxError");
+            assertThat(c.expectedSource()).isEqualTo(ExpectedSource.UNAVAILABLE);
+        });
+        assertThat(batches).as("no second, reference batch").hasSize(1);
     }
 
     @Test
     void aCustomInputThatEqualsASampleIsStillCheckedAgainstThatSamplesAnswer() {
-        when(problemRepository.findById(5)).thenReturn(Optional.of(problem(ContentStatus.PUBLISHED)));
+        givenAPublishedProblemWithAReference();
         // "[ 2 ]" is sample "[2]" with different spacing — same JSON.
-        when(caseJudge.run(anyString(), any(), eq("[ 2 ]"), eq("2"), any()))
-                .thenReturn(result(SubmissionStatus.ACCEPTED, "2"));
+        learnerRuns.put("[ 2 ]", ran("2"));
 
         RunResult run = service.run(command(List.of("[ 2 ]")));
 
@@ -179,25 +206,30 @@ class CodeRunServiceImplTest {
             assertThat(c.passed()).isTrue();
             assertThat(c.expectedSource()).isEqualTo(ExpectedSource.SAMPLE);
         });
-        verify(caseJudge, times(1)).run(anyString(), any(), anyString(), any(), any()); // no second, reference run
+        assertThat(batches).as("nothing for the reference to answer").hasSize(1);
     }
 
     @Test
-    void stopsAfterACompileErrorSinceEveryOtherInputWouldRepeatIt() {
-        when(problemRepository.findById(5)).thenReturn(Optional.of(problem(ContentStatus.PUBLISHED)));
-        when(caseJudge.run(anyString(), any(), anyString(), anyString(), any()))
-                .thenReturn(new CaseJudge.CaseResult(SubmissionStatus.COMPILE_ERROR, null, "SyntaxError"));
+    void aRunIsAtMostTwoBatchesWhateverTheNumberOfCases() {
+        givenAPublishedProblemWithAReference();
+        List<String> inputs = List.of("[1]", "[10]", "[20]", "[30]", "[40]");
+        inputs.forEach(input -> referenceRuns.put(input, ran(input.substring(1, input.length() - 1))));
+        inputs.forEach(input -> learnerRuns.put(input, ran(input.substring(1, input.length() - 1))));
 
-        RunResult run = service.run(command(null));
+        RunResult run = service.run(command(inputs));
 
-        assertThat(run.cases()).singleElement()
-                .satisfies(c -> assertThat(c.diagnostic()).isEqualTo("SyntaxError"));
-        verify(caseJudge, times(1)).run(anyString(), any(), anyString(), anyString(), any());
+        assertThat(run.cases()).extracting(RunResult.Case::passed).containsOnly(true);
+        assertThat(batches).hasSize(2);
+        assertThat(batches.get(0)).as("round 1: the learner's code on all five").hasSize(5)
+                .noneMatch(CodeRunServiceImplTest::isReference);
+        assertThat(batches.get(1)).as("round 2: the reference, only on the four no sample answers")
+                .allMatch(CodeRunServiceImplTest::isReference)
+                .extracting(JudgeRequest::stdin).containsExactly("[10]", "[20]", "[30]", "[40]");
     }
 
     @Test
     void rejectsACustomInputThatIsNotOneValuePerParameter() {
-        when(problemRepository.findById(5)).thenReturn(Optional.of(problem(ContentStatus.PUBLISHED)));
+        givenAPublishedProblem();
 
         assertThatThrownBy(() -> service.run(command(List.of("[1, 2]"))))
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
@@ -206,6 +238,7 @@ class CodeRunServiceImplTest {
         assertThatThrownBy(() -> service.run(command(List.of("not json"))))
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(DevPracticeErrorCode.SUBMISSION_RUN_INPUT_INVALID));
+        assertThat(batches).isEmpty();
     }
 
     @Test
@@ -229,9 +262,8 @@ class CodeRunServiceImplTest {
 
     @Test
     void anUnreachableJudgeBecomesAGenericJudgeUnavailableError() {
-        when(problemRepository.findById(5)).thenReturn(Optional.of(problem(ContentStatus.PUBLISHED)));
-        when(caseJudge.run(anyString(), any(), anyString(), anyString(), any()))
-                .thenThrow(new JudgeUnavailableException("Judge0 submit failed: 429 Too Many Requests"));
+        givenAPublishedProblem();
+        judgeFailure = new JudgeUnavailableException("Judge0 batch submit failed: 429 Too Many Requests");
 
         assertThatThrownBy(() -> service.run(command(null)))
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
@@ -239,34 +271,34 @@ class CodeRunServiceImplTest {
                 .message().doesNotContain("429");
     }
 
-    /** Problem 5 at contract v1 with an ACCEPTED Python reference; compare() uses the real matcher. */
-    private void givenAPublishedProblemWithAReference() {
+    private void givenAPublishedProblem() {
         when(problemRepository.findById(5)).thenReturn(Optional.of(problem(ContentStatus.PUBLISHED)));
+    }
+
+    /** Problem 5 at contract v1 with an ACCEPTED Python reference. */
+    private void givenAPublishedProblemWithAReference() {
+        givenAPublishedProblem();
         when(submissionRepository.findFirstByProblem_IdAndKindAndStatusAndContractVersionOrderByIdDesc(
                 5, SubmissionKind.REFERENCE, SubmissionStatus.ACCEPTED, 1))
                 .thenReturn(Optional.of(Submission.builder()
                         .language(ProgrammingLanguage.PYTHON).sourceCode(REFERENCE_CODE).build()));
-        CaseJudge realComparison = new CaseJudge(mock(JudgeClient.class), new OutputMatcher(new ObjectMapper()));
-        when(caseJudge.compare(any(), anyString(), any())).thenAnswer(inv ->
-                realComparison.compare(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)));
     }
 
-    private void whenLearnerReturns(String input, CaseJudge.CaseResult result) {
-        when(caseJudge.run(argThat((String p) -> p != null && !p.contains("# reference")), any(), eq(input), isNull(), any()))
-                .thenReturn(result);
-    }
-
-    private void whenReferenceReturns(String input, CaseJudge.CaseResult result) {
-        when(caseJudge.run(argThat((String p) -> p != null && p.contains("# reference")), any(), eq(input), isNull(), any()))
-                .thenReturn(result);
+    private static boolean isReference(JudgeRequest request) {
+        return request.program().contains("# reference");
     }
 
     private static SubmissionCommands.Run command(List<String> customInputs) {
         return new SubmissionCommands.Run(5, ProgrammingLanguage.PYTHON, "class Solution: ...", customInputs);
     }
 
-    private static CaseJudge.CaseResult result(SubmissionStatus status, String stdout) {
-        return new CaseJudge.CaseResult(status, stdout, null);
+    /** A clean run that printed {@code stdout}. */
+    private static Judge0SubmissionResult ran(String stdout) {
+        return new Judge0SubmissionResult(Judge0Status.ACCEPTED, stdout, null, null, null);
+    }
+
+    private static Judge0SubmissionResult compileError() {
+        return new Judge0SubmissionResult(Judge0Status.COMPILATION_ERROR, null, null, "SyntaxError", null);
     }
 
     /** identity(value: int) -> int, two sample cases ([1]→1, [2]→2) and one hidden one ([99]→99). */

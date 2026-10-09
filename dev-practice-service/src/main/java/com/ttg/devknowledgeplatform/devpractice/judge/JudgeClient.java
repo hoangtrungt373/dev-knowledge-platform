@@ -1,29 +1,37 @@
 package com.ttg.devknowledgeplatform.devpractice.judge;
 
+import java.util.List;
+
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 
 /**
- * This module's Adapter over Judge0 CE's submission API — the seam that lets Judge0 be swapped for
- * a different execution backend (e.g. a custom sandboxed-Docker judge, if Judge0 ever proves
- * insufficient) without touching {@code event.SubmissionJudgeEventListener} or any
- * {@code harness.LanguageHarness}. See this module's {@code CLAUDE.md} for why Judge0 was chosen
- * for this phase over rolling a sandbox from scratch.
+ * Runs programs on a code-execution backend and returns what each one did — an <b>Adapter</b> in
+ * front of Judge0's HTTP API (see {@code judge.impl.Judge0Client}), so nothing outside this package
+ * depends on Judge0's wire format.
+ *
+ * <p>Batch-only on purpose: every caller has several inputs to run (a submission's test cases, a
+ * Run's cases), and one batch costs a fixed number of HTTP round trips however many programs it
+ * holds, where running them one by one costs a full submit-and-poll cycle each. A single program is
+ * just a batch of one.
  */
 public interface JudgeClient {
 
     /**
-     * Runs {@code program} against {@code stdin} and blocks (polling internally) until Judge0
-     * reports a final status.
+     * Runs every request and waits until all of them have finished.
      *
-     * @param program the full, standalone program to compile/run (see
-     *                {@code harness.LanguageHarness#buildProgram})
-     * @param language the program's language
-     * @param stdin    the input to feed the program (a {@code TestCase.input} JSON array)
-     * @return the final result — a failure of the <em>user's</em> code (compile error, crash,
-     *         timeout) is a normal result, never an exception
-     * @throws JudgeUnavailableException if the judge backend itself failed and no result could be
-     *                                   obtained (unreachable, rate-limited past retries, rejected
-     *                                   the request)
+     * @param requests what to run — may mix languages and programs; may be empty
+     * @return one result per request, in the same order
+     * @throws JudgeUnavailableException if the backend can't be reached or rejects a request
      */
-    Judge0SubmissionResult run(String program, ProgrammingLanguage language, String stdin);
+    List<Judge0SubmissionResult> runAll(List<JudgeRequest> requests);
+
+    /**
+     * One program run on one input.
+     *
+     * @param program  the complete program (harness + user code)
+     * @param language the language it's written in
+     * @param stdin    what the program reads — a JSON argument array
+     */
+    record JudgeRequest(String program, ProgrammingLanguage language, String stdin) {
+    }
 }

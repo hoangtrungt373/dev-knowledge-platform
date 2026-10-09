@@ -32,8 +32,9 @@ import lombok.Setter;
  * and repoint {@code baseUrl} at a self-hosted instance's own URL to stop sending the RapidAPI
  * headers entirely ({@code Judge0Client} only adds them when a key is actually configured), so
  * reintroducing self-hosting later is a compose/config addition, not a code change.
- * {@code poll-interval-ms}/{@code max-poll-attempts} bound how long {@code Judge0Client#run} blocks
- * waiting for a result before giving up (default: 500ms × 40 attempts = 20s ceiling per test case).
+ * {@code poll-interval-ms}/{@code max-poll-attempts} bound how long {@code Judge0Client#runAll} waits
+ * for one batch chunk to finish before giving up on its unfinished items (default: 500ms × 40
+ * attempts = a 20s ceiling per chunk of up to {@code max-batch-size} programs).
  */
 @ConfigurationProperties(prefix = "app.judge0")
 @Validated
@@ -59,11 +60,19 @@ public class JudgeClientProperties {
     /** Sent as the {@code X-RapidAPI-Host} header, only when {@code rapidApiKey} is set. */
     private String rapidApiHost = "judge0-ce.p.rapidapi.com";
 
-    /** Milliseconds to wait between {@code GET /submissions/{token}} polls. */
+    /**
+     * Most programs sent in one {@code POST /submissions/batch} — larger requests are split into
+     * chunks of this size, run one after another. 20 is Judge0's own default
+     * {@code MAX_SUBMISSION_BATCH_SIZE}; raise it only for a self-hosted instance configured higher.
+     */
+    @Min(1)
+    private int maxBatchSize = 20;
+
+    /** Milliseconds to wait between {@code GET /submissions/batch} status polls. */
     @Min(50)
     private long pollIntervalMs = 500;
 
-    /** Maximum number of polls before giving up on a submission as timed out. */
+    /** Maximum number of polls before giving up on a batch's unfinished submissions as timed out. */
     @Min(1)
     private int maxPollAttempts = 40;
 

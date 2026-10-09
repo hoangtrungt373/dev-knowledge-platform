@@ -101,17 +101,29 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
   JSDoc's `{type}` braces collide with Mustache's; and a backslash in a template is a literal
   backslash in the generated program — no Java-string escaping layer anymore, so write `"\\A"` in a
   template exactly as it should appear in the generated Java.
-- `judge/CaseJudge` — **the one place that decides what a single run means** (Judge0 status →
+- `judge/CaseJudge` — **the one place that decides what a run means** (Judge0 status →
   `SubmissionStatus`, then `OutputMatcher` when an answer is known; `expectedOutput == null` = run
-  only). Used by both `SubmissionJudgeEventListener` (graded, stops at the first failure) and
-  `CodeRunService` (Run, reports every case) — never re-implement that mapping in either caller.
+  only). `runAll` sends a whole list of `CaseRequest`s as one batch; `compare` judges a run against
+  an answer found afterwards. Used by both `SubmissionJudgeEventListener` (graded, verdict = first
+  failure) and `CodeRunService` (Run, reports every case) — never re-implement that mapping in either
+  caller.
+- **Judging is batch-only (`JudgeClient#runAll`).** `Judge0Client` sends chunks of
+  `app.judge0.max-batch-size` (20, Judge0's own limit) to `POST /submissions/batch` and polls
+  `GET /submissions/batch?tokens=...` until every item is final — a fixed number of round trips per
+  chunk instead of one submit-and-poll cycle per program. Results are matched back by token, never by
+  list position. Chunks run one after another (not in parallel) to stay under the hosted API's rate
+  limit. Don't add a single-run path back to the interface — a single program is a batch of one.
+  Consequence for graded submissions: all test cases run even after one fails (the price of one
+  batch); `passedTestCases` still counts only the cases before the first failure, so the verdict
+  reads the same as before. An item Judge0 refuses fails the whole call as `JudgeUnavailableException`
+  (a config/harness problem, never the user's code).
 - `judge/` — `JudgeClient` (an **Adapter**, Structural pattern, in front of Judge0's HTTP API) +
   `judge.impl.Judge0Client` (the `RestClient`-backed implementation, works unmodified against
   either Judge0 CE's hosted RapidAPI instance — the default, see the "Phase 2" section below — or a
-  self-hosted one: submits with `base64_encoded=true` so arbitrary source/stdin bytes never need
-  JSON-string escaping over the wire, then polls `GET /submissions/{token}` through `infra`'s
-  shared `polling.PollingTemplate` (policy `judge0-submission-status`, `JudgeClientProperties`'
-  interval/attempt bounds), decoding with the MIME base64 decoder since
+  self-hosted one: submits batches with `base64_encoded=true` so arbitrary source/stdin bytes never
+  need JSON-string escaping over the wire, then polls `GET /submissions/batch?tokens=...` through
+  `infra`'s shared `polling.PollingTemplate` (policy `judge0-batch-status`, `JudgeClientProperties`'
+  interval/attempt bounds — see the batch-only rule above), decoding with the MIME base64 decoder since
   Judge0's Ruby `Base64.encode64` line-wraps; every HTTP call is retried with exponential backoff —
   a programmatic Resilience4j `Retry` (`judge0-call`), `app.judge0.retry.*` — on 429/502/503/504 and
   I/O errors only. The two policies are nested, not merged: the poll policy never retries
@@ -129,7 +141,7 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
   rather than this reactor's usual `@EventHandler` composed annotation — see the listener's own
   Javadoc for why: `@EventHandler` fires immediately on publish, which races the still-open
   publishing transaction; `AFTER_COMMIT` removes that race entirely). Judges a submission against
-  every `TestCase` in order, stopping at the first failure; splits its work across two short
+  every `TestCase` in one batch, the verdict being the first failure in order; splits its work across two short
   `TransactionTemplate`-scoped transactions (load-and-mark-`RUNNING`, then save-the-final-outcome)
   around a long, deliberately non-transactional middle (the Judge0 round-trips themselves) — see
   the listener's own Javadoc for why holding one long transaction across every test case's judging
@@ -362,8 +374,12 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   no answer, and the reference's own diagnostic is never shown) or `UNAVAILABLE` (no reference at
   this version — e.g. published before DKP-0056 — or the learner's code didn't compile, in which case
   the reference isn't run). Only the reference's return value ever leaves the server, never its
-  source. A custom input can cost two judge calls. Cases run **sequentially** (parallel calls hit RapidAPI's rate limit) and stop after a
-  compile error. Same transaction shape as the judge listener: a short read-only
+  source. **A Run is at most two batches, whatever its number of cases:** round 1 runs the learner's
+  code on every case; round 2 runs the reference on the custom inputs no sample answers — only if
+  round 1 compiled (a compile error is reported once, as a single case, and costs no reference runs;
+  merging the rounds would halve latency but waste reference runs on every non-compiling Run). The
+  reference's verdict per input is a sealed `Answer` (`Known`/`ReferenceFailed`/`NoReference`)
+  inside `CodeRunServiceImpl`, switched over exhaustively. Same transaction shape as the judge listener: a short read-only
   `TransactionTemplate` load, then judge calls with no connection held. An unreachable judge is
   `JUDGE_UNAVAILABLE` (503, generic message; detail logged) — unlike a graded submission, which
   records `JUDGE_ERROR` on itself. Login is still required (the `/api/v1/submissions/**` rule), so
@@ -426,7 +442,7 @@ available when it was added; its exact 36-case list was instead executed against
 as unverified until the IT runs somewhere with Docker.
 
 **Not built, deliberately deferred past this phase:**
-- Result delivery is polling only (`Judge0Client` blocks internally on `GET /submissions/{token}`)
+- Result delivery is polling only (`Judge0Client` blocks internally on `GET /submissions/batch?tokens=...`)
   — the webhook-callback alternative discussed in Phase 1 planning was explicitly not chosen this
   round (simpler, no new inbound-auth surface to design).
 - Two seeded problems so far (Evaluate Reverse Polish Notation, Contains Duplicate — see the

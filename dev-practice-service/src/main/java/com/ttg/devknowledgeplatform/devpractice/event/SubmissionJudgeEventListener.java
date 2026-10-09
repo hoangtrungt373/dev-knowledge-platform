@@ -28,8 +28,11 @@ import com.ttg.devknowledgeplatform.infra.event.AsyncEventHandler;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Judges a {@link Submission} against every one of its {@link Problem}'s {@link TestCase}s,
- * stopping at the first failure (same as a real judge — "Wrong Answer on test case 3" style).
+ * Judges a {@link Submission} against every one of its {@link Problem}'s {@link TestCase}s. All test
+ * cases go to the judge in one batch ({@link CaseJudge#runAll}); the verdict is the first failing case
+ * in order, same as a real judge ("Wrong Answer on test case 3" style). Later cases run anyway — the
+ * price of one batch instead of one round trip per case, and invisible to the user, since
+ * {@code passedTestCases} still counts only the cases before the first failure.
  *
  * <p><b>Why this uses {@link TransactionalEventListener}, not this reactor's usual
  * {@code infra.event.EventHandler} composed annotation:</b> {@code @EventHandler} is plain
@@ -46,8 +49,8 @@ import lombok.extern.slf4j.Slf4j;
  *
  * <p><b>Why the judging work itself is split into two short transactions around a long,
  * non-transactional middle</b> (via {@link TransactionTemplate}, not this class's own
- * {@code @Transactional}): the Judge0 round-trips in {@link #judge} can take several seconds per
- * test case (poll interval × attempts, see {@code JudgeClientProperties}). Wrapping that whole loop
+ * {@code @Transactional}): the Judge0 batch in {@link #judge} can take several seconds (poll
+ * interval × attempts, see {@code JudgeClientProperties}). Wrapping that whole loop
  * in one open transaction would hold a database connection (and row locks) for the entire judging
  * run — {@link #loadAndMarkRunning} and {@link #saveOutcome} are each their own quick transaction
  * instead, with the network-bound work happening in between while holding no transaction at all.
@@ -154,12 +157,14 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
         LanguageHarness harness = harnessRegistry.get(input.language());
         String program = harness.buildProgram(input.problem(), input.sourceCode());
 
+        // What one run means (status mapping, output comparison) lives in CaseJudge, shared with
+        // CodeRunService's unsaved Run so the two can never disagree on a verdict.
+        List<CaseJudge.CaseResult> results = caseJudge.runAll(input.testCases().stream()
+                .map(tc -> new CaseJudge.CaseRequest(program, input.language(), tc.getInput(), tc.getExpectedOutput()))
+                .toList(), input.problem().getReturnType());
+
         int passed = 0;
-        for (TestCase testCase : input.testCases()) {
-            // What one run means (status mapping, output comparison) lives in CaseJudge, shared with
-            // CodeRunService's unsaved Run so the two can never disagree on a verdict.
-            CaseJudge.CaseResult result = caseJudge.run(program, input.language(), testCase.getInput(),
-                    testCase.getExpectedOutput(), input.problem().getReturnType());
+        for (CaseJudge.CaseResult result : results) {
             if (!result.passed()) {
                 return new JudgingOutcome(result.status(), passed, result.diagnostic());
             }

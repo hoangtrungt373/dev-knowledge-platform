@@ -1,5 +1,8 @@
 package com.ttg.devknowledgeplatform.devpractice.judge;
 
+import java.util.List;
+import java.util.stream.IntStream;
+
 import org.springframework.stereotype.Component;
 
 import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
@@ -9,10 +12,11 @@ import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Judges one input against an already-built program: runs it on the judge backend, maps the
- * backend's status to this module's {@link SubmissionStatus}, and compares the output structurally.
+ * Judges inputs against already-built programs: runs them on the judge backend (in one batch — see
+ * {@link JudgeClient}), maps the backend's status to this module's {@link SubmissionStatus}, and
+ * compares each output structurally.
  * The single place that decides "what does this one run mean", shared by graded submissions
- * ({@code SubmissionJudgeEventListener}, which stops at the first failure) and unsaved Run requests
+ * ({@code SubmissionJudgeEventListener}, whose verdict is the first failure) and unsaved Run requests
  * ({@code CodeRunService}, which reports every case) — so the two can never disagree on a verdict.
  */
 @Component
@@ -23,17 +27,27 @@ public class CaseJudge {
     private final OutputMatcher outputMatcher;
 
     /**
-     * Runs {@code input} through {@code program}.
+     * Runs every request in one batch and judges each result.
      *
-     * @param expectedOutput the JSON-encoded expected return value, or {@code null} to only run the
-     *                       code without judging its answer (a learner's custom input has no known
-     *                       answer) — a clean run is then {@code ACCEPTED}
-     * @return the verdict, the program's stdout and any diagnostic output
+     * @param requests   what to run; may mix programs and languages (a learner's and a reference's)
+     * @param returnType the problem's return type — decides how outputs are compared
+     * @return one result per request, in the same order
      * @throws JudgeUnavailableException if the judge backend can't be reached
      */
-    public CaseResult run(String program, ProgrammingLanguage language, String input, String expectedOutput,
-                          ParamType returnType) {
-        Judge0SubmissionResult result = judgeClient.run(program, language, input);
+    public List<CaseResult> runAll(List<CaseRequest> requests, ParamType returnType) {
+        if (requests.isEmpty()) {
+            return List.of();
+        }
+        List<Judge0SubmissionResult> results = judgeClient.runAll(requests.stream()
+                .map(r -> new JudgeClient.JudgeRequest(r.program(), r.language(), r.input()))
+                .toList());
+        return IntStream.range(0, requests.size())
+                .mapToObj(i -> judge(results.get(i), requests.get(i).expectedOutput(), returnType))
+                .toList();
+    }
+
+    /** What one finished run means: Judge0's status mapped to ours, then the answer check. */
+    private CaseResult judge(Judge0SubmissionResult result, String expectedOutput, ParamType returnType) {
         SubmissionStatus status = switch (result.status()) {
             case COMPILATION_ERROR -> SubmissionStatus.COMPILE_ERROR;
             case TIME_LIMIT_EXCEEDED -> SubmissionStatus.TIME_LIMIT_EXCEEDED;
@@ -43,7 +57,7 @@ public class CaseJudge {
                     ? SubmissionStatus.ACCEPTED : SubmissionStatus.WRONG_ANSWER;
             // Judge0 only reports WRONG_ANSWER when we supply expected_output (we never do — see
             // Judge0SubmissionResult's Javadoc), and IN_QUEUE/PROCESSING are non-final statuses
-            // JudgeClient#run never returns; both are defensive fallbacks only.
+            // JudgeClient#runAll never returns; both are defensive fallbacks only.
             case IN_QUEUE, PROCESSING, WRONG_ANSWER -> SubmissionStatus.RUNTIME_ERROR;
         };
         return new CaseResult(status, result.stdout(), diagnosticOf(result));
@@ -52,7 +66,7 @@ public class CaseJudge {
     /**
      * Judges a run that already happened against an answer that only became known afterwards (a custom
      * input whose answer the reference solution computed). Uses the same {@link OutputMatcher} as
-     * {@link #run}, so "correct" means the same thing either way. A run that didn't finish cleanly is
+     * {@link #runAll}, so "correct" means the same thing either way. A run that didn't finish cleanly is
      * returned unchanged — there is no output to compare.
      *
      * @param ran            the learner's run, made with no expected output
@@ -75,6 +89,18 @@ public class CaseJudge {
             return result.stderr();
         }
         return result.message();
+    }
+
+    /**
+     * One input to run.
+     *
+     * @param program        the complete program (harness + code)
+     * @param language       the language it's written in
+     * @param input          the JSON argument array fed on stdin
+     * @param expectedOutput the JSON-encoded expected return value, or {@code null} to only run the code
+     *                       without judging its answer — a clean run is then {@code ACCEPTED}
+     */
+    public record CaseRequest(String program, ProgrammingLanguage language, String input, String expectedOutput) {
     }
 
     /**

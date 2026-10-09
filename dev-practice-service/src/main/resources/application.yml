@@ -34,6 +34,7 @@ app:
     base-url: ${JUDGE0_BASE_URL:https://judge0-ce.p.rapidapi.com}
     rapid-api-key: ${JUDGE0_RAPIDAPI_KEY:}
     rapid-api-host: ${JUDGE0_RAPIDAPI_HOST:judge0-ce.p.rapidapi.com}
+    max-batch-size: ${JUDGE0_MAX_BATCH_SIZE:20}
     poll-interval-ms: ${JUDGE0_POLL_INTERVAL_MS:500}
     max-poll-attempts: ${JUDGE0_MAX_POLL_ATTEMPTS:40}
     cpu-time-limit-seconds: ${JUDGE0_CPU_TIME_LIMIT_SECONDS:5}

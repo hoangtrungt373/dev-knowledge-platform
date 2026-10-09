@@ -1,6 +1,8 @@
 package com.ttg.devknowledgeplatform.devpractice.service.impl;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,8 +43,6 @@ import lombok.extern.slf4j.Slf4j;
  * whatever it returns for a new input is taken as correct. A custom input equal to a sample still
  * uses the sample's stored answer (no extra judge call). The reference's source never leaves the
  * server — only its return value is shown, the way LeetCode shows "Expected" for any custom input.
- * Each custom input therefore costs up to two judge calls (learner's code, then the reference); the
- * reference is skipped when the learner's code didn't compile.
  *
  * <p><b>Same transaction shape as {@code SubmissionJudgeEventListener}:</b> the problem and its
  * reference are loaded in one short read-only transaction (collections initialized while the session
@@ -50,14 +50,18 @@ import lombok.extern.slf4j.Slf4j;
  * connection held. {@link TransactionTemplate} rather than {@code @Transactional}, because the read
  * must end <i>inside</i> this method, before the slow part.
  *
- * <p>Cases run sequentially: a run has only a handful of inputs, and firing them all at Judge0 at once
- * is the fastest way to hit the hosted API's rate limit (429).
+ * <p><b>Two batch rounds, whatever the number of cases</b> ({@link CaseJudge#runAll}): round 1 runs
+ * the learner's code on every case; round 2 runs the reference on the custom inputs that still need an
+ * answer. Round 2 needs only round 1's compile check, not its outputs — but it waits for it on
+ * purpose: a learner's code that doesn't compile (common while typing) then costs no reference runs
+ * at all, which matters on a metered judge. Merging both rounds into one batch would halve the
+ * latency at the price of those wasted runs.
  */
 @Service
 @Slf4j
 public class CodeRunServiceImpl implements CodeRunService {
 
-    /** Keeps one Run cheap: each input is a full judge round trip (two, with the reference). */
+    /** Keeps one Run cheap: each custom input can mean two judge executions (learner + reference). */
     static final int MAX_CUSTOM_INPUTS = 5;
     private static final int MAX_INPUT_LENGTH = 10_000;
 
@@ -98,56 +102,66 @@ public class CodeRunServiceImpl implements CodeRunService {
 
         Program learner = new Program(command.language(),
                 harnessRegistry.get(command.language()).buildProgram(problem, command.sourceCode()));
-        // Built on first use only: a run of samples (or of inputs equal to samples) never needs it.
-        ReferenceOracle oracle = new ReferenceOracle(problem, loaded.reference());
 
-        List<RunResult.Case> cases = new ArrayList<>();
-        for (PlannedCase planned : plan) {
-            RunResult.Case runCase = planned.expectedOutput() != null
-                    ? runAgainstSample(learner, planned, problem)
-                    : runAgainstReference(learner, planned.input(), oracle, problem);
-            cases.add(runCase);
-            // The same program fails to compile for every input — running the rest would only repeat it.
-            if (runCase.status() == SubmissionStatus.COMPILE_ERROR) {
-                break;
+        // Round 1 — the learner's code on every case. A sample's answer goes along, so CaseJudge
+        // judges those cases right away; a custom input runs without one.
+        List<CaseJudge.CaseResult> mine = judgeAll(
+                plan.stream().map(p -> learner.request(p.input(), p.expectedOutput())).toList(), problem);
+
+        // One program: if it doesn't compile for one input, it doesn't compile for any. Report it once.
+        for (int i = 0; i < plan.size(); i++) {
+            if (mine.get(i).status() == SubmissionStatus.COMPILE_ERROR) {
+                PlannedCase planned = plan.get(i);
+                return new RunResult(List.of(toCase(planned, mine.get(i),
+                        planned.expectedOutput() != null ? ExpectedSource.SAMPLE : ExpectedSource.UNAVAILABLE)));
             }
+        }
+
+        // Round 2 — the reference's answers for the custom inputs no sample answers.
+        List<String> unanswered = plan.stream()
+                .filter(p -> p.expectedOutput() == null).map(PlannedCase::input).toList();
+        Iterator<Answer> answers = new ReferenceOracle(problem, loaded.reference())
+                .answersFor(unanswered).iterator();
+
+        List<RunResult.Case> cases = new ArrayList<>(plan.size());
+        for (int i = 0; i < plan.size(); i++) {
+            PlannedCase planned = plan.get(i);
+            cases.add(planned.expectedOutput() != null
+                    ? toCase(planned, mine.get(i), ExpectedSource.SAMPLE)
+                    : judgedAgainstReference(planned.input(), mine.get(i), answers.next(), problem));
         }
         return new RunResult(cases);
     }
 
-    private RunResult.Case runAgainstSample(Program learner, PlannedCase planned, Problem problem) {
-        CaseJudge.CaseResult result = judge(learner, planned.input(), planned.expectedOutput(), problem);
-        return new RunResult.Case(planned.input(), planned.expectedOutput(), result.stdout(), result.status(),
-                result.passed(), result.diagnostic(), ExpectedSource.SAMPLE);
-    }
-
     /**
-     * Runs the learner's code first; only when it compiled is the reference asked for the answer —
-     * also when the learner's run crashed or timed out, so they still see what was expected.
+     * A custom input's case, given the reference's answer for it: compared when there is one; when
+     * there's none, the learner's own run is reported as-is. The answer is wanted even when the
+     * learner's run crashed or timed out — they still see what was expected.
      */
-    private RunResult.Case runAgainstReference(Program learner, String input, ReferenceOracle oracle, Problem problem) {
-        CaseJudge.CaseResult mine = judge(learner, input, null, problem);
-        if (mine.status() == SubmissionStatus.COMPILE_ERROR || !oracle.available()) {
-            return new RunResult.Case(input, null, mine.stdout(), mine.status(), null, mine.diagnostic(),
-                    ExpectedSource.UNAVAILABLE);
-        }
-
-        Optional<String> expected = oracle.answerFor(input);
-        if (expected.isEmpty()) {
+    private RunResult.Case judgedAgainstReference(String input, CaseJudge.CaseResult mine, Answer answer,
+                                                  Problem problem) {
+        PlannedCase unanswered = new PlannedCase(input, null);
+        return switch (answer) {
+            case Answer.NoReference noReference -> toCase(unanswered, mine, ExpectedSource.UNAVAILABLE);
             // The reference couldn't run it either — most likely the input breaks the problem's
             // constraints. Nothing to compare against; the learner's own run still shows.
-            return new RunResult.Case(input, null, mine.stdout(), mine.status(), null, mine.diagnostic(),
-                    ExpectedSource.REFERENCE_FAILED);
-        }
-        CaseJudge.CaseResult judged = caseJudge.compare(mine, expected.get(), problem.getReturnType());
-        return new RunResult.Case(input, expected.get(), judged.stdout(), judged.status(), judged.passed(),
-                judged.diagnostic(), ExpectedSource.REFERENCE);
+            case Answer.ReferenceFailed failed -> toCase(unanswered, mine, ExpectedSource.REFERENCE_FAILED);
+            case Answer.Known(String expected) -> toCase(new PlannedCase(input, expected),
+                    caseJudge.compare(mine, expected, problem.getReturnType()), ExpectedSource.REFERENCE);
+        };
     }
 
-    /** One judge call, with an unreachable judge turned into the learner-facing business error. */
-    private CaseJudge.CaseResult judge(Program program, String input, String expectedOutput, Problem problem) {
+    /** {@code passed} is only meaningful when there was an answer to check against. */
+    private static RunResult.Case toCase(PlannedCase planned, CaseJudge.CaseResult result, ExpectedSource source) {
+        Boolean passed = planned.expectedOutput() == null ? null : result.passed();
+        return new RunResult.Case(planned.input(), planned.expectedOutput(), result.stdout(), result.status(),
+                passed, result.diagnostic(), source);
+    }
+
+    /** One batch, with an unreachable judge turned into the learner-facing business error. */
+    private List<CaseJudge.CaseResult> judgeAll(List<CaseJudge.CaseRequest> requests, Problem problem) {
         try {
-            return caseJudge.run(program.source(), program.language(), input, expectedOutput, problem.getReturnType());
+            return caseJudge.runAll(requests, problem.getReturnType());
         } catch (JudgeUnavailableException e) {
             // Operator detail to the log; the learner gets a generic "try again".
             log.warn("Judge unavailable during a run of problem {}: {}", problem.getId(), e.getMessage());
@@ -226,36 +240,63 @@ public class CodeRunServiceImpl implements CodeRunService {
     }
 
     /**
-     * Answers custom inputs by running the reference solution. Its program is built lazily, once per
-     * Run, and reused for every input — like a learner's program, it depends only on the signature.
+     * Answers custom inputs by running the reference solution — one batch for all of them, with its
+     * program built once (like a learner's, it depends only on the signature).
      */
     private final class ReferenceOracle {
 
         private final Problem problem;
         private final ReferenceCode reference;
-        private Program program;
 
         ReferenceOracle(Problem problem, Optional<ReferenceCode> reference) {
             this.problem = problem;
             this.reference = reference.orElse(null);
         }
 
-        boolean available() {
-            return reference != null;
+        /** One {@link Answer} per input, in order. No inputs, or no reference, means no judge call. */
+        List<Answer> answersFor(List<String> inputs) {
+            if (reference == null) {
+                return Collections.nCopies(inputs.size(), Answer.NO_REFERENCE);
+            }
+            if (inputs.isEmpty()) {
+                return List.of();
+            }
+            Program program = new Program(reference.language(),
+                    harnessRegistry.get(reference.language()).buildProgram(problem, reference.sourceCode()));
+            List<CaseJudge.CaseResult> results = judgeAll(
+                    inputs.stream().map(input -> program.request(input, null)).toList(), problem);
+            return results.stream().map(this::answerOf).toList();
         }
 
-        /** The reference's answer for {@code input}, or empty if it didn't run cleanly on it. */
-        Optional<String> answerFor(String input) {
-            if (program == null) {
-                program = new Program(reference.language(),
-                        harnessRegistry.get(reference.language()).buildProgram(problem, reference.sourceCode()));
-            }
-            CaseJudge.CaseResult result = judge(program, input, null, problem);
+        private Answer answerOf(CaseJudge.CaseResult result) {
             if (!result.passed() || result.stdout() == null || result.stdout().isBlank()) {
                 log.info("Reference solution of problem {} failed on a custom input: {}", problem.getId(), result.status());
-                return Optional.empty();
+                return Answer.REFERENCE_FAILED;
             }
-            return Optional.of(result.stdout().strip());
+            return new Answer.Known(result.stdout().strip());
+        }
+    }
+
+    /**
+     * The reference's verdict on one custom input — three cases, not an {@code Optional} plus a null:
+     * a sealed interface makes the {@code switch} in {@link #judgedAgainstReference} exhaustive, so a
+     * fourth case would be a compile error there rather than a silently unhandled branch.
+     */
+    private sealed interface Answer {
+
+        Answer NO_REFERENCE = new NoReference();
+        Answer REFERENCE_FAILED = new ReferenceFailed();
+
+        /** The reference ran cleanly; {@code output} is the expected answer. */
+        record Known(String output) implements Answer {
+        }
+
+        /** The reference errored or timed out on this input. */
+        record ReferenceFailed() implements Answer {
+        }
+
+        /** The problem has no accepted reference at its current version. */
+        record NoReference() implements Answer {
         }
     }
 
@@ -265,6 +306,10 @@ public class CodeRunServiceImpl implements CodeRunService {
 
     /** A built program and the language it's written in. */
     private record Program(ProgrammingLanguage language, String source) {
+
+        CaseJudge.CaseRequest request(String input, String expectedOutput) {
+            return new CaseJudge.CaseRequest(source, language, input, expectedOutput);
+        }
     }
 
     /** A reference solution's code, copied out of the entity so it's safe to use after the transaction. */

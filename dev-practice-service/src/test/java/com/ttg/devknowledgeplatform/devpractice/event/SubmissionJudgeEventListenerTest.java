@@ -2,7 +2,6 @@ package com.ttg.devknowledgeplatform.devpractice.event;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -73,8 +72,7 @@ class SubmissionJudgeEventListenerTest {
     @Test
     void acceptsWhenEveryTestCaseMatches() {
         List<MethodParameter> originalParameters = submission.getProblem().getParameters();
-        when(judgeClient.run(anyString(), any(), anyString()))
-                .thenReturn(accepted("1"), accepted("2"));
+        when(judgeClient.runAll(any())).thenReturn(List.of(accepted("1"), accepted("2")));
 
         listener.onEvent(new SubmissionCreatedEvent(7));
 
@@ -90,9 +88,8 @@ class SubmissionJudgeEventListenerTest {
 
     @Test
     void judgeUnavailableEndsAsJudgeErrorNotRunning() {
-        when(judgeClient.run(anyString(), any(), anyString()))
-                .thenReturn(accepted("1"))
-                .thenThrow(new JudgeUnavailableException("Judge0 submit failed: 429 Too Many Requests"));
+        when(judgeClient.runAll(any()))
+                .thenThrow(new JudgeUnavailableException("Judge0 batch submit failed: 429 Too Many Requests"));
 
         listener.onEvent(new SubmissionCreatedEvent(7));
 
@@ -105,7 +102,7 @@ class SubmissionJudgeEventListenerTest {
 
     @Test
     void unexpectedFailureAlsoEndsAsJudgeError() {
-        when(judgeClient.run(anyString(), any(), anyString())).thenThrow(new NullPointerException("bug"));
+        when(judgeClient.runAll(any())).thenThrow(new NullPointerException("bug"));
 
         listener.onEvent(new SubmissionCreatedEvent(7));
 
@@ -115,7 +112,7 @@ class SubmissionJudgeEventListenerTest {
     @Test
     void anAcceptedPublishOnAcceptRunPublishesItsProblemAtTheJudgedVersion() {
         submission.setPublishOnAccept(true);
-        when(judgeClient.run(anyString(), any(), anyString())).thenReturn(accepted("1"), accepted("2"));
+        when(judgeClient.runAll(any())).thenReturn(List.of(accepted("1"), accepted("2")));
 
         listener.onEvent(new SubmissionCreatedEvent(7));
 
@@ -125,7 +122,7 @@ class SubmissionJudgeEventListenerTest {
     @Test
     void aRejectedPublishOnAcceptRunPublishesNothing() {
         submission.setPublishOnAccept(true);
-        when(judgeClient.run(anyString(), any(), anyString())).thenReturn(accepted("1"), accepted("3"));
+        when(judgeClient.runAll(any())).thenReturn(List.of(accepted("1"), accepted("3")));
 
         listener.onEvent(new SubmissionCreatedEvent(7));
 
@@ -135,11 +132,27 @@ class SubmissionJudgeEventListenerTest {
 
     @Test
     void anAcceptedRunWithoutTheFlagPublishesNothing() {
-        when(judgeClient.run(anyString(), any(), anyString())).thenReturn(accepted("1"), accepted("2"));
+        when(judgeClient.runAll(any())).thenReturn(List.of(accepted("1"), accepted("2")));
 
         listener.onEvent(new SubmissionCreatedEvent(7));
 
         verify(problemService, never()).publishIfVerified(any(), any());
+    }
+
+    @Test
+    void allTestCasesGoToTheJudgeInOneBatchAndTheVerdictIsTheFirstFailure() {
+        submission.getProblem().getTestCases().add(TestCase.builder()
+                .problem(submission.getProblem()).input("[3]").expectedOutput("3").build());
+        // Case 2 fails, case 3 fails differently — the verdict must name case 2 (one passed before it).
+        when(judgeClient.runAll(any())).thenReturn(List.of(accepted("1"), accepted("9"),
+                new Judge0SubmissionResult(Judge0Status.RUNTIME_ERROR, null, "boom", null, null)));
+
+        listener.onEvent(new SubmissionCreatedEvent(7));
+
+        verify(judgeClient, org.mockito.Mockito.times(1)).runAll(any());
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.WRONG_ANSWER);
+        assertThat(submission.getPassedTestCases()).isEqualTo(1);
+        assertThat(submission.getTotalTestCases()).isEqualTo(3);
     }
 
     private static Judge0SubmissionResult accepted(String stdout) {

@@ -22,6 +22,20 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **Judge0 batch submissions (Phase 2 of the Run console work).** `dev-practice-service`:
+  `JudgeClient` is now batch-only — `runAll(List<JudgeRequest>)` replaces `run(program, language,
+  stdin)`. `Judge0Client` sends chunks of the new `app.judge0.max-batch-size` (default 20, Judge0's own
+  limit; `JUDGE0_MAX_BATCH_SIZE`) to `POST /submissions/batch` and polls `GET /submissions/batch` until
+  every item is final, matching results by token; a still-unfinished item at the poll ceiling becomes
+  `INTERNAL_ERROR` while finished ones keep their result, and an item Judge0 refuses fails the call as
+  `JudgeUnavailableException` (with Judge0's field errors in the message). `CaseJudge.runAll` replaces
+  `CaseJudge.run`. Graded submissions now send all test cases in one batch (verdict and
+  `passedTestCases` unchanged: the first failure in order). Run is at most two batches — the learner's
+  code on every case, then the reference on the custom inputs that need an answer (skipped after a
+  compile error) — where Phase 1 made up to ten one-by-one round trips. No API, schema or GUI change.
+  `Judge0ClientTest` rewritten for the batch protocol (+4 cases), `CodeRunServiceImplTest` rewritten
+  around a real `CaseJudge` over a fake lambda `JudgeClient` (+1), `SubmissionJudgeEventListenerTest`
+  (+1); 134 tests.
 - **Run: expected answers for custom inputs, from the reference solution (Phase 1 of the Run
   console work).** `dev-practice-service`: `CodeRunServiceImpl` now runs the problem's accepted
   reference solution (newest ACCEPTED `REFERENCE` submission at the current contract version, via the

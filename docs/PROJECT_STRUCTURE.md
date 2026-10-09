@@ -2886,6 +2886,7 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     only when a key is set — transport wiring kept out of
 │   │                                     Judge0Client so tests can bind a MockRestServiceServer
 │   └── JudgeClientProperties.java     — app.judge0.* (base-url, rapid-api-key, rapid-api-host,
+│                                         max-batch-size (default 20 = Judge0's own limit),
 │                                         poll-interval-ms, max-poll-attempts,
 │                                         cpu-time-limit-seconds, connect-timeout, read-timeout,
 │                                         retry.{max-attempts, initial-interval, multiplier,
@@ -3021,8 +3022,10 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   └── SignatureTemplateParserRegistry.java — @Component; parser per ProgrammingLanguage, fails
 │                                         startup if a language has none
 ├── judge/
-│   ├── JudgeClient.java                 — Adapter interface: run(program, language, stdin) →
-│   │                                     Judge0SubmissionResult, blocking (polls internally)
+│   ├── JudgeClient.java                 — Adapter interface, batch-only: runAll(List<JudgeRequest>)
+│   │                                     → one Judge0SubmissionResult per request, same order,
+│   │                                     blocking (polls internally); JudgeRequest(program,
+│   │                                     language, stdin)
 │   ├── Judge0Status.java                — Judge0's status vocabulary narrowed to IN_QUEUE/
 │   │                                     PROCESSING/ACCEPTED/WRONG_ANSWER/TIME_LIMIT_EXCEEDED/
 │   │                                     COMPILATION_ERROR/RUNTIME_ERROR (folds Judge0's 6 distinct
@@ -3030,9 +3033,11 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     EXEC_FORMAT_ERROR; ACCEPTED here never means "matched
 │   │                                     expected output" — see its own Javadoc
 │   ├── Judge0SubmissionResult.java      — record: status, stdout, stderr, compileOutput, message
-│   ├── CaseJudge.java                   — @Component: one input through a built program → CaseResult
-│   │                                     (status, stdout, diagnostic); Judge0 status mapping + output
-│   │                                     compare (skipped when expectedOutput is null). Shared by
+│   ├── CaseJudge.java                   — @Component: runAll(List<CaseRequest>, returnType) → one
+│   │                                     CaseResult (status, stdout, diagnostic) per request, in one
+│   │                                     batch; Judge0 status mapping + output compare (skipped when
+│   │                                     expectedOutput is null); compare(result, expected) judges a
+│   │                                     run against an answer found later. Shared by
 │   │                                     SubmissionJudgeEventListener and CodeRunService
 │   ├── OutputMatcher.java               — @Component: structural, return-type-aware JSON compare of
 │   │                                     stdout vs. TestCase.expectedOutput — DOUBLE/DOUBLE_ARRAY
@@ -3044,7 +3049,12 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     ever crosses the Adapter boundary
 │   └── impl/Judge0Client.java           — uses Judge0RestClientConfig's RestClient; works unmodified
 │                                         against Judge0 CE's hosted RapidAPI instance (default) or
-│                                         a self-hosted one: submits with base64_encoded=true,
+│                                         a self-hosted one: POST /submissions/batch in chunks of
+│                                         max-batch-size, then polls GET /submissions/batch?tokens=
+│                                         until every item is final (results matched by token; an
+│                                         item still unfinished at the poll ceiling →
+│                                         INTERNAL_ERROR, finished ones keep theirs; an item Judge0
+│                                         refuses → JudgeUnavailableException), base64_encoded=true,
 │                                         decodes responses with the MIME base64 decoder (Judge0's
 │                                         Ruby Base64.encode64 line-wraps), never sends
 │                                         expected_output, polls via infra's PollingTemplate
@@ -3064,8 +3074,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                         usual @EventHandler — @EventHandler fires immediately on
 │                                         publish, which would race the still-open publishing
 │                                         transaction (caught as a real bug during this build, see
-│                                         the class's own Javadoc); judges every TestCase in order,
-│                                         stopping at the first failure; splits its own work across
+│                                         the class's own Javadoc); sends every TestCase to the
+│                                         judge in one batch, verdict = the first failure in order;
+│                                         splits its own work across
 │                                         two short TransactionTemplate transactions
 │                                         (load-and-mark-RUNNING, save-final-outcome) around a long
 │                                         non-transactional middle (the Judge0 round-trips) rather
@@ -3293,8 +3304,11 @@ dev-practice-service/src/test/
 │                                         invisible via the user API, reference/problem path mismatch
 ├── java/.../judge/OutputMatcherTest.java — tolerance/exactness/structural cases
 ├── java/.../judge/impl/Judge0ClientTest.java — MockRestServiceServer as a scripted fake Judge0:
-│                                         submit/poll, line-wrapped base64, retry of 429/503/I/O
-│                                         only, no retry of 401, give-up → JudgeUnavailableException
+│                                         batch submit/poll, order kept when Judge0 lists results
+│                                         differently, chunking by max-batch-size, a refused item,
+│                                         partial results at the poll ceiling, line-wrapped base64,
+│                                         retry of 429/503/I/O only, no retry of 401, give-up →
+│                                         JudgeUnavailableException
 ├── java/.../event/SubmissionJudgeEventListenerTest.java — final-status bookkeeping; judge
 │                                         failures and unexpected bugs end as JUDGE_ERROR, never
 │                                         RUNNING
