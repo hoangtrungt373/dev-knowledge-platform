@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Alert, Chip, Stack, Typography } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
-import { MethodParameter, RunCaseResult, RunResult } from '../types';
+import { ExpectedSource, MethodParameter, RunCaseResult, RunResult } from '../types';
 import { SUBMISSION_STATUS_LABEL } from '../constants';
 import { argumentLines } from '../utils/runCases';
 import CodeBlock from './CodeBlock';
@@ -15,7 +15,7 @@ interface Props {
 /**
  * The headline of a whole run: the first failure if any case failed to run or answered wrongly,
  * otherwise "Accepted" when every answer was checked, or just "Finished" when some inputs had no
- * known answer (custom input — nothing to judge them against).
+ * answer to judge them against (see `ExpectedSource`).
  */
 function headline(result: RunResult): { label: string; color: 'success' | 'error' | 'info' } {
   const failure = result.cases.find(c => c.status !== 'ACCEPTED');
@@ -24,9 +24,15 @@ function headline(result: RunResult): { label: string; color: 'success' | 'error
   return { label: 'Finished', color: 'info' };
 }
 
+/** Shown under a case that has no answer to compare against, saying why. */
+const NO_ANSWER_NOTE: Partial<Record<ExpectedSource, string>> = {
+  REFERENCE_FAILED: 'The reference solution could not run this input either — check that it fits the problem\'s constraints.',
+  UNAVAILABLE: 'No expected answer is available for this input, so only your output is shown.',
+};
+
 /**
  * One case's outcome: passed / failed against a known answer, failed to run at all (compile or
- * runtime error, time limit), or ran fine with no answer to compare to (an edited custom input).
+ * runtime error, time limit), or ran fine with no answer to compare to.
  */
 function outcomeOf(c: RunCaseResult): 'passed' | 'failed' | 'unchecked' {
   if (c.passed === true) return 'passed';
@@ -76,7 +82,15 @@ export default function RunResultView({ result, parameters }: Props): JSX.Elemen
       ) : (
         <Alert severity="error" sx={{ py: 0 }}>{SUBMISSION_STATUS_LABEL[current.status]}</Alert>
       )}
-      {current.expectedOutput !== null && <CodeBlock label="Expected">{current.expectedOutput}</CodeBlock>}
+      {current.expectedOutput !== null && (
+        <CodeBlock label={current.expectedSource === 'REFERENCE' ? 'Expected (from the reference solution)' : 'Expected'}>
+          {current.expectedOutput}
+        </CodeBlock>
+      )}
+      {/* A compile error already says everything — no "why there's no answer" note on top of it. */}
+      {current.expectedOutput === null && current.status !== 'COMPILE_ERROR' && NO_ANSWER_NOTE[current.expectedSource] && (
+        <Alert severity="info" sx={{ py: 0 }}>{NO_ANSWER_NOTE[current.expectedSource]}</Alert>
+      )}
       {current.diagnostic && <CodeBlock label="Details">{current.diagnostic}</CodeBlock>}
     </Stack>
   );

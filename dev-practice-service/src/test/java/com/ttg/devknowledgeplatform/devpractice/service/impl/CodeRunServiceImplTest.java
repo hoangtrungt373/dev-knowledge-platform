@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -24,16 +25,21 @@ import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.common.exception.BusinessException;
 import com.ttg.devknowledgeplatform.devpractice.entity.MethodParameter;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
+import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
 import com.ttg.devknowledgeplatform.devpractice.entity.TestCase;
+import com.ttg.devknowledgeplatform.devpractice.enums.ExpectedSource;
 import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
+import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionKind;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 import com.ttg.devknowledgeplatform.devpractice.exception.DevPracticeErrorCode;
 import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarnessRegistry;
 import com.ttg.devknowledgeplatform.devpractice.harness.PythonLanguageHarness;
 import com.ttg.devknowledgeplatform.devpractice.harness.SignatureNameValidator;
 import com.ttg.devknowledgeplatform.devpractice.judge.CaseJudge;
+import com.ttg.devknowledgeplatform.devpractice.judge.JudgeClient;
 import com.ttg.devknowledgeplatform.devpractice.judge.JudgeUnavailableException;
+import com.ttg.devknowledgeplatform.devpractice.judge.OutputMatcher;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemTagRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
@@ -43,12 +49,16 @@ import com.ttg.devknowledgeplatform.devpractice.service.SubmissionCommands;
 
 /**
  * Run's contract: samples are judged against their answers (every one, not stopping at a failure),
- * custom inputs are only run, hidden cases are never touched, and bad inputs / unpublished problems /
+ * custom inputs against the reference solution's answer, hidden cases are never touched, and bad inputs / unpublished problems /
  * an unreachable judge become clear business errors. The judge itself is mocked; the harness is real.
  */
 class CodeRunServiceImplTest {
 
+    /** Marks the reference solution's program apart from the learner's in judge-call stubs. */
+    private static final String REFERENCE_CODE = "class Solution:\n    def identity(self, value):\n        return value  # reference";
+
     private final ProblemRepository problemRepository = mock(ProblemRepository.class);
+    private final SubmissionRepository submissionRepository = mock(SubmissionRepository.class);
     private final CaseJudge caseJudge = mock(CaseJudge.class);
     // The real ProblemServiceImpl over the mocked repository: "a draft is not found" is its rule, and
     // these tests should exercise it, not a stub of it.
@@ -57,6 +67,7 @@ class CodeRunServiceImplTest {
             mock(SlugService.class), new ObjectMapper());
     private final CodeRunServiceImpl service = new CodeRunServiceImpl(
             problemService,
+            submissionRepository,
             new LanguageHarnessRegistry(List.of(new PythonLanguageHarness())),
             caseJudge,
             new ObjectMapper(),
@@ -78,7 +89,7 @@ class CodeRunServiceImplTest {
     }
 
     @Test
-    void runsCustomInputsWithoutAnAnswerToCheck() {
+    void withoutAReferenceSolutionACustomInputIsOnlyRun() {
         when(problemRepository.findById(5)).thenReturn(Optional.of(problem(ContentStatus.PUBLISHED)));
         when(caseJudge.run(anyString(), any(), eq("[42]"), isNull(), any()))
                 .thenReturn(result(SubmissionStatus.ACCEPTED, "42"));
@@ -88,9 +99,70 @@ class CodeRunServiceImplTest {
         assertThat(run.cases()).singleElement().satisfies(c -> {
             assertThat(c.input()).isEqualTo("[42]");
             assertThat(c.expectedOutput()).isNull();
-            assertThat(c.passed()).as("custom input has nothing to pass").isNull();
+            assertThat(c.passed()).as("no answer to pass").isNull();
             assertThat(c.actualOutput()).isEqualTo("42");
+            assertThat(c.expectedSource()).isEqualTo(ExpectedSource.UNAVAILABLE);
         });
+    }
+
+    @Test
+    void aCustomInputIsJudgedAgainstTheReferenceSolutionsAnswer() {
+        givenAPublishedProblemWithAReference();
+        whenLearnerReturns("[42]", result(SubmissionStatus.ACCEPTED, "41"));
+        whenReferenceReturns("[42]", result(SubmissionStatus.ACCEPTED, "42\n"));
+
+        RunResult run = service.run(command(List.of("[42]")));
+
+        assertThat(run.cases()).singleElement().satisfies(c -> {
+            assertThat(c.expectedOutput()).as("the reference's stdout, trimmed").isEqualTo("42");
+            assertThat(c.actualOutput()).isEqualTo("41");
+            assertThat(c.status()).isEqualTo(SubmissionStatus.WRONG_ANSWER);
+            assertThat(c.passed()).isFalse();
+            assertThat(c.expectedSource()).isEqualTo(ExpectedSource.REFERENCE);
+        });
+    }
+
+    @Test
+    void aCustomInputMatchingTheReferencePasses() {
+        givenAPublishedProblemWithAReference();
+        whenLearnerReturns("[7]", result(SubmissionStatus.ACCEPTED, "7"));
+        whenReferenceReturns("[7]", result(SubmissionStatus.ACCEPTED, "7"));
+
+        RunResult run = service.run(command(List.of("[7]")));
+
+        assertThat(run.cases()).singleElement().satisfies(c -> {
+            assertThat(c.status()).isEqualTo(SubmissionStatus.ACCEPTED);
+            assertThat(c.passed()).isTrue();
+        });
+    }
+
+    @Test
+    void whenTheReferenceFailsOnAnInputThereIsNoAnswerToCheck() {
+        givenAPublishedProblemWithAReference();
+        whenLearnerReturns("[-1]", result(SubmissionStatus.ACCEPTED, "-1"));
+        whenReferenceReturns("[-1]", new CaseJudge.CaseResult(SubmissionStatus.RUNTIME_ERROR, null, "ValueError"));
+
+        RunResult run = service.run(command(List.of("[-1]")));
+
+        assertThat(run.cases()).singleElement().satisfies(c -> {
+            assertThat(c.expectedOutput()).isNull();
+            assertThat(c.passed()).isNull();
+            assertThat(c.status()).as("the learner's own run is still reported").isEqualTo(SubmissionStatus.ACCEPTED);
+            assertThat(c.diagnostic()).as("the reference's error never leaks").isNull();
+            assertThat(c.expectedSource()).isEqualTo(ExpectedSource.REFERENCE_FAILED);
+        });
+    }
+
+    @Test
+    void theReferenceIsNotRunWhenTheLearnersCodeDoesNotCompile() {
+        givenAPublishedProblemWithAReference();
+        whenLearnerReturns("[3]", new CaseJudge.CaseResult(SubmissionStatus.COMPILE_ERROR, null, "SyntaxError"));
+
+        RunResult run = service.run(command(List.of("[3]", "[4]")));
+
+        assertThat(run.cases()).singleElement()
+                .satisfies(c -> assertThat(c.expectedSource()).isEqualTo(ExpectedSource.UNAVAILABLE));
+        verify(caseJudge, never()).run(argThat((String p) -> p != null && p.contains("# reference")), any(), anyString(), any(), any());
     }
 
     @Test
@@ -105,7 +177,9 @@ class CodeRunServiceImplTest {
         assertThat(run.cases()).singleElement().satisfies(c -> {
             assertThat(c.expectedOutput()).isEqualTo("2");
             assertThat(c.passed()).isTrue();
+            assertThat(c.expectedSource()).isEqualTo(ExpectedSource.SAMPLE);
         });
+        verify(caseJudge, times(1)).run(anyString(), any(), anyString(), any(), any()); // no second, reference run
     }
 
     @Test
@@ -163,6 +237,28 @@ class CodeRunServiceImplTest {
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(DevPracticeErrorCode.JUDGE_UNAVAILABLE))
                 .message().doesNotContain("429");
+    }
+
+    /** Problem 5 at contract v1 with an ACCEPTED Python reference; compare() uses the real matcher. */
+    private void givenAPublishedProblemWithAReference() {
+        when(problemRepository.findById(5)).thenReturn(Optional.of(problem(ContentStatus.PUBLISHED)));
+        when(submissionRepository.findFirstByProblem_IdAndKindAndStatusAndContractVersionOrderByIdDesc(
+                5, SubmissionKind.REFERENCE, SubmissionStatus.ACCEPTED, 1))
+                .thenReturn(Optional.of(Submission.builder()
+                        .language(ProgrammingLanguage.PYTHON).sourceCode(REFERENCE_CODE).build()));
+        CaseJudge realComparison = new CaseJudge(mock(JudgeClient.class), new OutputMatcher(new ObjectMapper()));
+        when(caseJudge.compare(any(), anyString(), any())).thenAnswer(inv ->
+                realComparison.compare(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)));
+    }
+
+    private void whenLearnerReturns(String input, CaseJudge.CaseResult result) {
+        when(caseJudge.run(argThat((String p) -> p != null && !p.contains("# reference")), any(), eq(input), isNull(), any()))
+                .thenReturn(result);
+    }
+
+    private void whenReferenceReturns(String input, CaseJudge.CaseResult result) {
+        when(caseJudge.run(argThat((String p) -> p != null && p.contains("# reference")), any(), eq(input), isNull(), any()))
+                .thenReturn(result);
     }
 
     private static SubmissionCommands.Run command(List<String> customInputs) {

@@ -354,7 +354,15 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   `CodeRunServiceImpl.MAX_CUSTOM_INPUTS` = 5, each a JSON array with one value per parameter —
   `SUBMISSION_RUN_INPUT_INVALID`/`_TOO_MANY_INPUTS` otherwise) they run instead, and one equal to a
   sample (compared as parsed JSON) keeps that sample's answer — the GUI pre-fills its cases from the
-  samples. Cases run **sequentially** (parallel calls hit RapidAPI's rate limit) and stop after a
+  samples. **Any other custom input is answered by the reference solution** (the newest ACCEPTED
+  REFERENCE submission at the current `contractVersion` — the one that verified the problem), run on
+  that input as a test oracle; the learner's output is then judged with `CaseJudge#compare` (same
+  `OutputMatcher` as graded runs). Each case reports an `ExpectedSource`: `SAMPLE`, `REFERENCE`,
+  `REFERENCE_FAILED` (the reference errored/timed out too — likely an input outside the constraints;
+  no answer, and the reference's own diagnostic is never shown) or `UNAVAILABLE` (no reference at
+  this version — e.g. published before DKP-0056 — or the learner's code didn't compile, in which case
+  the reference isn't run). Only the reference's return value ever leaves the server, never its
+  source. A custom input can cost two judge calls. Cases run **sequentially** (parallel calls hit RapidAPI's rate limit) and stop after a
   compile error. Same transaction shape as the judge listener: a short read-only
   `TransactionTemplate` load, then judge calls with no connection held. An unreachable judge is
   `JUDGE_UNAVAILABLE` (503, generic message; detail logged) — unlike a graded submission, which

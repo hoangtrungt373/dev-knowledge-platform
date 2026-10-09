@@ -4488,8 +4488,11 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     samples via `utils/runCases#casesFromSamples`, max 5 = the backend's limit, "Sample cases" resets)
     and **Result** (whichever of Run or Submit the learner started last: `components/RunResultView`
     or `SubmissionVerdict`). Run always sends every case as a custom input (`toInputJson`); the backend
-    still checks an unchanged sample against its answer, so passed/failed shows for those and plain
-    output for edited ones. Run is synchronous (no polling) and its errors (bad input, judge down)
+    checks an unchanged sample against its answer and any edited case against the answer of the
+    problem's reference solution, so every case normally comes back passed/failed. `RunResultView`
+    labels a reference answer "Expected (from the reference solution)" and, when a case has none,
+    says why (`expectedSource`: the reference failed on the input — likely outside the constraints —
+    or no answer was available). Run is synchronous (no polling) and its errors (bad input, judge down)
     render inline in Result, not as a toast. Run and Submit block each other; both need a login.
     `utils/runCases#argumentLines` (`nums = [1,2]` formatting) is shared with `SampleTestCases`.
 - **`@dev-practice` — admin problem-catalog screens**

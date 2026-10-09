@@ -173,16 +173,25 @@ export interface ProblemProgress {
 }
 
 /** `RunResponse.CaseResponse` — one input of an unsaved run. */
+/**
+ * Where a Run case's expected answer came from (backend `ExpectedSource`): a sample's stored answer,
+ * the reference solution run on a custom input, or none — the reference failed on the input too
+ * (likely outside the constraints), or no answer could be computed at all (no reference, or the
+ * code didn't compile).
+ */
+export type ExpectedSource = 'SAMPLE' | 'REFERENCE' | 'REFERENCE_FAILED' | 'UNAVAILABLE';
+
 export interface RunCaseResult {
   /** The JSON argument array that ran. */
   input: string;
-  /** Known for a sample (or an input identical to one); null for other custom input. */
+  /** A sample's answer, or the reference solution's for a custom input; null when none was found. */
   expectedOutput: string | null;
   actualOutput: string | null;
   status: SubmissionStatus;
   /** true/false when an answer was known; null otherwise. */
   passed: boolean | null;
   diagnostic: string | null;
+  expectedSource: ExpectedSource;
 }
 
 /** `RunResponse` — the result of an unsaved run; stops early after a compile error. */

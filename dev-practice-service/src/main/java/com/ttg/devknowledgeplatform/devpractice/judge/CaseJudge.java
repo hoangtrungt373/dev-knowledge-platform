@@ -49,6 +49,23 @@ public class CaseJudge {
         return new CaseResult(status, result.stdout(), diagnosticOf(result));
     }
 
+    /**
+     * Judges a run that already happened against an answer that only became known afterwards (a custom
+     * input whose answer the reference solution computed). Uses the same {@link OutputMatcher} as
+     * {@link #run}, so "correct" means the same thing either way. A run that didn't finish cleanly is
+     * returned unchanged — there is no output to compare.
+     *
+     * @param ran            the learner's run, made with no expected output
+     * @param expectedOutput the JSON-encoded answer to compare against
+     * @return {@code ran} itself when it matches (or never ran cleanly), else the same run as {@code WRONG_ANSWER}
+     */
+    public CaseResult compare(CaseResult ran, String expectedOutput, ParamType returnType) {
+        if (!ran.passed() || outputMatcher.matches(ran.stdout(), expectedOutput, returnType)) {
+            return ran;
+        }
+        return new CaseResult(SubmissionStatus.WRONG_ANSWER, ran.stdout(), ran.diagnostic());
+    }
+
     /** The most useful diagnostic Judge0 returned: compiler output, else stderr, else its own message. */
     private static String diagnosticOf(Judge0SubmissionResult result) {
         if (result.compileOutput() != null && !result.compileOutput().isBlank()) {

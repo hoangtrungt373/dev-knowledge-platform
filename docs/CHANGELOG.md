@@ -22,6 +22,17 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **Run: expected answers for custom inputs, from the reference solution (Phase 1 of the Run
+  console work).** `dev-practice-service`: `CodeRunServiceImpl` now runs the problem's accepted
+  reference solution (newest ACCEPTED `REFERENCE` submission at the current contract version, via the
+  new `SubmissionRepository#findFirstByProblem_IdAndKindAndStatusAndContractVersionOrderByIdDesc`) on
+  every custom input that isn't a sample, and judges the learner's output against it with the new
+  `CaseJudge#compare`. New enum `ExpectedSource` (`SAMPLE`/`REFERENCE`/`REFERENCE_FAILED`/`UNAVAILABLE`),
+  added to `RunResult.Case` and `RunResponse.CaseResponse` as `expectedSource`. The reference is skipped
+  when the learner's code doesn't compile; its source and its own error output are never returned. No
+  migration (the lookup uses the existing `IDX_SUBMISSION_ACCEPTED_REFERENCE` partial index). Five new
+  `CodeRunServiceImplTest` cases (129 tests total). `gui`: `RunCaseResult.expectedSource`; `RunResultView`
+  labels a reference answer and explains a missing one.
 - **Run code without submitting (learner Phase 3).** `dev-practice-service`: new
   `POST /api/v1/submissions/run` (`SubmissionApi#run`, `service.CodeRunService` + impl) — runs a
   learner's code synchronously against the published problem's sample cases, or up to 5 custom JSON

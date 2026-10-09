@@ -25,9 +25,9 @@ export interface CodeRun {
  * problem has loaded), whether a run is in flight, and its last outcome. Run is synchronous on the
  * backend, so there's nothing to poll — unlike Submit (`useSubmissionPolling`).
  *
- * Every case is sent as a custom input: the backend still checks one that equals a sample against
- * that sample's answer, so untouched pre-filled cases come back passed/failed while edited ones just
- * show their output.
+ * Every case is sent as a custom input: one that equals a sample is checked against that sample's
+ * answer, any other against the answer of the problem's reference solution (computed by the backend),
+ * so edited cases come back passed/failed too.
  */
 export function useCodeRun(problem: Problem | null): CodeRun {
   const [cases, setCases] = useState<string[][]>([]);

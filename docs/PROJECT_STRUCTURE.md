@@ -2959,8 +2959,10 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     value, not just PENDING
 │   ├── SubmissionKind.java             — USER (learner attempt) / REFERENCE (admin verification
 │   │                                     run; allowed on DRAFT, hidden from the user API)
-│   └── ProblemProgressStatus.java      — ATTEMPTED / SOLVED: a learner's standing on a problem,
-│                                         derived from their USER submissions, never stored
+│   ├── ProblemProgressStatus.java      — ATTEMPTED / SOLVED: a learner's standing on a problem,
+│   │                                     derived from their USER submissions, never stored
+│   └── ExpectedSource.java             — SAMPLE / REFERENCE / REFERENCE_FAILED / UNAVAILABLE: where a
+│                                         Run case's expected answer came from (or why there's none)
 ├── harness/
 │   ├── LanguageHarness.java            — abstract; final buildProgram(problem, userCode) is the fixed
 │   │                                     prelude → user-code → generated-main skeleton; the
@@ -3117,7 +3119,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     List<ProblemProgress> (service record: problemId, status)
 │   ├── CodeRunService.java (+ impl/)  — run(SubmissionCommands.Run) → RunResult: samples or custom
 │   │                                     inputs (≤5, arity-checked; one equal to a sample keeps its
-│   │                                     answer), sequential via CaseJudge, nothing persisted,
+│   │                                     answer, any other is answered by the problem's accepted
+│   │                                     reference solution run on it — a test oracle), sequential
+│   │                                     via CaseJudge (+ CaseJudge#compare), nothing persisted,
 │   │                                     read-only TransactionTemplate load then no connection held
 │   ├── ProblemTagService.java (+ impl/) — tag catalog CRUD + listAll (sorted by name); delete
 │   │                                     refused while in use (PROBLEM_TAG_IN_USE)
@@ -3154,7 +3158,7 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   ├── RunRequest.java                — problemId, language, sourceCode, customInputs (optional
 │   │                                     JSON argument arrays)
 │   ├── RunResponse.java               — record: cases (CaseResponse: input, expectedOutput,
-│   │                                     actualOutput, status, passed, diagnostic)
+│   │                                     actualOutput, status, passed, diagnostic, expectedSource)
 │   ├── ProblemResponse.java           — record: id, slug, title, description, difficulty, status,
 │   │                                     methodName, returnType, parameters
 │   │                                     (List<MethodParameterResponse>), testCases
@@ -3278,8 +3282,10 @@ dev-practice-service/src/test/
 │                                         refused, draft edit bumps contractVersion, sample-flag
 │                                         toggle doesn't)
 ├── java/.../service/impl/CodeRunServiceImplTest.java — samples judged against answers (all of
-│                                         them), hidden ones never run, custom inputs run without an
-│                                         answer unless equal to a sample, stop after compile error,
+│                                         them), hidden ones never run, custom inputs judged against
+│                                         the reference's answer (or a sample's when equal; none
+│                                         without a reference or when it fails), reference skipped
+│                                         after a compile error, stop after compile error,
 │                                         arity/JSON/count validation, draft = not found, judge
 │                                         unavailable → JUDGE_UNAVAILABLE
 ├── java/.../service/impl/SubmissionServiceImplTest.java — user vs. reference: no user

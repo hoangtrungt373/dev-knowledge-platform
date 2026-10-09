@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.devpractice.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -34,6 +35,14 @@ public interface SubmissionRepository extends JpaRepository<Submission, Integer>
      * predicate covers (DKP-0056).
      */
     boolean existsByProblem_IdAndKindAndStatusAndContractVersion(
+            Integer problemId, SubmissionKind kind, SubmissionStatus status, Integer contractVersion);
+
+    /**
+     * The newest submission matching the same predicate — called with {@code REFERENCE}/{@code ACCEPTED}
+     * at the problem's current contract version, it's the reference solution Run uses to compute the
+     * expected answer of a custom input. Same partial index as the {@code exists} check above.
+     */
+    Optional<Submission> findFirstByProblem_IdAndKindAndStatusAndContractVersionOrderByIdDesc(
             Integer problemId, SubmissionKind kind, SubmissionStatus status, Integer contractVersion);
 
     /**
