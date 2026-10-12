@@ -2,8 +2,8 @@ import { Alert, AlertColor, LinearProgress, Typography } from '@mui/material';
 import { Submission } from '../types';
 import { SUBMISSION_STATUS_LABEL } from '../constants';
 import { isInProgress } from '../hooks/useSubmissionPolling';
-import { submissionStats } from '../utils/format';
 import CodeBlock from './CodeBlock';
+import PerformanceStats from './PerformanceStats';
 
 interface Props {
   submission: Submission;
@@ -72,10 +72,7 @@ export default function SubmissionVerdict({ submission, gaveUp }: Props): JSX.El
     <Alert severity={SEVERITY[submission.status]}>
       <Typography variant="body2" fontWeight={700}>{SUBMISSION_STATUS_LABEL[submission.status]}</Typography>
       <Typography variant="body2">{describe(submission)}</Typography>
-      {submissionStats(submission) && (
-        // Measured by the judge, language runtime start-up included — compare within one language.
-        <Typography variant="body2" sx={{ mt: 0.5, fontFamily: 'monospace' }}>{submissionStats(submission)}</Typography>
-      )}
+      <PerformanceStats submission={submission} />
       {submission.errorMessage && <CodeBlock variant="plain">{submission.errorMessage}</CodeBlock>}
     </Alert>
   );

@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.devpractice.service.impl;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
@@ -20,6 +21,7 @@ import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemProgress;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemService;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionCommands;
+import com.ttg.devknowledgeplatform.devpractice.service.SubmissionRanking;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionService;
 
 import lombok.RequiredArgsConstructor;
@@ -67,6 +69,29 @@ public class SubmissionServiceImpl implements SubmissionService {
                         ? ProblemProgressStatus.SOLVED
                         : ProblemProgressStatus.ATTEMPTED))
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<SubmissionRanking> rankingOf(Submission submission) {
+        if (submission.getKind() != SubmissionKind.USER || submission.getStatus() != SubmissionStatus.ACCEPTED
+                || submission.getRuntimeMs() == null || submission.getMemoryKb() == null) {
+            return Optional.empty();
+        }
+        SubmissionRepository.RankingRow row = submissionRepository.rankAgainstOtherUsers(
+                submission.getProblem().getId(), submission.getLanguage().name(), submission.getContractVersion(),
+                submission.getUserUuid(), submission.getRuntimeMs(), submission.getMemoryKb());
+        long compared = row == null || row.getCompared() == null ? 0 : row.getCompared();
+        if (compared == 0) {
+            // Nobody to beat (yet) — "beats 0%" would read as a bad score, so there is no percentage.
+            return Optional.of(new SubmissionRanking(null, null, 0));
+        }
+        return Optional.of(new SubmissionRanking(toPercent(row.getRuntimeBeats()), toPercent(row.getMemoryBeats()), compared));
+    }
+
+    /** A 0–1 fraction as a percentage with one decimal ({@code 0.8734 → 87.3}). */
+    private static Double toPercent(Double fraction) {
+        return fraction == null ? null : Math.round(fraction * 1000) / 10.0;
     }
 
     @Override

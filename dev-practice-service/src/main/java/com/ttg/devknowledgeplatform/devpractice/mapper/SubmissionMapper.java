@@ -16,6 +16,9 @@ public interface SubmissionMapper {
     @Mapping(target = "problemId", source = "problem.id")
     @Mapping(target = "problemTitle", source = "problem.title")
     @Mapping(target = "submittedAt", source = "dteCreation")
+    @Mapping(target = "runtimeBeatsPercent", ignore = true)
+    @Mapping(target = "memoryBeatsPercent", ignore = true)
+    @Mapping(target = "rankedAgainst", ignore = true)
     SubmissionResponse toResponse(Submission submission);
 
     ProblemProgressResponse toResponse(ProblemProgress progress);

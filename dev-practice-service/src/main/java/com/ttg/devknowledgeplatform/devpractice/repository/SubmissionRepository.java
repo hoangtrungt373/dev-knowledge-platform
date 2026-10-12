@@ -63,6 +63,73 @@ public interface SubmissionRepository extends JpaRepository<Submission, Integer>
             @Param("kind") SubmissionKind kind,
             @Param("accepted") SubmissionStatus accepted);
 
+    /**
+     * Ranks one accepted run against other users' best accepted runs of the same problem, in the same
+     * language, judged against the same test data — the data behind "Beats 87%".
+     *
+     * <p>How it works: {@code other_users} keeps each other user's best runtime and best memory
+     * (one row per user, so someone who submitted 50 times counts once; the caller's own runs are
+     * excluded). {@code pool} adds the caller's run as one more row, flagged {@code mine}.
+     * {@code PERCENT_RANK()} over the pool sorted <b>slowest first</b> gives {@code (rank - 1) / (n - 1)}:
+     * {@code rank - 1} is the number of rows strictly slower than the caller (equal values share a rank,
+     * so a tie isn't counted as beaten), and {@code n - 1} is the number of other users — exactly the
+     * "beats" fraction. Memory is ranked the same way in a second window. A window function rather than
+     * two {@code COUNT}s: one pass over the pool, and the ranking logic reads as what it is.
+     *
+     * <p>Native SQL because JPQL has no window functions. Aliases are quoted so Postgres keeps their
+     * case and they match {@link RankingRow}'s getters. Verified against H2 in PostgreSQL mode (ties,
+     * other languages/versions/kinds/statuses ignored, nobody to compare with) — not yet against a
+     * live Postgres.
+     *
+     * @return one row for the caller's run; {@code compared} = 0 when nobody else has solved it
+     */
+    @Query(nativeQuery = true, value = """
+            WITH other_users AS (
+                SELECT MIN(s.RUNTIME_MS) AS runtime_ms, MIN(s.MEMORY_KB) AS memory_kb
+                FROM dev_practice.SUBMISSION s
+                WHERE s.PROBLEM_ID = :problemId
+                  AND s.LANGUAGE = :language
+                  AND s.CONTRACT_VERSION = :contractVersion
+                  AND s.KIND = 'USER'
+                  AND s.STATUS = 'ACCEPTED'
+                  AND s.RUNTIME_MS IS NOT NULL
+                  AND s.MEMORY_KB IS NOT NULL
+                  AND s.USER_UUID <> :userUuid
+                GROUP BY s.USER_UUID
+            ),
+            pool AS (
+                SELECT runtime_ms, memory_kb, FALSE AS mine FROM other_users
+                UNION ALL
+                SELECT CAST(:runtimeMs AS INTEGER), CAST(:memoryKb AS INTEGER), TRUE
+            ),
+            ranked AS (
+                SELECT mine,
+                       PERCENT_RANK() OVER (ORDER BY runtime_ms DESC) AS runtime_beats,
+                       PERCENT_RANK() OVER (ORDER BY memory_kb DESC) AS memory_beats,
+                       COUNT(*) OVER () - 1 AS compared
+                FROM pool
+            )
+            SELECT runtime_beats AS "runtimeBeats", memory_beats AS "memoryBeats", compared AS "compared"
+            FROM ranked
+            WHERE mine
+            """)
+    RankingRow rankAgainstOtherUsers(
+            @Param("problemId") Integer problemId,
+            @Param("language") String language,
+            @Param("contractVersion") Integer contractVersion,
+            @Param("userUuid") String userUuid,
+            @Param("runtimeMs") Integer runtimeMs,
+            @Param("memoryKb") Integer memoryKb);
+
+    /** Projection for {@link #rankAgainstOtherUsers}: fractions 0–1, and the number of other users. */
+    interface RankingRow {
+        Double getRuntimeBeats();
+
+        Double getMemoryBeats();
+
+        Long getCompared();
+    }
+
     /** Spring Data interface projection for {@link #summarizeByProblem} — aliases map to getters. */
     interface ProblemAttemptSummary {
         Integer getProblemId();

@@ -392,6 +392,18 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   measured" for older rows. Both numbers include the language runtime's own start-up and the
   harness's JSON parsing (JVM ≈ 100 ms / 30 MB baseline), so they compare solutions within one
   language, not across languages — the GUI doesn't claim otherwise. Run results don't carry them.
+- **"Beats X%" is computed on read, never stored** (`SubmissionService#rankingOf`, one native query,
+  `SubmissionRepository#rankAgainstOtherUsers`). Population: each *other* user's best accepted run
+  (one row per user — repeat submitters don't flood it; the caller's own runs excluded) on the same
+  problem, same language, same `contractVersion` (different test data = different workload).
+  `PERCENT_RANK()` slowest-first gives exactly "strictly slower ÷ others"; ties aren't beaten. Only
+  `GET /api/v1/submissions/{id}` ranks (one query); list endpoints leave the fields null to avoid one
+  query per row. `rankedAgainst = 0` → percentages null (nobody to beat yet, not "beats 0%").
+  Trade-off of computing live: the number drifts as others submit, unlike LeetCode's frozen-at-submit
+  value — store it at judge time if that's ever wanted. The SQL was checked against H2 in PostgreSQL
+  mode, not a live Postgres; H2 reuses CTE state between statements in one session, so a throwaway
+  harness must use a fresh connection per case. With no Postgres-backed repository test in this
+  module, a typo in this native query would only show at runtime.
 - **One "published or not found" rule**: a learner-facing lookup goes through
   `ProblemService#getPublishedBySlug`/`#getPublishedById` (`SubmissionService`, `CodeRunService`), never
   `problemRepository.findById` plus its own status check — so the non-leaking 404 for a draft lives in

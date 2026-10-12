@@ -139,6 +139,14 @@ export interface Submission {
   runtimeMs: number | null;
   /** ACCEPTED only: the highest peak memory of any test case, in KB. */
   memoryKb: number | null;
+  /**
+   * "Beats X%" (0–100), from `GET /submissions/{id}` of an ACCEPTED submission only — null in lists,
+   * and null when `rankedAgainst` is 0 (nobody else has solved it in this language yet).
+   */
+  runtimeBeatsPercent: number | null;
+  memoryBeatsPercent: number | null;
+  /** How many other learners' best solutions it was ranked against; null when not ranked at all. */
+  rankedAgainst: number | null;
 }
 
 /** `StarterCodeResponse`. */

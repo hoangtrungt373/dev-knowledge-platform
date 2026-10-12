@@ -4477,7 +4477,10 @@ slice" benefit without that cost — revisit only if a genuine second deployable
   - **Runtime/memory**: `Submission.runtimeMs`/`memoryKb` (ACCEPTED only, else null) render as
     "Runtime 12 ms · Memory 40.2 MB" via `utils/format.ts#submissionStats` — in the learner's verdict,
     their submission history rows, and the admin reference panel's result. Format through that helper,
-    never inline.
+    never inline. The learner's verdict uses `components/PerformanceStats` instead: each stat on its
+    own line with "Beats X%" (`runtimeBeatsPercent`/`memoryBeatsPercent`, only on the GET-by-id
+    response the poll ends with), a "first accepted <language> solution" note when `rankedAgainst` is 0,
+    and the language in the caption, since the ranking is per language.
   - The verdict names a failing test by number only (`passedTestCases + 1` — the judge stops at
     the first failure); a hidden test's input is never shown, and the public API never sends one.
   - **Solved/attempted markers**: `hooks/useProblemProgress` loads `GET /api/v1/submissions/progress`

@@ -3093,7 +3093,11 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     existsByProblem_IdAndKindAndStatusAndContractVersion
 │   │                                     (isVerified), deleteByProblem_IdAndKind (REFERENCE cleanup),
 │   │                                     summarizeByProblem (@Query GROUP BY problem → accepted count,
-│   │                                     ProblemAttemptSummary projection; backs listProgress)
+│   │                                     ProblemAttemptSummary projection; backs listProgress) +
+│   │                                     rankAgainstOtherUsers (native SQL: other users' best accepted
+│   │                                     run per user, same problem/language/contractVersion, plus the
+│   │                                     caller's run, ranked with PERCENT_RANK() slowest-first →
+│   │                                     RankingRow{runtimeBeats, memoryBeats, compared}; "Beats X%")
 │   ├── ProblemTagRepository.java      — existsBySlug/…AndIdNot, existsByNameIgnoreCase/…AndIdNot,
 │   │                                     findByNameContainingIgnoreCase(Pageable)
 │   ├── ProblemTagAssignmentRepository.java — countByProblemTag_Id (guards tag delete)
@@ -3120,7 +3124,11 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     TestCase.input parses as a JSON array matching the final
 │   │                                     parameters list's size (PROBLEM_TEST_CASE_ARITY_MISMATCH),
 │   │                                     on both create and update
-│   ├── SubmissionService.java (+ impl/) — create (validates the target problem is PUBLISHED, same
+│   ├── SubmissionRanking.java          — record: runtimeBeatsPercent, memoryBeatsPercent (0–100, null
+│   │                                     when nobody to compare with), comparedWith
+│   ├── SubmissionService.java (+ impl/) — rankingOf(submission) → Optional<SubmissionRanking> (USER +
+│   │                                     ACCEPTED + measured only; computed on read, never stored);
+│   │                                     create (validates the target problem is PUBLISHED, same
 │   │                                     non-leaking posture as getPublishedBySlug; publishes
 │   │                                     SubmissionCreatedEvent after saving) + getSubmission
 │   │                                     (ownership-checked, same resolveOwnedX pattern as
@@ -3200,7 +3208,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   ├── SubmissionResponse.java        — record: id, problemId, problemTitle, language, sourceCode,
 │   │                                     status, passedTestCases, totalTestCases, errorMessage,
 │   │                                     submittedAt, kind, contractVersion, publishOnAccept,
-│   │                                     runtimeMs, memoryKb
+│   │                                     runtimeMs, memoryKb, runtimeBeatsPercent, memoryBeatsPercent,
+│   │                                     rankedAgainst (the last three only on GET by id, via
+│   │                                     withRanking; null in lists)
 │   ├── CreateSubmissionRequest.java   — @Data: problemId, language, sourceCode
 │   └── StarterCodeResponse.java       — record: language, code
 ├── mapper/

@@ -60,7 +60,10 @@ public class SubmissionController implements SubmissionApi {
 
     @Override
     public ResponseEntity<SubmissionResponse> getById(String userUuid, Integer id) {
-        return ResponseEntity.ok(submissionMapper.toResponse(submissionService.getSubmission(userUuid, id)));
+        Submission submission = submissionService.getSubmission(userUuid, id);
+        SubmissionResponse response = submissionMapper.toResponse(submission);
+        // Only the single-submission view is ranked: one query here, rather than one per row in a list.
+        return ResponseEntity.ok(submissionService.rankingOf(submission).map(response::withRanking).orElse(response));
     }
 
     @Override

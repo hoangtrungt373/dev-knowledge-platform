@@ -32,6 +32,7 @@ import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
 import com.ttg.devknowledgeplatform.infra.service.SlugService;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemProgress;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionCommands;
+import com.ttg.devknowledgeplatform.devpractice.service.SubmissionRanking;
 
 /** The user vs. reference split: who may submit to a draft, and who can see what. */
 class SubmissionServiceImplTest {
@@ -108,6 +109,48 @@ class SubmissionServiceImplTest {
         assertThat(service.listProgress("user-1")).containsExactly(
                 new ProblemProgress(5, ProblemProgressStatus.SOLVED),
                 new ProblemProgress(6, ProblemProgressStatus.ATTEMPTED));
+    }
+
+    @Test
+    void anAcceptedUserSubmissionIsRankedAndTheFractionsBecomePercentages() {
+        Submission accepted = accepted(SubmissionKind.USER, SubmissionStatus.ACCEPTED, 42);
+        when(submissionRepository.rankAgainstOtherUsers(5, "JAVA", 3, "user-1", 42, 40_000))
+                .thenReturn(ranking(0.8734, 0.5, 8));
+
+        assertThat(service.rankingOf(accepted)).contains(new SubmissionRanking(87.3, 50.0, 8));
+    }
+
+    @Test
+    void withNobodyToCompareWithThereIsNoPercentage() {
+        Submission accepted = accepted(SubmissionKind.USER, SubmissionStatus.ACCEPTED, 42);
+        when(submissionRepository.rankAgainstOtherUsers(5, "JAVA", 3, "user-1", 42, 40_000))
+                .thenReturn(ranking(0.0, 0.0, 0));
+
+        assertThat(service.rankingOf(accepted)).contains(new SubmissionRanking(null, null, 0));
+    }
+
+    @Test
+    void onlyAcceptedMeasuredUserSubmissionsAreRanked() {
+        assertThat(service.rankingOf(accepted(SubmissionKind.USER, SubmissionStatus.WRONG_ANSWER, 42))).isEmpty();
+        assertThat(service.rankingOf(accepted(SubmissionKind.REFERENCE, SubmissionStatus.ACCEPTED, 42))).isEmpty();
+        assertThat(service.rankingOf(accepted(SubmissionKind.USER, SubmissionStatus.ACCEPTED, null))).isEmpty();
+        verify(submissionRepository, never()).rankAgainstOtherUsers(any(), any(), any(), any(), any(), any());
+    }
+
+    /** User-1's Java submission to problem 5, judged at contract v3, 40000 KB. */
+    private static Submission accepted(SubmissionKind kind, SubmissionStatus status, Integer runtimeMs) {
+        Problem problem = problem(ContentStatus.PUBLISHED);
+        problem.setId(5);
+        return Submission.builder().problem(problem).userUuid("user-1").language(ProgrammingLanguage.JAVA)
+                .kind(kind).status(status).contractVersion(3).runtimeMs(runtimeMs).memoryKb(40_000).build();
+    }
+
+    private static SubmissionRepository.RankingRow ranking(double runtime, double memory, long compared) {
+        return new SubmissionRepository.RankingRow() {
+            @Override public Double getRuntimeBeats() { return runtime; }
+            @Override public Double getMemoryBeats() { return memory; }
+            @Override public Long getCompared() { return compared; }
+        };
     }
 
     private static SubmissionRepository.ProblemAttemptSummary summary(int problemId, long accepted) {

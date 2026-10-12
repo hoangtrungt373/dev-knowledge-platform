@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.devpractice.service;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -23,6 +24,12 @@ public interface SubmissionService {
      * {@code USER} submissions only — an admin's reference runs never mark a problem solved for them.
      */
     List<ProblemProgress> listProgress(String userUuid);
+
+    /**
+     * How an accepted user submission compares with other learners' ("Beats 87%"), computed now.
+     * Empty for anything that has no score: not ACCEPTED, not a USER submission, or not measured.
+     */
+    Optional<SubmissionRanking> rankingOf(Submission submission);
 
     /** One of the caller's own {@code USER} submissions — a reference submission is "not found" here. */
     Submission getSubmission(String userUuid, Integer id);

@@ -22,6 +22,15 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **"Beats X%" for accepted submissions.** `dev-practice-service`: new native query
+  `SubmissionRepository#rankAgainstOtherUsers` — other users' best accepted run (one per user, same
+  problem, language and `contractVersion`) plus the caller's, ranked with `PERCENT_RANK()` slowest-first
+  (runtime and memory); new `SubmissionService#rankingOf` + record `SubmissionRanking`;
+  `SubmissionResponse` gained `runtimeBeatsPercent`/`memoryBeatsPercent`/`rankedAgainst`, filled only by
+  `GET /api/v1/submissions/{id}` (computed on read, null in lists). No migration. SQL verified with an
+  H2 (PostgreSQL mode) harness; 3 new `SubmissionServiceImplTest` cases (139 tests). `gui`: new
+  `components/PerformanceStats` in the learner's verdict ("Runtime 42 ms · Beats 87.3%", a "first
+  accepted solution" note when there's nobody to compare with).
 - **Runtime and memory per accepted submission.** `dev-practice-service`: Judge0's `time`/`memory`
   are now requested and read (`Judge0SubmissionResult`/`CaseJudge.CaseResult` gained
   `runtimeMs`/`memoryKb`; CPU seconds parsed as `BigDecimal` to whole ms). An ACCEPTED submission stores
