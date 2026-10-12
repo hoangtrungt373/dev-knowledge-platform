@@ -12,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -36,7 +37,7 @@ class OrderReservationExpiryProcessorTest {
     void anOrderThatVanishedBeforeLookupIsASafeNoOp() {
         when(orderRepository.findById(1)).thenReturn(Optional.empty());
 
-        processor.expireOne(1);
+        assertThat(processor.process(1)).isFalse();
 
         verify(orderStatusHandlerRegistry, never()).expire(any());
         verify(orderRepository, never()).save(any());
@@ -51,7 +52,7 @@ class OrderReservationExpiryProcessorTest {
         order.setStatus(OrderStatus.CANCELLED);
         when(orderRepository.findById(1)).thenReturn(Optional.of(order));
 
-        processor.expireOne(1);
+        assertThat(processor.process(1)).isFalse();
 
         verify(orderStatusHandlerRegistry, never()).expire(any());
         verify(orderRepository, never()).save(any());
@@ -64,7 +65,7 @@ class OrderReservationExpiryProcessorTest {
         order.setStatus(OrderStatus.PENDING);
         when(orderRepository.findById(1)).thenReturn(Optional.of(order));
 
-        processor.expireOne(1);
+        assertThat(processor.process(1)).isTrue();
 
         verify(orderStatusHandlerRegistry).expire(order);
         verify(orderRepository).save(order);

@@ -2440,6 +2440,19 @@ structural-only adapter.
     test (`OrderReconciliationJobTest`, `RefundReconciliationJobTest`,
     `OrderReservationExpiryProcessorTest`) passes unmodified. 364 unit tests total, unchanged,
     verified via a real `mvn test` run (JDK 21).
+  - **Superseded: the marker interface and base class above moved to `infra.scheduling`** (as
+    `BatchJob`/`AbstractBatchJob<ID>`) once `dev-practice-service`'s stale-submission sweeper
+    became a second module with the same shape; `orderstatus.ReconciliationJob`/
+    `AbstractReconciliationJob` were deleted. **All three** jobs now extend `AbstractBatchJob` —
+    including `OrderReservationExpiryJob`, whose "doesn't fit" reasoning above no longer applies:
+    the infra template is built around calling a separate `@Transactional` bean from
+    `processOne`. That job also gained per-id failure isolation it never had (one failing order
+    used to abort the rest of the batch). `OrderReservationExpiryProcessor` now extends
+    `infra`'s `AbstractGuardedUpdateProcessor<Order, Integer>` (eligibility = still `PENDING`,
+    apply = `OrderStatusHandlerRegistry.expire`); its `expireOne(id)` became the inherited
+    `process(id)`. `reconcileBatch`/`reconcileOne` became `runBatch`/`processOne` (which returns
+    whether it acted — `RefundReconciliationJob` returns `false` when its guard skips). See
+    `infra/CLAUDE.md`'s `scheduling/` note.
   - **Follow-up: `webhook.StripeWebhookService` now handles `payment_intent.canceled` too, reusing
     Stripe's own confirmation-limit retry cap instead of building a custom decline counter (a
     discussion prompted by "Option B: cap retries at N attempts, then finalize as FAILED" from the

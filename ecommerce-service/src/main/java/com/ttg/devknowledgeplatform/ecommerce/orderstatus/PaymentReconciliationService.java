@@ -30,7 +30,7 @@ import java.time.Instant;
  * one code path, two triggers.
  *
  * <p><b>Deliberately does not catch {@link com.ttg.devknowledgeplatform.ecommerce.payment.PaymentGatewayException}
- * itself</b> — {@link OrderReconciliationJob}'s own {@code AbstractReconciliationJob#reconcileBatch}
+ * itself</b> — {@link OrderReconciliationJob}'s own {@code AbstractBatchJob#runBatch} (infra)
  * already tolerates it for the poll path (log and retry next tick), and
  * {@code OrderServiceImpl#reconcilePayment} needs it to propagate so its own
  * {@code callGatewayOrFail} can translate it into a friendly, shopper-facing

@@ -33,7 +33,7 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
 `TestCase.input`/`expectedOutput` are JSON-encoded argument/return values, not raw text.
 
 - `DevPracticeServiceApplication` — `@SpringBootApplication` + `@EnableAsync` + `@EnableScheduling`
-  (for `sweeper.StaleSubmissionSweeper`; `SubmissionSweeperProperties` is also in its
+  (for `sweeper.StaleSubmissionSweepJob`; `SubmissionSweeperProperties` is also in its
   `@EnableConfigurationProperties`) +
   `@Import({JacksonConfig.class, TraceContextFilter.class, SlugServiceImpl.class,
   KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
@@ -284,13 +284,16 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   exception escape that middle section, since `infra`'s `AsyncEventHandler#handle` only logs it.
   `JUDGE_ERROR`'s `errorMessage` is shown to the submitter, so it stays generic; operator detail
   (HTTP status, endpoint) goes to the log only. **What that can't cover — the process dying
-  mid-judging, a lost event, a failure in `saveOutcome` itself — `sweeper.StaleSubmissionSweeper`
+  mid-judging, a lost event, a failure in `saveOutcome` itself — `sweeper.StaleSubmissionSweepJob`
   does:** every minute it fails `PENDING`/`RUNNING` rows untouched for
   `app.submissions.sweeper.stale-after` (10 min — well above the slowest healthy run: ~20 s of
   polling per batch chunk plus retries) with a generic "please resubmit" `JUDGE_ERROR`. Measured on
   `dteLastModification` (marking a row `RUNNING` touches it, so queue time doesn't count against a
-  run in progress). The per-row work is in `StaleSubmissionProcessor` (its own bean, so
-  `@Transactional` applies — the `ecommerce-service` poller/processor split); it re-checks the row
+  run in progress). Both classes sit on `infra.scheduling`'s templates: the sweeper extends
+  `AbstractBatchJob<Integer>` (batching, failure isolation, optimistic-lock handling, summary log),
+  and the per-row work is in `StaleSubmissionProcessor extends AbstractGuardedUpdateProcessor`
+  (its own bean, so `@Transactional` applies — the `ecommerce-service` poller/processor split); it
+  recomputes the cutoff itself from `SubmissionSweeperProperties`, re-checks the row
   and relies on `@Version`: a verdict saved concurrently makes the sweep's commit fail and the
   verdict stands, and a verdict arriving after the sweep overwrites `JUDGE_ERROR` (a late real result
   beats an error). Keep `stale-after` above the worst-case judging time if poll/retry settings grow.

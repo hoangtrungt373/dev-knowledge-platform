@@ -12,7 +12,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * test cases, {@code Judge0Client} polls for at most {@code max-poll-attempts × poll-interval-ms}
  * (20 s by default), plus HTTP retries with backoff — a few minutes in the worst case. 10 minutes
  * leaves a wide margin. The poll interval itself stays a raw {@code ${...}} placeholder on
- * {@code StaleSubmissionSweeper}'s {@code @Scheduled}, same as {@code ecommerce-service}'s
+ * {@code StaleSubmissionSweepJob}'s {@code @Scheduled}, same as {@code ecommerce-service}'s
  * {@code OrderJobProperties} explains: the scheduler resolves it from the environment, not from this
  * bound object.
  *

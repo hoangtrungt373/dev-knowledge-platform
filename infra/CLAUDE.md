@@ -244,6 +244,28 @@ Module-local guidance for `infra`. Read alongside the root `CLAUDE.md`.
   - Registered only via explicit `@Import(PollingTemplate.class)`, per the convention below. Reuses
     the application's own `RetryRegistry` bean if one exists (e.g. once a service adds
     `resilience4j-spring-boot3`), otherwise keeps a private one.
+- `scheduling/{BatchJob,AbstractBatchJob,BatchRunSummary,AbstractGuardedUpdateProcessor}` — the
+  shared shape of every `@Scheduled` "poll a batch of ids, fix each one" job, two GoF **Template
+  Method**s. Moved here (from `ecommerce-service`'s module-local `orderstatus.ReconciliationJob`/
+  `AbstractReconciliationJob`) once `dev-practice-service`'s stale-submission sweeper became a
+  second module with the same shape. Plain abstract classes, no beans — nothing to `@Import`.
+  - `AbstractBatchJob<ID>` — `runBatch()` (final) polls `pollBatch(batchSize())` (default 50) and
+    calls `processOne(id)` per id: `true` = acted, `false` = nothing to do; an
+    `OptimisticLockingFailureException` counts as skipped (someone else changed the row first), any
+    other `RuntimeException` as failed (logged with stack trace, retried next run) — one bad id
+    never stops the batch. Returns a `BatchRunSummary` and passes it to the `onBatchCompleted`
+    hook (default: log when anything was processed or failed). **`@Scheduled` stays on each
+    subclass** (one-line call to `runBatch()`) — every job has its own interval property.
+  - `AbstractGuardedUpdateProcessor<T, ID>` — the per-item half, a separate bean the job calls:
+    `@Transactional process(id)` = `findById` → `isStillEligible` → `apply` → `save`. The
+    re-check inside the transaction (plus the entity's `@Version`) is what makes acting on a
+    stale id list safe. **`process` must stay public and non-`final`** — Spring's CGLIB proxy
+    overrides it to add the transaction, and a `final` method silently runs with none;
+    `AbstractGuardedUpdateProcessorTest` pins this. A processor whose per-item work isn't a
+    load/check/mutate/save (e.g. `ecommerce-service`'s gateway-calling reconcilers) just calls
+    its own service from `processOne` instead of using this class.
+  - Uses Spring Data's `CrudRepository`/`@Transactional`, already on this module's classpath via
+    `common` (`spring-boot-starter-data-jpa`) — no new dependency.
 - `config/json/JacksonConfig` — shared `ObjectMapper` customization (`JavaTimeModule`, tolerant
   deserialization, ISO-8601 dates instead of epoch-millis), moved here from `gateway`. Before this
   move, this bean only ever applied to `gateway`'s own (nonexistent, since it has no REST

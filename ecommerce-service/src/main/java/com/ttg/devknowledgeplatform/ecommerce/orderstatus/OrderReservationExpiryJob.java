@@ -3,9 +3,9 @@ package com.ttg.devknowledgeplatform.ecommerce.orderstatus;
 import com.ttg.devknowledgeplatform.ecommerce.config.OrderJobProperties;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
+import com.ttg.devknowledgeplatform.infra.scheduling.AbstractBatchJob;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -23,18 +23,16 @@ import java.util.List;
  * on {@code EcommerceServiceApplication} (enabled for {@code OutboxRelay}), so this class doesn't
  * need its own.
  *
- * <p>Implements {@link ReconciliationJob} directly rather than extending
- * {@link AbstractReconciliationJob} — this job's own per-item work must be genuinely
- * {@code @Transactional} (it directly transitions an {@code Order}'s own status), which is exactly
- * why it's delegated to {@link OrderReservationExpiryProcessor} instead of an inline try/catch; see
- * {@link AbstractReconciliationJob}'s own Javadoc for the full reasoning.
+ * <p>Extends infra's {@link AbstractBatchJob}, like {@link OrderReconciliationJob}/
+ * {@link RefundReconciliationJob}. It used to be the one poller here that couldn't: the old
+ * module-local template assumed inline per-item work, while this job's work had to go through a
+ * separate {@code @Transactional} bean. The infra template is built around exactly that split
+ * ({@link #processOne} calls another bean through its proxy), so all three jobs share it now — and
+ * this one gained the failure isolation it never had (one bad order used to abort the whole batch).
  */
 @Component
 @RequiredArgsConstructor
-@Slf4j
-public class OrderReservationExpiryJob implements ReconciliationJob {
-
-    private static final int BATCH_SIZE = 50;
+public class OrderReservationExpiryJob extends AbstractBatchJob<Integer> {
 
     private final OrderRepository orderRepository;
     private final OrderReservationExpiryProcessor orderReservationExpiryProcessor;
@@ -42,13 +40,18 @@ public class OrderReservationExpiryJob implements ReconciliationJob {
 
     @Scheduled(fixedDelayString = "${app.ecommerce.order.expiry-check.poll-interval:PT1M}")
     public void expireAbandonedReservations() {
+        runBatch();
+    }
+
+    @Override
+    protected List<Integer> pollBatch(int batchSize) {
         Instant cutoff = Instant.now().minus(orderJobProperties.reservationTimeout());
-        List<Integer> pendingIds = orderRepository.findIdsByStatusAndDteCreationBefore(
-                OrderStatus.PENDING, cutoff, PageRequest.of(0, BATCH_SIZE));
-        for (Integer id : pendingIds) {
-            // Each id goes through the real proxy on a different bean, so its own
-            // @Transactional boundary applies — see OrderReservationExpiryProcessor's Javadoc.
-            orderReservationExpiryProcessor.expireOne(id);
-        }
+        return orderRepository.findIdsByStatusAndDteCreationBefore(
+                OrderStatus.PENDING, cutoff, PageRequest.of(0, batchSize));
+    }
+
+    @Override
+    protected boolean processOne(Integer orderId) {
+        return orderReservationExpiryProcessor.process(orderId);
     }
 }

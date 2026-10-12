@@ -30,7 +30,7 @@ app:
   seed:
     enabled: ${APP_SEED_ENABLED:false}
 
-  # sweeper.StaleSubmissionSweeper: PENDING/RUNNING submissions untouched for stale-after are marked
+  # sweeper.StaleSubmissionSweepJob: PENDING/RUNNING submissions untouched for stale-after are marked
   # JUDGE_ERROR (a crash mid-judging would otherwise leave them in progress forever). stale-after must
   # comfortably exceed the slowest healthy judging run — see SubmissionSweeperProperties.
   submissions:

@@ -49,7 +49,7 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
  * (Judge0 base URL/poll tuning), registered the same way. {@link PollingTemplate} is
  * {@code infra}'s shared Resilience4j-backed poll loop, used by {@code judge.impl.Judge0Client} to
  * wait for a Judge0 submission's final status. {@code @EnableScheduling} runs
- * {@code sweeper.StaleSubmissionSweeper}, which fails submissions left {@code PENDING}/{@code RUNNING}
+ * {@code sweeper.StaleSubmissionSweepJob}, which fails submissions left {@code PENDING}/{@code RUNNING}
  * by a crash mid-judging; {@link SubmissionSweeperProperties} is its threshold.
  */
 @SpringBootApplication

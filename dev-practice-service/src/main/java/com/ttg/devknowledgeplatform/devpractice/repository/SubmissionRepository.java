@@ -140,7 +140,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, Integer>
 
     /**
      * Ids of submissions still in progress and not updated since {@code cutoff}, oldest first — the
-     * candidates {@code StaleSubmissionSweeper} fails. Ids only: each is reloaded in its own transaction.
+     * candidates {@code StaleSubmissionSweepJob} fails. Ids only: each is reloaded in its own transaction.
      * Pass exactly (PENDING, RUNNING) — that matches the partial index {@code IDX_SUBMISSION_IN_PROGRESS}'s
      * own predicate (DKP-0059), which Postgres needs to see to use it.
      */

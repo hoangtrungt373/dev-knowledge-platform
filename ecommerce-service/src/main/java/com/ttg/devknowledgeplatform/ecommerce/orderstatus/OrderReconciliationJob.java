@@ -3,9 +3,9 @@ package com.ttg.devknowledgeplatform.ecommerce.orderstatus;
 import com.ttg.devknowledgeplatform.ecommerce.config.OrderJobProperties;
 import com.ttg.devknowledgeplatform.ecommerce.enums.OrderStatus;
 import com.ttg.devknowledgeplatform.ecommerce.repository.OrderRepository;
+import com.ttg.devknowledgeplatform.infra.scheduling.AbstractBatchJob;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -31,23 +31,21 @@ import java.util.List;
  * pollers: this job's own per-order work ({@link PaymentReconciliationService#reconcileNow}) never
  * calls a {@code @Transactional} method on <i>this</i> bean — {@link PaymentReconciliationService}
  * is a different bean, so calling it already goes through Spring's proxy correctly. That's exactly
- * the shape {@link AbstractReconciliationJob} (a code-quality-audit follow-up) generalizes — see
- * that class's own Javadoc for why {@link RefundReconciliationJob} shares it too, and why
- * {@code OrderReservationExpiryJob} doesn't.
+ * the shape infra's {@link AbstractBatchJob} generalizes — shared with {@link RefundReconciliationJob},
+ * {@link OrderReservationExpiryJob}, and {@code dev-practice-service}'s stale-submission sweeper.
  *
- * <p><b>Follow-up: {@link #reconcileOne}'s own logic — the synthetic-decline/abandonment-cancel/
+ * <p><b>Follow-up: {@code reconcileOne}'s own logic (now {@link #processOne}) — the synthetic-decline/abandonment-cancel/
  * normal-resolve branching, and every incident that shaped it — moved to
  * {@link PaymentReconciliationService}</b> once {@code service.impl.OrderServiceImpl
  * #reconcilePayment} (the GUI's on-demand "don't make the shopper wait for the next poll tick"
  * endpoint, driven by its own live countdown) needed the identical logic. See that class's own
  * Javadoc for the full detail — this class is now just the poll-batch query plus the scheduled
- * trigger, with `AbstractReconciliationJob`'s own shared per-id try/catch tolerating a failure on
- * one order without blocking the rest of the batch.
+ * trigger, with {@link AbstractBatchJob#runBatch}'s own shared per-id try/catch tolerating a failure
+ * on one order without blocking the rest of the batch.
  */
 @Component
 @RequiredArgsConstructor
-@Slf4j
-public class OrderReconciliationJob extends AbstractReconciliationJob {
+public class OrderReconciliationJob extends AbstractBatchJob<Integer> {
 
     private final OrderRepository orderRepository;
     private final PaymentReconciliationService paymentReconciliationService;
@@ -55,7 +53,7 @@ public class OrderReconciliationJob extends AbstractReconciliationJob {
 
     @Scheduled(fixedDelayString = "${app.ecommerce.order.reconciliation.poll-interval:PT1M}")
     public void reconcileStuckPayments() {
-        reconcileBatch();
+        runBatch();
     }
 
     @Override
@@ -66,7 +64,8 @@ public class OrderReconciliationJob extends AbstractReconciliationJob {
     }
 
     @Override
-    protected void reconcileOne(Integer orderId) {
+    protected boolean processOne(Integer orderId) {
         paymentReconciliationService.reconcileNow(orderId);
+        return true;
     }
 }

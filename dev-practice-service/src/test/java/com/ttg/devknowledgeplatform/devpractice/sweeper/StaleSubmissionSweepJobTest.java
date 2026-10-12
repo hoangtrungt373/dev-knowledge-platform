@@ -22,11 +22,11 @@ import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
 
 /** One sweep: the right query, one processor call per id, and one bad id never stops the batch. */
-class StaleSubmissionSweeperTest {
+class StaleSubmissionSweepJobTest {
 
     private final SubmissionRepository repository = mock(SubmissionRepository.class);
     private final StaleSubmissionProcessor processor = mock(StaleSubmissionProcessor.class);
-    private final StaleSubmissionSweeper sweeper = new StaleSubmissionSweeper(
+    private final StaleSubmissionSweepJob sweeper = new StaleSubmissionSweepJob(
             repository, processor, new SubmissionSweeperProperties(Duration.ofMinutes(10)));
 
     @Test
@@ -41,19 +41,19 @@ class StaleSubmissionSweeperTest {
 
         assertThat(cutoff.getValue()).isBetween(before.minus(Duration.ofMinutes(10)).minusSeconds(1),
                 Instant.now().minus(Duration.ofMinutes(10)));
-        assertThat(page.getValue().getPageSize()).isEqualTo(StaleSubmissionSweeper.BATCH_SIZE);
+        assertThat(page.getValue().getPageSize()).isEqualTo(StaleSubmissionSweepJob.DEFAULT_BATCH_SIZE);
     }
 
     @Test
     void aConcurrentVerdictOrAFailureOnOneIdDoesNotStopTheRest() {
         when(repository.findStaleInProgressIds(any(), any(), any())).thenReturn(List.of(1, 2, 3));
-        when(processor.failIfStale(eq(1), any()))
+        when(processor.process(1))
                 .thenThrow(new ObjectOptimisticLockingFailureException(Submission.class, 1));
-        when(processor.failIfStale(eq(2), any())).thenThrow(new IllegalStateException("boom"));
-        when(processor.failIfStale(eq(3), any())).thenReturn(true);
+        when(processor.process(2)).thenThrow(new IllegalStateException("boom"));
+        when(processor.process(3)).thenReturn(true);
 
         sweeper.sweep();
 
-        verify(processor).failIfStale(eq(3), any());
+        verify(processor).process(3);
     }
 }

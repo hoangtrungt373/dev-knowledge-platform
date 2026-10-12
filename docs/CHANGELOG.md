@@ -22,7 +22,7 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
-- **Stale-submission sweeper.** `dev-practice-service`: new `sweeper.StaleSubmissionSweeper`
+- **Stale-submission sweeper.** `dev-practice-service`: new `sweeper.StaleSubmissionSweepJob`
   (`@Scheduled`, every minute) + `sweeper.StaleSubmissionProcessor` (per-row `@Transactional`) mark
   `PENDING`/`RUNNING` submissions not updated for `app.submissions.sweeper.stale-after` (default
   `PT10M`, new `config.SubmissionSweeperProperties`) as `JUDGE_ERROR` with a "please resubmit" message —
@@ -31,7 +31,7 @@ section again. Full unabridged entry-by-entry history for all four lives in
   `DevPracticeServiceApplication`; new `SubmissionRepository#findStaleInProgressIds`; migration
   `DKP-0059` adds the partial index `IDX_SUBMISSION_IN_PROGRESS` (`DTE_LAST_MODIFICATION` where status is
   PENDING/RUNNING). New env vars `SUBMISSION_SWEEPER_STALE_AFTER`/`_POLL_INTERVAL`/`_INITIAL_DELAY`.
-  `StaleSubmissionProcessorTest` + `StaleSubmissionSweeperTest` (146 tests).
+  `StaleSubmissionProcessorTest` + `StaleSubmissionSweepJobTest` (146 tests).
 - **"Beats X%" for accepted submissions.** `dev-practice-service`: new native query
   `SubmissionRepository#rankAgainstOtherUsers` — other users' best accepted run (one per user, same
   problem, language and `contractVersion`) plus the caller's, ranked with `PERCENT_RANK()` slowest-first
@@ -478,6 +478,22 @@ section again. Full unabridged entry-by-entry history for all four lives in
   `ON DELETE CASCADE` migration: submissions are users' own history.
 
 ### Changed
+
+- **Shared Template Method base classes for scheduled batch jobs, in `infra.scheduling`.** New
+  `BatchJob` (marker), `AbstractBatchJob<ID>` (final `runBatch()`: poll a bounded batch, call
+  `processOne(id)` per id, count processed/skipped/failed into a new `BatchRunSummary` record —
+  an optimistic-lock conflict counts as skipped, any other failure is logged and retried next run,
+  never stopping the batch), and `AbstractGuardedUpdateProcessor<T, ID>` (`@Transactional
+  process(id)`: load → `isStillEligible` → `apply` → save; deliberately non-`final` so Spring's
+  CGLIB proxy can wrap it). `dev-practice-service`: `StaleSubmissionSweepJob`/
+  `StaleSubmissionProcessor` now extend them (`failIfStale(id, cutoff)` → `process(id)`, cutoff
+  computed by the processor). `ecommerce-service`: `OrderReconciliationJob`/
+  `RefundReconciliationJob`/`OrderReservationExpiryJob` extend `AbstractBatchJob`
+  (`reconcileBatch`/`reconcileOne` → `runBatch`/`processOne`), `OrderReservationExpiryProcessor`
+  extends `AbstractGuardedUpdateProcessor` (`expireOne` → `process`); `orderstatus.ReconciliationJob`
+  and `AbstractReconciliationJob` removed. Behavior change: `OrderReservationExpiryJob` now isolates
+  per-order failures (one failing order used to abort the rest of the batch), and every job logs a
+  per-run summary. New `AbstractBatchJobTest`/`AbstractGuardedUpdateProcessorTest` in `infra`.
 
 - **`dev-practice-service`: cleanup pass — duplicated rules pulled into one place.** No API or schema
   change. `Problem` gained `isPublished()`/`publish()` (replacing seven of nine
