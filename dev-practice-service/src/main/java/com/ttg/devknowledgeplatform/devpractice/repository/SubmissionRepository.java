@@ -1,5 +1,6 @@
 package com.ttg.devknowledgeplatform.devpractice.repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -136,6 +137,20 @@ public interface SubmissionRepository extends JpaRepository<Submission, Integer>
 
         Long getAcceptedCount();
     }
+
+    /**
+     * Ids of submissions still in progress and not updated since {@code cutoff}, oldest first — the
+     * candidates {@code StaleSubmissionSweeper} fails. Ids only: each is reloaded in its own transaction.
+     * Pass exactly (PENDING, RUNNING) — that matches the partial index {@code IDX_SUBMISSION_IN_PROGRESS}'s
+     * own predicate (DKP-0059), which Postgres needs to see to use it.
+     */
+    @Query("""
+            select s.id from Submission s
+            where s.status in :statuses and s.dteLastModification < :cutoff
+            order by s.dteLastModification
+            """)
+    List<Integer> findStaleInProgressIds(
+            @Param("statuses") List<SubmissionStatus> statuses, @Param("cutoff") Instant cutoff, Pageable pageable);
 
     /** Removes a problem's reference runs before the problem itself is deleted (no FK cascade). */
     long deleteByProblem_IdAndKind(Integer problemId, SubmissionKind kind);

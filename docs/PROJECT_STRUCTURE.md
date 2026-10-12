@@ -2885,6 +2885,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     timeouts (ClientHttpRequestFactories), RapidAPI headers
 │   │                                     only when a key is set — transport wiring kept out of
 │   │                                     Judge0Client so tests can bind a MockRestServiceServer
+│   ├── SubmissionSweeperProperties.java — record, app.submissions.sweeper.stale-after (default
+│   │                                     PT10M); poll-interval/initial-delay stay @Scheduled placeholders
 │   └── JudgeClientProperties.java     — app.judge0.* (base-url, rapid-api-key, rapid-api-host,
 │                                         max-batch-size (default 20 = Judge0's own limit),
 │                                         poll-interval-ms, max-poll-attempts,
@@ -3067,6 +3069,16 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                         becomes JudgeUnavailableException; constructor fails
 │                                         fast if JudgeClientProperties.languageIds is missing an
 │                                         entry for any ProgrammingLanguage constant
+├── sweeper/
+│   ├── StaleSubmissionSweeper.java      — @Scheduled (fixedDelay, default every minute): ids of
+│   │                                     PENDING/RUNNING submissions not modified for stale-after
+│   │                                     (≤50 per tick) → StaleSubmissionProcessor, one at a time; an
+│   │                                     optimistic-lock conflict (judge saved a verdict meanwhile) or
+│   │                                     any other failure skips that id, never the batch
+│   └── StaleSubmissionProcessor.java    — @Transactional failIfStale(id, cutoff): re-checks the row is
+│                                         still in progress and stale, then JUDGE_ERROR + "please
+│                                         resubmit" (passedTestCases cleared); @Version guards the race
+│                                         with the judge listener. Separate bean so @Transactional applies
 ├── event/
 │   ├── SubmissionCreatedEvent.java      — record(submissionId), published by
 │   │                                     SubmissionServiceImpl.create
@@ -3097,7 +3109,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     rankAgainstOtherUsers (native SQL: other users' best accepted
 │   │                                     run per user, same problem/language/contractVersion, plus the
 │   │                                     caller's run, ranked with PERCENT_RANK() slowest-first →
-│   │                                     RankingRow{runtimeBeats, memoryBeats, compared}; "Beats X%")
+│   │                                     RankingRow{runtimeBeats, memoryBeats, compared}; "Beats X%") +
+│   │                                     findStaleInProgressIds(statuses, cutoff, Pageable) (sweeper)
 │   ├── ProblemTagRepository.java      — existsBySlug/…AndIdNot, existsByNameIgnoreCase/…AndIdNot,
 │   │                                     findByNameContainingIgnoreCase(Pageable)
 │   ├── ProblemTagAssignmentRepository.java — countByProblemTag_Id (guards tag delete)
@@ -3353,7 +3366,9 @@ only — the starter topics come from `ProblemTagSeeder`) +
 `2026/0.0.4/202610030001__0.0.4__DKP-0057__add_submission_publish_on_accept.sql`
 (`SUBMISSION.PUBLISH_ON_ACCEPT BOOLEAN NOT NULL DEFAULT FALSE`) +
 `2026/0.0.4/202610090001__0.0.4__DKP-0058__add_submission_runtime_memory.sql`
-(`SUBMISSION.RUNTIME_MS`/`MEMORY_KB INTEGER`, nullable — NULL = not measured)), applied via the consolidated `services-liquibase` job in
+(`SUBMISSION.RUNTIME_MS`/`MEMORY_KB INTEGER`, nullable — NULL = not measured) +
+`2026/0.0.4/202610120001__0.0.4__DKP-0059__add_submission_in_progress_index.sql` (partial index
+`IDX_SUBMISSION_IN_PROGRESS` on `DTE_LAST_MODIFICATION WHERE STATUS IN ('PENDING','RUNNING')`)), applied via the consolidated `services-liquibase` job in
 `docker-compose.apps.yml` — no standalone single-service `*-liquibase.yml` file of its own (same as
 `ecommerce-service`/`identity-service`/`content-service`/`ai-service`). `TEST_CASE`/
 `METHOD_PARAMETER` both cascade from `PROBLEM` (`ON DELETE CASCADE`); `SUBMISSION`'s FK to `PROBLEM`

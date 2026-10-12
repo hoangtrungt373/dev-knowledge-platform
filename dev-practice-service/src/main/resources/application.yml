@@ -30,6 +30,15 @@ app:
   seed:
     enabled: ${APP_SEED_ENABLED:false}
 
+  # sweeper.StaleSubmissionSweeper: PENDING/RUNNING submissions untouched for stale-after are marked
+  # JUDGE_ERROR (a crash mid-judging would otherwise leave them in progress forever). stale-after must
+  # comfortably exceed the slowest healthy judging run — see SubmissionSweeperProperties.
+  submissions:
+    sweeper:
+      stale-after: ${SUBMISSION_SWEEPER_STALE_AFTER:PT10M}
+      poll-interval: ${SUBMISSION_SWEEPER_POLL_INTERVAL:PT1M}
+      initial-delay: ${SUBMISSION_SWEEPER_INITIAL_DELAY:PT1M}
+
   judge0:
     base-url: ${JUDGE0_BASE_URL:https://judge0-ce.p.rapidapi.com}
     rapid-api-key: ${JUDGE0_RAPIDAPI_KEY:}

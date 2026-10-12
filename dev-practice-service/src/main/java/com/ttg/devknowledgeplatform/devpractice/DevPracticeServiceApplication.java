@@ -5,9 +5,11 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Import;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import com.ttg.devknowledgeplatform.common.exception.GlobalExceptionHandler;
 import com.ttg.devknowledgeplatform.devpractice.config.JudgeClientProperties;
+import com.ttg.devknowledgeplatform.devpractice.config.SubmissionSweeperProperties;
 import com.ttg.devknowledgeplatform.infra.config.json.JacksonConfig;
 import com.ttg.devknowledgeplatform.infra.config.thread.AsyncEventThreadPoolConfig;
 import com.ttg.devknowledgeplatform.infra.config.thread.AsyncEventThreadPoolProperties;
@@ -46,15 +48,19 @@ import com.ttg.devknowledgeplatform.infra.tracing.TraceContextFilter;
  * {@link JudgeClientProperties} is this module's own local {@code @ConfigurationProperties} class
  * (Judge0 base URL/poll tuning), registered the same way. {@link PollingTemplate} is
  * {@code infra}'s shared Resilience4j-backed poll loop, used by {@code judge.impl.Judge0Client} to
- * wait for a Judge0 submission's final status.
+ * wait for a Judge0 submission's final status. {@code @EnableScheduling} runs
+ * {@code sweeper.StaleSubmissionSweeper}, which fails submissions left {@code PENDING}/{@code RUNNING}
+ * by a crash mid-judging; {@link SubmissionSweeperProperties} is its threshold.
  */
 @SpringBootApplication
 @EnableAsync
+@EnableScheduling
 @Import({JacksonConfig.class, TraceContextFilter.class, SlugServiceImpl.class,
         KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
         CurrentUserIdArgumentResolver.class, GlobalExceptionHandler.class,
         AsyncEventThreadPoolConfig.class, PollingTemplate.class})
-@EnableConfigurationProperties({AsyncEventThreadPoolProperties.class, JudgeClientProperties.class})
+@EnableConfigurationProperties({AsyncEventThreadPoolProperties.class, JudgeClientProperties.class,
+        SubmissionSweeperProperties.class})
 public class DevPracticeServiceApplication {
 
     public static void main(String[] args) {

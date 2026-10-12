@@ -22,6 +22,16 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **Stale-submission sweeper.** `dev-practice-service`: new `sweeper.StaleSubmissionSweeper`
+  (`@Scheduled`, every minute) + `sweeper.StaleSubmissionProcessor` (per-row `@Transactional`) mark
+  `PENDING`/`RUNNING` submissions not updated for `app.submissions.sweeper.stale-after` (default
+  `PT10M`, new `config.SubmissionSweeperProperties`) as `JUDGE_ERROR` with a "please resubmit" message —
+  closing the gap where a crash mid-judging left a row in progress forever. Re-checks each row and
+  relies on `@Version` so a concurrently saved verdict wins. `@EnableScheduling` on
+  `DevPracticeServiceApplication`; new `SubmissionRepository#findStaleInProgressIds`; migration
+  `DKP-0059` adds the partial index `IDX_SUBMISSION_IN_PROGRESS` (`DTE_LAST_MODIFICATION` where status is
+  PENDING/RUNNING). New env vars `SUBMISSION_SWEEPER_STALE_AFTER`/`_POLL_INTERVAL`/`_INITIAL_DELAY`.
+  `StaleSubmissionProcessorTest` + `StaleSubmissionSweeperTest` (146 tests).
 - **"Beats X%" for accepted submissions.** `dev-practice-service`: new native query
   `SubmissionRepository#rankAgainstOtherUsers` — other users' best accepted run (one per user, same
   problem, language and `contractVersion`) plus the caller's, ranked with `PERCENT_RANK()` slowest-first

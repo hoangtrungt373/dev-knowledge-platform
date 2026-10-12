@@ -19,7 +19,8 @@ columns, the new `METHOD_PARAMETER` table, and `SUBMISSION`'s judging-result col
 repo's never-edit-an-already-run-changeset convention; `DKP-0054` — widens `CKC_SUBMISSION_STATUS`
 for `JUDGE_ERROR`; `DKP-0055` — problem tags; `DKP-0056` — `PROBLEM.CONTRACT_VERSION`,
 `SUBMISSION.KIND`/`CONTRACT_VERSION` for publish verification; `DKP-0057` —
-`SUBMISSION.PUBLISH_ON_ACCEPT`; `DKP-0058` — `SUBMISSION.RUNTIME_MS`/`MEMORY_KB`). Routed through `gateway`'s
+`SUBMISSION.PUBLISH_ON_ACCEPT`; `DKP-0058` — `SUBMISSION.RUNTIME_MS`/`MEMORY_KB`; `DKP-0059` —
+partial index `IDX_SUBMISSION_IN_PROGRESS` for the stale-submission sweeper). Routed through `gateway`'s
 `routing/GatewayRoutesConfig` (`devPracticeServiceRoutes()`) — `/api/v1/admin/problems/**` and
 `/api/v1/public/problems/**` (including `/starter-code`) are two more resource segments under the
 already-shared `/api/v1/admin/**`/`/api/v1/public/**` prefixes; `/api/v1/submissions/**` is a
@@ -31,7 +32,9 @@ choice over the simpler competitive-programming-judge shape (see the
 why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature, and why
 `TestCase.input`/`expectedOutput` are JSON-encoded argument/return values, not raw text.
 
-- `DevPracticeServiceApplication` — `@SpringBootApplication` + `@EnableAsync` +
+- `DevPracticeServiceApplication` — `@SpringBootApplication` + `@EnableAsync` + `@EnableScheduling`
+  (for `sweeper.StaleSubmissionSweeper`; `SubmissionSweeperProperties` is also in its
+  `@EnableConfigurationProperties`) +
   `@Import({JacksonConfig.class, TraceContextFilter.class, SlugServiceImpl.class,
   KeycloakRealmRoleConverter.class, KeycloakJwtAuthenticationConverter.class,
   CurrentUserIdArgumentResolver.class, GlobalExceptionHandler.class,
@@ -280,9 +283,20 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   converts any failure between mark-`RUNNING` and save-outcome into `JUDGE_ERROR` — don't let an
   exception escape that middle section, since `infra`'s `AsyncEventHandler#handle` only logs it.
   `JUDGE_ERROR`'s `errorMessage` is shown to the submitter, so it stays generic; operator detail
-  (HTTP status, endpoint) goes to the log only. Remaining known gap: a failure in `saveOutcome`
-  itself, or the process dying mid-judging, still strands the row — that needs a stale-`RUNNING`
-  sweeper, not built.
+  (HTTP status, endpoint) goes to the log only. **What that can't cover — the process dying
+  mid-judging, a lost event, a failure in `saveOutcome` itself — `sweeper.StaleSubmissionSweeper`
+  does:** every minute it fails `PENDING`/`RUNNING` rows untouched for
+  `app.submissions.sweeper.stale-after` (10 min — well above the slowest healthy run: ~20 s of
+  polling per batch chunk plus retries) with a generic "please resubmit" `JUDGE_ERROR`. Measured on
+  `dteLastModification` (marking a row `RUNNING` touches it, so queue time doesn't count against a
+  run in progress). The per-row work is in `StaleSubmissionProcessor` (its own bean, so
+  `@Transactional` applies — the `ecommerce-service` poller/processor split); it re-checks the row
+  and relies on `@Version`: a verdict saved concurrently makes the sweep's commit fail and the
+  verdict stands, and a verdict arriving after the sweep overwrites `JUDGE_ERROR` (a late real result
+  beats an error). Keep `stale-after` above the worst-case judging time if poll/retry settings grow.
+  No ShedLock — one instance; a second would be safe anyway (optimistic locking). The GUI's own
+  polling gives up after ~2 min, before the sweep — the learner sees the `JUDGE_ERROR` in their
+  submission history.
 - **Every method/parameter name must compile in every supported language** —
   `harness.SignatureNameValidator`, run on every create/update: `IDENTIFIER_REGEX` (ASCII letter
   first; the `_` prefix is the harnesses' own namespace — `_args`/`_result`/`_sol` — so keep
