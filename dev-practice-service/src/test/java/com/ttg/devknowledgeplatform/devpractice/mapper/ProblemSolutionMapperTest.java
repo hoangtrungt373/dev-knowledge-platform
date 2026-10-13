@@ -49,6 +49,25 @@ class ProblemSolutionMapperTest {
                 .endsWith("_The Java code for this approach is being re-verified._");
     }
 
+    @Test
+    void theAdminViewKeepsTheTemplateAndShowsEveryLinkWithItsState() {
+        ProblemSolution solution = solution("Use a set.\n\n{{code:JAVA}}");
+        Submission stalePython = run(ProgrammingLanguage.PYTHON, SubmissionStatus.ACCEPTED, 1, "py");
+        stalePython.setId(8);
+        Submission java = run(ProgrammingLanguage.JAVA, SubmissionStatus.ACCEPTED, 2, "class Solution {}");
+        java.setId(9);
+        solution.addCode(stalePython);
+        solution.addCode(java);
+
+        var response = mapper.toAdminResponse(solution);
+
+        assertThat(response.explanation()).as("raw, for editing").isEqualTo("Use a set.\n\n{{code:JAVA}}");
+        assertThat(response.renderedExplanation()).as("as learners see it").contains("```java\nclass Solution {}");
+        assertThat(response.codes()).extracting(c -> c.language() + ":" + c.verified())
+                .containsExactly("JAVA:true", "PYTHON:false");
+        assertThat(response.codes().get(1).submissionId()).isEqualTo(8);
+    }
+
     private ProblemSolution solution(String explanation) {
         return ProblemSolution.builder().problem(problem).title("Hash Set").explanation(explanation).position(0).build();
     }

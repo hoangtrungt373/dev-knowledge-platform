@@ -41,8 +41,18 @@ section again. Full unabridged entry-by-entry history for all four lives in
   (new `editorial.CodePlaceholders`) are validated on write — commonmark-java (new dependency) rejects
   fenced/indented code blocks (`PROBLEM_SOLUTION_003`), misplaced placeholders (`005`) and
   placeholders for languages the approach has no implementation in (`004`) — and expanded on read
-  from the same verified runs the code panel shows (a "being re-verified" note when none). GUI tab
-  (Phase 2) and admin management (Phase 3) not built yet.
+  from the same verified runs the code panel shows (a "being re-verified" note when none). Phase 2
+  (`gui`): a **Solution** tab in the problem workspace (Description | Solution | Submissions) —
+  `hooks/useProblemSolutions` (loaded on first open, kept across tab switches) +
+  `components/SolutionPanel` (soft "Try it yourself first / Show solution" gate unless solved,
+  "Approach N" headings, per-language runtime/memory chips, explanation via `MarkdownView` with the
+  verified code embedded). Phase 3: admin management — `ProblemSolutionApi`
+  (`/api/v1/admin/problems/{problemId}/solutions`: list/create/update/delete/reorder, all through
+  `ProblemSolutionService`; link replacement diffs instead of clearing, `PROBLEM_SOLUTION_006` not
+  found, `007` order mismatch) and an **Editorial** tab in the admin problem form
+  (`components/EditorialManager` + `ApproachFormDialog`: approaches with per-run verified/stale chips,
+  learner-view preview, reorder, delete; the dialog picks one ACCEPTED current-contract reference run
+  per language and can insert its `{{code:LANGUAGE}}` placeholder).
 - **Study plans.** `dev-practice-service`: curated, ordered problem lists such as
   "NeetCode 150". New `StudyPlan` → ordered `StudyPlanSection` (free-text chapter) → ordered
   `StudyPlanProblem` (explicit join to `Problem`), migration `DKP-0060`. Read-only public API

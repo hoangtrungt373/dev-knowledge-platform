@@ -15,6 +15,7 @@ import { isInProgress, useSubmissionPolling } from '../hooks/useSubmissionPollin
 import { useSolutionDrafts } from '../hooks/useSolutionDrafts';
 import { useProblemProgress } from '../hooks/useProblemProgress';
 import { usePublishedProblem } from '../hooks/usePublishedProblem';
+import { useProblemSolutions } from '../hooks/useProblemSolutions';
 import { useCodeRun } from '../hooks/useCodeRun';
 import ProgressMarker from '../components/ProgressMarker';
 import DifficultyChip from '../components/DifficultyChip';
@@ -22,6 +23,7 @@ import TagChips from '../components/TagChips';
 import SolutionEditor from '../components/SolutionEditor';
 import SampleTestCases from '../components/SampleTestCases';
 import SubmissionHistory from '../components/SubmissionHistory';
+import SolutionPanel from '../components/SolutionPanel';
 import RunCaseEditor from '../components/RunCaseEditor';
 import ConsoleResult from '../components/ConsoleResult';
 import { authService } from '@auth/services/authService';
@@ -37,7 +39,7 @@ const LIST_PATH = '/practice';
 // The dense NavBar is 48px tall; the workspace fills the rest of the viewport.
 const NAVBAR_HEIGHT_PX = 48;
 
-type LeftTab = 'description' | 'submissions';
+type LeftTab = 'description' | 'solution' | 'submissions';
 type ConsoleTab = 'testcase' | 'result';
 
 /**
@@ -89,6 +91,10 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
   });
   const codeRun = useCodeRun(problem);
   const progress = useProblemProgress();
+  // The editorial loads the first time the Solution tab opens and stays loaded; the left panel renders
+  // its tabs conditionally, so this state (and the spoiler reveal below) lives here, not in the tab.
+  const solutions = useProblemSolutions(slug, leftTab === 'solution');
+  const [solutionRevealed, setSolutionRevealed] = useState(false);
 
   const { submission, gaveUp, track } = useSubmissionPolling(
     id => practiceApi.getSubmission(id),
@@ -176,6 +182,7 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
               <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 1 }}>
                 <Tabs value={leftTab} onChange={(_, v: LeftTab) => setLeftTab(v)}>
                   <Tab value="description" label="Description" />
+                  <Tab value="solution" label="Solution" />
                   <Tab value="submissions" label="Submissions" />
                 </Tabs>
               </Box>
@@ -186,6 +193,15 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
                     <MarkdownView content={problem.description} />
                     <SampleTestCases parameters={problem.parameters} testCases={problem.testCases} />
                   </Stack>
+                ) : leftTab === 'solution' ? (
+                  // Solved (including a verdict that just landed this session) opens the gate on its own.
+                  <SolutionPanel
+                    state={solutions}
+                    revealed={solutionRevealed || progress.statusOf(problem.id) === 'SOLVED'
+                      ? true
+                      : progress.loaded ? false : null}
+                    onReveal={() => setSolutionRevealed(true)}
+                  />
                 ) : isAuthed ? (
                   <SubmissionHistory
                     problemId={problem.id}

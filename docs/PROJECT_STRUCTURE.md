@@ -3190,8 +3190,10 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     via CaseJudge (+ CaseJudge#compare), nothing persisted,
 │   │                                     read-only TransactionTemplate load then no connection held
 │   ├── ProblemSolutionService.java (+ impl/, ProblemSolutionCommands) — listPublishedBySlug,
-│   │                                     create (validates: this problem's REFERENCE runs, one per
-│   │                                     language; verdict not required at link time)
+│   │                                     listForAdmin, create/update (validates: this problem's
+│   │                                     REFERENCE runs, one per language, explanation placeholders;
+│   │                                     verdict not required at link time), delete (renumbers),
+│   │                                     reorder (exactly the problem's ids)
 │   ├── StudyPlanService.java (+ impl/) — read-only: listAll (overview order), getBySlug
 │   │                                     (STUDY_PLAN_NOT_FOUND); no write path yet (seed-only)
 │   ├── ProblemTagService.java (+ impl/) — tag catalog CRUD + listAll (sorted by name); delete
@@ -3223,7 +3225,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                        StudyPlanSeeder (problems resolved by slug)
 ├── exception/
 │   └── DevPracticeErrorCode.java       — PROBLEM_SOLUTION_INVALID_REFERENCE/_DUPLICATE_LANGUAGE/
-│                                         _RAW_CODE_BLOCK/_PLACEHOLDER_WITHOUT_CODE/_PLACEHOLDER_MISPLACED (400),
+│                                         _RAW_CODE_BLOCK/_PLACEHOLDER_WITHOUT_CODE/_PLACEHOLDER_MISPLACED/
+│                                         _ORDER_MISMATCH (400), PROBLEM_SOLUTION_NOT_FOUND (404),
 │                                         STUDY_PLAN_NOT_FOUND (404), PROBLEM_NOT_FOUND, PROBLEM_SLUG_CONFLICT,
 │                                         PROBLEM_SIGNATURE_LOCKED, PROBLEM_TEST_CASE_ARITY_MISMATCH,
 │                                         PROBLEM_INVALID_IDENTIFIER, PROBLEM_DUPLICATE_PARAMETER_NAME,
@@ -3298,6 +3301,11 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
     │                                     create, update (rename), delete, list (paged, q), GET /all
     ├── PublicProblemTagApi.java (+ PublicProblemTagController.java) — /api/v1/public/problem-tags:
     │                                     every tag as {id, name, slug}, sorted by name (topic filter)
+    ├── ProblemSolutionApi.java (+ ProblemSolutionController.java) — /api/v1/admin/problems/{problemId}/
+    │                                     solutions: list, create, PUT /{id}, DELETE /{id}, PUT /order —
+    │                                     AdminProblemSolutionResponse (raw + rendered explanation, every
+    │                                     linked run as AdminSolutionCodeResponse with verified flag);
+    │                                     ProblemSolutionRequest / ProblemSolutionOrderRequest
     ├── PublicStudyPlanApi.java (+ PublicStudyPlanController.java) — /api/v1/public/study-plans:
     │                                     list (StudyPlanSummaryResponse: sectionCount + published
     │                                     problems as {id, slug} — client-side progress + "Continue"), GET /{slug}

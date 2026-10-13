@@ -137,6 +137,94 @@ class ProblemSolutionServiceImplTest {
         verify(solutionRepository, never()).findByProblem_IdOrderByPositionAscIdAsc(any());
     }
 
+    @Test
+    void updateReplacesFieldsAndKeepsLinksThatStay() {
+        Submission java = run(31, problem, SubmissionKind.REFERENCE, ProgrammingLanguage.JAVA);
+        Submission python = run(32, problem, SubmissionKind.REFERENCE, ProgrammingLanguage.PYTHON);
+        Submission newJava = run(33, problem, SubmissionKind.REFERENCE, ProgrammingLanguage.JAVA);
+        stubRun(python);
+        stubRun(newJava);
+        ProblemSolution existing = approach(40, problem, 0);
+        ProblemSolutionCode keptLink = existing.addCode(python);
+        existing.addCode(java);
+        when(solutionRepository.findById(40)).thenReturn(Optional.of(existing));
+
+        ProblemSolution saved = service.update(7, 40, new ProblemSolutionCommands.Update(
+                " Hash Set ", "Better.", List.of(32, 33)));
+
+        assertThat(saved.getTitle()).isEqualTo("Hash Set");
+        assertThat(saved.getExplanation()).isEqualTo("Better.");
+        // Python's link object survives untouched; the old Java run is unlinked, the new one linked.
+        assertThat(saved.getCodes()).contains(keptLink);
+        assertThat(saved.getCodes()).extracting(c -> c.getSubmission().getId()).containsExactlyInAnyOrder(32, 33);
+    }
+
+    @Test
+    void updateOfAnotherProblemsApproachIsNotFound() {
+        when(solutionRepository.findById(40)).thenReturn(Optional.of(approach(40, problem(99), 0)));
+
+        assertThatThrownBy(() -> service.update(7, 40, new ProblemSolutionCommands.Update("T", "E", List.of())))
+                .isInstanceOfSatisfying(ApiException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(DevPracticeErrorCode.PROBLEM_SOLUTION_NOT_FOUND));
+        verify(solutionRepository, never()).save(any());
+    }
+
+    @Test
+    void deleteRenumbersTheRemainingApproaches() {
+        ProblemSolution first = approach(40, problem, 0);
+        ProblemSolution second = approach(41, problem, 1);
+        ProblemSolution third = approach(42, problem, 2);
+        when(solutionRepository.findById(41)).thenReturn(Optional.of(second));
+        when(solutionRepository.findByProblem_IdOrderByPositionAscIdAsc(7)).thenReturn(List.of(first, second, third));
+
+        service.delete(7, 41);
+
+        verify(solutionRepository).delete(second);
+        assertThat(first.getPosition()).isZero();
+        assertThat(third.getPosition()).isEqualTo(1);
+    }
+
+    @Test
+    void reorderAssignsPositionsInTheGivenOrder() {
+        ProblemSolution a = approach(40, problem, 0);
+        ProblemSolution b = approach(41, problem, 1);
+        when(solutionRepository.findByProblem_IdOrderByPositionAscIdAsc(7)).thenReturn(List.of(a, b));
+
+        List<ProblemSolution> ordered = service.reorder(7, List.of(41, 40));
+
+        assertThat(ordered).containsExactly(b, a);
+        assertThat(b.getPosition()).isZero();
+        assertThat(a.getPosition()).isEqualTo(1);
+    }
+
+    @Test
+    void reorderRejectsAListThatIsntExactlyTheProblemsApproaches() {
+        when(solutionRepository.findByProblem_IdOrderByPositionAscIdAsc(7))
+                .thenReturn(List.of(approach(40, problem, 0), approach(41, problem, 1)));
+
+        for (List<Integer> stale : List.of(List.of(40), List.of(40, 41, 99), List.of(40, 40))) {
+            assertThatThrownBy(() -> service.reorder(7, stale))
+                    .as("%s", stale)
+                    .isInstanceOfSatisfying(ApiException.class,
+                            e -> assertThat(e.getErrorCode()).isEqualTo(DevPracticeErrorCode.PROBLEM_SOLUTION_ORDER_MISMATCH));
+        }
+    }
+
+    @Test
+    void adminListWorksForAnyStatusButNeedsAnExistingProblem() {
+        List<ProblemSolution> approaches = List.of(approach(40, problem, 0));
+        when(solutionRepository.findByProblem_IdOrderByPositionAscIdAsc(7)).thenReturn(approaches);
+
+        assertThat(service.listForAdmin(7)).isSameAs(approaches);
+        verify(problemService).getById(7);
+    }
+
+    private static ProblemSolution approach(int id, Problem problem, int position) {
+        ProblemSolution solution = ProblemSolution.builder().problem(problem).title("A").explanation("E").position(position).build();
+        solution.setId(id);
+        return solution;
+    }
+
     private void assertRejected(List<Integer> runIds, DevPracticeErrorCode expected) {
         assertThatThrownBy(() -> service.create(7, new ProblemSolutionCommands.Create("T", "E", runIds)))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getErrorCode()).isEqualTo(expected));

@@ -35,6 +35,7 @@ import MethodSignatureEditor from '../components/MethodSignatureEditor';
 import CodeTemplateImporter from '../components/CodeTemplateImporter';
 import TestCaseEditor from '../components/TestCaseEditor';
 import ReferenceSolutionPanel from '../components/ReferenceSolutionPanel';
+import EditorialManager from '../components/EditorialManager';
 import ProblemFormSidebar from '../components/ProblemFormSidebar';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import FullPageLoader from '@shared/components/FullPageLoader';
@@ -59,6 +60,7 @@ const TAB_LABEL: Record<FormTab, string> = {
   signature: 'Signature',
   testCases: 'Test cases',
   reference: 'Reference solution',
+  editorial: 'Editorial',
 };
 
 /** One tab's content. Hidden with `display: none`, never unmounted: the reference panel keeps
@@ -403,6 +405,16 @@ export default function ProblemFormPage(): JSX.Element {
               <Alert severity="info">
                 Create the problem as a Draft first — you can then run a reference solution here, which
                 is required before it can be published.
+              </Alert>
+            )}
+          </TabPanel>
+
+          <TabPanel active={activeTab === 'editorial'}>
+            {loaded ? (
+              <EditorialManager problem={loaded} />
+            ) : (
+              <Alert severity="info">
+                Create the problem first — editorial approaches link to its verified reference runs.
               </Alert>
             )}
           </TabPanel>

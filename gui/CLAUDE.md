@@ -4492,6 +4492,19 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     "You've solved N"; the workspace header shows it and calls `markJudged` on each final verdict so
     it updates without a refetch. Solved is sticky client-side too, matching the backend. No
     "show only unsolved" filter: the list is paged server-side, so that needs a backend filter.
+  - **Solution tab** (workspace left panel: Description | **Solution** | Submissions; backend in
+    `dev-practice-service/CLAUDE.md`'s editorial-solutions rule). `hooks/useProblemSolutions` loads
+    `GET /api/v1/public/problems/{slug}/solutions` the **first time the tab opens** and keeps it; both
+    it and the reveal flag live in `ProblemWorkspace`, not the tab, because the left panel renders its
+    tabs conditionally (unmounting them). `components/SolutionPanel` shows a **soft spoiler gate**
+    ("Try it yourself first" + "Show solution") unless the problem is `SOLVED` — including a verdict
+    that lands this session via `markJudged` — and renders nothing decisive (`revealed = null`, a
+    spinner) until `useProblemProgress().loaded`, so a solver never sees the gate flash. Each approach:
+    "Approach N: title" (numbered only when there are several), a chip per verified language with
+    `utils/format.ts#submissionStats`, then the explanation via `@shared/MarkdownView`. **The code is
+    inside the explanation** (already expanded server-side from `{{code:LANGUAGE}}`), so the panel never
+    renders `codes[].sourceCode` a second time — `codes` only feeds the language/runtime chips. A failed
+    load shows an inline `Alert` with Retry (no toast); an empty editorial says so.
   - **Study plans** (`pages/StudyPlanListPage.tsx`, `pages/StudyPlanDetailPage.tsx`; backend in
     `dev-practice-service/CLAUDE.md`). No progress endpoint: each plan's published problem ids
     (`StudyPlanSummary.problems` — `{id, slug}` refs — or the section rows on the detail page) are
@@ -4624,6 +4637,21 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     (red marker on the tab label) and a failed save jumps to `firstTabWithErrors` unless the open
     tab already has one — keep that map in sync when adding a field error. `errors.status` belongs
     to no tab (it's shown in the sidebar). The Reference tab shows a green verified icon instead.
+  - **Editorial tab** (`FORM_TABS`' last entry, edit mode only — approaches link to the saved
+    problem's reference runs): `components/EditorialManager` lists the approaches (`devPracticeApi
+    .listSolutions`), each **saved on its own**, independent of the form's Save (like reference runs) —
+    so it isn't part of `formSnapshot`/the unsaved-changes guard. A chip per linked run: green when
+    learners see it (`verified`), amber with the reason otherwise (older test data / its status),
+    since only verified code is ever shown. The eye button previews `renderedExplanation` (exactly
+    the learner view); arrows reorder (`PUT .../order`, reload on failure = stale list); delete via
+    `ConfirmDialog` (linked runs are kept). It reloads when `problem.contractVersion` changes, because
+    "verified" depends on it. `components/ApproachFormDialog`: title, explanation (`@shared/
+    MarkdownField`, prose only), and per language a picker of the problem's **ACCEPTED runs at the
+    current contract version** (plus the currently linked run marked stale if it no longer qualifies);
+    runs are **picked, never typed** — new code is verified in the Reference tab first, then picked
+    here. "Insert {{code:LANGUAGE}}" appends the placeholder as its own paragraph. Runs are fetched on
+    every open (the admin may have just verified one). Server rule violations come back as the usual
+    toast and the dialog stays open.
   - **Unsaved-changes guard**: `ProblemFormPage` compares `formSnapshot(current)` with
     `formSnapshot(baseline)` (`utils/problemForm.ts` — trimmed like `toPayload`, tag ids sorted,
     staged tag names and the `sample` flag included). `baseline` is the last loaded/saved problem

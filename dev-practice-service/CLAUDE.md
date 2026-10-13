@@ -326,7 +326,8 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   JavaParser quirk: a bare method (no class) parses into a synthetic `$COMPACT_CLASS` (Java 21+
   compact source files) even at language level 17 — `JavaSignatureTemplateParser` treats
   `$`-prefixed class names as "no class".
-- **Editorial solutions (`DKP-0061`, Phase 1 of 3 — backend only so far): `ProblemSolution` (one
+- **Editorial solutions (`DKP-0061`; all 3 phases built — backend, learner Solution tab, admin
+  Editorial tab): `ProblemSolution` (one
   approach: title, Markdown explanation, position) → `ProblemSolutionCode` (explicit join to a
   `REFERENCE` submission, at most one per language — checked in `ProblemSolutionServiceImpl#create`,
   since the language is on `SUBMISSION`).** Code is **linked, never copied**, so a learner only reads
@@ -365,8 +366,20 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   - **Public read**: `GET /api/v1/public/problems/{slug}/solutions` (on `PublicProblemApi`, covered
     by gateway's existing `/api/v1/public/problems/**` route) — published problems only, via
     `ProblemService#getPublishedBySlug` (draft = `PROBLEM_001`). No spoiler gating server-side: the
-    soft "Show solution" gate is a GUI concern (Phase 2). Admin management is Phase 3 and must go
-    through `ProblemSolutionService#create` (or its future siblings) like the seeder does.
+    soft "Show solution" gate is a GUI concern.
+  - **Admin management**: `ProblemSolutionApi` at `/api/v1/admin/problems/{problemId}/solutions`
+    (covered by gateway's `/api/v1/admin/problems/**`): `GET` (any problem status), `POST`,
+    `PUT /{solutionId}`, `DELETE /{solutionId}` (the linked runs stay), `PUT /order` (a literal
+    segment, matched ahead of `/{solutionId}`). Every write goes through `ProblemSolutionService`, so
+    the seeder's rules apply. Responses (`AdminProblemSolutionResponse`) carry the explanation **raw**
+    (placeholders intact, for editing) *and* `renderedExplanation` (learner view, for preview), plus
+    **every** linked run with `verified` (in `verifiedCode()`) so stale/pending/rejected links show.
+    `update` replaces links through `ProblemSolution#replaceCodes`, which **diffs** (keeps links
+    that stay) rather than clearing — Hibernate flushes inserts before orphan deletes, so re-adding an
+    unchanged link would hit `UK_PROBLEM_SOLUTION_CODE_PAIR` (same trap as `replaceTags`). `delete`
+    renumbers the rest 0..n-1; `reorder` must receive exactly the problem's ids
+    (`PROBLEM_SOLUTION_007` otherwise — a stale page); another problem's approach is
+    `PROBLEM_SOLUTION_006` (404), never touched.
   - **Seed format — `solutions:` is the only place code lives** (the old top-level
     `referenceSolution` and per-approach `useReferenceSolution` were retired; the seeder fails
     startup naming the file if either key reappears). Each approach, in display order:

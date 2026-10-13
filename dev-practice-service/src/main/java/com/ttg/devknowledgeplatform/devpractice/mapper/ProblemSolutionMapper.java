@@ -1,15 +1,20 @@
 package com.ttg.devknowledgeplatform.devpractice.mapper;
 
+import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
+import com.ttg.devknowledgeplatform.devpractice.dto.AdminProblemSolutionResponse;
+import com.ttg.devknowledgeplatform.devpractice.dto.AdminSolutionCodeResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemSolutionResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.SolutionCodeResponse;
 import com.ttg.devknowledgeplatform.devpractice.editorial.CodePlaceholders;
 import com.ttg.devknowledgeplatform.devpractice.entity.ProblemSolution;
+import com.ttg.devknowledgeplatform.devpractice.entity.ProblemSolutionCode;
 import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 
@@ -29,6 +34,25 @@ public interface ProblemSolutionMapper {
     ProblemSolutionResponse toResponse(ProblemSolution solution);
 
     SolutionCodeResponse toCodeResponse(Submission run);
+
+    /**
+     * The admin editor's view: the stored explanation (placeholders intact) plus its learner rendering,
+     * and every linked run — flagged {@code verified} when learners currently see it.
+     */
+    @Mapping(target = "renderedExplanation", expression = "java(CodePlaceholders.render(solution.getExplanation(), verifiedCodeByLanguage(solution)))")
+    @Mapping(target = "codes", expression = "java(adminCodes(solution))")
+    AdminProblemSolutionResponse toAdminResponse(ProblemSolution solution);
+
+    /** Every linked run, ordered by language, with whether it's among the approach's verified code. */
+    default List<AdminSolutionCodeResponse> adminCodes(ProblemSolution solution) {
+        List<Submission> verified = solution.verifiedCode();
+        return solution.getCodes().stream()
+                .map(ProblemSolutionCode::getSubmission)
+                .sorted(Comparator.comparing(Submission::getLanguage))
+                .map(run -> new AdminSolutionCodeResponse(run.getId(), run.getLanguage(), run.getStatus(),
+                        run.getContractVersion(), verified.contains(run), run.getRuntimeMs(), run.getMemoryKb()))
+                .toList();
+    }
 
     /** Each verified language's source — the only code a placeholder may expand to. */
     default Map<ProgrammingLanguage, String> verifiedCodeByLanguage(ProblemSolution solution) {

@@ -56,6 +56,10 @@ public enum DevPracticeErrorCode implements ErrorCode {
             "The explanation shows {0} code, but this approach has no {0} implementation", HttpStatus.BAD_REQUEST),
     PROBLEM_SOLUTION_PLACEHOLDER_MISPLACED("PROBLEM_SOLUTION_005",
             "A code placeholder must be a paragraph of its own — put blank lines around ''{0}''", HttpStatus.BAD_REQUEST),
+    PROBLEM_SOLUTION_NOT_FOUND("PROBLEM_SOLUTION_006", "Solution approach {0} not found", HttpStatus.NOT_FOUND),
+    PROBLEM_SOLUTION_ORDER_MISMATCH("PROBLEM_SOLUTION_007",
+            "The new order must list each of the problem''s approaches exactly once — reload and try again",
+            HttpStatus.BAD_REQUEST),
 
     // Study plan errors (STUDY_PLAN_*)
     STUDY_PLAN_NOT_FOUND("STUDY_PLAN_001", "Study plan not found", HttpStatus.NOT_FOUND),

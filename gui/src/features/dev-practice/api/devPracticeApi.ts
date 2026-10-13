@@ -2,11 +2,13 @@ import { httpClient } from '@shared/api/httpClient';
 import { PagedResponse } from '@shared/types';
 import { buildQueryString, QueryParams } from '@shared/utils/queryString';
 import {
+  AdminProblemSolution,
   AdminProblemSummary,
   Difficulty,
   ParsedSignature,
   Problem,
   ProblemPayload,
+  ProblemSolutionPayload,
   ProblemStatus,
   ProblemTag,
   ProgrammingLanguage,
@@ -98,6 +100,36 @@ export const devPracticeApi = {
   /** Newest first. */
   listReferenceSubmissions(problemId: number, size: number, showError?: ShowError): Promise<PagedResponse<Submission>> {
     return httpClient.get(`/api/v1/admin/problems/${problemId}/reference-submissions?page=0&size=${size}`, showError);
+  },
+
+  // ── Editorial approaches (/api/v1/admin/problems/{id}/solutions) ─────────────
+  // Saved one approach at a time, independently of the problem form's Save. The server enforces the
+  // rules (this problem's REFERENCE runs, one per language, code only via {{code:LANGUAGE}}).
+
+  listSolutions(problemId: number, showError?: ShowError): Promise<AdminProblemSolution[]> {
+    return httpClient.get(`/api/v1/admin/problems/${problemId}/solutions`, showError);
+  },
+
+  createSolution(problemId: number, payload: ProblemSolutionPayload, showError?: ShowError): Promise<AdminProblemSolution> {
+    return httpClient.post(`/api/v1/admin/problems/${problemId}/solutions`, payload, showError);
+  },
+
+  updateSolution(
+    problemId: number,
+    solutionId: number,
+    payload: ProblemSolutionPayload,
+    showError?: ShowError,
+  ): Promise<AdminProblemSolution> {
+    return httpClient.put(`/api/v1/admin/problems/${problemId}/solutions/${solutionId}`, payload, showError);
+  },
+
+  deleteSolution(problemId: number, solutionId: number, showError?: ShowError): Promise<void> {
+    return httpClient.delete(`/api/v1/admin/problems/${problemId}/solutions/${solutionId}`, showError);
+  },
+
+  /** `solutionIds` must be every approach of the problem, exactly once, in the new order. */
+  reorderSolutions(problemId: number, solutionIds: number[], showError?: ShowError): Promise<AdminProblemSolution[]> {
+    return httpClient.put(`/api/v1/admin/problems/${problemId}/solutions/order`, { solutionIds }, showError);
   },
 
   // ── Admin tag catalog (/api/v1/admin/problem-tags, ROLE_ADMIN) ──────────────

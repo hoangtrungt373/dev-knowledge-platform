@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.hibernate.annotations.BatchSize;
 
@@ -76,6 +78,20 @@ public class ProblemSolution extends AbstractEntity {
     @OneToMany(mappedBy = "solution", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<ProblemSolutionCode> codes = new ArrayList<>();
+
+    /**
+     * Makes the linked runs exactly {@code runs}: links that stay are kept untouched, the rest removed
+     * (orphanRemoval) and new ones added. Diffed rather than cleared and re-added on purpose —
+     * Hibernate flushes inserts before orphan deletes, so re-adding a run that was already linked would
+     * insert a duplicate (solution, submission) pair first and violate {@code UK_PROBLEM_SOLUTION_CODE_PAIR}
+     * (the same trap {@code ProblemServiceImpl#replaceTags} avoids).
+     */
+    public void replaceCodes(List<Submission> runs) {
+        Set<Integer> wanted = runs.stream().map(Submission::getId).collect(Collectors.toSet());
+        codes.removeIf(code -> !wanted.contains(code.getSubmission().getId()));
+        Set<Integer> kept = codes.stream().map(code -> code.getSubmission().getId()).collect(Collectors.toSet());
+        runs.stream().filter(run -> !kept.contains(run.getId())).forEach(this::addCode);
+    }
 
     /** Links a reference run as one of this approach's implementations. */
     public ProblemSolutionCode addCode(Submission referenceRun) {

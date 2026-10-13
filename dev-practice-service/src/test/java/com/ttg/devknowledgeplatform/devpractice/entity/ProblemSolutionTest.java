@@ -2,6 +2,8 @@ package com.ttg.devknowledgeplatform.devpractice.entity;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
@@ -52,6 +54,25 @@ class ProblemSolutionTest {
         assertThat(code.getSolution()).isSameAs(solution);
         assertThat(code.getSubmission()).isSameAs(java);
         assertThat(solution.getCodes()).containsExactly(code);
+    }
+
+    @Test
+    void replaceCodesKeepsStayingLinksAndSwapsTheRest() {
+        Submission java = run(ProgrammingLanguage.JAVA, SubmissionStatus.ACCEPTED, 3);
+        java.setId(1);
+        Submission python = run(ProgrammingLanguage.PYTHON, SubmissionStatus.ACCEPTED, 3);
+        python.setId(2);
+        Submission js = run(ProgrammingLanguage.JAVASCRIPT, SubmissionStatus.ACCEPTED, 3);
+        js.setId(3);
+        ProblemSolutionCode javaLink = solution.addCode(java);
+        solution.addCode(python);
+
+        solution.replaceCodes(List.of(java, js));
+
+        // The Java link is the same object — not removed and re-added, which would trip the
+        // (solution, submission) unique constraint on flush.
+        assertThat(solution.getCodes()).contains(javaLink);
+        assertThat(solution.getCodes()).extracting(ProblemSolutionCode::getSubmission).containsExactly(java, js);
     }
 
     private Submission run(ProgrammingLanguage language, SubmissionStatus status, int contractVersion) {

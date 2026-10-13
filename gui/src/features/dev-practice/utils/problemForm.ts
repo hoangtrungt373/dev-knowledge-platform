@@ -294,7 +294,7 @@ export function snapshotFieldsOf(problem: Problem): FormSnapshotFields {
 }
 
 /** The problem form's main-column tabs, in display order. Also the `?tab=` URL values. */
-export const FORM_TABS = ['details', 'signature', 'testCases', 'reference'] as const;
+export const FORM_TABS = ['details', 'signature', 'testCases', 'reference', 'editorial'] as const;
 export type FormTab = (typeof FORM_TABS)[number];
 
 export function isFormTab(value: string | null): value is FormTab {

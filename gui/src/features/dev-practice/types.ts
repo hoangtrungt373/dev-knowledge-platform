@@ -221,6 +221,59 @@ export interface PracticeReturnTo {
   label: string;
 }
 
+/** `SolutionCodeResponse` — one language's verified implementation of an approach, with the judge's measurements. */
+export interface SolutionCode {
+  language: ProgrammingLanguage;
+  sourceCode: string;
+  runtimeMs: number | null;
+  memoryKb: number | null;
+}
+
+/**
+ * `ProblemSolutionResponse` — one editorial approach. `explanation` is Markdown whose code blocks were
+ * already expanded server-side from the approach's verified runs (`{{code:LANGUAGE}}` placeholders);
+ * `codes` lists those same runs (languages + runtime/memory), and may be empty while they're re-verified.
+ */
+export interface ProblemSolution {
+  id: number;
+  title: string;
+  explanation: string;
+  codes: SolutionCode[];
+}
+
+/** `AdminSolutionCodeResponse` — one linked run of an approach, with whether learners currently see it. */
+export interface AdminSolutionCode {
+  submissionId: number;
+  language: ProgrammingLanguage;
+  status: SubmissionStatus;
+  contractVersion: number | null;
+  /** Accepted at the problem's current contract version — what learners see. */
+  verified: boolean;
+  runtimeMs: number | null;
+  memoryKb: number | null;
+}
+
+/**
+ * `AdminProblemSolutionResponse` — an editorial approach in the admin editor: `explanation` as stored
+ * (placeholders intact), `renderedExplanation` as learners get it, and every linked run.
+ */
+export interface AdminProblemSolution {
+  id: number;
+  title: string;
+  explanation: string;
+  renderedExplanation: string;
+  position: number;
+  codes: AdminSolutionCode[];
+}
+
+/** `ProblemSolutionRequest` — create or fully replace an approach. */
+export interface ProblemSolutionPayload {
+  title: string;
+  explanation: string;
+  /** The problem's own REFERENCE runs, at most one per language. */
+  referenceSubmissionIds: number[];
+}
+
 /** `enums.ProblemProgressStatus` — a learner's standing on a problem; absent = never submitted. */
 export type ProblemProgressStatus = 'ATTEMPTED' | 'SOLVED';
 

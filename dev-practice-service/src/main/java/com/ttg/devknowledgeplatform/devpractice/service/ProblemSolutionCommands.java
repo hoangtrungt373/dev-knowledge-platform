@@ -18,4 +18,11 @@ public final class ProblemSolutionCommands {
      */
     public record Create(String title, String explanation, List<Integer> referenceSubmissionIds) {
     }
+
+    /**
+     * A full replacement of an existing approach — same fields and rules as {@link Create}; the
+     * position isn't part of it (that's a reorder).
+     */
+    public record Update(String title, String explanation, List<Integer> referenceSubmissionIds) {
+    }
 }

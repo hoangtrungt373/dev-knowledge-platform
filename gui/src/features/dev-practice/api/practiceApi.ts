@@ -5,6 +5,7 @@ import {
   Difficulty,
   Problem,
   ProblemProgress,
+  ProblemSolution,
   ProblemSummary,
   ProblemTagSummary,
   ProgrammingLanguage,
@@ -57,6 +58,14 @@ export const practiceApi = {
   /** A published problem, with its *sample* test cases only — hidden ones never leave the server. */
   getProblem(slug: string, showError?: ShowError): Promise<Problem> {
     return httpClient.get(`/api/v1/public/problems/${encodeURIComponent(slug)}`, showError);
+  },
+
+  /**
+   * A published problem's editorial approaches, in order. Each explanation's code was expanded from
+   * the approach's judge-verified run; called without showError — the Solution tab shows its own retry.
+   */
+  getSolutions(slug: string, showError?: ShowError): Promise<ProblemSolution[]> {
+    return httpClient.get(`/api/v1/public/problems/${encodeURIComponent(slug)}/solutions`, showError);
   },
 
   getStarterCode(slug: string, language: ProgrammingLanguage, showError?: ShowError): Promise<StarterCode> {
