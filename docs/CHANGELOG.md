@@ -22,6 +22,16 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **Study plans, Phase 1 (backend).** `dev-practice-service`: curated, ordered problem lists such as
+  "NeetCode 150". New `StudyPlan` → ordered `StudyPlanSection` (free-text chapter) → ordered
+  `StudyPlanProblem` (explicit join to `Problem`), migration `DKP-0060`. Read-only public API
+  `GET /api/v1/public/study-plans` (summaries with each plan's published problem ids, for
+  client-side progress) and `GET /api/v1/public/study-plans/{slug}` (sections with catalog-style
+  problem rows; `STUDY_PLAN_001` 404); draft problems are never listed. New
+  `service.seed.StudyPlanSeeder` loads `data/study-plans/*.yml` after `ProblemSeeder`; first plan
+  `neetcode-150.yml` — "Arrays & Hashing" (Contains Duplicate) and "Stack" (Evaluate Reverse
+  Polish Notation). `gateway` routes `/api/v1/public/study-plans/**`. No admin management and no
+  GUI yet (Phase 2: `/practice/plans` pages).
 - **Stale-submission sweeper.** `dev-practice-service`: new `sweeper.StaleSubmissionSweepJob`
   (`@Scheduled`, every minute) + `sweeper.StaleSubmissionProcessor` (per-row `@Transactional`) mark
   `PENDING`/`RUNNING` submissions not updated for `app.submissions.sweeper.stale-after` (default

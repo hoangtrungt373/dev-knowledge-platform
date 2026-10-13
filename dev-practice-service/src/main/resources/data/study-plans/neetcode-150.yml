@@ -1,0 +1,23 @@
+# Seeded by service.seed.StudyPlanSeeder — one file per plan.
+#   name         the plan's display name; its slug (the URL key, and what makes seeding idempotent)
+#                is derived from it, so change it only on a fresh database
+#   description  optional, shown on the plan's card and page
+#   position     order on the plans overview (ascending)
+#   sections     ordered chapters; each has a title, an optional description, and `problems`: the
+#                slugs of existing problems (data/problems/*.md), in study order. A problem may appear
+#                only once per plan. Draft problems are allowed — the public view lists only published
+#                ones, so a section fills in as its problems get published.
+name: NeetCode 150
+description: >-
+  A structured path through the core interview patterns, topic by topic, each topic ordered from
+  easier to harder.
+position: 1
+sections:
+  - title: Arrays & Hashing
+    description: Lookups, counting and grouping with arrays and hash maps — the building blocks for everything after.
+    problems:
+      - contains-duplicate
+  - title: Stack
+    description: Last-in, first-out processing — matching brackets, evaluating expressions, monotonic stacks.
+    problems:
+      - evaluate-reverse-polish-notation

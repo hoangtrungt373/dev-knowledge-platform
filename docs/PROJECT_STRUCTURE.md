@@ -2935,6 +2935,15 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     by Problem.tagAssignments (cascade ALL, orphanRemoval);
 │   │                                     @BatchSize on problemTag so a page of problems resolves
 │   │                                     its tags in one IN (...) query
+│   ├── StudyPlan.java                 — aggregate root: name, slug (unique), description (TEXT),
+│   │                                     position (overview order); sections (@OrderBy position,
+│   │                                     cascade ALL, orphanRemoval); addSection() numbers 0..n-1
+│   ├── StudyPlanSection.java          — free-text chapter (title, description, position) — not a
+│   │                                     ProblemTag link (plans group by topic/week/day); problems
+│   │                                     (ordered, cascade); addProblem(); publishedProblems() is
+│   │                                     the one "never show drafts" filter
+│   ├── StudyPlanProblem.java          — explicit join section ↔ problem with its own position;
+│   │                                     @BatchSize on problem (one IN (...) query per plan)
 │   └── Submission.java                — problem (@ManyToOne), userUuid (String, plain column),
 │                                         language (ProgrammingLanguage), sourceCode (TEXT), status
 │                                         (SubmissionStatus, default PENDING — transitions once
@@ -3122,6 +3131,7 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   ├── ProblemTagRepository.java      — existsBySlug/…AndIdNot, existsByNameIgnoreCase/…AndIdNot,
 │   │                                     findByNameContainingIgnoreCase(Pageable)
 │   ├── ProblemTagAssignmentRepository.java — countByProblemTag_Id (guards tag delete)
+│   ├── StudyPlanRepository.java       — existsBySlug, findBySlug, findAllByOrderByPositionAscNameAsc
 │   └── spec/
 │       └── ProblemSpecification.java  — withFilters(difficulty, status, q, tagIds) — tagIds is
 │                                         an ANY-match via an EXISTS subquery on
@@ -3165,6 +3175,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     reference solution run on it — a test oracle), sequential
 │   │                                     via CaseJudge (+ CaseJudge#compare), nothing persisted,
 │   │                                     read-only TransactionTemplate load then no connection held
+│   ├── StudyPlanService.java (+ impl/) — read-only: listAll (overview order), getBySlug
+│   │                                     (STUDY_PLAN_NOT_FOUND); no write path yet (seed-only)
 │   ├── ProblemTagService.java (+ impl/) — tag catalog CRUD + listAll (sorted by name); delete
 │   │                                     refused while in use (PROBLEM_TAG_IN_USE)
 │   ├── ProblemCommands.java           — Create/Update records (+ tagIds: Create null = none;
@@ -3184,11 +3196,16 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │       │                                by name; author = all-zero placeholder UUID
 │       ├── ProblemTagSeeder.java      — CsvSeeder<String>: data/csv/problem_tags.csv (name), idempotent
 │       │                                by name, each via ProblemTagService.create
+│       ├── StudyPlanSeeder.java       — Seeder: data/study-plans/*.yml (name, description, position,
+│       │                                ordered sections of problem slugs) → StudyPlanRepository;
+│       │                                idempotent by slug (skipped whole); fails naming the file on
+│       │                                unknown/duplicate problem slugs or missing fields
 │       └── DevPracticeDataSeedingRunner.java — ApplicationRunner, @ConditionalOnProperty
 │                                        app.seed.enabled (APP_SEED_ENABLED; true in application-local.yml);
-│                                        ProblemTagSeeder then ProblemSeeder (tags resolved by name)
+│                                        ProblemTagSeeder, ProblemSeeder (tags resolved by name), then
+│                                        StudyPlanSeeder (problems resolved by slug)
 ├── exception/
-│   └── DevPracticeErrorCode.java       — PROBLEM_NOT_FOUND, PROBLEM_SLUG_CONFLICT,
+│   └── DevPracticeErrorCode.java       — STUDY_PLAN_NOT_FOUND (404), PROBLEM_NOT_FOUND, PROBLEM_SLUG_CONFLICT,
 │                                         PROBLEM_SIGNATURE_LOCKED, PROBLEM_TEST_CASE_ARITY_MISMATCH,
 │                                         PROBLEM_INVALID_IDENTIFIER, PROBLEM_DUPLICATE_PARAMETER_NAME,
 │                                         PROBLEM_HAS_SUBMISSIONS (409 — delete refused; archive
@@ -3235,6 +3252,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   ├── CreateSubmissionRequest.java   — @Data: problemId, language, sourceCode
 │   └── StarterCodeResponse.java       — record: language, code
 ├── mapper/
+│   ├── StudyPlanMapper.java            — uses ProblemMapper; sections' problems and the overview's
+│   │                                     problemIds come from StudyPlanSection.publishedProblems()
 │   ├── ProblemMapper.java              — toResponse/toSummaryResponse/toResponse(MethodParameter)
 │   │                                      (MapStruct) + toPublicResponse (default method: filters
 │   │                                      testCases to sample = true only — the one place a hidden
@@ -3257,6 +3276,10 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
     │                                     create, update (rename), delete, list (paged, q), GET /all
     ├── PublicProblemTagApi.java (+ PublicProblemTagController.java) — /api/v1/public/problem-tags:
     │                                     every tag as {id, name, slug}, sorted by name (topic filter)
+    ├── PublicStudyPlanApi.java (+ PublicStudyPlanController.java) — /api/v1/public/study-plans:
+    │                                     list (StudyPlanSummaryResponse: sectionCount + published
+    │                                     problemIds for client-side progress), GET /{slug}
+    │                                     (StudyPlanResponse → sections → ProblemSummaryResponse rows)
     ├── PublicProblemApi.java (+ PublicProblemController.java) — /api/v1/public/problems: list
     │                                     (hardcodes ContentStatus.PUBLISHED, same convention as
     │                                     content-service's PublicContentController), getBySlug,
@@ -3376,7 +3399,10 @@ only — the starter topics come from `ProblemTagSeeder`) +
 `2026/0.0.4/202610090001__0.0.4__DKP-0058__add_submission_runtime_memory.sql`
 (`SUBMISSION.RUNTIME_MS`/`MEMORY_KB INTEGER`, nullable — NULL = not measured) +
 `2026/0.0.4/202610120001__0.0.4__DKP-0059__add_submission_in_progress_index.sql` (partial index
-`IDX_SUBMISSION_IN_PROGRESS` on `DTE_LAST_MODIFICATION WHERE STATUS IN ('PENDING','RUNNING')`)), applied via the consolidated `services-liquibase` job in
+`IDX_SUBMISSION_IN_PROGRESS` on `DTE_LAST_MODIFICATION WHERE STATUS IN ('PENDING','RUNNING')`) +
+`2026/0.0.4/202610130001__0.0.4__DKP-0060__add_study_plan_tables.sql` (`STUDY_PLAN`/
+`STUDY_PLAN_SECTION`/`STUDY_PLAN_PROBLEM`; sections and entries cascade from their parent, entries
+also cascade from `PROBLEM`; no unique `POSITION` constraints)), applied via the consolidated `services-liquibase` job in
 `docker-compose.apps.yml` — no standalone single-service `*-liquibase.yml` file of its own (same as
 `ecommerce-service`/`identity-service`/`content-service`/`ai-service`). `TEST_CASE`/
 `METHOD_PARAMETER` both cascade from `PROBLEM` (`ON DELETE CASCADE`); `SUBMISSION`'s FK to `PROBLEM`

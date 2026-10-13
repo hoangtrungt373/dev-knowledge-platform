@@ -178,7 +178,8 @@ both `identity-service` and `social-service` were extracted into standalone serv
     own. **`dev-practice-service`'s Problem Tags** (`/api/v1/admin/problem-tags/**` +
     `/api/v1/public/problem-tags/**`) added both route lines in the same change — note
     `/problems/**` does **not** cover `/problem-tags/**` (different path segment), so a sibling
-    segment always needs its own line.
+    segment always needs its own line. Its Study Plans (`/api/v1/public/study-plans/**`, public
+    read-only, no admin counterpart yet) likewise got their own line in the same change.
 - `security/` — transport/security **edge** infra, **and, as of the CORS-consolidation pass, the
   sole CORS source of truth in this whole reactor — zero exceptions.** `CorsConfig` here is the
   only real CORS config left anywhere. `ai-service`'s own copy (the only other one that ever

@@ -20,7 +20,8 @@ repo's never-edit-an-already-run-changeset convention; `DKP-0054` — widens `CK
 for `JUDGE_ERROR`; `DKP-0055` — problem tags; `DKP-0056` — `PROBLEM.CONTRACT_VERSION`,
 `SUBMISSION.KIND`/`CONTRACT_VERSION` for publish verification; `DKP-0057` —
 `SUBMISSION.PUBLISH_ON_ACCEPT`; `DKP-0058` — `SUBMISSION.RUNTIME_MS`/`MEMORY_KB`; `DKP-0059` —
-partial index `IDX_SUBMISSION_IN_PROGRESS` for the stale-submission sweeper). Routed through `gateway`'s
+partial index `IDX_SUBMISSION_IN_PROGRESS` for the stale-submission sweeper; `DKP-0060` — study plans:
+`STUDY_PLAN`/`STUDY_PLAN_SECTION`/`STUDY_PLAN_PROBLEM`). Routed through `gateway`'s
 `routing/GatewayRoutesConfig` (`devPracticeServiceRoutes()`) — `/api/v1/admin/problems/**` and
 `/api/v1/public/problems/**` (including `/starter-code`) are two more resource segments under the
 already-shared `/api/v1/admin/**`/`/api/v1/public/**` prefixes; `/api/v1/submissions/**` is a
@@ -371,6 +372,31 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   a changeset here, take ids from `nextval()`, never hardcoded: ids are allocated pooled-lo
   (`INCREMENT BY 50`, one `nextval()` reserves a block), so hardcoded ids would collide with
   Hibernate's first block.
+- **Study plans (`DKP-0060`) are three levels: `StudyPlan` → ordered `StudyPlanSection` → ordered
+  `StudyPlanProblem`** (an explicit join entity with its own `position`, like `ProblemTagAssignment`;
+  a problem may sit in many plans). Sections are a free-text title + position, deliberately **not**
+  a link to `ProblemTag` — real plans group by topic (NeetCode 150), week (Grind 75) or day ("30 Days
+  of …"). A flat plan is just a plan with one section. Writes go only through the aggregate root
+  (`StudyPlan#addSection`, `StudyPlanSection#addProblem`, both assign positions 0..n-1; cascade
+  `ALL`/`orphanRemoval`). No unique constraint on any `POSITION` — same Hibernate
+  insert-before-orphan-delete flush order as the tags note above would make a future
+  replace-all reorder collide with itself.
+  - **Plans may reference draft problems; the public view never shows them** —
+    `StudyPlanSection#publishedProblems()` is the one filter, used by `StudyPlanMapper` for both the
+    section rows and the overview's `problemIds`. A section can therefore be empty publicly while
+    its problems await verification (seeded problems publish asynchronously via the judge).
+  - **No progress is stored or computed server-side.** `StudyPlanSummaryResponse.problemIds` (plan
+    order, published only) lets the GUI compute "x / y solved" from the existing
+    `GET /api/v1/submissions/progress` it already loads for the catalog's markers.
+  - **Read-only for now:** `PublicStudyPlanApi` (`GET /api/v1/public/study-plans`, `GET /{slug}` —
+    `STUDY_PLAN_001` 404) and no admin endpoints. Plans come only from
+    `service.seed.StudyPlanSeeder` reading `resources/data/study-plans/*.yml` (format documented at
+    the top of `neetcode-150.yml`): idempotent by slug (derived from `name`) and skipped whole if it
+    exists, so **editing a seeded plan's file does nothing on a database that already has it**;
+    fails startup naming the file on a missing field, an unknown problem slug or a problem listed
+    twice in one plan. Runs after `ProblemSeeder`. `StudyPlanSeederTest` checks the real seed files
+    against the slugs the real `data/problems/*.md` titles produce (real `SlugServiceImpl`), so a
+    plan naming an unseeded problem fails in the build, not at startup.
 - **A problem with `USER` submissions can't be deleted** — `PROBLEM_HAS_SUBMISSIONS` (409);
   `FK_SUBMISSION_PROBLEM` deliberately has no `ON DELETE CASCADE` (submissions are users' own
   history, unlike test cases/parameters). Archive instead. `REFERENCE` submissions don't block a

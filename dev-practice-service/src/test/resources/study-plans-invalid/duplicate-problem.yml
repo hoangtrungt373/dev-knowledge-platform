@@ -1,0 +1,9 @@
+name: Broken Plan
+position: 1
+sections:
+  - title: Arrays & Hashing
+    problems:
+      - contains-duplicate
+  - title: Again
+    problems:
+      - contains-duplicate

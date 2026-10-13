@@ -304,7 +304,7 @@ than one service and only disambiguate one segment deeper:
 | Prefix | Owner(s) | Disambiguated by |
 |---|---|---|
 | `/api/v1/users/**` | `identity-service` (own profile) **and** `social-service` (other users) | `identity-service` owns `/me/**`; `social-service` owns `/public/**` and `/search` |
-| `/api/v1/public/**` | `content-service`, `ecommerce-service`, **and** `dev-practice-service` | `content-service` owns `/question-answers/**`/`/articles/**`; `ecommerce-service` owns `/products/**` and `/product-categories/**` (the latter backs the storefront's category filter rail, since a logged-out shopper can't reach the admin-gated `/api/v1/admin/product-categories/**`); `dev-practice-service` owns `/problems/**` (published-problem browsing) and `/problem-tags/**` (topic list) |
+| `/api/v1/public/**` | `content-service`, `ecommerce-service`, **and** `dev-practice-service` | `content-service` owns `/question-answers/**`/`/articles/**`; `ecommerce-service` owns `/products/**` and `/product-categories/**` (the latter backs the storefront's category filter rail, since a logged-out shopper can't reach the admin-gated `/api/v1/admin/product-categories/**`); `dev-practice-service` owns `/problems/**` (published-problem browsing), `/problem-tags/**` (topic list) and `/study-plans/**` (curated problem lists) |
 | `/api/v1/admin/**` | `ecommerce-service`, `content-service`, `ai-service`, **and** `dev-practice-service` | each one's own resource segment never collides with another's (`/products/**` vs `/articles/**` vs `/embeddings/**` vs `/problems/**`/`/problem-tags/**`, etc.) |
 
 Every other path maps to exactly one service by its own resource prefix — `/api/v1/auth/**` →
