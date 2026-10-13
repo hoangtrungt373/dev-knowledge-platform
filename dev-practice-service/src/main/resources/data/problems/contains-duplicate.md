@@ -30,6 +30,52 @@ referenceSolution:
             return false;
         }
     }
+# Editorial approaches, in display order (ProblemSeeder → ProblemSolutionService). useReferenceSolution
+# links the referenceSolution run above instead of repeating its code; each `implementations` entry is
+# submitted as its own REFERENCE run, and ProblemSeederTest runs it against every test case below too.
+solutions:
+  - title: Sorting
+    explanation: |
+      After sorting, equal values sit next to each other — so the array has a duplicate exactly when
+      some element equals the one right before it.
+
+      Sort a copy (so the caller's array isn't modified), then compare each element with its left
+      neighbor and stop at the first match.
+
+      **Complexity**
+
+      - Time: `O(n log n)` — the sort dominates; the scan is `O(n)`.
+      - Space: `O(n)` for the copy, or `O(1)` extra if sorting the input in place is acceptable.
+    implementations:
+      - language: JAVA
+        code: |
+          class Solution {
+              public boolean containsDuplicate(int[] nums) {
+                  int[] sorted = nums.clone();
+                  Arrays.sort(sorted);
+                  for (int i = 1; i < sorted.length; i++) {
+                      if (sorted[i] == sorted[i - 1]) {
+                          return true;
+                      }
+                  }
+                  return false;
+              }
+          }
+  - title: Hash Set
+    useReferenceSolution: true
+    explanation: |
+      Walk the array once, remembering every value seen so far in a hash set. The first value that's
+      already in the set is a duplicate.
+
+      `Set.add` returns `false` when the value was already present, so the membership check and the
+      insert are a single call.
+
+      **Complexity**
+
+      - Time: `O(n)` — each insert/lookup is `O(1)` on average.
+      - Space: `O(n)` for the set.
+
+      Compared with sorting, this trades memory for speed — the classic hash-table trade-off.
 testCases:
   # Examples 1 and 2 from the description — shown to users.
   - input: '[[1,2,3,3]]'

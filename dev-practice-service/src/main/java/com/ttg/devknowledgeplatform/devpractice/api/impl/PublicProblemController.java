@@ -1,5 +1,6 @@
 package com.ttg.devknowledgeplatform.devpractice.api.impl;
 
+import java.util.List;
 import java.util.Set;
 
 import org.springframework.data.domain.Page;
@@ -13,6 +14,7 @@ import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.api.PublicProblemApi;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
+import com.ttg.devknowledgeplatform.devpractice.dto.ProblemSolutionResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemSummaryResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.StarterCodeResponse;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
@@ -20,7 +22,9 @@ import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarnessRegistry;
 import com.ttg.devknowledgeplatform.devpractice.mapper.ProblemMapper;
+import com.ttg.devknowledgeplatform.devpractice.mapper.ProblemSolutionMapper;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemService;
+import com.ttg.devknowledgeplatform.devpractice.service.ProblemSolutionService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -33,6 +37,8 @@ public class PublicProblemController implements PublicProblemApi {
     private final ProblemService problemService;
     private final ProblemMapper problemMapper;
     private final LanguageHarnessRegistry harnessRegistry;
+    private final ProblemSolutionService problemSolutionService;
+    private final ProblemSolutionMapper problemSolutionMapper;
 
     @Override
     public ResponseEntity<PagedResponse<ProblemSummaryResponse>> list(
@@ -54,6 +60,13 @@ public class PublicProblemController implements PublicProblemApi {
         Problem problem = problemService.getPublishedBySlug(slug);
         String code = harnessRegistry.get(language).renderStarterCode(problem);
         return ResponseEntity.ok(new StarterCodeResponse(language, code));
+    }
+
+    @Override
+    public ResponseEntity<List<ProblemSolutionResponse>> listSolutions(String slug) {
+        return ResponseEntity.ok(problemSolutionService.listPublishedBySlug(slug).stream()
+                .map(problemSolutionMapper::toResponse)
+                .toList());
     }
 
 }

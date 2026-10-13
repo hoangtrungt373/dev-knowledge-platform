@@ -17,6 +17,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +38,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTag;
+import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
 import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
@@ -48,6 +50,8 @@ import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemTagRepository;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemCommands;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemService;
+import com.ttg.devknowledgeplatform.devpractice.service.ProblemSolutionCommands;
+import com.ttg.devknowledgeplatform.devpractice.service.ProblemSolutionService;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionCommands;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionService;
 import com.ttg.devknowledgeplatform.infra.service.SlugService;
@@ -67,8 +71,9 @@ class ProblemSeederTest {
     private final ProblemTagRepository tagRepository = mock(ProblemTagRepository.class);
     private final ProblemService problemService = mock(ProblemService.class);
     private final SubmissionService submissionService = mock(SubmissionService.class);
+    private final ProblemSolutionService problemSolutionService = mock(ProblemSolutionService.class);
     private final SlugService slugService = mock(SlugService.class);
-    private final ProblemSeeder seeder = new ProblemSeeder(problemRepository, tagRepository, problemService, submissionService,
+    private final ProblemSeeder seeder = new ProblemSeeder(problemRepository, tagRepository, problemService, submissionService, problemSolutionService,
             new SignatureTemplateParserRegistry(List.of(new JavaSignatureTemplateParser(),
                     new PythonSignatureTemplateParser(), new JavaScriptSignatureTemplateParser())),
             slugService);
@@ -77,12 +82,26 @@ class ProblemSeederTest {
     /** Ids handed out by the mocked ProblemService#create, in creation order. */
     private final AtomicInteger nextId = new AtomicInteger(100);
 
+    /** Every reference run the seeder submitted, by the id the mocked createReference handed out. */
+    private final Map<Integer, SeededRun> runsById = new HashMap<>();
+    private final AtomicInteger nextRunId = new AtomicInteger(500);
+
+    /** One createReference call: which problem, the code, and whether it may publish the problem. */
+    private record SeededRun(SubmissionCommands.Create command, boolean publishOnAccept) {
+    }
+
     @BeforeEach
     void setUp() {
         when(problemService.create(any(), anyString())).thenAnswer(inv -> {
             Problem saved = Problem.builder().build();
             saved.setId(nextId.getAndIncrement());
             return saved;
+        });
+        when(submissionService.createReference(anyString(), any(), anyBoolean())).thenAnswer(inv -> {
+            Submission run = Submission.builder().build();
+            run.setId(nextRunId.getAndIncrement());
+            runsById.put(run.getId(), new SeededRun(inv.getArgument(1), inv.getArgument(2)));
+            return run;
         });
         when(slugService.toSlug(anyString())).thenAnswer(inv -> inv.<String>getArgument(0).toLowerCase().replace(' ', '-'));
         // Only names the tag seeder's CSV actually provides resolve — so a problem file referencing a
@@ -164,21 +183,79 @@ class ProblemSeederTest {
             SubmissionCommands.Create reference = references.get(100 + i);
             assertThat(reference).as("'%s' has a reference solution", problem.title()).isNotNull();
 
-            // Every seed solution is a class named Solution — one directory (and class loader) each.
-            Method method = compileMethod(reference.sourceCode(), problem, Files.createDirectory(dir.resolve("p" + i)));
-            Constructor<?> constructor = method.getDeclaringClass().getDeclaredConstructor();
-            constructor.setAccessible(true);
+            assertPassesEveryTestCase(reference.sourceCode(), problem, Files.createDirectory(dir.resolve("p" + i)));
+        }
+    }
 
-            for (ProblemCommands.TestCaseInput testCase : problem.testCases()) {
-                Object[] args = toArguments(json.readTree(testCase.input()), problem.parameters());
-                // A fresh instance per case, like the harness — no state leaks between cases.
-                Object actual = method.invoke(constructor.newInstance(), args);
-                // Typed local: valueToTree is generic in its return type, which assertThat can't infer.
-                JsonNode actualJson = json.valueToTree(actual);
-                assertThat(actualJson)
-                        .as("%s: %s(%s)", problem.title(), problem.methodName(), testCase.input())
-                        .isEqualTo(json.readTree(testCase.expectedOutput()));
+    @Test
+    void everyEditorialImplementationPassesEveryTestCaseToo(@TempDir Path dir) throws Exception {
+        seeder.seed();
+        Map<Integer, ProblemCommands.Create> problemsById = new HashMap<>();
+        List<ProblemCommands.Create> created = createdInOrder();
+        for (int i = 0; i < created.size(); i++) {
+            problemsById.put(100 + i, created.get(i));
+        }
+
+        int checked = 0;
+        for (SeededRun run : runsById.values()) {
+            if (run.publishOnAccept()) {
+                continue; // the referenceSolution — covered by the test above
             }
+            ProblemCommands.Create problem = problemsById.get(run.command().problemId());
+            assertPassesEveryTestCase(run.command().sourceCode(), problem, Files.createDirectory(dir.resolve("i" + checked++)));
+        }
+        assertThat(checked).as("seed files carry at least one extra implementation").isPositive();
+    }
+
+    @Test
+    void seedsEachFilesSolutionsInOrderLinkedToTheirReferenceRuns() {
+        seeder.seed();
+        Map<String, Integer> idsByTitle = new HashMap<>();
+        List<ProblemCommands.Create> created = createdInOrder();
+        for (int i = 0; i < created.size(); i++) {
+            idsByTitle.put(created.get(i).title(), 100 + i);
+        }
+
+        List<ProblemSolutionCommands.Create> duplicate = solutionsFor(idsByTitle.get("Contains Duplicate"));
+        assertThat(duplicate).extracting(ProblemSolutionCommands.Create::title).containsExactly("Sorting", "Hash Set");
+        // Sorting brings its own implementation, submitted as a non-publishing run of the same problem.
+        SeededRun sorting = runsById.get(duplicate.get(0).referenceSubmissionIds().get(0));
+        assertThat(sorting.publishOnAccept()).isFalse();
+        assertThat(sorting.command().problemId()).isEqualTo(idsByTitle.get("Contains Duplicate"));
+        assertThat(sorting.command().sourceCode()).contains("Arrays.sort");
+        // Hash Set reuses the file's referenceSolution run instead of submitting the code twice.
+        SeededRun hashSet = runsById.get(duplicate.get(1).referenceSubmissionIds().get(0));
+        assertThat(hashSet.publishOnAccept()).isTrue();
+        assertThat(duplicate).allSatisfy(s -> assertThat(s.explanation()).contains("**Complexity**"));
+
+        List<ProblemSolutionCommands.Create> rpn = solutionsFor(idsByTitle.get("Evaluate Reverse Polish Notation"));
+        assertThat(rpn).extracting(ProblemSolutionCommands.Create::title).containsExactly("Stack");
+        assertThat(runsById.get(rpn.get(0).referenceSubmissionIds().get(0)).publishOnAccept()).isTrue();
+    }
+
+    /** A problem's solution-create calls, in the order the seeder made them. */
+    private List<ProblemSolutionCommands.Create> solutionsFor(Integer problemId) {
+        ArgumentCaptor<ProblemSolutionCommands.Create> captor = ArgumentCaptor.forClass(ProblemSolutionCommands.Create.class);
+        verify(problemSolutionService, atLeastOnce()).create(eq(problemId), captor.capture());
+        return new ArrayList<>(captor.getAllValues());
+    }
+
+    /** Compiles {@code source} (a class named Solution) and runs it on every test case of {@code problem}. */
+    private void assertPassesEveryTestCase(String source, ProblemCommands.Create problem, Path dir) throws Exception {
+        // Every seed solution is a class named Solution — one directory (and class loader) each.
+        Method method = compileMethod(source, problem, dir);
+        Constructor<?> constructor = method.getDeclaringClass().getDeclaredConstructor();
+        constructor.setAccessible(true);
+
+        for (ProblemCommands.TestCaseInput testCase : problem.testCases()) {
+            Object[] args = toArguments(json.readTree(testCase.input()), problem.parameters());
+            // A fresh instance per case, like the harness — no state leaks between cases.
+            Object actual = method.invoke(constructor.newInstance(), args);
+            // Typed local: valueToTree is generic in its return type, which assertThat can't infer.
+            JsonNode actualJson = json.valueToTree(actual);
+            assertThat(actualJson)
+                    .as("%s: %s(%s)", problem.title(), problem.methodName(), testCase.input())
+                    .isEqualTo(json.readTree(testCase.expectedOutput()));
         }
     }
 
@@ -189,6 +266,7 @@ class ProblemSeederTest {
         assertThat(seeder.seed()).isZero();
         verify(problemService, never()).create(any(), anyString());
         verify(submissionService, never()).createReference(any(), any(), anyBoolean());
+        verify(problemSolutionService, never()).create(any(), any());
     }
 
     private List<ProblemCommands.Create> createdInOrder() {

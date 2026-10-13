@@ -1,9 +1,11 @@
 package com.ttg.devknowledgeplatform.devpractice.api;
 
+import java.util.List;
 import java.util.Set;
 
 import com.ttg.devknowledgeplatform.common.dto.PagedResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemResponse;
+import com.ttg.devknowledgeplatform.devpractice.dto.ProblemSolutionResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.ProblemSummaryResponse;
 import com.ttg.devknowledgeplatform.devpractice.dto.StarterCodeResponse;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
@@ -68,4 +70,16 @@ public interface PublicProblemApi {
     @GetMapping("/{slug}/starter-code")
     ResponseEntity<StarterCodeResponse> getStarterCode(
             @PathVariable String slug, @RequestParam ProgrammingLanguage language);
+
+    /**
+     * Returns a published problem's editorial — its solution approaches in order, each with a Markdown
+     * explanation and only the implementations the judge accepted at the problem's current contract
+     * version. Already reachable through gateway's {@code /api/v1/public/problems/**} route.
+     *
+     * @param slug URL-friendly identifier of the problem
+     * @return {@code 200} with the approaches (possibly none), or {@code 404 PROBLEM_001} for an
+     *         unknown or unpublished problem
+     */
+    @GetMapping("/{slug}/solutions")
+    ResponseEntity<List<ProblemSolutionResponse>> listSolutions(@PathVariable String slug);
 }

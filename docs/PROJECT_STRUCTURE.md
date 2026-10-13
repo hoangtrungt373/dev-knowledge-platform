@@ -2935,6 +2935,12 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     by Problem.tagAssignments (cascade ALL, orphanRemoval);
 │   │                                     @BatchSize on problemTag so a page of problems resolves
 │   │                                     its tags in one IN (...) query
+│   ├── ProblemSolution.java           — one editorial approach: problem, title, explanation (Markdown,
+│   │                                     TEXT), position; codes (cascade, orphanRemoval);
+│   │                                     verifiedCode() = REFERENCE + ACCEPTED + current
+│   │                                     contractVersion runs, by language — the learner filter
+│   ├── ProblemSolutionCode.java       — explicit join approach ↔ REFERENCE submission (code is
+│   │                                     linked, never copied); @BatchSize on submission
 │   ├── StudyPlan.java                 — aggregate root: name, slug (unique), description (TEXT),
 │   │                                     position (overview order); sections (@OrderBy position,
 │   │                                     cascade ALL, orphanRemoval); addSection() numbers 0..n-1
@@ -3132,6 +3138,7 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     findByNameContainingIgnoreCase(Pageable)
 │   ├── ProblemTagAssignmentRepository.java — countByProblemTag_Id (guards tag delete)
 │   ├── StudyPlanRepository.java       — existsBySlug, findBySlug, findAllByOrderByPositionAscNameAsc
+│   ├── ProblemSolutionRepository.java — findByProblem_IdOrderByPositionAscIdAsc, countByProblem_Id
 │   └── spec/
 │       └── ProblemSpecification.java  — withFilters(difficulty, status, q, tagIds) — tagIds is
 │                                         an ANY-match via an EXISTS subquery on
@@ -3175,6 +3182,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     reference solution run on it — a test oracle), sequential
 │   │                                     via CaseJudge (+ CaseJudge#compare), nothing persisted,
 │   │                                     read-only TransactionTemplate load then no connection held
+│   ├── ProblemSolutionService.java (+ impl/, ProblemSolutionCommands) — listPublishedBySlug,
+│   │                                     create (validates: this problem's REFERENCE runs, one per
+│   │                                     language; verdict not required at link time)
 │   ├── StudyPlanService.java (+ impl/) — read-only: listAll (overview order), getBySlug
 │   │                                     (STUDY_PLAN_NOT_FOUND); no write path yet (seed-only)
 │   ├── ProblemTagService.java (+ impl/) — tag catalog CRUD + listAll (sorted by name); delete
@@ -3205,7 +3215,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                        ProblemTagSeeder, ProblemSeeder (tags resolved by name), then
 │                                        StudyPlanSeeder (problems resolved by slug)
 ├── exception/
-│   └── DevPracticeErrorCode.java       — STUDY_PLAN_NOT_FOUND (404), PROBLEM_NOT_FOUND, PROBLEM_SLUG_CONFLICT,
+│   └── DevPracticeErrorCode.java       — PROBLEM_SOLUTION_INVALID_REFERENCE/_DUPLICATE_LANGUAGE (400),
+│                                         STUDY_PLAN_NOT_FOUND (404), PROBLEM_NOT_FOUND, PROBLEM_SLUG_CONFLICT,
 │                                         PROBLEM_SIGNATURE_LOCKED, PROBLEM_TEST_CASE_ARITY_MISMATCH,
 │                                         PROBLEM_INVALID_IDENTIFIER, PROBLEM_DUPLICATE_PARAMETER_NAME,
 │                                         PROBLEM_HAS_SUBMISSIONS (409 — delete refused; archive
@@ -3252,6 +3263,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   ├── CreateSubmissionRequest.java   — @Data: problemId, language, sourceCode
 │   └── StarterCodeResponse.java       — record: language, code
 ├── mapper/
+│   ├── ProblemSolutionMapper.java      — approach → ProblemSolutionResponse; codes always via
+│   │                                     verifiedCode() → SolutionCodeResponse
 │   ├── StudyPlanMapper.java            — uses ProblemMapper; sections' problems and the overview's
 │   │                                     problems ({id, slug} refs) come from StudyPlanSection.publishedProblems()
 │   ├── ProblemMapper.java              — toResponse/toSummaryResponse/toResponse(MethodParameter)
@@ -3285,7 +3298,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
     │                                     content-service's PublicContentController), getBySlug,
     │                                     GET /{slug}/starter-code?language=... (renders a
     │                                     LanguageHarness#renderStarterCode stub — no test-case
-    │                                     wrapping, just the signature)
+    │                                     wrapping, just the signature), GET /{slug}/solutions
+    │                                     (editorial approaches; verified code only)
     └── SubmissionApi.java (+ SubmissionController.java)        — /api/v1/submissions: create,
                                           getById, list — every method takes @CurrentUserId String
                                           userUuid; USER submissions only; GET /progress →
@@ -3402,7 +3416,9 @@ only — the starter topics come from `ProblemTagSeeder`) +
 `IDX_SUBMISSION_IN_PROGRESS` on `DTE_LAST_MODIFICATION WHERE STATUS IN ('PENDING','RUNNING')`) +
 `2026/0.0.4/202610130001__0.0.4__DKP-0060__add_study_plan_tables.sql` (`STUDY_PLAN`/
 `STUDY_PLAN_SECTION`/`STUDY_PLAN_PROBLEM`; sections and entries cascade from their parent, entries
-also cascade from `PROBLEM`; no unique `POSITION` constraints)), applied via the consolidated `services-liquibase` job in
+also cascade from `PROBLEM`; no unique `POSITION` constraints) +
+`2026/0.0.4/202610130002__0.0.4__DKP-0061__add_problem_solution_tables.sql` (`PROBLEM_SOLUTION`/
+`PROBLEM_SOLUTION_CODE`; cascade from `PROBLEM` and, for code links, from `SUBMISSION`)), applied via the consolidated `services-liquibase` job in
 `docker-compose.apps.yml` — no standalone single-service `*-liquibase.yml` file of its own (same as
 `ecommerce-service`/`identity-service`/`content-service`/`ai-service`). `TEST_CASE`/
 `METHOD_PARAMETER` both cascade from `PROBLEM` (`ON DELETE CASCADE`); `SUBMISSION`'s FK to `PROBLEM`

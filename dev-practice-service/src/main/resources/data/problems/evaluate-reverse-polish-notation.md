@@ -38,6 +38,27 @@ referenceSolution:
             return stack.pop();
         }
     }
+# Editorial approach (ProblemSeeder → ProblemSolutionService); useReferenceSolution links the
+# referenceSolution run above instead of repeating its code.
+solutions:
+  - title: Stack
+    useReferenceSolution: true
+    explanation: |
+      In Reverse Polish Notation every operator comes **after** its two operands, so the expression can
+      be evaluated left to right with a stack:
+
+      1. A number: push it.
+      2. An operator: pop the right operand, then the left one, apply the operator, push the result.
+
+      The single value left on the stack at the end is the answer.
+
+      Order matters for `-` and `/`: the first value popped is the **right** operand. Java's integer
+      division already truncates toward zero, exactly as the problem asks.
+
+      **Complexity**
+
+      - Time: `O(n)` — one pass with `O(1)` work per token.
+      - Space: `O(n)` for the stack in the worst case (all numbers first).
 testCases:
   # Example 1 from the description — shown to users.
   - input: '[["1","2","+","3","*","4","-"]]'

@@ -21,7 +21,8 @@ for `JUDGE_ERROR`; `DKP-0055` — problem tags; `DKP-0056` — `PROBLEM.CONTRACT
 `SUBMISSION.KIND`/`CONTRACT_VERSION` for publish verification; `DKP-0057` —
 `SUBMISSION.PUBLISH_ON_ACCEPT`; `DKP-0058` — `SUBMISSION.RUNTIME_MS`/`MEMORY_KB`; `DKP-0059` —
 partial index `IDX_SUBMISSION_IN_PROGRESS` for the stale-submission sweeper; `DKP-0060` — study plans:
-`STUDY_PLAN`/`STUDY_PLAN_SECTION`/`STUDY_PLAN_PROBLEM`). Routed through `gateway`'s
+`STUDY_PLAN`/`STUDY_PLAN_SECTION`/`STUDY_PLAN_PROBLEM`; `DKP-0061` — editorial solutions:
+`PROBLEM_SOLUTION`/`PROBLEM_SOLUTION_CODE`). Routed through `gateway`'s
 `routing/GatewayRoutesConfig` (`devPracticeServiceRoutes()`) — `/api/v1/admin/problems/**` and
 `/api/v1/public/problems/**` (including `/starter-code`) are two more resource segments under the
 already-shared `/api/v1/admin/**`/`/api/v1/public/**` prefixes; `/api/v1/submissions/**` is a
@@ -325,9 +326,39 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   JavaParser quirk: a bare method (no class) parses into a synthetic `$COMPACT_CLASS` (Java 21+
   compact source files) even at language level 17 — `JavaSignatureTemplateParser` treats
   `$`-prefixed class names as "no class".
+- **Editorial solutions (`DKP-0061`, Phase 1 of 3 — backend only so far): `ProblemSolution` (one
+  approach: title, Markdown explanation, position) → `ProblemSolutionCode` (explicit join to a
+  `REFERENCE` submission, at most one per language — checked in `ProblemSolutionServiceImpl#create`,
+  since the language is on `SUBMISSION`).** Code is **linked, never copied**, so a learner only reads
+  code the judge accepted. Its own aggregate, not a `Problem` collection — `ProblemService#update`
+  replaces parameters/test cases/tags wholesale and solutions must not ride in that payload. Both
+  FKs cascade (`PROBLEM`; `SUBMISSION`, since `ProblemServiceImpl#delete` removes reference runs
+  before the problem).
+  - **`ProblemSolution#verifiedCode()` is the one filter for what learners see**: `REFERENCE` +
+    `ACCEPTED` + `contractVersion` equal to the problem's current one, ordered by language. A pending,
+    rejected or stale run (test data changed since) is hidden, so an approach can show its
+    explanation with no code until an admin links a fresh run. `ProblemSolutionMapper` always maps
+    through it — never map `codes` directly into a learner DTO.
+  - **Link time doesn't require a verdict** (the seeder links runs the judge hasn't answered yet);
+    the read side's filter is what guarantees correctness. Rules enforced at link time: the run
+    exists, is this problem's, is `REFERENCE` (`PROBLEM_SOLUTION_001`), one per language
+    (`PROBLEM_SOLUTION_002`). Explanation-only approaches (no runs) are allowed.
+  - **Public read**: `GET /api/v1/public/problems/{slug}/solutions` (on `PublicProblemApi`, covered
+    by gateway's existing `/api/v1/public/problems/**` route) — published problems only, via
+    `ProblemService#getPublishedBySlug` (draft = `PROBLEM_001`). No spoiler gating server-side: the
+    soft "Show solution" gate is a GUI concern (Phase 2). Admin management is Phase 3 and must go
+    through `ProblemSolutionService#create` (or its future siblings) like the seeder does.
+  - **Seed format**: an optional `solutions:` list in a problem file, in display order — each
+    `{title, explanation, useReferenceSolution?, implementations?: [{language, code}]}`.
+    `useReferenceSolution: true` links the file's `referenceSolution` run (no duplicated code; an
+    error if the file has none); each implementation is submitted as its own REFERENCE run
+    (`publishOnAccept=false`). `ProblemSeederTest#everyEditorialImplementationPassesEveryTestCaseToo`
+    compiles and runs every implementation against every test case, the same way it checks
+    `referenceSolution`.
 - **Seeding problems: add one `resources/data/problems/<slug>.md` file per problem** — YAML front
   matter (`title`, `difficulty`, `status`, `tags` by name, `template: {language, code}`,
-  `testCases: [{input, expectedOutput, sample}]`) + a Markdown body (the description).
+  `testCases: [{input, expectedOutput, sample}]`, optional `referenceSolution`/`solutions` — see the
+  editorial-solutions rule above) + a Markdown body (the description).
   `service.seed.ProblemSeeder` (run by `DevPracticeDataSeedingRunner` when `app.seed.enabled` —
   on in the `local` profile, `APP_SEED_ENABLED` elsewhere) derives the signature from the template
   with the same `SignatureTemplateParserRegistry` the admin form uses, then creates the problem via

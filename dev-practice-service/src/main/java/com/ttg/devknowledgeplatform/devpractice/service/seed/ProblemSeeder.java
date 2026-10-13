@@ -2,6 +2,7 @@ package com.ttg.devknowledgeplatform.devpractice.service.seed;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +20,7 @@ import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.common.exception.ApiException;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTag;
+import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 import com.ttg.devknowledgeplatform.devpractice.harness.ParsedSignature;
@@ -27,6 +29,8 @@ import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemTagRepository;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemCommands;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemService;
+import com.ttg.devknowledgeplatform.devpractice.service.ProblemSolutionCommands;
+import com.ttg.devknowledgeplatform.devpractice.service.ProblemSolutionService;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionCommands;
 import com.ttg.devknowledgeplatform.devpractice.service.SubmissionService;
 import com.ttg.devknowledgeplatform.infra.service.SlugService;
@@ -60,6 +64,14 @@ import lombok.extern.slf4j.Slf4j;
  * unreachable (e.g. no RapidAPI key), the problem simply stays a draft and the run shows up in the
  * admin form's reference panel; since seeding is idempotent by slug, it isn't retried on the next
  * startup. A {@code referenceSolution} on a {@code DRAFT} file verifies it without publishing.
+ *
+ * <p><b>Editorial solutions</b> come from an optional {@code solutions:} list, in display order: each
+ * approach has a {@code title}, a Markdown {@code explanation}, and its code — either
+ * {@code useReferenceSolution: true} (link the {@code referenceSolution} run above, so its code isn't
+ * written twice) and/or {@code implementations:} ({@code language}/{@code code} pairs, each submitted
+ * as its own REFERENCE run, never publish-on-accept). Created through
+ * {@link ProblemSolutionService#create}, the same validated path admin management will use. Links are
+ * made before the judge has answered; learners only ever see accepted runs' code.
  */
 @Slf4j
 @Component
@@ -76,6 +88,7 @@ public class ProblemSeeder implements Seeder {
     private final ProblemTagRepository problemTagRepository;
     private final ProblemService problemService;
     private final SubmissionService submissionService;
+    private final ProblemSolutionService problemSolutionService;
     private final SignatureTemplateParserRegistry templateParsers;
     private final SlugService slugService;
 
@@ -112,11 +125,13 @@ public class ProblemSeeder implements Seeder {
             }
             try {
                 Problem saved = problemService.create(toCommand(problem), SEED_AUTHOR_UUID);
+                Submission referenceRun = null;
                 if (problem.referenceSolution() != null) {
-                    submissionService.createReference(SEED_AUTHOR_UUID, new SubmissionCommands.Create(saved.getId(),
+                    referenceRun = submissionService.createReference(SEED_AUTHOR_UUID, new SubmissionCommands.Create(saved.getId(),
                                     problem.referenceSolution().language(), problem.referenceSolution().code()),
                             problem.status() == ContentStatus.PUBLISHED);
                 }
+                seedSolutions(saved.getId(), problem.solutions(), referenceRun);
             } catch (ApiException e) {
                 // A seed file is developer-authored: failing startup with the file's name beats
                 // half-seeding or silently skipping it.
@@ -126,6 +141,23 @@ public class ProblemSeeder implements Seeder {
         }
         log.info("ProblemSeeder: created {} problem(s), skipped {} already present", created, skipped);
         return created;
+    }
+
+    /** Creates the file's approaches in order, each implementation as its own (non-publishing) REFERENCE run. */
+    private void seedSolutions(Integer problemId, List<SeedSolution> solutions, Submission referenceRun) {
+        for (SeedSolution solution : solutions) {
+            List<Integer> runIds = new ArrayList<>();
+            if (solution.useReferenceSolution()) {
+                runIds.add(referenceRun.getId()); // presence checked by read()
+            }
+            for (ReferenceSolution implementation : solution.implementations()) {
+                Submission run = submissionService.createReference(SEED_AUTHOR_UUID,
+                        new SubmissionCommands.Create(problemId, implementation.language(), implementation.code()), false);
+                runIds.add(run.getId());
+            }
+            problemSolutionService.create(problemId,
+                    new ProblemSolutionCommands.Create(solution.title(), solution.explanation(), runIds));
+        }
     }
 
     private ProblemCommands.Create toCommand(SeedProblem problem) {
@@ -185,6 +217,7 @@ public class ProblemSeeder implements Seeder {
         Map<String, Object> template = (Map<String, Object>) require(meta, "template", file);
         List<Map<String, Object>> testCases = (List<Map<String, Object>>) require(meta, "testCases", file);
         Map<String, Object> reference = (Map<String, Object>) meta.get("referenceSolution");
+        List<Map<String, Object>> solutions = (List<Map<String, Object>>) meta.getOrDefault("solutions", List.of());
 
         return new SeedProblem(
                 (String) require(meta, "title", file),
@@ -200,9 +233,27 @@ public class ProblemSeeder implements Seeder {
                                 String.valueOf(require(tc, "expectedOutput", file)),
                                 Boolean.TRUE.equals(tc.get("sample"))))
                         .toList(),
-                reference == null ? null : new ReferenceSolution(
-                        ProgrammingLanguage.valueOf((String) require(reference, "language", file)),
-                        (String) require(reference, "code", file)));
+                reference == null ? null : toReferenceSolution(reference, file),
+                solutions.stream().map(s -> toSeedSolution(s, reference != null, file)).toList());
+    }
+
+    private static ReferenceSolution toReferenceSolution(Map<String, Object> map, Resource file) {
+        return new ReferenceSolution(
+                ProgrammingLanguage.valueOf((String) require(map, "language", file)),
+                (String) require(map, "code", file));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static SeedSolution toSeedSolution(Map<String, Object> map, boolean hasReference, Resource file) {
+        String title = (String) require(map, "title", file);
+        boolean useReference = Boolean.TRUE.equals(map.get("useReferenceSolution"));
+        if (useReference && !hasReference) {
+            throw new IllegalStateException(file.getFilename() + ": solution '" + title
+                    + "' sets useReferenceSolution but the file has no referenceSolution");
+        }
+        List<ReferenceSolution> implementations = ((List<Map<String, Object>>) map.getOrDefault("implementations", List.of()))
+                .stream().map(i -> toReferenceSolution(i, file)).toList();
+        return new SeedSolution(title, (String) require(map, "explanation", file), useReference, implementations);
     }
 
     private static Object require(Map<String, Object> map, String key, Resource file) {
@@ -223,7 +274,13 @@ public class ProblemSeeder implements Seeder {
             ProgrammingLanguage templateLanguage,
             String templateCode,
             List<ProblemCommands.TestCaseInput> testCases,
-            ReferenceSolution referenceSolution) {
+            ReferenceSolution referenceSolution,
+            List<SeedSolution> solutions) {
+    }
+
+    /** One editorial approach from a seed file's {@code solutions:} list. */
+    record SeedSolution(String title, String explanation, boolean useReferenceSolution,
+                        List<ReferenceSolution> implementations) {
     }
 
     /** A complete, accepted-by-the-judge solution for a seed problem; {@code null} on the record when absent. */

@@ -22,6 +22,17 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **Editorial solutions, Phase 1 (backend).** `dev-practice-service`: new `ProblemSolution` (one
+  approach — title, Markdown explanation, position) and `ProblemSolutionCode` (links an approach to a
+  judge-verified `REFERENCE` submission, one per language), migration `DKP-0061`. Learners only ever
+  see code the judge `ACCEPTED` at the problem's current contract version
+  (`ProblemSolution#verifiedCode()`). Public `GET /api/v1/public/problems/{slug}/solutions` (published
+  problems only; no gateway change). New `ProblemSolutionService` (validated create — this problem's
+  reference runs only, one per language — `PROBLEM_SOLUTION_001`/`002`). Problem seed files gained a
+  `solutions:` list (`useReferenceSolution` reuses the reference run; `implementations` are submitted
+  as their own runs); Contains Duplicate ships "Sorting" + "Hash Set", Evaluate Reverse Polish
+  Notation ships "Stack". `ProblemSeederTest` now compiles and runs every implementation against
+  every test case. GUI tab (Phase 2) and admin management (Phase 3) not built yet.
 - **Study plans.** `dev-practice-service`: curated, ordered problem lists such as
   "NeetCode 150". New `StudyPlan` → ordered `StudyPlanSection` (free-text chapter) → ordered
   `StudyPlanProblem` (explicit join to `Problem`), migration `DKP-0060`. Read-only public API

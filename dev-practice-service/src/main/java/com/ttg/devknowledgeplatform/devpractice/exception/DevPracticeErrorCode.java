@@ -43,6 +43,12 @@ public enum DevPracticeErrorCode implements ErrorCode {
     PROBLEM_TAG_IN_USE("PROBLEM_TAG_004",
             "This tag is used by {0} problem(s) — remove it from them before deleting it", HttpStatus.CONFLICT),
 
+    // Problem solution (editorial) errors (PROBLEM_SOLUTION_*)
+    PROBLEM_SOLUTION_INVALID_REFERENCE("PROBLEM_SOLUTION_001",
+            "Submission {0} is not a reference run of this problem", HttpStatus.BAD_REQUEST),
+    PROBLEM_SOLUTION_DUPLICATE_LANGUAGE("PROBLEM_SOLUTION_002",
+            "An approach can have only one {0} implementation", HttpStatus.BAD_REQUEST),
+
     // Study plan errors (STUDY_PLAN_*)
     STUDY_PLAN_NOT_FOUND("STUDY_PLAN_001", "Study plan not found", HttpStatus.NOT_FOUND),
 
