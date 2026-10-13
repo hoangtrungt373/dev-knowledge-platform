@@ -102,11 +102,31 @@ public final class CodePlaceholders {
      *         "being re-verified" note when that language has no verified code right now
      */
     public static String render(String explanation, Map<ProgrammingLanguage, String> verifiedCode) {
+        return render(explanation, verifiedCode, null);
+    }
+
+    /**
+     * Like {@link #render(String, Map)}, but in the learner's chosen language where possible. A
+     * placeholder marks <em>where</em> code goes and the author's default language; with a
+     * {@code preferred} language that this approach has verified code in, every placeholder shows
+     * that language instead. Two cases keep the text as written: {@code preferred} has no verified
+     * code here (nothing to switch to — the author's language is still the best answer), or the
+     * explanation already names {@code preferred} in a placeholder of its own — then the author laid
+     * out several languages deliberately, and switching would show the same code twice.
+     *
+     * @param preferred the learner's language, or {@code null} for the explanation as written
+     */
+    public static String render(String explanation, Map<ProgrammingLanguage, String> verifiedCode,
+                                ProgrammingLanguage preferred) {
+        boolean switchLanguage = preferred != null && verifiedCode.containsKey(preferred)
+                && !namesLanguage(explanation, preferred);
         Matcher line = PLACEHOLDER_LINE.matcher(explanation);
         StringBuilder out = new StringBuilder();
         while (line.find()) {
             String indent = line.group(1);
-            ProgrammingLanguage language = languageOrNull(line.group(2).toUpperCase(Locale.ROOT));
+            ProgrammingLanguage language = switchLanguage
+                    ? preferred
+                    : languageOrNull(line.group(2).toUpperCase(Locale.ROOT));
             String code = language == null ? null : verifiedCode.get(language);
             String replacement = code == null
                     ? indent + "_The " + displayName(language, line.group(2)) + " code for this approach is being re-verified._"
@@ -133,6 +153,17 @@ public final class CodePlaceholders {
         String fence = "`".repeat(Math.max(3, longestRun + 1));
         String indentedBody = body.lines().map(l -> l.isEmpty() ? l : indent + l).collect(Collectors.joining("\n"));
         return indent + fence + language.name().toLowerCase(Locale.ROOT) + "\n" + indentedBody + "\n" + indent + fence;
+    }
+
+    /** Whether any placeholder line in {@code explanation} names {@code language} explicitly. */
+    private static boolean namesLanguage(String explanation, ProgrammingLanguage language) {
+        Matcher line = PLACEHOLDER_LINE.matcher(explanation);
+        while (line.find()) {
+            if (languageOrNull(line.group(2).toUpperCase(Locale.ROOT)) == language) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static ProgrammingLanguage languageOrNull(String upperCaseName) {

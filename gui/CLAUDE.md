@@ -4505,6 +4505,14 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     inside the explanation** (already expanded server-side from `{{code:LANGUAGE}}`), so the panel never
     renders `codes[].sourceCode` a second time — `codes` only feeds the language/runtime chips. A failed
     load shows an inline `Alert` with Retry (no toast); an empty editorial says so.
+    **Language toggle**: `solutionLanguage` (workspace state, starting at the editor's
+    `drafts.language`) is sent as `?language=`; the server switches each explanation's code to it
+    where the approach has verified code (see `dev-practice-service/CLAUDE.md`). The toggle
+    (`LanguageToggle` with its new `languages` prop — only languages some approach has) shows only
+    when there's more than one; an approach without the chosen language says "No Python version of
+    this approach yet — showing Java instead." The hook refetches **only on a language change** and
+    keeps the previous editorial on screen meanwhile (only the very first load spins); a failed switch
+    shows its error above the still-visible previous content.
   - **Study plans** (`pages/StudyPlanListPage.tsx`, `pages/StudyPlanDetailPage.tsx`; backend in
     `dev-practice-service/CLAUDE.md`). No progress endpoint: each plan's published problem ids
     (`StudyPlanSummary.problems` — `{id, slug}` refs — or the section rows on the detail page) are

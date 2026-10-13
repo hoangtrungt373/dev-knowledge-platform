@@ -3316,7 +3316,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
     │                                     GET /{slug}/starter-code?language=... (renders a
     │                                     LanguageHarness#renderStarterCode stub — no test-case
     │                                     wrapping, just the signature), GET /{slug}/solutions
-    │                                     (editorial approaches; verified code only)
+    │                                     ?language= (editorial approaches; verified code only, in the
+    │                                     learner's language where an approach has it)
     └── SubmissionApi.java (+ SubmissionController.java)        — /api/v1/submissions: create,
                                           getById, list — every method takes @CurrentUserId String
                                           userUuid; USER submissions only; GET /progress →
@@ -3371,7 +3372,9 @@ dev-practice-service/src/test/
 ├── java/.../service/seed/ProblemSeederTest.java — loads the real seed files: signature from the
 │                                         template, tags, sample count, created as DRAFT + a
 │                                         publish-on-accept run (exactly one per problem: the first
-│                                         implementation listed); every solutions[].implementations
+│                                         implementation listed); every Java (in-process) and Python
+│                                         (real harness program, local interpreter, skipped if none)
+│                                         solutions[].implementations
 │                                         entry compiled (javax.tools) and run against every test
 │                                         case of every seed file (arguments typed by the signature,
 │                                         compared as JSON); solutions linked to their own runs;

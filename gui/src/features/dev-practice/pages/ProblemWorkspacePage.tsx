@@ -93,7 +93,9 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
   const progress = useProblemProgress();
   // The editorial loads the first time the Solution tab opens and stays loaded; the left panel renders
   // its tabs conditionally, so this state (and the spoiler reveal below) lives here, not in the tab.
-  const solutions = useProblemSolutions(slug, leftTab === 'solution');
+  // Starts in the language the learner is coding in; the Solution tab's own toggle changes it.
+  const [solutionLanguage, setSolutionLanguage] = useState(drafts.language);
+  const solutions = useProblemSolutions(slug, leftTab === 'solution', solutionLanguage);
   const [solutionRevealed, setSolutionRevealed] = useState(false);
 
   const { submission, gaveUp, track } = useSubmissionPolling(
@@ -197,6 +199,8 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
                   // Solved (including a verdict that just landed this session) opens the gate on its own.
                   <SolutionPanel
                     state={solutions}
+                    language={solutionLanguage}
+                    onLanguageChange={setSolutionLanguage}
                     revealed={solutionRevealed || progress.statusOf(problem.id) === 'SOLVED'
                       ? true
                       : progress.loaded ? false : null}

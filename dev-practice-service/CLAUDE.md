@@ -366,7 +366,14 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   - **Public read**: `GET /api/v1/public/problems/{slug}/solutions` (on `PublicProblemApi`, covered
     by gateway's existing `/api/v1/public/problems/**` route) — published problems only, via
     `ProblemService#getPublishedBySlug` (draft = `PROBLEM_001`). No spoiler gating server-side: the
-    soft "Show solution" gate is a GUI concern.
+    soft "Show solution" gate is a GUI concern. Optional `?language=` (the learner's toggle): a
+    placeholder marks *where* code goes and the author's default language;
+    `CodePlaceholders.render(…, preferred)` shows the preferred language instead when the approach has
+    verified code in it — except when the explanation already names that language in its own
+    placeholder (the author laid out several languages deliberately; switching would duplicate code),
+    in which case it renders as written. No verified code in the preferred language → the author's
+    language. The mapper takes it as a MapStruct `@Context` parameter (usable in expressions, never a
+    property source).
   - **Admin management**: `ProblemSolutionApi` at `/api/v1/admin/problems/{problemId}/solutions`
     (covered by gateway's `/api/v1/admin/problems/**`): `GET` (any problem status), `POST`,
     `PUT /{solutionId}`, `DELETE /{solutionId}` (the linked runs stay), `PUT /order` (a literal
@@ -415,11 +422,18 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   doesn't matter — every implementation is verified by the test below. If Judge0 rejects it or is
   unreachable (no RapidAPI key) the problem just stays `DRAFT` — and isn't retried, since seeding
   skips existing slugs; run a reference from the admin form instead. Implementations on a `DRAFT`
-  file verify it without publishing. Write them for Judge0's **OpenJDK 13** (no arrow-`switch`, no
-  records/text blocks), using only `java.util` (the harness prelude imports it).
-  `ProblemSeederTest#everyImplementationPassesEveryTestCase` compiles each with `javax.tools` and runs
-  it against every test case, so the seed file is the single source of the solutions — but on the
-  test JDK, not 13. To re-seed after
+  file verify it without publishing. Write Java for Judge0's **OpenJDK 13** (no arrow-`switch`, no
+  records/text blocks), using only `java.util` (the harness prelude imports it); Python for Judge0's
+  **3.8** without newer syntax (the prelude imports `typing.List`).
+  `ProblemSeederTest#everyJavaImplementationPassesEveryTestCase` compiles each Java one with
+  `javax.tools` and runs it in-process; `#everyPythonImplementationPassesEveryTestCase` writes the
+  **real judge program** (`PythonLanguageHarness#buildProgram`) and runs it under a local Python 3
+  (`python3`/`python`/`py -3`, `PYTHONIOENCODING=utf-8`), one process per test case, compared by
+  the judge's own `OutputMatcher` — **skipped, not failed, without a local Python** (unverified code
+  still can't reach learners: only judge-ACCEPTED runs are shown). Both run on local runtimes, not
+  Judge0's versions. `#everyImplementationIsInALanguageThisTestCanRun` fails on any other language
+  until a runner is added (JavaScript has none yet). The seed file is the single source of the
+  solutions. To re-seed after
   editing a seed file, run `scripts/purge-seed-data.sql` (a plain dev utility outside
   `database/sql/`, so never a migration; mirrors `ecommerce-service`'s) — it `TRUNCATE ... RESTART
   IDENTITY CASCADE`s all 11 `dev_practice` tables, **including users' `SUBMISSION` history**, then

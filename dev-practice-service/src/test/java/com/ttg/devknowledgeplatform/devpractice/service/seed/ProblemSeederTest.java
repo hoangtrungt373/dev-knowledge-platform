@@ -16,6 +16,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -24,6 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -31,6 +33,7 @@ import java.util.stream.Collectors;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -40,6 +43,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.editorial.CodePlaceholders;
+import com.ttg.devknowledgeplatform.devpractice.entity.MethodParameter;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTag;
 import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
@@ -48,8 +52,10 @@ import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 import com.ttg.devknowledgeplatform.devpractice.harness.JavaScriptSignatureTemplateParser;
 import com.ttg.devknowledgeplatform.devpractice.harness.JavaSignatureTemplateParser;
+import com.ttg.devknowledgeplatform.devpractice.harness.PythonLanguageHarness;
 import com.ttg.devknowledgeplatform.devpractice.harness.PythonSignatureTemplateParser;
 import com.ttg.devknowledgeplatform.devpractice.harness.SignatureTemplateParserRegistry;
+import com.ttg.devknowledgeplatform.devpractice.judge.OutputMatcher;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemTagRepository;
 import com.ttg.devknowledgeplatform.devpractice.service.ProblemCommands;
@@ -179,16 +185,107 @@ class ProblemSeederTest {
     }
 
     @Test
-    void everyImplementationPassesEveryTestCase(@TempDir Path dir) throws Exception {
+    void everyJavaImplementationPassesEveryTestCase(@TempDir Path dir) throws Exception {
         seeder.seed();
         Map<Integer, ProblemCommands.Create> problemsById = problemsById();
-        assertThat(runsById).as("seed files carry implementations").isNotEmpty();
+        List<SeededRun> javaRuns = runsIn(ProgrammingLanguage.JAVA);
+        assertThat(javaRuns).as("seed files carry Java implementations").isNotEmpty();
 
         int i = 0;
-        for (SeededRun run : runsById.values()) {
+        for (SeededRun run : javaRuns) {
             ProblemCommands.Create problem = problemsById.get(run.command().problemId());
             assertPassesEveryTestCase(run.command().sourceCode(), problem, Files.createDirectory(dir.resolve("run" + i++)));
         }
+    }
+
+    /**
+     * Python implementations run as the <em>real</em> judge program — {@link PythonLanguageHarness}
+     * wraps the method exactly as it does for Judge0 — under a local interpreter, one process per test
+     * case, compared by the judge's own {@link OutputMatcher}. Skipped (not failed) when no Python 3 is
+     * installed; the code still can't reach learners unverified, since only runs the real judge
+     * ACCEPTED are ever shown.
+     */
+    @Test
+    void everyPythonImplementationPassesEveryTestCase(@TempDir Path dir) throws Exception {
+        seeder.seed();
+        List<SeededRun> pythonRuns = runsIn(ProgrammingLanguage.PYTHON);
+        assertThat(pythonRuns).as("seed files carry Python implementations").isNotEmpty();
+        List<String> python = localPython();
+        Assumptions.assumeTrue(python != null, "no local Python 3 interpreter — Python seed implementations not run");
+
+        Map<Integer, ProblemCommands.Create> problemsById = problemsById();
+        OutputMatcher matcher = new OutputMatcher(json);
+        int i = 0;
+        for (SeededRun run : pythonRuns) {
+            ProblemCommands.Create problem = problemsById.get(run.command().problemId());
+            Path program = dir.resolve("program" + i++ + ".py");
+            Files.writeString(program, new PythonLanguageHarness().buildProgram(toEntity(problem), run.command().sourceCode()));
+            for (ProblemCommands.TestCaseInput testCase : problem.testCases()) {
+                String stdout = runPython(python, program, testCase.input());
+                assertThat(matcher.matches(stdout, testCase.expectedOutput(), problem.returnType()))
+                        .as("%s (Python): %s(%s) printed %s, expected %s", problem.title(), problem.methodName(),
+                                testCase.input(), stdout.strip(), testCase.expectedOutput())
+                        .isTrue();
+            }
+        }
+    }
+
+    /** A seed implementation in a language the two tests above can't run would be checked by nothing here. */
+    @Test
+    void everyImplementationIsInALanguageThisTestCanRun() {
+        seeder.seed();
+
+        assertThat(runsById.values()).extracting(r -> r.command().language())
+                .allMatch(l -> l == ProgrammingLanguage.JAVA || l == ProgrammingLanguage.PYTHON,
+                        "JAVA or PYTHON — add a local runner here before seeding another language");
+    }
+
+    private List<SeededRun> runsIn(ProgrammingLanguage language) {
+        return runsById.values().stream().filter(r -> r.command().language() == language).toList();
+    }
+
+    /** The parts of a problem the harness reads — method name, return type, ordered parameters. */
+    private static Problem toEntity(ProblemCommands.Create command) {
+        Problem problem = Problem.builder().methodName(command.methodName()).returnType(command.returnType()).build();
+        for (ProblemCommands.MethodParameterInput p : command.parameters()) {
+            problem.getParameters().add(MethodParameter.builder()
+                    .problem(problem).name(p.name()).type(p.type()).position(p.position()).build());
+        }
+        return problem;
+    }
+
+    /** The first working Python 3 launch command on this machine, or null. */
+    private static List<String> localPython() {
+        for (List<String> candidate : List.of(List.of("python3"), List.of("python"), List.of("py", "-3"))) {
+            try {
+                List<String> command = new ArrayList<>(candidate);
+                command.add("--version");
+                Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+                String version = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                if (process.waitFor(10, TimeUnit.SECONDS) && process.exitValue() == 0 && version.startsWith("Python 3")) {
+                    return candidate;
+                }
+            } catch (Exception e) {
+                // not installed under this name — try the next
+            }
+        }
+        return null;
+    }
+
+    /** Runs the program with {@code stdin} as its input; fails on a non-zero exit or a timeout. */
+    private static String runPython(List<String> python, Path program, String stdin) throws Exception {
+        List<String> command = new ArrayList<>(python);
+        command.add(program.toString());
+        Path input = Files.writeString(program.resolveSibling(program.getFileName() + ".in"), stdin, StandardCharsets.UTF_8);
+        ProcessBuilder builder = new ProcessBuilder(command).redirectInput(input.toFile());
+        // Windows consoles otherwise default to a legacy code page for Python's stdio.
+        builder.environment().put("PYTHONIOENCODING", "utf-8");
+        Process process = builder.start();
+        String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertThat(process.waitFor(10, TimeUnit.SECONDS)).as("Python timed out on %s", stdin).isTrue();
+        assertThat(process.exitValue()).as("Python failed on %s:%n%s", stdin, stderr).isZero();
+        return stdout;
     }
 
     @Test

@@ -63,9 +63,9 @@ public class PublicProblemController implements PublicProblemApi {
     }
 
     @Override
-    public ResponseEntity<List<ProblemSolutionResponse>> listSolutions(String slug) {
+    public ResponseEntity<List<ProblemSolutionResponse>> listSolutions(String slug, ProgrammingLanguage language) {
         return ResponseEntity.ok(problemSolutionService.listPublishedBySlug(slug).stream()
-                .map(problemSolutionMapper::toResponse)
+                .map(solution -> problemSolutionMapper.toResponse(solution, language))
                 .toList());
     }
 

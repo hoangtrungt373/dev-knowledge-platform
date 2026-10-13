@@ -146,6 +146,31 @@ class CodePlaceholdersTest {
         }
 
         @Test
+        void aPreferredLanguageReplacesTheAuthorsDefaultWhenVerified() {
+            String rendered = CodePlaceholders.render("{{code:JAVA}}",
+                    Map.of(ProgrammingLanguage.JAVA, CODE, ProgrammingLanguage.PYTHON, "pass"), ProgrammingLanguage.PYTHON);
+
+            assertThat(rendered).isEqualTo("```python\npass\n```");
+        }
+
+        @Test
+        void aPreferredLanguageWithoutVerifiedCodeKeepsTheAuthorsLanguage() {
+            String rendered = CodePlaceholders.render("{{code:JAVA}}", Map.of(ProgrammingLanguage.JAVA, CODE),
+                    ProgrammingLanguage.PYTHON);
+
+            assertThat(rendered).startsWith("```java\n");
+        }
+
+        @Test
+        void anExplanationThatAlreadyShowsThePreferredLanguageIsRenderedAsWritten() {
+            // The author placed Java and Python deliberately; switching both to Python would duplicate it.
+            String rendered = CodePlaceholders.render("{{code:JAVA}}\n\n{{code:PYTHON}}",
+                    Map.of(ProgrammingLanguage.JAVA, "J", ProgrammingLanguage.PYTHON, "P"), ProgrammingLanguage.PYTHON);
+
+            assertThat(rendered).isEqualTo("```java\nJ\n```\n\n```python\nP\n```");
+        }
+
+        @Test
         void leavesTextWithoutPlaceholdersUntouched() {
             String text = "Plain `{{code:JAVA}}` mention and **bold**.";
 

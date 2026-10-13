@@ -52,7 +52,14 @@ section again. Full unabridged entry-by-entry history for all four lives in
   found, `007` order mismatch) and an **Editorial** tab in the admin problem form
   (`components/EditorialManager` + `ApproachFormDialog`: approaches with per-run verified/stale chips,
   learner-view preview, reorder, delete; the dialog picks one ACCEPTED current-contract reference run
-  per language and can insert its `{{code:LANGUAGE}}` placeholder).
+  per language and can insert its `{{code:LANGUAGE}}` placeholder). The Solution tab gained a language
+  toggle: `GET .../solutions?language=` renders each explanation's code in that language where the
+  approach has verified code (the author's language otherwise; an explanation that already names the
+  language explicitly renders as written), starting from the learner's editor language. Evaluate
+  Reverse Polish Notation's "Stack" approach gained a Python implementation (truncating division done
+  on magnitudes, since Python's `//` floors), so the toggle shows for it; `ProblemSeederTest` now runs
+  Python implementations as the real `PythonLanguageHarness` program under a local interpreter
+  (skipped when none is installed) and rejects seed implementations in a language it can't run.
 - **Study plans.** `dev-practice-service`: curated, ordered problem lists such as
   "NeetCode 150". New `StudyPlan` → ordered `StudyPlanSection` (free-text chapter) → ordered
   `StudyPlanProblem` (explicit join to `Problem`), migration `DKP-0060`. Read-only public API

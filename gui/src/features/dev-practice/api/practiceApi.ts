@@ -62,10 +62,12 @@ export const practiceApi = {
 
   /**
    * A published problem's editorial approaches, in order. Each explanation's code was expanded from
-   * the approach's judge-verified run; called without showError — the Solution tab shows its own retry.
+   * the approach's judge-verified run — in `language` where the approach has it, else the language the
+   * explanation was written with. Called without showError — the Solution tab shows its own retry.
    */
-  getSolutions(slug: string, showError?: ShowError): Promise<ProblemSolution[]> {
-    return httpClient.get(`/api/v1/public/problems/${encodeURIComponent(slug)}/solutions`, showError);
+  getSolutions(slug: string, language?: ProgrammingLanguage, showError?: ShowError): Promise<ProblemSolution[]> {
+    const query = buildQueryString({ language });
+    return httpClient.get(`/api/v1/public/problems/${encodeURIComponent(slug)}/solutions${query}`, showError);
   },
 
   getStarterCode(slug: string, language: ProgrammingLanguage, showError?: ShowError): Promise<StarterCode> {

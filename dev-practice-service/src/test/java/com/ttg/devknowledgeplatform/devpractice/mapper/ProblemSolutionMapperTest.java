@@ -28,7 +28,7 @@ class ProblemSolutionMapperTest {
         ProblemSolution solution = solution("Use a set.\n\n{{code:JAVA}}");
         solution.addCode(run(ProgrammingLanguage.JAVA, SubmissionStatus.ACCEPTED, 2, "class Solution {}"));
 
-        ProblemSolutionResponse response = mapper.toResponse(solution);
+        ProblemSolutionResponse response = mapper.toResponse(solution, null);
 
         assertThat(response.explanation()).isEqualTo("Use a set.\n\n```java\nclass Solution {}\n```");
         assertThat(response.codes()).containsExactly(
@@ -41,12 +41,24 @@ class ProblemSolutionMapperTest {
         // Accepted against contract 1; the problem's test data has since moved to contract 2.
         solution.addCode(run(ProgrammingLanguage.JAVA, SubmissionStatus.ACCEPTED, 1, "class Old {}"));
 
-        ProblemSolutionResponse response = mapper.toResponse(solution);
+        ProblemSolutionResponse response = mapper.toResponse(solution, null);
 
         assertThat(response.codes()).isEmpty();
         assertThat(response.explanation())
                 .doesNotContain("class Old")
                 .endsWith("_The Java code for this approach is being re-verified._");
+    }
+
+    @Test
+    void aPreferredLanguageSwitchesTheExplanationsCodeWhenTheApproachHasIt() {
+        ProblemSolution solution = solution("{{code:JAVA}}");
+        solution.addCode(run(ProgrammingLanguage.JAVA, SubmissionStatus.ACCEPTED, 2, "class Solution {}"));
+        solution.addCode(run(ProgrammingLanguage.PYTHON, SubmissionStatus.ACCEPTED, 2, "class Solution: pass"));
+
+        assertThat(mapper.toResponse(solution, ProgrammingLanguage.PYTHON).explanation())
+                .isEqualTo("```python\nclass Solution: pass\n```");
+        assertThat(mapper.toResponse(solution, ProgrammingLanguage.JAVASCRIPT).explanation())
+                .as("no JavaScript here — the author's Java stays").isEqualTo("```java\nclass Solution {}\n```");
     }
 
     @Test

@@ -76,10 +76,13 @@ public interface PublicProblemApi {
      * explanation and only the implementations the judge accepted at the problem's current contract
      * version. Already reachable through gateway's {@code /api/v1/public/problems/**} route.
      *
-     * @param slug URL-friendly identifier of the problem
+     * @param slug     URL-friendly identifier of the problem
+     * @param language optional — show each approach's code in this language where it has a verified
+     *                 implementation (otherwise the language the explanation was written with)
      * @return {@code 200} with the approaches (possibly none), or {@code 404 PROBLEM_001} for an
      *         unknown or unpublished problem
      */
     @GetMapping("/{slug}/solutions")
-    ResponseEntity<List<ProblemSolutionResponse>> listSolutions(@PathVariable String slug);
+    ResponseEntity<List<ProblemSolutionResponse>> listSolutions(
+            @PathVariable String slug, @RequestParam(required = false) ProgrammingLanguage language);
 }

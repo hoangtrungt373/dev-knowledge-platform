@@ -21,8 +21,10 @@ template:
 # The only place code lives. Each approach (in display order) has a title, a Markdown explanation and
 # implementations ({language, code}); every implementation is submitted as its own REFERENCE run, judged
 # like any submission, and linked to its approach. ProblemSeederTest compiles and runs every one against
-# every test case below, so a wrong expectedOutput (or a wrong implementation) fails the build. Written
-# for Judge0's OpenJDK 13 (no arrow-switch), using only java.util — the harness prelude imports it.
+# every test case below, so a wrong expectedOutput (or a wrong implementation) fails the build. Java is
+# written for Judge0's OpenJDK 13 (no arrow-switch), using only java.util — the harness prelude imports
+# it; Python for Judge0's Python 3.8 and the test's local interpreter (no 3.8-only syntax), with
+# typing.List imported by its prelude. The first implementation listed (Java) publishes the problem.
 # Explanations contain no hand-written code: {{code:JAVA}} on a line of its own is replaced, when served,
 # by this approach's verified JAVA run (CodePlaceholders).
 solutions:
@@ -38,8 +40,9 @@ solutions:
 
       {{code:JAVA}}
 
-      Order matters for `-` and `/`: the first value popped is the **right** operand. Java's integer
-      division already truncates toward zero, exactly as the problem asks.
+      Order matters for `-` and `/`: the first value popped is the **right** operand. Division must
+      truncate toward zero: Java's integer `/` already does, while Python's `//` floors (`-7 // 2` is
+      `-4`), so the Python version divides the magnitudes and then restores the sign.
 
       **Complexity**
 
@@ -63,6 +66,29 @@ solutions:
                   return stack.pop();
               }
           }
+      - language: PYTHON
+        code: |
+          class Solution:
+              def evalRPN(self, tokens: List[str]) -> int:
+                  stack = []
+                  for token in tokens:
+                      if token in ("+", "-", "*", "/"):
+                          b = stack.pop()
+                          a = stack.pop()
+                          if token == "+":
+                              stack.append(a + b)
+                          elif token == "-":
+                              stack.append(a - b)
+                          elif token == "*":
+                              stack.append(a * b)
+                          else:
+                              # Truncate toward zero like the problem asks; Python's // floors instead
+                              # (-7 // 2 == -4), so divide the magnitudes and restore the sign.
+                              quotient = abs(a) // abs(b)
+                              stack.append(quotient if (a < 0) == (b < 0) else -quotient)
+                      else:
+                          stack.append(int(token))
+                  return stack.pop()
 testCases:
   # Example 1 from the description — shown to users.
   - input: '[["1","2","+","3","*","4","-"]]'

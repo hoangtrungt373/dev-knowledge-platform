@@ -5,6 +5,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
+import org.mapstruct.Context;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
@@ -29,9 +30,15 @@ import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 @Mapper(componentModel = "spring", imports = CodePlaceholders.class)
 public interface ProblemSolutionMapper {
 
-    @Mapping(target = "explanation", expression = "java(CodePlaceholders.render(solution.getExplanation(), verifiedCodeByLanguage(solution)))")
+    /**
+     * The learner view. {@code preferredLanguage} ({@code @Context}: available to the expression, never
+     * treated as a source of properties) switches the explanation's code to that language where the
+     * approach has it — see {@link CodePlaceholders#render(String, Map, ProgrammingLanguage)}; null keeps
+     * the explanation as written.
+     */
+    @Mapping(target = "explanation", expression = "java(CodePlaceholders.render(solution.getExplanation(), verifiedCodeByLanguage(solution), preferredLanguage))")
     @Mapping(target = "codes", expression = "java(solution.verifiedCode().stream().map(this::toCodeResponse).toList())")
-    ProblemSolutionResponse toResponse(ProblemSolution solution);
+    ProblemSolutionResponse toResponse(ProblemSolution solution, @Context ProgrammingLanguage preferredLanguage);
 
     SolutionCodeResponse toCodeResponse(Submission run);
 
