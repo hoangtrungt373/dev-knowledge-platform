@@ -228,6 +228,8 @@ export type ProblemProgressStatus = 'ATTEMPTED' | 'SOLVED';
 export interface ProblemProgress {
   problemId: number;
   status: ProblemProgressStatus;
+  /** When the first accepted submission was made (ISO instant); null while only attempted. */
+  solvedAt: string | null;
 }
 
 /** `RunResponse.CaseResponse` — one input of an unsaved run. */

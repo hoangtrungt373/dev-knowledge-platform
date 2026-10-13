@@ -14,3 +14,7 @@ export const STORAGE_KEYS = {
 // "one source of truth for localStorage keys" rule.
 const TASK_ORDER_STORAGE_PREFIX = 'taskOrder:';
 export const taskOrderStorageKey = (viewKey: string): string => `${TASK_ORDER_STORAGE_PREFIX}${viewKey}`;
+
+// @dev-practice's "Hide solved" toggle on a study plan's page — one standing per-viewer preference
+// (not per plan), so a single fixed key.
+export const PRACTICE_HIDE_SOLVED_STORAGE_KEY = 'practiceHideSolved';

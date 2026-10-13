@@ -65,9 +65,9 @@ public class SubmissionServiceImpl implements SubmissionService {
     @Transactional(readOnly = true)
     public List<ProblemProgress> listProgress(String userUuid) {
         return submissionRepository.summarizeByProblem(userUuid, SubmissionKind.USER, SubmissionStatus.ACCEPTED).stream()
-                .map(row -> new ProblemProgress(row.getProblemId(), row.getAcceptedCount() > 0
+                .map(row -> new ProblemProgress(row.getProblemId(), row.getFirstSolvedAt() != null
                         ? ProblemProgressStatus.SOLVED
-                        : ProblemProgressStatus.ATTEMPTED))
+                        : ProblemProgressStatus.ATTEMPTED, row.getFirstSolvedAt()))
                 .toList();
     }
 

@@ -1,5 +1,7 @@
 package com.ttg.devknowledgeplatform.devpractice.service;
 
+import java.time.Instant;
+
 import com.ttg.devknowledgeplatform.devpractice.enums.ProblemProgressStatus;
 
 /**
@@ -8,6 +10,7 @@ import com.ttg.devknowledgeplatform.devpractice.enums.ProblemProgressStatus;
  *
  * @param problemId the problem's primary key
  * @param status    solved or only attempted
+ * @param solvedAt  when the first accepted submission was made; {@code null} while only attempted
  */
-public record ProblemProgress(Integer problemId, ProblemProgressStatus status) {
+public record ProblemProgress(Integer problemId, ProblemProgressStatus status, Instant solvedAt) {
 }

@@ -30,6 +30,30 @@ export function submissionStats(s: { runtimeMs: number | null; memoryKb: number 
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
+/**
+ * How long ago an instant was — "just now", "5 minutes ago", "yesterday", "3 weeks ago" — via
+ * `Intl.RelativeTimeFormat`, in the browser's own language. Falls back to `formatDate` past a year.
+ */
+export function formatRelativeTime(iso: string, now: number = Date.now()): string {
+  const seconds = Math.round((new Date(iso).getTime() - now) / 1000);
+  const abs = Math.abs(seconds);
+  if (abs < 45) return 'just now';
+  if (abs >= 365 * 86400) return formatDate(iso);
+  // Round the magnitude, then reapply the sign: Math.round(-1.5) is -1 in JS, which would turn
+  // "90 minutes ago" into "1 hour ago" instead of "2 hours ago".
+  const sign = seconds < 0 ? -1 : 1;
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ['minute', 60], ['hour', 3600], ['day', 86400], ['week', 604800], ['month', 2629800],
+  ];
+  // Pick the largest unit the gap fills at least once ("90 minutes" reads better as "2 hours").
+  for (let i = units.length - 1; i >= 0; i--) {
+    const [unit, size] = units[i];
+    if (abs >= size) return rtf.format(sign * Math.round(abs / size), unit);
+  }
+  return rtf.format(sign * Math.round(abs / 60), 'minute');
+}
+
 /** A date and time — "Oct 8, 2026, 14:05". For detail panels and submission histories. */
 export function formatDateTime(iso: string | null | undefined): string {
   return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';

@@ -37,9 +37,16 @@ section again. Full unabridged entry-by-entry history for all four lives in
   `components/PlanProgress`). The catalog row was extracted into `components/ProblemTableRow`,
   shared by the catalog and plan pages; the Practice page gained a "Study plans" button; opening a
   problem from a plan passes router state so the workspace's back button returns to the plan. Each
-  plan card has a Start/Continue button that opens the first unsolved problem in plan order (the
+  plan card and the plan page's header have a Start/Continue button (`components/PlanContinueButton`)
+  that opens the first unsolved problem in plan order (the
   summary's `problemIds` became `problems: [{id, slug}]` — new `StudyPlanProblemRefResponse` — so the
-  card can open it directly); `useProblemProgress` gained a `loaded` flag.
+  card can open it directly); `useProblemProgress` gained a `loaded` flag. Each section header on the
+  plan page links to that section's first unsolved problem ("Next: …"), and a remembered "Hide
+  solved" switch filters solved rows out of every section (`hooks/useHideSolved`). A finished plan
+  shows a "Plan complete" banner on its page, and a "Recently solved" strip lists the plan's last
+  three solved problems with relative times — backed by a new `solvedAt` field on
+  `GET /api/v1/submissions/progress` (first accepted submission's time; `summarizeByProblem`'s
+  `acceptedCount` aggregate became `firstSolvedAt`).
 - **Stale-submission sweeper.** `dev-practice-service`: new `sweeper.StaleSubmissionSweepJob`
   (`@Scheduled`, every minute) + `sweeper.StaleSubmissionProcessor` (per-row `@Transactional`) mark
   `PENDING`/`RUNNING` submissions not updated for `app.submissions.sweeper.stale-after` (default

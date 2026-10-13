@@ -3,13 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Button, Card, CardActionArea, CardActions, CardContent, Stack, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import MenuBookOutlinedIcon from '@mui/icons-material/MenuBookOutlined';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import { PracticeReturnTo, StudyPlanSummary } from '../types';
+import { StudyPlanSummary } from '../types';
 import { practiceApi } from '../api/practiceApi';
-import { ProblemProgressMap, useProblemProgress } from '../hooks/useProblemProgress';
-import { countSolved, firstUnsolved } from '../utils/planProgress';
+import { useProblemProgress } from '../hooks/useProblemProgress';
+import { countSolved } from '../utils/planProgress';
 import PlanProgress from '../components/PlanProgress';
+import PlanContinueButton from '../components/PlanContinueButton';
 import { authService } from '@auth/services/authService';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import FullPageLoader from '@shared/components/FullPageLoader';
@@ -80,51 +79,20 @@ export default function StudyPlanListPage(): JSX.Element {
                   </Stack>
                 </CardContent>
               </CardActionArea>
-              <PlanCardAction plan={plan} progress={progress} />
+              {/* Fixed min height: the button renders nothing until progress loads, and the grid
+                  shouldn't jump when it appears. */}
+              <CardActions sx={{ px: 2, pb: 2, pt: 0, minHeight: 46 }}>
+                <PlanContinueButton
+                  planSlug={plan.slug}
+                  planName={plan.name}
+                  problems={plan.problems}
+                  progress={progress}
+                />
+              </CardActions>
             </Card>
           ))}
         </Box>
       )}
     </Box>
   );
-}
-
-interface PlanCardActionProps {
-  plan: StudyPlanSummary;
-  progress: ProblemProgressMap;
-}
-
-/**
- * The card's call to action: "Start" (no problem in the plan touched yet — always the case logged
- * out), "Continue" (any problem solved or attempted), or a "Completed" note once every problem is solved. Opens the first unsolved problem
- * in plan order — attempted-but-unsolved counts — with the plan as the workspace's back target.
- * Empty until progress has loaded, so a logged-in learner never sees "Start" flip to "Continue"; the
- * row keeps its height either way, so the grid doesn't jump.
- */
-function PlanCardAction({ plan, progress }: PlanCardActionProps): JSX.Element {
-  const navigate = useNavigate();
-  const next = firstUnsolved(plan.problems, progress.statusOf);
-  const started = plan.problems.some(p => progress.statusOf(p.id) !== undefined);
-  const returnTo: PracticeReturnTo = { path: `/practice/plans/${plan.slug}`, label: plan.name };
-
-  let content: JSX.Element | null = null;
-  if (plan.problems.length > 0 && progress.loaded) {
-    content = next ? (
-      <Button
-        size="small"
-        variant={started ? 'contained' : 'outlined'}
-        startIcon={<PlayArrowIcon />}
-        onClick={() => navigate(`/practice/${next.slug}`, { state: { returnTo } })}
-      >
-        {started ? 'Continue' : 'Start'}
-      </Button>
-    ) : (
-      <Stack direction="row" alignItems="center" spacing={0.5} sx={{ color: 'success.main' }}>
-        <CheckCircleIcon fontSize="small" />
-        <Typography variant="body2" fontWeight={600}>Completed</Typography>
-      </Stack>
-    );
-  }
-
-  return <CardActions sx={{ px: 2, pb: 2, pt: 0, minHeight: 46 }}>{content}</CardActions>;
 }

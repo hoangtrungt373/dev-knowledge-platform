@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -104,11 +105,11 @@ class SubmissionServiceImplTest {
     @Test
     void anyAcceptedSubmissionMakesAProblemSolvedOtherwiseItIsOnlyAttempted() {
         when(submissionRepository.summarizeByProblem("user-1", SubmissionKind.USER, SubmissionStatus.ACCEPTED))
-                .thenReturn(List.of(summary(5, 2), summary(6, 0)));
+                .thenReturn(List.of(summary(5, SOLVED_AT), summary(6, null)));
 
         assertThat(service.listProgress("user-1")).containsExactly(
-                new ProblemProgress(5, ProblemProgressStatus.SOLVED),
-                new ProblemProgress(6, ProblemProgressStatus.ATTEMPTED));
+                new ProblemProgress(5, ProblemProgressStatus.SOLVED, SOLVED_AT),
+                new ProblemProgress(6, ProblemProgressStatus.ATTEMPTED, null));
     }
 
     @Test
@@ -153,10 +154,12 @@ class SubmissionServiceImplTest {
         };
     }
 
-    private static SubmissionRepository.ProblemAttemptSummary summary(int problemId, long accepted) {
+    private static final Instant SOLVED_AT = Instant.parse("2026-10-13T08:30:00Z");
+
+    private static SubmissionRepository.ProblemAttemptSummary summary(int problemId, Instant firstSolvedAt) {
         return new SubmissionRepository.ProblemAttemptSummary() {
             @Override public Integer getProblemId() { return problemId; }
-            @Override public Long getAcceptedCount() { return accepted; }
+            @Override public Instant getFirstSolvedAt() { return firstSolvedAt; }
         };
     }
 

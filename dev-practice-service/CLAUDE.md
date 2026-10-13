@@ -159,9 +159,11 @@ why `Problem` carries a `methodName`/`returnType`/ordered `parameters` signature
   `GET /{id}/starter-code` for any status — the public one 404s for a draft, and the admin form needs
   a draft's starter to pre-fill its reference-solution editor), `PublicProblemApi`
   (public browsing + `/starter-code`), `SubmissionApi` (owner-gated, `USER` submissions only — plus
-  `GET /progress`: the caller's `SOLVED`/`ATTEMPTED` status per problem they submitted to, derived on
-  the fly by one `GROUP BY` (`SubmissionRepository#summarizeByProblem`, an interface projection),
-  never stored; solved stays solved even if the test cases change later — and `POST /run`, see the
+  `GET /progress`: the caller's `SOLVED`/`ATTEMPTED` status per problem they submitted to, plus
+  `solvedAt` (when the first accepted submission was made, `null` while only attempted), derived on
+  the fly by one `GROUP BY` (`SubmissionRepository#summarizeByProblem`, an interface projection —
+  `MIN(CASE WHEN status = ACCEPTED THEN dteCreation END)`; solved ⇔ that is non-null, so status and
+  time can't disagree), never stored; solved stays solved even if the test cases change later — and `POST /run`, see the
   Run rule below),
   `ProblemReferenceSubmissionApi` (admin: create/list/get `REFERENCE` submissions under
   `/api/v1/admin/problems/{problemId}/reference-submissions` — already covered by the existing

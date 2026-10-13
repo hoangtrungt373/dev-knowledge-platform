@@ -3121,7 +3121,7 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     (USER count guards ProblemService#delete),
 │   │                                     existsByProblem_IdAndKindAndStatusAndContractVersion
 │   │                                     (isVerified), deleteByProblem_IdAndKind (REFERENCE cleanup),
-│   │                                     summarizeByProblem (@Query GROUP BY problem → accepted count,
+│   │                                     summarizeByProblem (@Query GROUP BY problem → first accepted time,
 │   │                                     ProblemAttemptSummary projection; backs listProgress) +
 │   │                                     rankAgainstOtherUsers (native SQL: other users' best accepted
 │   │                                     run per user, same problem/language/contractVersion, plus the
@@ -3289,7 +3289,7 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
     └── SubmissionApi.java (+ SubmissionController.java)        — /api/v1/submissions: create,
                                           getById, list — every method takes @CurrentUserId String
                                           userUuid; USER submissions only; GET /progress →
-                                          List<ProblemProgressResponse> {problemId, status};
+                                          List<ProblemProgressResponse> {problemId, status, solvedAt};
                                           POST /run → RunResponse (synchronous, unsaved)
     ├── ProblemReferenceSubmissionApi.java (+ ProblemReferenceSubmissionController.java) —
                                           /api/v1/admin/problems/{problemId}/reference-submissions:

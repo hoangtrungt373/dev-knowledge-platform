@@ -47,14 +47,16 @@ public interface SubmissionRepository extends JpaRepository<Submission, Integer>
             Integer problemId, SubmissionKind kind, SubmissionStatus status, Integer contractVersion);
 
     /**
-     * One row per problem the user has submitted to, with how many of those submissions were
-     * accepted — the raw material for "solved / attempted" markers. Aggregated in the database
+     * One row per problem the user has submitted to, with when the first of those submissions that was
+     * accepted was made ({@code null} if none was) — the raw material for "solved / attempted" markers
+     * and "recently solved" lists. {@code MIN} over a {@code CASE} with no {@code ELSE}: rejected
+     * submissions contribute {@code NULL}, which {@code MIN} ignores. Aggregated in the database
      * (one {@code GROUP BY}, backed by {@code IDX_SUBMISSION_USER}) rather than loading every
      * submission row: a learner can have hundreds of attempts but only one status per problem.
      */
     @Query("""
             select s.problem.id as problemId,
-                   sum(case when s.status = :accepted then 1 else 0 end) as acceptedCount
+                   min(case when s.status = :accepted then s.dteCreation end) as firstSolvedAt
             from Submission s
             where s.userUuid = :userUuid and s.kind = :kind
             group by s.problem.id
@@ -135,7 +137,8 @@ public interface SubmissionRepository extends JpaRepository<Submission, Integer>
     interface ProblemAttemptSummary {
         Integer getProblemId();
 
-        Long getAcceptedCount();
+        /** When the first accepted submission was made, or {@code null} if none was. */
+        Instant getFirstSolvedAt();
     }
 
     /**

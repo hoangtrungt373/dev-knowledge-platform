@@ -4486,7 +4486,8 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     the first failure); a hidden test's input is never shown, and the public API never sends one.
   - **Solved/attempted markers**: `hooks/useProblemProgress` loads `GET /api/v1/submissions/progress`
     once (only when logged in; a failure is silent — markers are a convenience) and exposes
-    `statusOf(id)`/`solvedCount`/`markJudged(id, accepted)`; `components/ProgressMarker` draws the
+    `statusOf(id)`/`solvedAtOf(id)`/`solvedCount`/`loaded`/`markJudged(id, accepted)` (a fresh
+    accept is stamped with the client's time until the next load brings the server's); `components/ProgressMarker` draws the
     icon (green check / amber, nothing for untouched). The list shows it in its first column plus
     "You've solved N"; the workspace header shows it and calls `markJudged` on each final verdict so
     it updates without a refetch. Solved is sticky client-side too, matching the backend. No
@@ -4496,13 +4497,31 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     (`StudyPlanSummary.problems` — `{id, slug}` refs — or the section rows on the detail page) are
     checked against `useProblemProgress` via `utils/planProgress.ts#countSolved`, rendered by
     `components/PlanProgress` ("x / y solved" + bar; logged out only the size; "No problems yet"
-    for an all-draft plan or section). Each overview card has a **Start/Continue** button
-    (`PlanCardAction`, in `CardActions` beside — never inside — the card's `CardActionArea`, since a
-    button inside a button is invalid HTML) opening `utils/planProgress.ts#firstUnsolved` (attempted
+    for an all-draft plan or section). Each overview card **and the plan page's header** have a
+    **Start/Continue** button — one shared `components/PlanContinueButton` (on a card it sits in
+    `CardActions` beside — never inside — the `CardActionArea`, since a button inside a button is
+    invalid HTML, with a fixed `minHeight` reserving its row) opening `utils/planProgress.ts#firstUnsolved` (attempted
     counts as unsolved) with the plan as `returnTo`; "Continue" once any problem in the plan is
     solved or attempted, a "Completed" note once all are solved. It waits for
     `useProblemProgress().loaded` (true once the fetch settles, immediately when logged out) so
-    "Start" never flips to "Continue". A one-section plan hides its section header. An empty
+    "Start" never flips to "Continue". Each section header also has a **"Next: <title>"** link to
+    that section's first unsolved problem (same `firstUnsolved`, same `returnTo`), for working on one
+    topic out of plan order — hidden until progress loads and once the section is fully solved.
+    A one-section plan hides its section header (and so its Next link — the header button covers it).
+    A **"Hide solved"** switch above the sections (logged in, once progress has loaded) filters solved
+    rows out of every section's table — progress bars and Next links still count the whole section;
+    a section left with no rows says "All N problems in this section are solved." (distinct from the
+    "coming soon" of a section with nothing published). Remembered across visits and plans via
+    `hooks/useHideSolved` (`localStorage`, key `PRACTICE_HIDE_SOLVED_STORAGE_KEY` in
+    `@shared/constants/storage.ts`, every read/write in try/catch — blocked storage just starts it off).
+    Once every published problem in the plan is solved, a success `Alert` ("Plan complete", trophy icon,
+    "Browse plans" action) shows under the header — derived on every render, never stored, so a newly
+    published problem in the plan makes it disappear again; logged in and progress-loaded only.
+    A **"Recently solved"** strip (`RecentlySolvedStrip`, up to 3) sits above it: chips of this plan's
+    last-solved problems, newest first, from `solvedAtOf` via `utils/planProgress.ts#recentlySolved`,
+    labeled with `utils/format.ts#formatRelativeTime` (`Intl.RelativeTimeFormat`, "2 hours ago";
+    a plain date past a year) and the exact time on hover; clicking reopens the problem with
+    `returnTo`. Times are first-solved, so re-solving an old problem doesn't move it. An empty
     section (its problems still drafts) shows "coming soon" rather than disappearing.
     **`components/ProblemTableRow` (+ `ProblemTableHeaderCells`, `PROBLEM_TABLE_COLUMNS`) is the one
     learner-facing problem row** — the catalog and every plan section render it; change a row there,
