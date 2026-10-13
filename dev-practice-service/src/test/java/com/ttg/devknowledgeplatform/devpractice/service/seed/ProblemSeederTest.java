@@ -1,6 +1,7 @@
 package com.ttg.devknowledgeplatform.devpractice.service.seed;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -18,9 +19,11 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -36,6 +39,7 @@ import org.mockito.ArgumentCaptor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
+import com.ttg.devknowledgeplatform.devpractice.editorial.CodePlaceholders;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTag;
 import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
@@ -59,9 +63,10 @@ import com.ttg.devknowledgeplatform.infra.service.SlugService;
 /**
  * Loads the real {@code data/problems/*.md} seed files through {@link ProblemSeeder} (real template
  * parsers; repositories and services mocked) and checks what would be created. The central check is
- * generic over every seed file: each file's own {@code referenceSolution} is compiled and run against
- * each of its test cases, so a wrong {@code expectedOutput} (or a broken reference) fails the build here
- * rather than leaving the problem stuck as a draft when the real judge rejects it. A new seed file is
+ * generic over every seed file: every implementation in its {@code solutions} is compiled and run
+ * against each of its test cases, so a wrong {@code expectedOutput} (or a broken implementation) fails
+ * the build here rather than leaving the problem stuck as a draft — or an approach without verified
+ * code — when the real judge rejects it. A new seed file is
  * covered automatically — no per-problem test needed unless it adds a {@link ParamType} the argument
  * conversion below doesn't handle yet (the exhaustive switch then fails to compile).
  */
@@ -157,54 +162,60 @@ class ProblemSeederTest {
     }
 
     @Test
-    void submitsEveryProblemsReferenceAsAPublishOnAcceptRunForThatProblem() {
+    void eachPublishedProblemGetsExactlyOnePublishOnAcceptRun() {
         seeder.seed();
 
-        Map<String, ProblemCommands.Create> created = createdByTitle();
-        Map<Integer, SubmissionCommands.Create> references = referencesByProblemId();
-        assertThat(references).hasSameSizeAs(created);
-        assertThat(references.values()).allMatch(r -> r.language() == ProgrammingLanguage.JAVA);
-        // Each reference goes to the id its own problem was created with — not to some other problem.
-        int id = 100;
-        for (ProblemCommands.Create command : createdInOrder()) {
-            assertThat(references.get(id++).sourceCode()).contains(" " + command.methodName() + "(");
-        }
+        // Exactly one, never all: publishing shares the verdict's transaction, so two publish-on-accept
+        // runs accepted together would race on the problem row and one verdict would roll back.
+        Map<Integer, Long> publishingRunsByProblem = runsById.values().stream()
+                .filter(SeededRun::publishOnAccept)
+                .collect(Collectors.groupingBy(r -> r.command().problemId(), Collectors.counting()));
+        Map<Integer, ProblemCommands.Create> problemsById = problemsById();
+        assertThat(publishingRunsByProblem.keySet()).isEqualTo(problemsById.keySet());
+        assertThat(publishingRunsByProblem.values()).containsOnly(1L);
+        // Each run goes to the id its own problem was created with — not to some other problem.
+        runsById.values().forEach(run -> assertThat(run.command().sourceCode())
+                .contains(" " + problemsById.get(run.command().problemId()).methodName() + "("));
     }
 
     @Test
-    void everySeedFilesReferenceSolutionPassesEveryOneOfItsTestCases(@TempDir Path dir) throws Exception {
+    void everyImplementationPassesEveryTestCase(@TempDir Path dir) throws Exception {
         seeder.seed();
-        List<ProblemCommands.Create> created = createdInOrder();
-        Map<Integer, SubmissionCommands.Create> references = referencesByProblemId();
-        assertThat(created).isNotEmpty();
+        Map<Integer, ProblemCommands.Create> problemsById = problemsById();
+        assertThat(runsById).as("seed files carry implementations").isNotEmpty();
 
-        for (int i = 0; i < created.size(); i++) {
-            ProblemCommands.Create problem = created.get(i);
-            SubmissionCommands.Create reference = references.get(100 + i);
-            assertThat(reference).as("'%s' has a reference solution", problem.title()).isNotNull();
-
-            assertPassesEveryTestCase(reference.sourceCode(), problem, Files.createDirectory(dir.resolve("p" + i)));
-        }
-    }
-
-    @Test
-    void everyEditorialImplementationPassesEveryTestCaseToo(@TempDir Path dir) throws Exception {
-        seeder.seed();
-        Map<Integer, ProblemCommands.Create> problemsById = new HashMap<>();
-        List<ProblemCommands.Create> created = createdInOrder();
-        for (int i = 0; i < created.size(); i++) {
-            problemsById.put(100 + i, created.get(i));
-        }
-
-        int checked = 0;
+        int i = 0;
         for (SeededRun run : runsById.values()) {
-            if (run.publishOnAccept()) {
-                continue; // the referenceSolution — covered by the test above
-            }
             ProblemCommands.Create problem = problemsById.get(run.command().problemId());
-            assertPassesEveryTestCase(run.command().sourceCode(), problem, Files.createDirectory(dir.resolve("i" + checked++)));
+            assertPassesEveryTestCase(run.command().sourceCode(), problem, Files.createDirectory(dir.resolve("run" + i++)));
         }
-        assertThat(checked).as("seed files carry at least one extra implementation").isPositive();
+    }
+
+    @Test
+    void aFileStillUsingTheRetiredReferenceSolutionKeyFailsLoudly() {
+        assertThatThrownBy(() -> seeder.seed("classpath*:problems-invalid/legacy-reference-solution.md"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("legacy-reference-solution.md")
+                .hasMessageContaining("'referenceSolution' is no longer supported");
+    }
+
+    @Test
+    void aPublishedFileWithoutAnyImplementationFailsLoudly() {
+        assertThatThrownBy(() -> seeder.seed("classpath*:problems-invalid/published-without-implementation.md"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("published-without-implementation.md")
+                .hasMessageContaining("needs at least one solution implementation");
+        verify(problemService, never()).create(any(), anyString());
+    }
+
+    /** Every created problem's command by the id the mocked ProblemService#create handed out. */
+    private Map<Integer, ProblemCommands.Create> problemsById() {
+        Map<Integer, ProblemCommands.Create> byId = new HashMap<>();
+        List<ProblemCommands.Create> created = createdInOrder();
+        for (int i = 0; i < created.size(); i++) {
+            byId.put(100 + i, created.get(i));
+        }
+        return byId;
     }
 
     @Test
@@ -218,19 +229,39 @@ class ProblemSeederTest {
 
         List<ProblemSolutionCommands.Create> duplicate = solutionsFor(idsByTitle.get("Contains Duplicate"));
         assertThat(duplicate).extracting(ProblemSolutionCommands.Create::title).containsExactly("Sorting", "Hash Set");
-        // Sorting brings its own implementation, submitted as a non-publishing run of the same problem.
+        // Each approach links its own run: two different solutions, even though both explanations say
+        // {{code:JAVA}} — a placeholder resolves within its own approach.
         SeededRun sorting = runsById.get(duplicate.get(0).referenceSubmissionIds().get(0));
-        assertThat(sorting.publishOnAccept()).isFalse();
-        assertThat(sorting.command().problemId()).isEqualTo(idsByTitle.get("Contains Duplicate"));
-        assertThat(sorting.command().sourceCode()).contains("Arrays.sort");
-        // Hash Set reuses the file's referenceSolution run instead of submitting the code twice.
         SeededRun hashSet = runsById.get(duplicate.get(1).referenceSubmissionIds().get(0));
-        assertThat(hashSet.publishOnAccept()).isTrue();
+        assertThat(sorting.command().problemId()).isEqualTo(idsByTitle.get("Contains Duplicate"));
+        assertThat(sorting.command().sourceCode()).contains("Arrays.sort").doesNotContain("HashSet");
+        assertThat(hashSet.command().sourceCode()).contains("seen.add").doesNotContain("Arrays.sort");
+        // The first implementation listed is the one that publishes the problem.
+        assertThat(sorting.publishOnAccept()).isTrue();
+        assertThat(hashSet.publishOnAccept()).isFalse();
         assertThat(duplicate).allSatisfy(s -> assertThat(s.explanation()).contains("**Complexity**"));
 
         List<ProblemSolutionCommands.Create> rpn = solutionsFor(idsByTitle.get("Evaluate Reverse Polish Notation"));
         assertThat(rpn).extracting(ProblemSolutionCommands.Create::title).containsExactly("Stack");
         assertThat(runsById.get(rpn.get(0).referenceSubmissionIds().get(0)).publishOnAccept()).isTrue();
+    }
+
+    @Test
+    void everySeededExplanationPassesThePlaceholderRules() {
+        seeder.seed();
+        // ProblemSolutionService is mocked here, so run its explanation check against each seed
+        // approach directly — a hand-written code block or a placeholder without a matching
+        // implementation then fails the build, not a real startup.
+        ArgumentCaptor<ProblemSolutionCommands.Create> captor = ArgumentCaptor.forClass(ProblemSolutionCommands.Create.class);
+        verify(problemSolutionService, atLeastOnce()).create(any(), captor.capture());
+        for (ProblemSolutionCommands.Create approach : captor.getAllValues()) {
+            Set<ProgrammingLanguage> languages = approach.referenceSubmissionIds().stream()
+                    .map(id -> runsById.get(id).command().language())
+                    .collect(Collectors.toCollection(() -> EnumSet.noneOf(ProgrammingLanguage.class)));
+            CodePlaceholders.validate(approach.explanation(), languages);
+            assertThat(approach.explanation()).as("'%s' shows its code via a placeholder", approach.title())
+                    .contains("{{code:JAVA}}");
+        }
     }
 
     /** A problem's solution-create calls, in the order the seeder made them. */
@@ -279,14 +310,6 @@ class ProblemSeederTest {
         return createdInOrder().stream().collect(Collectors.toMap(ProblemCommands.Create::title, Function.identity()));
     }
 
-    private Map<Integer, SubmissionCommands.Create> referencesByProblemId() {
-        ArgumentCaptor<SubmissionCommands.Create> captor = ArgumentCaptor.forClass(SubmissionCommands.Create.class);
-        verify(submissionService, atLeastOnce())
-                .createReference(eq(ProblemSeeder.SEED_AUTHOR_UUID), captor.capture(), eq(true));
-        Map<Integer, SubmissionCommands.Create> byId = new HashMap<>();
-        captor.getAllValues().forEach(r -> byId.put(r.problemId(), r));
-        return byId;
-    }
 
     /**
      * Converts one test case's JSON argument array into Java arguments, typed by the signature —

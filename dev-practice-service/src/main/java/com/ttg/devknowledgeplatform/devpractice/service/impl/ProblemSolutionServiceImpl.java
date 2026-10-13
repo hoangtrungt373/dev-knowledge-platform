@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.ttg.devknowledgeplatform.common.exception.Validator;
+import com.ttg.devknowledgeplatform.devpractice.editorial.CodePlaceholders;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.ProblemSolution;
 import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
@@ -27,9 +28,11 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * Editorial approaches. Validation lives here (not in the seeder) so the future admin endpoints get
  * the same rules for free: every linked run is one of <em>this</em> problem's {@code REFERENCE}
- * submissions, at most one per language. A run's verdict is deliberately <em>not</em> required at
- * link time — the seeder links runs the judge hasn't finished yet — because the read side
- * ({@link ProblemSolution#verifiedCode()}) only ever shows accepted, current ones.
+ * submissions, at most one per language, and the explanation passes {@link CodePlaceholders#validate}
+ * (no hand-written code, placeholders only for implemented languages). A run's verdict is
+ * deliberately <em>not</em> required at link time — the seeder links runs the judge hasn't finished
+ * yet — because the read side ({@link ProblemSolution#verifiedCode()}) only ever shows accepted,
+ * current ones.
  */
 @Slf4j
 @Service
@@ -71,6 +74,7 @@ public class ProblemSolutionServiceImpl implements ProblemSolutionService {
                     DevPracticeErrorCode.PROBLEM_SOLUTION_DUPLICATE_LANGUAGE, (Object) run.getLanguage().name());
             solution.addCode(run);
         }
+        CodePlaceholders.validate(solution.getExplanation(), languages);
 
         ProblemSolution saved = problemSolutionRepository.save(solution);
         log.info("Added solution '{}' to problem {} with {} implementation(s)", saved.getTitle(), problemId, languages.size());

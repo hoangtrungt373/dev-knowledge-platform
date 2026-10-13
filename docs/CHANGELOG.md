@@ -29,10 +29,20 @@ section again. Full unabridged entry-by-entry history for all four lives in
   (`ProblemSolution#verifiedCode()`). Public `GET /api/v1/public/problems/{slug}/solutions` (published
   problems only; no gateway change). New `ProblemSolutionService` (validated create — this problem's
   reference runs only, one per language — `PROBLEM_SOLUTION_001`/`002`). Problem seed files gained a
-  `solutions:` list (`useReferenceSolution` reuses the reference run; `implementations` are submitted
-  as their own runs); Contains Duplicate ships "Sorting" + "Hash Set", Evaluate Reverse Polish
-  Notation ships "Stack". `ProblemSeederTest` now compiles and runs every implementation against
-  every test case. GUI tab (Phase 2) and admin management (Phase 3) not built yet.
+  `solutions:` list, now the only place their code lives — the top-level `referenceSolution` was
+  retired (a file still using it, or `useReferenceSolution`, fails startup): every implementation is
+  submitted as its own REFERENCE run linked to its approach, and for a `PUBLISHED` file the first one
+  listed is the single publish-on-accept run (only one, since publishing shares the verdict's
+  transaction and two concurrent publishes would roll a verdict back). Contains Duplicate ships
+  "Sorting" + "Hash Set", Evaluate Reverse Polish Notation ships "Stack".
+  `scripts/purge-seed-data.sql` now truncates all 11 `dev_practice` tables (it had missed the study
+  plan and solution tables). `ProblemSeederTest` now compiles and runs every implementation against
+  every test case. Explanations can't contain hand-written code: `{{code:LANGUAGE}}` placeholders
+  (new `editorial.CodePlaceholders`) are validated on write — commonmark-java (new dependency) rejects
+  fenced/indented code blocks (`PROBLEM_SOLUTION_003`), misplaced placeholders (`005`) and
+  placeholders for languages the approach has no implementation in (`004`) — and expanded on read
+  from the same verified runs the code panel shows (a "being re-verified" note when none). GUI tab
+  (Phase 2) and admin management (Phase 3) not built yet.
 - **Study plans.** `dev-practice-service`: curated, ordered problem lists such as
   "NeetCode 150". New `StudyPlan` → ordered `StudyPlanSection` (free-text chapter) → ordered
   `StudyPlanProblem` (explicit join to `Problem`), migration `DKP-0060`. Read-only public API

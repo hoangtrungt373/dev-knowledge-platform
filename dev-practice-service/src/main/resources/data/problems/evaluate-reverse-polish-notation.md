@@ -5,8 +5,9 @@
 title: Evaluate Reverse Polish Notation
 difficulty: MEDIUM
 # PUBLISHED is reached through verification, not set directly: the seeder creates the problem as a
-# DRAFT, submits referenceSolution as a publish-on-accept reference run, and the judge publishes it
-# once every test case passes (DKP-0056/0057). If the judge is unreachable it stays a DRAFT.
+# DRAFT, submits the first implementation in `solutions` as a publish-on-accept reference run, and the
+# judge publishes it once every test case passes (DKP-0056/0057). If the judge is unreachable it stays
+# a DRAFT.
 status: PUBLISHED
 tags: [Array, Math, Stack]
 template:
@@ -17,32 +18,15 @@ template:
 
         }
     }
-# A complete solution, judged like any submission. Written for Judge0's OpenJDK 13 (no arrow-switch),
-# using only java.util — the harness prelude imports it. ProblemSeederTest compiles and runs this
-# exact code against every test case below, so a wrong expectedOutput fails the build.
-referenceSolution:
-  language: JAVA
-  code: |
-    class Solution {
-        public int evalRPN(String[] tokens) {
-            Deque<Integer> stack = new ArrayDeque<>();
-            for (String token : tokens) {
-                switch (token) {
-                    case "+": stack.push(stack.pop() + stack.pop()); break;
-                    case "*": stack.push(stack.pop() * stack.pop()); break;
-                    case "-": { int b = stack.pop(); stack.push(stack.pop() - b); break; }
-                    case "/": { int b = stack.pop(); stack.push(stack.pop() / b); break; }
-                    default: stack.push(Integer.parseInt(token));
-                }
-            }
-            return stack.pop();
-        }
-    }
-# Editorial approach (ProblemSeeder → ProblemSolutionService); useReferenceSolution links the
-# referenceSolution run above instead of repeating its code.
+# The only place code lives. Each approach (in display order) has a title, a Markdown explanation and
+# implementations ({language, code}); every implementation is submitted as its own REFERENCE run, judged
+# like any submission, and linked to its approach. ProblemSeederTest compiles and runs every one against
+# every test case below, so a wrong expectedOutput (or a wrong implementation) fails the build. Written
+# for Judge0's OpenJDK 13 (no arrow-switch), using only java.util — the harness prelude imports it.
+# Explanations contain no hand-written code: {{code:JAVA}} on a line of its own is replaced, when served,
+# by this approach's verified JAVA run (CodePlaceholders).
 solutions:
   - title: Stack
-    useReferenceSolution: true
     explanation: |
       In Reverse Polish Notation every operator comes **after** its two operands, so the expression can
       be evaluated left to right with a stack:
@@ -52,6 +36,8 @@ solutions:
 
       The single value left on the stack at the end is the answer.
 
+      {{code:JAVA}}
+
       Order matters for `-` and `/`: the first value popped is the **right** operand. Java's integer
       division already truncates toward zero, exactly as the problem asks.
 
@@ -59,6 +45,24 @@ solutions:
 
       - Time: `O(n)` — one pass with `O(1)` work per token.
       - Space: `O(n)` for the stack in the worst case (all numbers first).
+    implementations:
+      - language: JAVA
+        code: |
+          class Solution {
+              public int evalRPN(String[] tokens) {
+                  Deque<Integer> stack = new ArrayDeque<>();
+                  for (String token : tokens) {
+                      switch (token) {
+                          case "+": stack.push(stack.pop() + stack.pop()); break;
+                          case "*": stack.push(stack.pop() * stack.pop()); break;
+                          case "-": { int b = stack.pop(); stack.push(stack.pop() - b); break; }
+                          case "/": { int b = stack.pop(); stack.push(stack.pop() / b); break; }
+                          default: stack.push(Integer.parseInt(token));
+                      }
+                  }
+                  return stack.pop();
+              }
+          }
 testCases:
   # Example 1 from the description — shown to users.
   - input: '[["1","2","+","3","*","4","-"]]'

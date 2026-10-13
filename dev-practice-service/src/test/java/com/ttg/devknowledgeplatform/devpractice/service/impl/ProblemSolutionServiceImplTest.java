@@ -100,6 +100,26 @@ class ProblemSolutionServiceImplTest {
     }
 
     @Test
+    void anExplanationWithHandWrittenCodeIsRejected() {
+        assertThatThrownBy(() -> service.create(7, new ProblemSolutionCommands.Create(
+                "T", "Look:\n\n```java\nint x;\n```", List.of())))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getErrorCode())
+                        .isEqualTo(DevPracticeErrorCode.PROBLEM_SOLUTION_RAW_CODE_BLOCK));
+        verify(solutionRepository, never()).save(any());
+    }
+
+    @Test
+    void aPlaceholderMustMatchALinkedImplementationsLanguage() {
+        stubRun(run(31, problem, SubmissionKind.REFERENCE, ProgrammingLanguage.JAVA));
+
+        assertThatThrownBy(() -> service.create(7, new ProblemSolutionCommands.Create(
+                "T", "{{code:PYTHON}}", List.of(31))))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getErrorCode())
+                        .isEqualTo(DevPracticeErrorCode.PROBLEM_SOLUTION_PLACEHOLDER_WITHOUT_CODE));
+        verify(solutionRepository, never()).save(any());
+    }
+
+    @Test
     void listsAPublishedProblemsApproachesInOrder() {
         when(problemService.getPublishedBySlug("contains-duplicate")).thenReturn(problem);
         List<ProblemSolution> approaches = List.of(ProblemSolution.builder().title("A").build());

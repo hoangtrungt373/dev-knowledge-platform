@@ -3090,6 +3090,13 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                         becomes JudgeUnavailableException; constructor fails
 │                                         fast if JudgeClientProperties.languageIds is missing an
 │                                         entry for any ProgrammingLanguage constant
+├── editorial/
+│   └── CodePlaceholders.java          — {{code:LANGUAGE}} placeholders in solution explanations:
+│                                         validate (commonmark AST: no fenced/indented code blocks,
+│                                         placeholder = own paragraph + implemented language) and
+│                                         render (placeholder line → fenced block of verified code,
+│                                         indentation kept, fence longer than any backtick run;
+│                                         "being re-verified" note when no verified run)
 ├── sweeper/
 │   ├── StaleSubmissionSweepJob.java   — extends infra's AbstractBatchJob; @Scheduled (fixedDelay,
 │   │                                     default every minute) → runBatch(): ids of
@@ -3215,7 +3222,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │                                        ProblemTagSeeder, ProblemSeeder (tags resolved by name), then
 │                                        StudyPlanSeeder (problems resolved by slug)
 ├── exception/
-│   └── DevPracticeErrorCode.java       — PROBLEM_SOLUTION_INVALID_REFERENCE/_DUPLICATE_LANGUAGE (400),
+│   └── DevPracticeErrorCode.java       — PROBLEM_SOLUTION_INVALID_REFERENCE/_DUPLICATE_LANGUAGE/
+│                                         _RAW_CODE_BLOCK/_PLACEHOLDER_WITHOUT_CODE/_PLACEHOLDER_MISPLACED (400),
 │                                         STUDY_PLAN_NOT_FOUND (404), PROBLEM_NOT_FOUND, PROBLEM_SLUG_CONFLICT,
 │                                         PROBLEM_SIGNATURE_LOCKED, PROBLEM_TEST_CASE_ARITY_MISMATCH,
 │                                         PROBLEM_INVALID_IDENTIFIER, PROBLEM_DUPLICATE_PARAMETER_NAME,
@@ -3264,7 +3272,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   └── StarterCodeResponse.java       — record: language, code
 ├── mapper/
 │   ├── ProblemSolutionMapper.java      — approach → ProblemSolutionResponse; codes always via
-│   │                                     verifiedCode() → SolutionCodeResponse
+│   │                                     verifiedCode() → SolutionCodeResponse; explanation's
+│   │                                     placeholders expanded from the same verified code
 │   ├── StudyPlanMapper.java            — uses ProblemMapper; sections' problems and the overview's
 │   │                                     problems ({id, slug} refs) come from StudyPlanSection.publishedProblems()
 │   ├── ProblemMapper.java              — toResponse/toSummaryResponse/toResponse(MethodParameter)
@@ -3353,10 +3362,12 @@ dev-practice-service/src/test/
 │                                         case-sensitivity, duplicates
 ├── java/.../service/seed/ProblemSeederTest.java — loads the real seed files: signature from the
 │                                         template, tags, sample count, created as DRAFT + a
-│                                         publish-on-accept reference run; the file's own
-│                                         referenceSolution compiled (javax.tools) and run against
-│                                         every test case of every seed file (arguments typed by
-│                                         the signature, compared as JSON); skip-if-exists
+│                                         publish-on-accept run (exactly one per problem: the first
+│                                         implementation listed); every solutions[].implementations
+│                                         entry compiled (javax.tools) and run against every test
+│                                         case of every seed file (arguments typed by the signature,
+│                                         compared as JSON); solutions linked to their own runs;
+│                                         retired referenceSolution key rejected; skip-if-exists
 ├── java/.../service/impl/ProblemServiceImplTest.java — delete refused with submissions,
 │                                         reserved-name rejection on create, arity error message;
 │                                         publish verification (create-as-PUBLISHED refused, draft →

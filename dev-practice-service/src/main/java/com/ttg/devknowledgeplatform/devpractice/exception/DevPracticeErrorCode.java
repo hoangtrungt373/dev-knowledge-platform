@@ -48,6 +48,14 @@ public enum DevPracticeErrorCode implements ErrorCode {
             "Submission {0} is not a reference run of this problem", HttpStatus.BAD_REQUEST),
     PROBLEM_SOLUTION_DUPLICATE_LANGUAGE("PROBLEM_SOLUTION_002",
             "An approach can have only one {0} implementation", HttpStatus.BAD_REQUEST),
+    // Messages go through MessageFormat: '{{' / '}}' print literal braces, '' prints one quote.
+    PROBLEM_SOLUTION_RAW_CODE_BLOCK("PROBLEM_SOLUTION_003",
+            "Explanations can''t contain code blocks — put a placeholder such as '{{'code:JAVA'}}' on its own "
+                    + "line where the approach''s verified code should appear", HttpStatus.BAD_REQUEST),
+    PROBLEM_SOLUTION_PLACEHOLDER_WITHOUT_CODE("PROBLEM_SOLUTION_004",
+            "The explanation shows {0} code, but this approach has no {0} implementation", HttpStatus.BAD_REQUEST),
+    PROBLEM_SOLUTION_PLACEHOLDER_MISPLACED("PROBLEM_SOLUTION_005",
+            "A code placeholder must be a paragraph of its own — put blank lines around ''{0}''", HttpStatus.BAD_REQUEST),
 
     // Study plan errors (STUDY_PLAN_*)
     STUDY_PLAN_NOT_FOUND("STUDY_PLAN_001", "Study plan not found", HttpStatus.NOT_FOUND),

@@ -1,13 +1,14 @@
--- Purges every dev-practice-service table so the startup seeders (ProblemTagSeeder, then
--- ProblemSeeder — see service.seed.DevPracticeDataSeedingRunner) can be re-run from a clean slate.
+-- Purges every dev-practice-service table so the startup seeders (ProblemTagSeeder, ProblemSeeder,
+-- then StudyPlanSeeder — see service.seed.DevPracticeDataSeedingRunner) can be re-run from a clean
+-- slate.
 --
 -- Why this is needed at all: both seeders are idempotent by natural key — ProblemTagSeeder skips a
 -- tag whose name already exists (case-insensitively), ProblemSeeder skips a problem whose slug
--- already exists (see dev-practice-service/CLAUDE.md). As long as an old row survives, restarting
+-- already exists, StudyPlanSeeder a plan whose slug does (see dev-practice-service/CLAUDE.md). As long as an old row survives, restarting
 -- with app.seed.enabled=true silently skips it instead of reseeding — so an edited seed file (new
 -- test cases, a reworded description, a renamed tag) never reaches a database that already has the
 -- old version. This script empties every table this module owns so the next startup reseeds the
--- full catalog from data/csv/problem_tags.csv and data/problems/*.md.
+-- full catalog from data/csv/problem_tags.csv, data/problems/*.md and data/study-plans/*.yml.
 --
 -- NOTE this is a genuine "every table" purge, not just the seeded ones: it also truncates
 -- SUBMISSION — every user's real submission history and judging verdicts, which no seeder ever
@@ -31,16 +32,22 @@ BEGIN;
 
 -- Every table in the dev_practice schema, listed together so Postgres resolves FK order itself in
 -- one statement. CASCADE is a safety net for a future table this list falls behind on, not required
--- today (every FK-linked table is listed): TEST_CASE/METHOD_PARAMETER/PROBLEM_TAG_ASSIGNMENT
--- reference PROBLEM, PROBLEM_TAG_ASSIGNMENT also references PROBLEM_TAG, SUBMISSION references
--- PROBLEM.
+-- today (every FK-linked table is listed): TEST_CASE/METHOD_PARAMETER/PROBLEM_TAG_ASSIGNMENT/
+-- PROBLEM_SOLUTION/SUBMISSION reference PROBLEM, PROBLEM_TAG_ASSIGNMENT also references PROBLEM_TAG,
+-- PROBLEM_SOLUTION_CODE references PROBLEM_SOLUTION and SUBMISSION, STUDY_PLAN_PROBLEM references
+-- STUDY_PLAN_SECTION and PROBLEM, STUDY_PLAN_SECTION references STUDY_PLAN.
 -- RESTART IDENTITY alone resets every *_SEQ sequence — each one is linked to its id column with
 -- ALTER SEQUENCE ... OWNED BY in its own migration, which is the association TRUNCATE ... RESTART
 -- IDENTITY uses to find them. Reseeded ids therefore start from 1 again.
--- Confirmed against every migration's own CREATE TABLE statement (6 tables as of DKP-0055) —
+-- Confirmed against every migration's own CREATE TABLE statement (11 tables as of DKP-0061) —
 -- re-derive the list from a grep for `CREATE TABLE IF NOT EXISTS dev_practice\.` rather than
 -- trusting this count when a new table lands.
 TRUNCATE TABLE
+    dev_practice.STUDY_PLAN_PROBLEM,
+    dev_practice.STUDY_PLAN_SECTION,
+    dev_practice.STUDY_PLAN,
+    dev_practice.PROBLEM_SOLUTION_CODE,
+    dev_practice.PROBLEM_SOLUTION,
     dev_practice.SUBMISSION,
     dev_practice.PROBLEM_TAG_ASSIGNMENT,
     dev_practice.TEST_CASE,

@@ -339,6 +339,25 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
     rejected or stale run (test data changed since) is hidden, so an approach can show its
     explanation with no code until an admin links a fresh run. `ProblemSolutionMapper` always maps
     through it — never map `codes` directly into a learner DTO.
+  - **No hand-written code in explanations — code appears only through `{{code:LANGUAGE}}`
+    placeholders** (`editorial.CodePlaceholders`), so prose and code panel can never disagree.
+    `validate` (called by `ProblemSolutionServiceImpl#create`) parses the Markdown with
+    **commonmark-java** (new dependency, core only — a regex can't tell a 4-space indented code block
+    from list-continuation text) and rejects any fenced *or* indented code block
+    (`PROBLEM_SOLUTION_003`), a placeholder that isn't a paragraph of its own (`005`), and a
+    placeholder for a language the approach has no linked run in (`004`; case-insensitive, unknown
+    languages included). `render` (in `ProblemSolutionMapper`, from the same
+    `verifiedCode()` the code panel uses) replaces each placeholder line with a fenced block of that
+    language's verified source, keeping the line's indentation (placeholders work inside list
+    items) and lengthening the fence past any backtick run in the code; with no verified run it
+    renders an italic "being re-verified" note — never stale code. Rendering is line-based on
+    purpose, which is only safe because validation guarantees each placeholder is alone on its line
+    and no code block exists to hold a look-alike — keep the two in this one class. Inline code
+    spans (`` `O(n)` ``, `` `{{code:JAVA}}` `` as literal text) stay allowed. Error messages go
+    through `MessageFormat`, hence `'{{'`/`'}}'` for literal braces (pinned by
+    `CodePlaceholdersTest`). The seed explanations all use `{{code:JAVA}}`;
+    `ProblemSeederTest#everySeededExplanationPassesThePlaceholderRules` runs `validate` on them
+    (the service is mocked there).
   - **Link time doesn't require a verdict** (the seeder links runs the judge hasn't answered yet);
     the read side's filter is what guarantees correctness. Rules enforced at link time: the run
     exists, is this problem's, is `REFERENCE` (`PROBLEM_SOLUTION_001`), one per language
@@ -348,17 +367,16 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
     `ProblemService#getPublishedBySlug` (draft = `PROBLEM_001`). No spoiler gating server-side: the
     soft "Show solution" gate is a GUI concern (Phase 2). Admin management is Phase 3 and must go
     through `ProblemSolutionService#create` (or its future siblings) like the seeder does.
-  - **Seed format**: an optional `solutions:` list in a problem file, in display order — each
-    `{title, explanation, useReferenceSolution?, implementations?: [{language, code}]}`.
-    `useReferenceSolution: true` links the file's `referenceSolution` run (no duplicated code; an
-    error if the file has none); each implementation is submitted as its own REFERENCE run
-    (`publishOnAccept=false`). `ProblemSeederTest#everyEditorialImplementationPassesEveryTestCaseToo`
-    compiles and runs every implementation against every test case, the same way it checks
-    `referenceSolution`.
+  - **Seed format — `solutions:` is the only place code lives** (the old top-level
+    `referenceSolution` and per-approach `useReferenceSolution` were retired; the seeder fails
+    startup naming the file if either key reappears). Each approach, in display order:
+    `{title, explanation, implementations: [{language, code}]}`; every implementation becomes its
+    own REFERENCE run linked to its approach. A placeholder resolves **within its own approach**, so
+    two approaches both writing `{{code:JAVA}}` show their own, different code.
 - **Seeding problems: add one `resources/data/problems/<slug>.md` file per problem** — YAML front
   matter (`title`, `difficulty`, `status`, `tags` by name, `template: {language, code}`,
-  `testCases: [{input, expectedOutput, sample}]`, optional `referenceSolution`/`solutions` — see the
-  editorial-solutions rule above) + a Markdown body (the description).
+  `testCases: [{input, expectedOutput, sample}]`, optional `solutions` — see the editorial-solutions
+  rule above) + a Markdown body (the description).
   `service.seed.ProblemSeeder` (run by `DevPracticeDataSeedingRunner` when `app.seed.enabled` —
   on in the `local` profile, `APP_SEED_ENABLED` elsewhere) derives the signature from the template
   with the same `SignatureTemplateParserRegistry` the admin form uses, then creates the problem via
@@ -371,23 +389,27 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   name that isn't). Like every startup seeder here, a seeded tag/problem an admin deletes comes
   back on the next seeded startup — accepted, since seeding is off outside `local`. Compute every
   `expectedOutput` with a reference solution, never by hand — `ProblemSeederTest` does exactly this
-  for **every** seed file, generically: it compiles each file's `referenceSolution` (`javax.tools`),
+  for **every** seed file, generically: it compiles every implementation in its `solutions` (`javax.tools`),
   converts each test case's JSON arguments by the parsed signature's `ParamType`s, and compares the
   result as JSON — a new seed file is covered with no test change (its exhaustive `javaType` switch
-  is the one place a new `ParamType` must be taught first). **`status: PUBLISHED`
-  requires a `referenceSolution: {language, code}`** (startup fails without one): the seeder creates
-  the problem as `DRAFT`, submits the solution as a publish-on-accept REFERENCE run, and the judge
-  publishes it seconds later once every case passes. If Judge0 rejects it or is unreachable (no
-  RapidAPI key) the problem just stays `DRAFT` — and isn't retried, since seeding skips existing
-  slugs; run a reference from the admin form instead. A `referenceSolution` on a `DRAFT` file
-  verifies without publishing. Write it for Judge0's **OpenJDK 13** (no arrow-`switch`, no
+  is the one place a new `ParamType` must be taught first). **`status: PUBLISHED` requires at least
+  one implementation** (startup fails without one): the seeder creates the problem as `DRAFT` and
+  submits the **first implementation listed** as the one publish-on-accept REFERENCE run; the judge
+  publishes the problem seconds later once every case passes. **Exactly one run publishes, never
+  all**: publishing happens in the same transaction that saves the verdict
+  (`SubmissionJudgeEventListener`), so two publish-on-accept runs accepted together would race on the
+  problem row and the loser's *verdict* would roll back with the optimistic-lock failure. Which one
+  doesn't matter — every implementation is verified by the test below. If Judge0 rejects it or is
+  unreachable (no RapidAPI key) the problem just stays `DRAFT` — and isn't retried, since seeding
+  skips existing slugs; run a reference from the admin form instead. Implementations on a `DRAFT`
+  file verify it without publishing. Write them for Judge0's **OpenJDK 13** (no arrow-`switch`, no
   records/text blocks), using only `java.util` (the harness prelude imports it).
-  `ProblemSeederTest` compiles the file's own `referenceSolution` with `javax.tools` and runs it
-  against every test case, so the seed file is the single source of the solution — but on the test
-  JDK, not 13. To re-seed after
+  `ProblemSeederTest#everyImplementationPassesEveryTestCase` compiles each with `javax.tools` and runs
+  it against every test case, so the seed file is the single source of the solutions — but on the
+  test JDK, not 13. To re-seed after
   editing a seed file, run `scripts/purge-seed-data.sql` (a plain dev utility outside
   `database/sql/`, so never a migration; mirrors `ecommerce-service`'s) — it `TRUNCATE ... RESTART
-  IDENTITY CASCADE`s all 6 `dev_practice` tables, **including users' `SUBMISSION` history**, then
+  IDENTITY CASCADE`s all 11 `dev_practice` tables, **including users' `SUBMISSION` history**, then
   restart with seeding on. Add any new table to its list.
 - **Problem tags (`ProblemTag` + `ProblemTagAssignment`, `DKP-0055`) follow `ecommerce-service`'s
   Product Tags, with three deliberate differences:** (1) responses embed `tags: [{id, name, slug}]`

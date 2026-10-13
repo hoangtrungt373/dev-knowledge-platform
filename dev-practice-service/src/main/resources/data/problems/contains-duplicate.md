@@ -1,6 +1,6 @@
 ---
 # Seeded by service.seed.ProblemSeeder — see evaluate-reverse-polish-notation.md for the file format.
-# Every expectedOutput is checked by ProblemSeederTest, which compiles referenceSolution below and
+# Every expectedOutput is checked by ProblemSeederTest, which compiles every implementation below and
 # runs it against each test case; PUBLISHED is then reached through the judge (publish-on-accept).
 title: Contains Duplicate
 difficulty: EASY
@@ -14,25 +14,10 @@ template:
 
         }
     }
-# One pass with a HashSet: O(n) time, O(n) space. Set#add returns false when the value is already
-# there, which is exactly "seen before". Written for Judge0's OpenJDK 13, java.util only.
-referenceSolution:
-  language: JAVA
-  code: |
-    class Solution {
-        public boolean containsDuplicate(int[] nums) {
-            Set<Integer> seen = new HashSet<>();
-            for (int num : nums) {
-                if (!seen.add(num)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-    }
-# Editorial approaches, in display order (ProblemSeeder → ProblemSolutionService). useReferenceSolution
-# links the referenceSolution run above instead of repeating its code; each `implementations` entry is
-# submitted as its own REFERENCE run, and ProblemSeederTest runs it against every test case below too.
+# Editorial approaches, in display order. Each implementation is submitted as its own REFERENCE run and
+# linked to its approach; the first one listed (Sorting's JAVA) is the publish-on-accept run. Written
+# for Judge0's OpenJDK 13, java.util only — the harness prelude imports it. {{code:JAVA}} on a line of
+# its own is replaced, when served, by *this approach's* verified JAVA run — never hand-written code.
 solutions:
   - title: Sorting
     explanation: |
@@ -41,6 +26,8 @@ solutions:
 
       Sort a copy (so the caller's array isn't modified), then compare each element with its left
       neighbor and stop at the first match.
+
+      {{code:JAVA}}
 
       **Complexity**
 
@@ -62,7 +49,6 @@ solutions:
               }
           }
   - title: Hash Set
-    useReferenceSolution: true
     explanation: |
       Walk the array once, remembering every value seen so far in a hash set. The first value that's
       already in the set is a duplicate.
@@ -70,12 +56,28 @@ solutions:
       `Set.add` returns `false` when the value was already present, so the membership check and the
       insert are a single call.
 
+      {{code:JAVA}}
+
       **Complexity**
 
       - Time: `O(n)` — each insert/lookup is `O(1)` on average.
       - Space: `O(n)` for the set.
 
       Compared with sorting, this trades memory for speed — the classic hash-table trade-off.
+    implementations:
+      - language: JAVA
+        code: |
+          class Solution {
+              public boolean containsDuplicate(int[] nums) {
+                  Set<Integer> seen = new HashSet<>();
+                  for (int num : nums) {
+                      if (!seen.add(num)) {
+                          return true;
+                      }
+                  }
+                  return false;
+              }
+          }
 testCases:
   # Examples 1 and 2 from the description — shown to users.
   - input: '[[1,2,3,3]]'
