@@ -175,6 +175,52 @@ export interface ProblemSummary {
   tags: ProblemTagSummary[];
 }
 
+/** `StudyPlanProblemRefResponse` — a plan problem's id (for progress) and slug (to open it). */
+export interface StudyPlanProblemRef {
+  id: number;
+  slug: string;
+}
+
+/**
+ * `StudyPlanSummaryResponse` — one card on the study-plans overview. `problems` are the plan's
+ * published problems in plan order: checked against the learner's own progress for "x / y solved"
+ * and for "Continue" (the first unsolved one); `problems.length` is the plan's size.
+ */
+export interface StudyPlanSummary {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  sectionCount: number;
+  problems: StudyPlanProblemRef[];
+}
+
+/** `StudyPlanSectionResponse` — one chapter; `problems` may be empty while its problems are drafts. */
+export interface StudyPlanSection {
+  id: number;
+  title: string;
+  description: string | null;
+  problems: ProblemSummary[];
+}
+
+/** `StudyPlanResponse` — a whole plan: ordered sections, each with its ordered published problems. */
+export interface StudyPlan {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  sections: StudyPlanSection[];
+}
+
+/**
+ * Router state a page passes when opening a problem (`navigate(path, { state: { returnTo } })`), so
+ * the workspace's back button returns there — e.g. a study plan — instead of the catalog.
+ */
+export interface PracticeReturnTo {
+  path: string;
+  label: string;
+}
+
 /** `enums.ProblemProgressStatus` — a learner's standing on a problem; absent = never submitted. */
 export type ProblemProgressStatus = 'ATTEMPTED' | 'SOLVED';
 

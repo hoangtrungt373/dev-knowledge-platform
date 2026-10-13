@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Box, Button, IconButton, Paper, Stack, Tab, Tabs, Tooltip, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
@@ -9,6 +9,7 @@ import LoginIcon from '@mui/icons-material/Login';
 import SearchOffIcon from '@mui/icons-material/SearchOff';
 import { Group, Panel, useDefaultLayout } from 'react-resizable-panels';
 import { practiceApi } from '../api/practiceApi';
+import { PracticeReturnTo } from '../types';
 import { MAX_RUN_CASES } from '../constants';
 import { isInProgress, useSubmissionPolling } from '../hooks/useSubmissionPolling';
 import { useSolutionDrafts } from '../hooks/useSolutionDrafts';
@@ -61,6 +62,9 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
   const navigate = useNavigate();
   const { showError } = useNotification();
   const isAuthed = authService.isAuthenticated();
+  // Opened from a study plan? Back returns there; otherwise to the catalog.
+  const returnTo = (useLocation().state as { returnTo?: PracticeReturnTo } | null)?.returnTo;
+  const backPath = returnTo?.path ?? LIST_PATH;
 
   const { problem, loading, notFound } = usePublishedProblem(slug);
   const [leftTab, setLeftTab] = useState<LeftTab>('description');
@@ -149,8 +153,8 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
       }}
     >
       <Stack direction="row" alignItems="center" spacing={1.5}>
-        <Tooltip title="All problems">
-          <IconButton size="small" onClick={() => navigate(LIST_PATH)}>
+        <Tooltip title={returnTo ? `Back to ${returnTo.label}` : 'All problems'}>
+          <IconButton size="small" onClick={() => navigate(backPath)}>
             <ArrowBackIcon fontSize="small" />
           </IconButton>
         </Tooltip>

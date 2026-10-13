@@ -3253,7 +3253,7 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   └── StarterCodeResponse.java       — record: language, code
 ├── mapper/
 │   ├── StudyPlanMapper.java            — uses ProblemMapper; sections' problems and the overview's
-│   │                                     problemIds come from StudyPlanSection.publishedProblems()
+│   │                                     problems ({id, slug} refs) come from StudyPlanSection.publishedProblems()
 │   ├── ProblemMapper.java              — toResponse/toSummaryResponse/toResponse(MethodParameter)
 │   │                                      (MapStruct) + toPublicResponse (default method: filters
 │   │                                      testCases to sample = true only — the one place a hidden
@@ -3278,7 +3278,7 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
     │                                     every tag as {id, name, slug}, sorted by name (topic filter)
     ├── PublicStudyPlanApi.java (+ PublicStudyPlanController.java) — /api/v1/public/study-plans:
     │                                     list (StudyPlanSummaryResponse: sectionCount + published
-    │                                     problemIds for client-side progress), GET /{slug}
+    │                                     problems as {id, slug} — client-side progress + "Continue"), GET /{slug}
     │                                     (StudyPlanResponse → sections → ProblemSummaryResponse rows)
     ├── PublicProblemApi.java (+ PublicProblemController.java) — /api/v1/public/problems: list
     │                                     (hardcodes ContentStatus.PUBLISHED, same convention as

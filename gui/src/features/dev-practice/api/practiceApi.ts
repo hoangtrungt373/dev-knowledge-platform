@@ -10,6 +10,8 @@ import {
   ProgrammingLanguage,
   RunResult,
   StarterCode,
+  StudyPlan,
+  StudyPlanSummary,
   Submission,
 } from '../types';
 
@@ -62,6 +64,19 @@ export const practiceApi = {
       `/api/v1/public/problems/${encodeURIComponent(slug)}/starter-code?language=${language}`,
       showError,
     );
+  },
+
+  // ── Public study plans (/api/v1/public/study-plans, no auth) ──────────────────
+  // Published problems only; no progress in the response — pages combine it with getProgress.
+
+  /** Every plan in overview order, each with its published problem ids. */
+  listStudyPlans(showError?: ShowError): Promise<StudyPlanSummary[]> {
+    return httpClient.get('/api/v1/public/study-plans', showError);
+  },
+
+  /** One plan's ordered sections and their problems; rejects (404) for an unknown slug. */
+  getStudyPlan(slug: string, showError?: ShowError): Promise<StudyPlan> {
+    return httpClient.get(`/api/v1/public/study-plans/${encodeURIComponent(slug)}`, showError);
   },
 
   // ── Own submissions (/api/v1/submissions, login required) ────────────────────

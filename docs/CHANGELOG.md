@@ -22,7 +22,7 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
-- **Study plans, Phase 1 (backend).** `dev-practice-service`: curated, ordered problem lists such as
+- **Study plans.** `dev-practice-service`: curated, ordered problem lists such as
   "NeetCode 150". New `StudyPlan` → ordered `StudyPlanSection` (free-text chapter) → ordered
   `StudyPlanProblem` (explicit join to `Problem`), migration `DKP-0060`. Read-only public API
   `GET /api/v1/public/study-plans` (summaries with each plan's published problem ids, for
@@ -30,8 +30,16 @@ section again. Full unabridged entry-by-entry history for all four lives in
   problem rows; `STUDY_PLAN_001` 404); draft problems are never listed. New
   `service.seed.StudyPlanSeeder` loads `data/study-plans/*.yml` after `ProblemSeeder`; first plan
   `neetcode-150.yml` — "Arrays & Hashing" (Contains Duplicate) and "Stack" (Evaluate Reverse
-  Polish Notation). `gateway` routes `/api/v1/public/study-plans/**`. No admin management and no
-  GUI yet (Phase 2: `/practice/plans` pages).
+  Polish Notation). `gateway` routes `/api/v1/public/study-plans/**`. No admin management yet. `gui`: new
+  `/practice/plans` (plan cards with "x / y solved") and `/practice/plans/:slug` (sections with
+  per-section progress; a one-section plan hides its header), both public; progress comes from the
+  existing `useProblemProgress` checked against each plan's problem ids (`utils/planProgress.ts`,
+  `components/PlanProgress`). The catalog row was extracted into `components/ProblemTableRow`,
+  shared by the catalog and plan pages; the Practice page gained a "Study plans" button; opening a
+  problem from a plan passes router state so the workspace's back button returns to the plan. Each
+  plan card has a Start/Continue button that opens the first unsolved problem in plan order (the
+  summary's `problemIds` became `problems: [{id, slug}]` — new `StudyPlanProblemRefResponse` — so the
+  card can open it directly); `useProblemProgress` gained a `loaded` flag.
 - **Stale-submission sweeper.** `dev-practice-service`: new `sweeper.StaleSubmissionSweepJob`
   (`@Scheduled`, every minute) + `sweeper.StaleSubmissionProcessor` (per-row `@Transactional`) mark
   `PENDING`/`RUNNING` submissions not updated for `app.submissions.sweeper.stale-after` (default

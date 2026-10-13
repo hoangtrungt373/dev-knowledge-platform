@@ -4453,7 +4453,8 @@ slice" benefit without that cost — revisit only if a genuine second deployable
       Docker in this sandbox, so the actual on-screen result (every panel's Paste/Copy/Download/
       Maximize buttons, the inline error boxes, and the corrected sample text) is unverified in a
       real browser.
-- **`@dev-practice` — learner pages** (`/practice`, `/practice/:slug`; public like `/shop` — only
+- **`@dev-practice` — learner pages** (`/practice`, `/practice/:slug`, `/practice/plans`,
+  `/practice/plans/:slug`; public like `/shop` — only
   submitting needs a login, handled by the workspace's own "Log in to submit" button, not a
   `PrivateRoute`; NavBar "Practice" button is unconditional). `api/practiceApi.ts` is the learner
   half (public catalog + own submissions), kept apart from the admin `devPracticeApi.ts` like
@@ -4490,6 +4491,26 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     "You've solved N"; the workspace header shows it and calls `markJudged` on each final verdict so
     it updates without a refetch. Solved is sticky client-side too, matching the backend. No
     "show only unsolved" filter: the list is paged server-side, so that needs a backend filter.
+  - **Study plans** (`pages/StudyPlanListPage.tsx`, `pages/StudyPlanDetailPage.tsx`; backend in
+    `dev-practice-service/CLAUDE.md`). No progress endpoint: each plan's published problem ids
+    (`StudyPlanSummary.problems` — `{id, slug}` refs — or the section rows on the detail page) are
+    checked against `useProblemProgress` via `utils/planProgress.ts#countSolved`, rendered by
+    `components/PlanProgress` ("x / y solved" + bar; logged out only the size; "No problems yet"
+    for an all-draft plan or section). Each overview card has a **Start/Continue** button
+    (`PlanCardAction`, in `CardActions` beside — never inside — the card's `CardActionArea`, since a
+    button inside a button is invalid HTML) opening `utils/planProgress.ts#firstUnsolved` (attempted
+    counts as unsolved) with the plan as `returnTo`; "Continue" once any problem in the plan is
+    solved or attempted, a "Completed" note once all are solved. It waits for
+    `useProblemProgress().loaded` (true once the fetch settles, immediately when logged out) so
+    "Start" never flips to "Continue". A one-section plan hides its section header. An empty
+    section (its problems still drafts) shows "coming soon" rather than disappearing.
+    **`components/ProblemTableRow` (+ `ProblemTableHeaderCells`, `PROBLEM_TABLE_COLUMNS`) is the one
+    learner-facing problem row** — the catalog and every plan section render it; change a row there,
+    never per page. Opening a problem from a plan navigates with `state: { returnTo }`
+    (`types.ts#PracticeReturnTo`); the workspace's back arrow uses it ("Back to NeetCode 150"),
+    falling back to `/practice` on a direct visit/reload, since router state isn't in the URL.
+    `/practice/plans` is a static route, so it outranks `/practice/:slug` — a problem whose slug is
+    literally `plans` would be unreachable (none exists).
   - **Run (Phase 3)**: the workspace's right pane has a console under the editor — **Testcase**
     (`components/RunCaseEditor`: a chip per case, one field per parameter, pre-filled from the
     samples via `utils/runCases#casesFromSamples`, max 5 = the backend's limit, "Sample cases" resets)

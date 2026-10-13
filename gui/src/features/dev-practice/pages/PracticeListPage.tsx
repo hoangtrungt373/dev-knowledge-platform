@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box,
+  Button,
   InputAdornment,
   MenuItem,
   Paper,
@@ -9,7 +10,6 @@ import {
   Stack,
   Table,
   TableBody,
-  TableCell,
   TableContainer,
   TableHead,
   TablePagination,
@@ -18,13 +18,12 @@ import {
   Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
+import MenuBookOutlinedIcon from '@mui/icons-material/MenuBookOutlined';
 import { Difficulty, ProblemSummary, ProblemTagSummary } from '../types';
 import { practiceApi } from '../api/practiceApi';
-import { DIFFICULTIES, DIFFICULTY_LABEL, MAX_TAG_CHIPS } from '../constants';
+import { DIFFICULTIES, DIFFICULTY_LABEL } from '../constants';
 import { useProblemProgress } from '../hooks/useProblemProgress';
-import ProgressMarker from '../components/ProgressMarker';
-import DifficultyChip from '../components/DifficultyChip';
-import TagChips from '../components/TagChips';
+import ProblemTableRow, { PROBLEM_TABLE_COLUMNS, ProblemTableHeaderCells } from '../components/ProblemTableRow';
 import TagFilterSelect from '../components/TagFilterSelect';
 import { useNotification } from '@shared/contexts/NotificationContext';
 import TableStatusRow from '@shared/components/TableStatusRow';
@@ -114,14 +113,25 @@ export default function PracticeListPage(): JSX.Element {
 
   return (
     <Box sx={{ p: 3, maxWidth: 1100, mx: 'auto' }}>
-      <Box sx={{ mb: 2.5 }}>
-        <Typography variant="h5" fontWeight={700}>Practice</Typography>
-        <Typography variant="body2" color="text.secondary">
-          Solve coding problems in Java, Python or JavaScript — {total} problem{total !== 1 ? 's' : ''}
-          {q || difficulty || tagIds.length ? ' match your filters' : ''}.
-          {progress.solvedCount > 0 && ` You've solved ${progress.solvedCount}.`}
-        </Typography>
-      </Box>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        justifyContent="space-between"
+        alignItems={{ sm: 'flex-start' }}
+        spacing={1.5}
+        sx={{ mb: 2.5 }}
+      >
+        <Box>
+          <Typography variant="h5" fontWeight={700}>Practice</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Solve coding problems in Java, Python or JavaScript — {total} problem{total !== 1 ? 's' : ''}
+            {q || difficulty || tagIds.length ? ' match your filters' : ''}.
+            {progress.solvedCount > 0 && ` You've solved ${progress.solvedCount}.`}
+          </Typography>
+        </Box>
+        <Button variant="outlined" startIcon={<MenuBookOutlinedIcon />} onClick={() => navigate('/practice/plans')} sx={{ flexShrink: 0 }}>
+          Study plans
+        </Button>
+      </Stack>
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
         <TextField
@@ -155,40 +165,23 @@ export default function PracticeListPage(): JSX.Element {
         <Table size="small">
           <TableHead>
             <TableRow>
-              {/* Solved / attempted marker — empty for untouched problems and for logged-out visitors. */}
-              <TableCell sx={{ width: 48 }} aria-label="Status" />
-              <TableCell sx={{ fontWeight: 700 }}>Title</TableCell>
-              <TableCell sx={{ fontWeight: 700, width: 120 }}>Difficulty</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Topics</TableCell>
+              <ProblemTableHeaderCells />
             </TableRow>
           </TableHead>
           <TableBody>
             <TableStatusRow
               loading={loading}
               isEmpty={problems.length === 0}
-              colSpan={4}
+              colSpan={PROBLEM_TABLE_COLUMNS}
               emptyMessage="No problems match these filters."
             />
             {!loading && problems.map(problem => (
-                <TableRow
-                  key={problem.id}
-                  hover
-                  onClick={() => navigate(`/practice/${problem.slug}`)}
-                  sx={{ cursor: 'pointer' }}
-                >
-                  <TableCell sx={{ pr: 0 }}>
-                    <ProgressMarker status={progress.statusOf(problem.id)} />
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" fontWeight={600}>{problem.title}</Typography>
-                  </TableCell>
-                  <TableCell>
-                    <DifficultyChip difficulty={problem.difficulty} />
-                  </TableCell>
-                  <TableCell>
-                    <TagChips tags={problem.tags} max={MAX_TAG_CHIPS} />
-                  </TableCell>
-                </TableRow>
+              <ProblemTableRow
+                key={problem.id}
+                problem={problem}
+                status={progress.statusOf(problem.id)}
+                onOpen={() => navigate(`/practice/${problem.slug}`)}
+              />
             ))}
           </TableBody>
         </Table>

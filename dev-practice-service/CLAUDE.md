@@ -383,10 +383,11 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   replace-all reorder collide with itself.
   - **Plans may reference draft problems; the public view never shows them** —
     `StudyPlanSection#publishedProblems()` is the one filter, used by `StudyPlanMapper` for both the
-    section rows and the overview's `problemIds`. A section can therefore be empty publicly while
+    section rows and the overview's `problems`. A section can therefore be empty publicly while
     its problems await verification (seeded problems publish asynchronously via the judge).
-  - **No progress is stored or computed server-side.** `StudyPlanSummaryResponse.problemIds` (plan
-    order, published only) lets the GUI compute "x / y solved" from the existing
+  - **No progress is stored or computed server-side.** `StudyPlanSummaryResponse.problems` (`{id,
+    slug}` refs, plan order, published only — `StudyPlanMapperTest`) lets the GUI compute "x / y
+    solved" and open the first unsolved problem ("Continue") from the existing
     `GET /api/v1/submissions/progress` it already loads for the catalog's markers.
   - **Read-only for now:** `PublicStudyPlanApi` (`GET /api/v1/public/study-plans`, `GET /{slug}` —
     `STUDY_PLAN_001` 404) and no admin endpoints. Plans come only from

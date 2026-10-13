@@ -7,6 +7,11 @@ export interface ProblemProgressMap {
   /** The learner's status on a problem, or undefined if they never submitted to it (or are logged out). */
   statusOf: (problemId: number) => ProblemProgressStatus | undefined;
   solvedCount: number;
+  /**
+   * Whether statuses are final for this page: true once the fetch settles (either way), and right
+   * away when logged out. Lets a caller wait instead of briefly treating every problem as untouched.
+   */
+  loaded: boolean;
   /** Records a verdict that just landed, so markers update without refetching. */
   markJudged: (problemId: number, accepted: boolean) => void;
 }
@@ -19,13 +24,15 @@ export interface ProblemProgressMap {
  */
 export function useProblemProgress(): ProblemProgressMap {
   const [statuses, setStatuses] = useState<Map<number, ProblemProgressStatus>>(new Map());
+  const [loaded, setLoaded] = useState(() => !authService.isAuthenticated());
 
   useEffect(() => {
     if (!authService.isAuthenticated()) return;
     let cancelled = false;
     practiceApi.getProgress()
       .then(rows => { if (!cancelled) setStatuses(new Map(rows.map(r => [r.problemId, r.status]))); })
-      .catch(() => { /* no markers this time */ });
+      .catch(() => { /* no markers this time */ })
+      .finally(() => { if (!cancelled) setLoaded(true); });
     return () => { cancelled = true; };
   }, []);
 
@@ -42,5 +49,5 @@ export function useProblemProgress(): ProblemProgressMap {
   let solvedCount = 0;
   statuses.forEach(s => { if (s === 'SOLVED') solvedCount += 1; });
 
-  return { statusOf: id => statuses.get(id), solvedCount, markJudged };
+  return { statusOf: id => statuses.get(id), solvedCount, loaded, markJudged };
 }

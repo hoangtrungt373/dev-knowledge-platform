@@ -34,6 +34,8 @@ import ProblemWorkspacePage from '@dev-practice/pages/ProblemWorkspacePage';
 import ProblemListPage from '@dev-practice/pages/ProblemListPage';
 import ProblemFormPage from '@dev-practice/pages/ProblemFormPage';
 import ProblemTagListPage from '@dev-practice/pages/ProblemTagListPage';
+import StudyPlanListPage from '@dev-practice/pages/StudyPlanListPage';
+import StudyPlanDetailPage from '@dev-practice/pages/StudyPlanDetailPage';
 import { NotificationProvider } from '@shared/contexts/NotificationContext';
 import { CartProvider } from '@ecommerce/context/CartContext';
 import { StompConnectionProvider } from '@messaging/context/StompConnectionContext';
@@ -99,6 +101,10 @@ function App() {
                 /api/v1/public/problems/** is permitAll); only submitting needs a login, which the
                 workspace's own Submit button handles rather than a PrivateRoute. */}
             <Route path="/practice" element={<PracticeListPage />} />
+            {/* Static /practice/plans outranks the dynamic /practice/:slug in React Router v6's ranking,
+                so a problem slugged "plans" would be shadowed — no seeded or likely title produces it. */}
+            <Route path="/practice/plans" element={<StudyPlanListPage />} />
+            <Route path="/practice/plans/:slug" element={<StudyPlanDetailPage />} />
             <Route path="/practice/:slug" element={<ProblemWorkspacePage />} />
 
             {/* Protected user routes */}
