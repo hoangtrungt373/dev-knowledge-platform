@@ -30,6 +30,13 @@ section again. Full unabridged entry-by-entry history for all four lives in
   verified by `ProblemSeederTest`'s runners. Hidden cases include traps for common wrong shortcuts
   (comparing letter sets, summing or XOR-ing character codes); a mutation check confirmed each trap
   catches its shortcut.
+- **Seed problem: Two Sum** (`data/problems/two-sum.md`), EASY, tags Array/Hash Table, third in
+  NeetCode 150's "Arrays & Hashing". `int[] twoSum(int[] nums, int target)`; the description fixes the
+  output order (smaller index first), so the judge's ordered comparison applies. Approaches Brute Force
+  and Hash Map (One Pass — complement looked up before inserting, so an element never pairs with
+  itself), each in Java, Python and JavaScript. Every case has exactly one valid pair: the two
+  approaches find pairs in different orders, so they'd disagree — and the seeder test fail — if one
+  didn't.
 
 - **Editorial solutions, Phase 1 (backend).** `dev-practice-service`: new `ProblemSolution` (one
   approach — title, Markdown explanation, position) and `ProblemSolutionCode` (links an approach to a

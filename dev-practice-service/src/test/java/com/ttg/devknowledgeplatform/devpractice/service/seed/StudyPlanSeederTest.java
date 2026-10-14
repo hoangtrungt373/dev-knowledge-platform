@@ -77,11 +77,11 @@ class StudyPlanSeederTest {
         assertThat(plan.getSections()).extracting(StudyPlanSection::getPosition).containsExactly(0, 1);
         assertThat(plan.getSections()).allSatisfy(section -> assertThat(section.getStudyPlan()).isSameAs(plan));
 
-        assertThat(problemSlugs(plan.getSections().get(0))).containsExactly("contains-duplicate", "valid-anagram");
+        assertThat(problemSlugs(plan.getSections().get(0))).containsExactly("contains-duplicate", "valid-anagram", "two-sum");
         assertThat(problemSlugs(plan.getSections().get(1))).containsExactly("evaluate-reverse-polish-notation");
         assertThat(plan.getSections().get(0).getProblems())
                 .allSatisfy(entry -> assertThat(entry.getSection()).isSameAs(plan.getSections().get(0)))
-                .extracting(StudyPlanProblem::getPosition).containsExactly(0, 1);
+                .extracting(StudyPlanProblem::getPosition).containsExactly(0, 1, 2);
     }
 
     @Test

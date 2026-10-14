@@ -3342,6 +3342,10 @@ dev-practice-service/src/main/resources/data/problems/
 │   `boolean isAnagram(String s, String t)` (the first two-parameter seed problem), 17 test cases
 │   (3 samples; length mismatch, same letter set with different counts, equal code sums, XOR-zero
 │   pairs, all 26 letters); approaches Sorting and Character Count, each in Java/Python/JavaScript
+├── two-sum.md — EASY, tags Array/Hash Table, Java template `int[] twoSum(int[] nums, int target)`,
+│   14 test cases (3 samples; same element twice, equal neighbours, negatives, zeros, ±10^7); output
+│   order fixed (smaller index first); approaches Brute Force and Hash Map (One Pass), each in
+│   Java/Python/JavaScript
 └── evaluate-reverse-polish-notation.md — MEDIUM, tags Array/Math/Stack, Java template
     `int evalRPN(String[] tokens)`, 18 test cases (2 samples; truncation-toward-zero, operand
     order, single operand, deep stack, ±200 extremes)
