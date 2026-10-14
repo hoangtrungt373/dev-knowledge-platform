@@ -21,5 +21,11 @@ public enum ParamType {
     DOUBLE_ARRAY,
     BOOLEAN_ARRAY,
     STRING_ARRAY,
-    INT_MATRIX
+    INT_MATRIX,
+    /**
+     * A list of string lists — Java {@code List<List<String>>} (LeetCode's own signature for grouping
+     * problems like Group Anagrams), Python {@code List[List[str]]}, JavaScript {@code string[][]}.
+     * Inner lists may differ in length or be empty.
+     */
+    STRING_LIST_LIST
 }

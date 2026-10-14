@@ -2970,7 +2970,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   ├── OutputOrder.java               — ORDERED, ANY_ORDER (DKP-0062): whether the judge sorts
 │   │                                     every array level of both outputs before comparing
 │   ├── ParamType.java                 — INT, LONG, DOUBLE, BOOLEAN, STRING, INT_ARRAY,
-│   │                                     DOUBLE_ARRAY, BOOLEAN_ARRAY, STRING_ARRAY, INT_MATRIX —
+│   │                                     DOUBLE_ARRAY, BOOLEAN_ARRAY, STRING_ARRAY, INT_MATRIX,
+│   │                                     STRING_LIST_LIST (Java List<List<String>>) —
 │   │                                     the closed value-shape vocabulary every method signature
 │   │                                     and every harness.LanguageHarness is restricted to
 │   ├── ProgrammingLanguage.java        — plain JAVA/PYTHON/JAVASCRIPT, no vendor-specific detail —
@@ -3350,6 +3351,11 @@ dev-practice-service/src/main/resources/data/problems/
 ├── two-sum.md — EASY, tags Array/Hash Table, Java template `int[] twoSum(int[] nums, int target)`,
 │   14 test cases (3 samples; same element twice, equal neighbours, negatives, zeros, ±10^7); output
 │   order fixed (smaller index first); approaches Brute Force and Hash Map (One Pass), each in
+│   Java/Python/JavaScript
+├── group-anagrams.md — MEDIUM, tags Array/Hash Table/String/Sorting, Java template
+│   `List<List<String>> groupAnagrams(String[] strs)`, outputOrder ANY_ORDER, 13 test cases
+│   (3 samples; repeated and empty words, different lengths, set-of-letters / sum-of-codes /
+│   unseparated-count-key traps); approaches Sorted Key and Character Count Key, each in
 │   Java/Python/JavaScript
 └── evaluate-reverse-polish-notation.md — MEDIUM, tags Array/Math/Stack, Java template
     `int evalRPN(String[] tokens)`, 18 test cases (2 samples; truncation-toward-zero, operand

@@ -127,6 +127,8 @@ class LanguageHarnessExecutionIT {
             case BOOLEAN_ARRAY -> "[true,false]";
             case STRING_ARRAY -> "[\"x\",\"y z\"]";
             case INT_MATRIX -> "[[1,2],[],[3]]";
+            // An empty group and an escape inside a nested string.
+            case STRING_LIST_LIST -> "[[\"eat\",\"tea\"],[],[\"a \\\"b\\\"\"]]";
         };
     }
 

@@ -23,6 +23,7 @@ final class JavaTypeRenderer implements TypeRenderer {
             case BOOLEAN_ARRAY -> new TypeSyntax("boolean[]", "toBooleanArray");
             case STRING_ARRAY -> new TypeSyntax("String[]", "toStringArray");
             case INT_MATRIX -> new TypeSyntax("int[][]", "toIntMatrix");
+            case STRING_LIST_LIST -> new TypeSyntax("List<List<String>>", "toStringListList");
         };
     }
 }

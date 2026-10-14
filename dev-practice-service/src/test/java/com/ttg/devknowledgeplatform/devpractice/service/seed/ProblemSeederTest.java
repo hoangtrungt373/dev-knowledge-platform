@@ -159,6 +159,25 @@ class ProblemSeederTest {
         assertThat(command.testCases().stream().filter(ProblemCommands.TestCaseInput::sample)).hasSize(2);
     }
 
+    /** The first ANY_ORDER problem, and the first returning a list of string lists. */
+    @Test
+    void seedsGroupAnagramsAsAnyOrderReturningStringLists() {
+        seeder.seed();
+
+        Map<String, ProblemCommands.Create> byTitle = createdByTitle();
+        ProblemCommands.Create command = byTitle.get("Group Anagrams");
+        assertThat(command.difficulty()).isEqualTo(Difficulty.MEDIUM);
+        assertThat(command.outputOrder()).isEqualTo(OutputOrder.ANY_ORDER);
+        assertThat(command.methodName()).isEqualTo("groupAnagrams");
+        assertThat(command.returnType()).isEqualTo(ParamType.STRING_LIST_LIST);
+        assertThat(command.parameters())
+                .containsExactly(new ProblemCommands.MethodParameterInput("strs", ParamType.STRING_ARRAY, 0));
+        assertThat(command.testCases().stream().filter(ProblemCommands.TestCaseInput::sample)).hasSize(3);
+        // A file without the key keeps the judge's exact-order comparison.
+        assertThat(byTitle.values()).filteredOn(c -> !c.title().equals("Group Anagrams"))
+                .extracting(ProblemCommands.Create::outputOrder).containsOnly(OutputOrder.ORDERED);
+    }
+
     /** The first two-parameter seed problem: parameter order is what the judge passes arguments in. */
     @Test
     void seedsValidAnagramWithBothParametersInOrder() {
@@ -706,6 +725,8 @@ class ProblemSeederTest {
             case BOOLEAN_ARRAY -> boolean[].class;
             case STRING_ARRAY -> String[].class;
             case INT_MATRIX -> int[][].class;
+            // Erased at runtime: Jackson builds lists of strings, which is all the method needs.
+            case STRING_LIST_LIST -> List.class;
         };
     }
 

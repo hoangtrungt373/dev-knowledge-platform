@@ -22,6 +22,26 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **Seed problem: Group Anagrams** (`data/problems/group-anagrams.md`), MEDIUM, tags Array/Hash
+  Table/String/Sorting, fourth in NeetCode 150's "Arrays & Hashing" — the first problem using both
+  earlier steps: `outputOrder: ANY_ORDER` and the `STRING_LIST_LIST` return type
+  (`List<List<String>> groupAnagrams(String[] strs)`). Approaches Sorted Key and Character Count Key
+  (counts joined with a separator), each in Java, Python and JavaScript. Hidden cases include traps for
+  a set-of-letters key, a sum-of-codes key and a count key without separators
+  (`["bdddddddddd","bbbbbbbbbbc"]`). New `ProblemSeederTest#seedsGroupAnagramsAsAnyOrderReturningStringLists`
+  pins the seed key (every other file stays `ORDERED`). Mutation checks: an unseparated JS count key
+  fails exactly the trap case; removing `outputOrder` makes correct solutions fail.
+- **New `ParamType.STRING_LIST_LIST`** (`dev-practice-service` + `gui`), the second step towards
+  Group Anagrams: Java `List<List<String>>` (LeetCode's signature), Python `List[List[str]]`,
+  JavaScript `string[][]`, usable as parameter and return type. `JsonMini` gained
+  `toStringListList` (mutable `ArrayList`s) and a `write` overload; the three `TypeRenderer`s one
+  line each, so the template parsers pick it up automatically (`List< List<String> >`,
+  `list[list[str]]`, `Array<Array<string>>` all resolve — new `SignatureTemplateParserTest` case).
+  `every-param-type` fixtures gained a `k` parameter; goldens regenerated (`every-param-type` ×3
+  languages, `two-sum`'s Java program for the embedded `JsonMini`) and reviewed. `LanguageHarnessExecutionIT`
+  got a sample value but still can't run without Docker; the generated programs were run under local
+  Java/Python/Node instead, plus a `JsonMini` round trip. GUI: the type is in the signature editor's
+  type list (`List<List<String>>`).
 - **Per-problem output order** (`dev-practice-service` + `gui`), the first step towards "return in
   any order" problems such as Group Anagrams. New `enums.OutputOrder` (`ORDERED`/`ANY_ORDER`) on
   `Problem` (`DKP-0062`: `PROBLEM.OUTPUT_ORDER`, default `ORDERED`, so existing verdicts don't

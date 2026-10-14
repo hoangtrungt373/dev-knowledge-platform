@@ -20,7 +20,8 @@ export type ParamType =
   | 'DOUBLE_ARRAY'
   | 'BOOLEAN_ARRAY'
   | 'STRING_ARRAY'
-  | 'INT_MATRIX';
+  | 'INT_MATRIX'
+  | 'STRING_LIST_LIST';
 
 export interface MethodParameter {
   name: string;

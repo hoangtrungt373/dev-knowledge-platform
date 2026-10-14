@@ -40,6 +40,7 @@ export const PARAM_TYPES: { value: ParamType; label: string; example: string }[]
   { value: 'BOOLEAN_ARRAY', label: 'boolean[]', example: '[true, false]' },
   { value: 'STRING_ARRAY', label: 'string[]', example: '["a", "b"]' },
   { value: 'INT_MATRIX', label: 'int[][]', example: '[[1, 2], [3, 4]]' },
+  { value: 'STRING_LIST_LIST', label: 'List<List<String>>', example: '[["eat", "tea"], ["bat"]]' },
 ];
 
 export const PARAM_TYPE_LABEL: Record<ParamType, string> = Object.fromEntries(

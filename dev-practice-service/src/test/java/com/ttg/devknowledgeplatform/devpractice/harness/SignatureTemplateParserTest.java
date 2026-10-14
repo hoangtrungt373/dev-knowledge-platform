@@ -149,6 +149,28 @@ class SignatureTemplateParserTest {
         assertThat(s.returnType().type()).isEqualTo(ParamType.BOOLEAN);
     }
 
+    /** LeetCode's Group Anagrams signature, in each language's usual spelling (incl. JS's Array<Array<…>>). */
+    @Test
+    void everyLanguageReadsAListOfStringLists() {
+        ParsedSignature java = registry.parse(ProgrammingLanguage.JAVA,
+                "class Solution { public List< List<String> > groupAnagrams(String[] strs) { return null; } }");
+        ParsedSignature python = registry.parse(ProgrammingLanguage.PYTHON,
+                "class Solution:\n    def groupAnagrams(self, strs: List[str]) -> list[list[str]]:\n        pass");
+        ParsedSignature javaScript = registry.parse(ProgrammingLanguage.JAVASCRIPT, """
+                /**
+                 * @param {string[]} strs
+                 * @return {Array<Array<string>>}
+                 */
+                var groupAnagrams = function(strs) {};
+                """);
+
+        for (ParsedSignature s : List.of(java, python, javaScript)) {
+            assertThat(s.returnType().type()).isEqualTo(ParamType.STRING_LIST_LIST);
+            assertThat(s.returnType().alternatives()).isEmpty();
+            assertThat(s.parameters()).containsExactly(param("strs", ParamType.STRING_ARRAY));
+        }
+    }
+
     // ── Errors an admin sees ────────────────────────────────────────────────────
 
     @Test

@@ -261,6 +261,14 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   `harness/java/JsonMini.java` (not compiler-checked — only `LanguageHarnessExecutionIT` catches a
   missing one), and a `sampleValue` in that IT. The vocabulary is closed precisely because every
   harness has to hand-render support for exactly what it contains. See `ParamType`'s own Javadoc.
+  Also extend `HarnessFixtures#everyParamType` (and its three `fixtures/every-param-type/solution.*`
+  files and stdin) so the goldens cover the new type. `STRING_LIST_LIST` (Java `List<List<String>>`,
+  for grouping problems) is the one *collection* type rather than an array: `JsonMini` converts it to
+  fresh `ArrayList`s (mutable, since solutions sort/append) and writes it via an overload on
+  `java.util.List<java.util.List<String>>` — overload resolution uses the declared return type, so
+  the generated `_result` must keep that exact declaration. With no Docker for the IT, it was checked
+  by running the generated `every-param-type` programs under local Java/Python/Node and a
+  `JsonMini` parse→convert→write round trip.
 - **Harness output is pinned by golden files — any change to a template, `JsonMini`, or a
   `TypeRenderer` must show up as a reviewed golden diff.** Run `LanguageHarnessGoldenTest` with
   `-Dharness.golden.update=true`, then review the diff under `src/test/resources/harness/golden/`
@@ -625,8 +633,9 @@ as unverified until the IT runs somewhere with Docker.
 - Result delivery is polling only (`Judge0Client` blocks internally on `GET /submissions/batch?tokens=...`)
   — the webhook-callback alternative discussed in Phase 1 planning was explicitly not chosen this
   round (simpler, no new inbound-auth surface to design).
-- Four seeded problems so far (Evaluate Reverse Polish Notation, Contains Duplicate, Valid
-  Anagram, Two Sum — see the seeding rule above).
+- Five seeded problems so far (Evaluate Reverse Polish Notation, Contains Duplicate, Valid
+  Anagram, Two Sum, Group Anagrams — the first `outputOrder: ANY_ORDER` problem and the first
+  returning `STRING_LIST_LIST`; see the seeding rule above).
   The admin GUI exists (`gui`'s `@dev-practice` feature, `/admin/problems`, including the
   reference-solution panel that verifies a problem before it can be published); the public
   problem/submission GUI doesn't yet.

@@ -53,7 +53,7 @@ final class HarnessFixtures {
             new GoldenFixture("two-sum", HarnessFixtures::twoSum, "[[2,7,11,15], 9]", "[0,1]"),
             new GoldenFixture("every-param-type", HarnessFixtures::everyParamType,
                     """
-                    [1, 1234567890123, 2.5, true, "hello", [1, 2], [1.5], [true, false], ["a", "b"], [[1, 2], [3]]]""",
+                    [1, 1234567890123, 2.5, true, "hello", [1, 2], [1.5], [true, false], ["a", "b"], [[1, 2], [3]], [["x", "y"], [], ["z"]]]""",
                     "\"hello\""));
 
     private HarnessFixtures() {
@@ -69,7 +69,8 @@ final class HarnessFixtures {
         return problem("describe", ParamType.STRING,
                 "a", ParamType.INT, "b", ParamType.LONG, "c", ParamType.DOUBLE, "d", ParamType.BOOLEAN,
                 "e", ParamType.STRING, "f", ParamType.INT_ARRAY, "g", ParamType.DOUBLE_ARRAY,
-                "h", ParamType.BOOLEAN_ARRAY, "i", ParamType.STRING_ARRAY, "j", ParamType.INT_MATRIX);
+                "h", ParamType.BOOLEAN_ARRAY, "i", ParamType.STRING_ARRAY, "j", ParamType.INT_MATRIX,
+                "k", ParamType.STRING_LIST_LIST);
     }
 
     /** {@code identity(T value) -> T} — round-trips one value through a harness's parse and write paths. */

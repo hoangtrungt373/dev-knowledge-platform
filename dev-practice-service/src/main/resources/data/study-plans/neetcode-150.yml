@@ -19,6 +19,7 @@ sections:
       - contains-duplicate
       - valid-anagram
       - two-sum
+      - group-anagrams
   - title: Stack
     description: Last-in, first-out processing — matching brackets, evaluating expressions, monotonic stacks.
     problems:

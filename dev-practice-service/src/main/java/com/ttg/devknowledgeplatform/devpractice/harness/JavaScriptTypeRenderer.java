@@ -18,6 +18,7 @@ final class JavaScriptTypeRenderer implements TypeRenderer {
             case BOOLEAN_ARRAY -> TypeSyntax.declarationOnly("boolean[]");
             case STRING_ARRAY -> TypeSyntax.declarationOnly("string[]");
             case INT_MATRIX -> TypeSyntax.declarationOnly("number[][]");
+            case STRING_LIST_LIST -> TypeSyntax.declarationOnly("string[][]");
         };
     }
 }

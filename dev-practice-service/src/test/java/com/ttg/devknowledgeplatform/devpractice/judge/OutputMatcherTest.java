@@ -30,6 +30,7 @@ class OutputMatcherTest {
             "100000.5                | 100000.50001           | DOUBLE",
             "\"a b\"                 | \"a b\"                | STRING",
             "[[1,2],[]]              | [[1, 2], []]           | INT_MATRIX",
+            "[[\"a\"], []]           | [[\"a\"],[]]           | STRING_LIST_LIST",
             "[true,false]            | [true, false]          | BOOLEAN_ARRAY",
     })
     void accepts(String actual, String expected, ParamType returnType) {

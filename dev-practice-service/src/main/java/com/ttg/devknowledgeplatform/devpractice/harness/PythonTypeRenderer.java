@@ -21,6 +21,7 @@ final class PythonTypeRenderer implements TypeRenderer {
             case BOOLEAN_ARRAY -> TypeSyntax.declarationOnly("List[bool]");
             case STRING_ARRAY -> TypeSyntax.declarationOnly("List[str]");
             case INT_MATRIX -> TypeSyntax.declarationOnly("List[List[int]]");
+            case STRING_LIST_LIST -> TypeSyntax.declarationOnly("List[List[str]]");
         };
     }
 }

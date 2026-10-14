@@ -124,6 +124,20 @@ class JsonMini {
         return r;
     }
 
+    /** A fresh, mutable list per level (ArrayList), so a solution may sort or add to what it was given. */
+    @SuppressWarnings("unchecked")
+    static java.util.List<java.util.List<String>> toStringListList(Object o) {
+        java.util.List<Object> l = (java.util.List<Object>) o;
+        java.util.List<java.util.List<String>> r = new java.util.ArrayList<>(l.size());
+        for (Object inner : l) {
+            java.util.List<Object> il = (java.util.List<Object>) inner;
+            java.util.List<String> row = new java.util.ArrayList<>(il.size());
+            for (Object item : il) row.add(toStr(item));
+            r.add(row);
+        }
+        return r;
+    }
+
     static String write(int v) { return String.valueOf(v); }
     static String write(long v) { return String.valueOf(v); }
     static String write(double v) { return String.valueOf(v); }
@@ -180,6 +194,18 @@ class JsonMini {
     static String write(int[][] v) {
         StringBuilder sb = new StringBuilder("[");
         for (int k = 0; k < v.length; k++) { if (k > 0) sb.append(','); sb.append(write(v[k])); }
+        return sb.append(']').toString();
+    }
+
+    static String write(java.util.List<java.util.List<String>> v) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int k = 0; k < v.size(); k++) {
+            if (k > 0) sb.append(',');
+            java.util.List<String> row = v.get(k);
+            sb.append('[');
+            for (int m = 0; m < row.size(); m++) { if (m > 0) sb.append(','); sb.append(write(row.get(m))); }
+            sb.append(']');
+        }
         return sb.append(']').toString();
     }
 }

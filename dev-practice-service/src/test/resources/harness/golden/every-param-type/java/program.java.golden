@@ -124,6 +124,20 @@ class JsonMini {
         return r;
     }
 
+    /** A fresh, mutable list per level (ArrayList), so a solution may sort or add to what it was given. */
+    @SuppressWarnings("unchecked")
+    static java.util.List<java.util.List<String>> toStringListList(Object o) {
+        java.util.List<Object> l = (java.util.List<Object>) o;
+        java.util.List<java.util.List<String>> r = new java.util.ArrayList<>(l.size());
+        for (Object inner : l) {
+            java.util.List<Object> il = (java.util.List<Object>) inner;
+            java.util.List<String> row = new java.util.ArrayList<>(il.size());
+            for (Object item : il) row.add(toStr(item));
+            r.add(row);
+        }
+        return r;
+    }
+
     static String write(int v) { return String.valueOf(v); }
     static String write(long v) { return String.valueOf(v); }
     static String write(double v) { return String.valueOf(v); }
@@ -182,10 +196,22 @@ class JsonMini {
         for (int k = 0; k < v.length; k++) { if (k > 0) sb.append(','); sb.append(write(v[k])); }
         return sb.append(']').toString();
     }
+
+    static String write(java.util.List<java.util.List<String>> v) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int k = 0; k < v.size(); k++) {
+            if (k > 0) sb.append(',');
+            java.util.List<String> row = v.get(k);
+            sb.append('[');
+            for (int m = 0; m < row.size(); m++) { if (m > 0) sb.append(','); sb.append(write(row.get(m))); }
+            sb.append(']');
+        }
+        return sb.append(']').toString();
+    }
 }
 
 class Solution {
-    public String describe(int a, long b, double c, boolean d, String e, int[] f, double[] g, boolean[] h, String[] i, int[][] j) {
+    public String describe(int a, long b, double c, boolean d, String e, int[] f, double[] g, boolean[] h, String[] i, int[][] j, List<List<String>> k) {
         return e;
     }
 }
@@ -199,7 +225,7 @@ public class Main {
         String _input = _scanner.hasNext() ? _scanner.next() : "[]";
         List<Object> _parsed = (List<Object>) JsonMini.parse(_input);
         Solution _sol = new Solution();
-        String _result = _sol.describe(JsonMini.toInt(_parsed.get(0)), JsonMini.toLong(_parsed.get(1)), JsonMini.toDouble(_parsed.get(2)), JsonMini.toBool(_parsed.get(3)), JsonMini.toStr(_parsed.get(4)), JsonMini.toIntArray(_parsed.get(5)), JsonMini.toDoubleArray(_parsed.get(6)), JsonMini.toBooleanArray(_parsed.get(7)), JsonMini.toStringArray(_parsed.get(8)), JsonMini.toIntMatrix(_parsed.get(9)));
+        String _result = _sol.describe(JsonMini.toInt(_parsed.get(0)), JsonMini.toLong(_parsed.get(1)), JsonMini.toDouble(_parsed.get(2)), JsonMini.toBool(_parsed.get(3)), JsonMini.toStr(_parsed.get(4)), JsonMini.toIntArray(_parsed.get(5)), JsonMini.toDoubleArray(_parsed.get(6)), JsonMini.toBooleanArray(_parsed.get(7)), JsonMini.toStringArray(_parsed.get(8)), JsonMini.toIntMatrix(_parsed.get(9)), JsonMini.toStringListList(_parsed.get(10)));
         System.out.println(JsonMini.write(_result));
     }
 }
