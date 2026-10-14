@@ -193,7 +193,7 @@ function ProblemWorkspace({ slug }: { slug: string }): JSX.Element {
                   <Stack spacing={2.5}>
                     <TagChips tags={problem.tags} />
                     <MarkdownView content={problem.description} />
-                    <SampleTestCases parameters={problem.parameters} testCases={problem.testCases} />
+                    <SampleTestCases parameters={problem.parameters} testCases={problem.testCases} outputOrder={problem.outputOrder} />
                   </Stack>
                 ) : leftTab === 'solution' ? (
                   // Solved (including a verdict that just landed this session) opens the gate on its own.

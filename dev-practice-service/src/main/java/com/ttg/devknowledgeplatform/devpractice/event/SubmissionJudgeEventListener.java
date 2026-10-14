@@ -20,6 +20,7 @@ import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarness;
 import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarnessRegistry;
+import com.ttg.devknowledgeplatform.devpractice.judge.AnswerSpec;
 import com.ttg.devknowledgeplatform.devpractice.judge.CaseJudge;
 import com.ttg.devknowledgeplatform.devpractice.judge.JudgeUnavailableException;
 import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
@@ -163,7 +164,7 @@ public class SubmissionJudgeEventListener extends AsyncEventHandler<SubmissionCr
         // CodeRunService's unsaved Run so the two can never disagree on a verdict.
         List<CaseJudge.CaseResult> results = caseJudge.runAll(input.testCases().stream()
                 .map(tc -> new CaseJudge.CaseRequest(program, input.language(), tc.getInput(), tc.getExpectedOutput()))
-                .toList(), input.problem().getReturnType());
+                .toList(), AnswerSpec.of(input.problem()));
 
         int passed = 0;
         for (CaseJudge.CaseResult result : results) {

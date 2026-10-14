@@ -22,6 +22,18 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **Per-problem output order** (`dev-practice-service` + `gui`), the first step towards "return in
+  any order" problems such as Group Anagrams. New `enums.OutputOrder` (`ORDERED`/`ANY_ORDER`) on
+  `Problem` (`DKP-0062`: `PROBLEM.OUTPUT_ORDER`, default `ORDERED`, so existing verdicts don't
+  change), on create/update requests (update: `null` = unchanged) and `ProblemResponse`.
+  `OutputMatcher` canonicalizes both outputs for `ANY_ORDER` (every array level sorted; duplicates
+  and regroupings still differ). New `judge.AnswerSpec` (return type + order) replaces the bare
+  `ParamType` in `CaseJudge`/`OutputMatcher` and their callers. Changing it bumps
+  `contractVersion`; not covered by the signature lock. Seed key `outputOrder`; `ProblemSeederTest`'s
+  in-process Java check now compares through `OutputMatcher` too. GUI: an "Accept the answer in any
+  order" switch on the admin form's Test cases tab (part of the contract fingerprint and the
+  unsaved-changes snapshot), and the learner's sample cases note "Any order is accepted" for such
+  problems.
 - **Seed problem: Valid Anagram** (`dev-practice-service`, `data/problems/valid-anagram.md`), EASY,
   tags Hash Table/String/Sorting, added to NeetCode 150's "Arrays & Hashing" section after Contains
   Duplicate. The first two-parameter seed problem (`isAnagram(String s, String t)`, pinned by

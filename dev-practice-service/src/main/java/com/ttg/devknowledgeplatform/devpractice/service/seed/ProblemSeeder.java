@@ -22,6 +22,7 @@ import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTag;
 import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.OutputOrder;
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 import com.ttg.devknowledgeplatform.devpractice.harness.ParsedSignature;
 import com.ttg.devknowledgeplatform.devpractice.harness.SignatureTemplateParserRegistry;
@@ -176,7 +177,7 @@ public class ProblemSeeder implements Seeder {
         // PUBLISHED is reached via the first implementation's run (see the class Javadoc), never set directly.
         ContentStatus initialStatus = problem.status() == ContentStatus.PUBLISHED ? ContentStatus.DRAFT : problem.status();
         return new ProblemCommands.Create(problem.title(), problem.description(), problem.difficulty(),
-                initialStatus, signature.methodName(), signature.returnType().type(), parameters,
+                initialStatus, signature.methodName(), signature.returnType().type(), problem.outputOrder(), parameters,
                 problem.testCases(), resolveTagIds(problem));
     }
 
@@ -235,6 +236,7 @@ public class ProblemSeeder implements Seeder {
                 parts[2].strip(),
                 Difficulty.valueOf((String) require(meta, "difficulty", file)),
                 ContentStatus.valueOf((String) meta.getOrDefault("status", "DRAFT")),
+                OutputOrder.valueOf((String) meta.getOrDefault("outputOrder", "ORDERED")),
                 (List<String>) meta.getOrDefault("tags", List.of()),
                 ProgrammingLanguage.valueOf((String) require(template, "language", file)),
                 (String) require(template, "code", file),
@@ -279,6 +281,7 @@ public class ProblemSeeder implements Seeder {
             String description,
             Difficulty difficulty,
             ContentStatus status,
+            OutputOrder outputOrder,
             List<String> tags,
             ProgrammingLanguage templateLanguage,
             String templateCode,

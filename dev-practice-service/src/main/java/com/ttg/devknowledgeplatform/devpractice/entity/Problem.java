@@ -3,6 +3,7 @@ package com.ttg.devknowledgeplatform.devpractice.entity;
 import com.ttg.devknowledgeplatform.common.entity.AbstractEntity;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.OutputOrder;
 import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 
 import jakarta.persistence.AttributeOverride;
@@ -106,6 +107,16 @@ public class Problem extends AbstractEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "RETURN_TYPE", length = 50, nullable = false)
     private ParamType returnType;
+
+    /**
+     * Whether the answer must come back in exact order or any order is accepted (DKP-0062) — part of
+     * the grading contract, so changing it bumps {@link #contractVersion}. See {@link OutputOrder}.
+     */
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "OUTPUT_ORDER", length = 20, nullable = false)
+    @Builder.Default
+    private OutputOrder outputOrder = OutputOrder.ORDERED;
 
     /**
      * Bumped whenever the grading contract changes — the method signature, or any test case's input

@@ -49,7 +49,8 @@ public class ProblemController implements ProblemApi {
     public ResponseEntity<ProblemResponse> create(String authorUuid, CreateProblemRequest request) {
         ProblemCommands.Create command = new ProblemCommands.Create(
                 request.getTitle(), request.getDescription(), request.getDifficulty(), request.getStatus(),
-                request.getMethodName(), request.getReturnType(), toParameterInputs(request.getParameters()),
+                request.getMethodName(), request.getReturnType(), request.getOutputOrder(),
+                toParameterInputs(request.getParameters()),
                 toTestCaseInputs(request.getTestCases()), request.getTagIds());
         Problem created = problemService.create(command, authorUuid);
         return ResponseEntity.status(HttpStatus.CREATED).body(toAdminResponse(created));
@@ -59,7 +60,8 @@ public class ProblemController implements ProblemApi {
     public ResponseEntity<ProblemResponse> update(Integer id, UpdateProblemRequest request) {
         ProblemCommands.Update command = new ProblemCommands.Update(
                 request.getTitle(), request.getDescription(), request.getDifficulty(), request.getStatus(),
-                request.getMethodName(), request.getReturnType(), toParameterInputs(request.getParameters()),
+                request.getMethodName(), request.getReturnType(), request.getOutputOrder(),
+                toParameterInputs(request.getParameters()),
                 toTestCaseInputs(request.getTestCases()), request.getTagIds());
         Problem updated = problemService.update(id, command);
         return ResponseEntity.ok(toAdminResponse(updated));

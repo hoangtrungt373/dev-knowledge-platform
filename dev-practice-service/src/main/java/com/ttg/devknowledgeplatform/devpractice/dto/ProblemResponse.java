@@ -6,6 +6,7 @@ import java.util.List;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.OutputOrder;
 import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 
 /**
@@ -27,6 +28,7 @@ public record ProblemResponse(
         ContentStatus status,
         String methodName,
         ParamType returnType,
+        OutputOrder outputOrder,
         List<MethodParameterResponse> parameters,
         List<TestCaseResponse> testCases,
         List<ProblemTagSummaryResponse> tags,
@@ -38,12 +40,12 @@ public record ProblemResponse(
     /** A copy with {@code verified} set — the mapper can't compute it (it needs a repository query). */
     public ProblemResponse withVerified(boolean value) {
         return new ProblemResponse(id, slug, title, description, difficulty, status, methodName, returnType,
-                parameters, testCases, tags, contractVersion, value, publishedAt, createdAt);
+                outputOrder, parameters, testCases, tags, contractVersion, value, publishedAt, createdAt);
     }
 
     /** A copy with only the given test cases — used to strip hidden ones from public responses. */
     public ProblemResponse withTestCases(List<TestCaseResponse> value) {
         return new ProblemResponse(id, slug, title, description, difficulty, status, methodName, returnType,
-                parameters, value, tags, contractVersion, verified, publishedAt, createdAt);
+                outputOrder, parameters, value, tags, contractVersion, verified, publishedAt, createdAt);
     }
 }

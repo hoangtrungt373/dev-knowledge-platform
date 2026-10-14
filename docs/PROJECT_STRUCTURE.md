@@ -2967,6 +2967,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     common.enums.QuestionDifficulty
 │   │                                     (BEGINNER/INTERMEDIATE/ADVANCED) — a coincidental
 │   │                                     three-value shape from a different domain
+│   ├── OutputOrder.java               — ORDERED, ANY_ORDER (DKP-0062): whether the judge sorts
+│   │                                     every array level of both outputs before comparing
 │   ├── ParamType.java                 — INT, LONG, DOUBLE, BOOLEAN, STRING, INT_ARRAY,
 │   │                                     DOUBLE_ARRAY, BOOLEAN_ARRAY, STRING_ARRAY, INT_MATRIX —
 │   │                                     the closed value-shape vocabulary every method signature
@@ -3047,6 +3049,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   └── SignatureTemplateParserRegistry.java — @Component; parser per ProgrammingLanguage, fails
 │                                         startup if a language has none
 ├── judge/
+│   ├── AnswerSpec.java                  — record(returnType, outputOrder) + of(Problem): the
+│   │                                     parameter object every judging path compares with
 │   ├── JudgeClient.java                 — Adapter interface, batch-only: runAll(List<JudgeRequest>)
 │   │                                     → one Judge0SubmissionResult per request, same order,
 │   │                                     blocking (polls internally); JudgeRequest(program,
@@ -3058,7 +3062,7 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   │                                     EXEC_FORMAT_ERROR; ACCEPTED here never means "matched
 │   │                                     expected output" — see its own Javadoc
 │   ├── Judge0SubmissionResult.java      — record: status, stdout, stderr, compileOutput, message
-│   ├── CaseJudge.java                   — @Component: runAll(List<CaseRequest>, returnType) → one
+│   ├── CaseJudge.java                   — @Component: runAll(List<CaseRequest>, AnswerSpec) → one
 │   │                                     CaseResult (status, stdout, diagnostic) per request, in one
 │   │                                     batch; Judge0 status mapping + output compare (skipped when
 │   │                                     expectedOutput is null); compare(result, expected) judges a
@@ -3067,7 +3071,8 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 │   ├── OutputMatcher.java               — @Component: structural, return-type-aware JSON compare of
 │   │                                     stdout vs. TestCase.expectedOutput — DOUBLE/DOUBLE_ARRAY
 │   │                                     within 1e-5 (abs, or relative above 1), every other numeric
-│   │                                     type by exact BigDecimal value (2 == 2.0, longs unrounded)
+│   │                                     type by exact BigDecimal value (2 == 2.0, longs unrounded);
+│   │                                     ANY_ORDER canonicalizes (sorts every array level) first
 │   ├── JudgeUnavailableException.java   — the judge backend itself failed (unreachable, rate-limited
 │   │                                     past retries, rejected the request); part of
 │   │                                     JudgeClient's contract, so no Spring RestClientException
@@ -3454,7 +3459,9 @@ only — the starter topics come from `ProblemTagSeeder`) +
 `STUDY_PLAN_SECTION`/`STUDY_PLAN_PROBLEM`; sections and entries cascade from their parent, entries
 also cascade from `PROBLEM`; no unique `POSITION` constraints) +
 `2026/0.0.4/202610130002__0.0.4__DKP-0061__add_problem_solution_tables.sql` (`PROBLEM_SOLUTION`/
-`PROBLEM_SOLUTION_CODE`; cascade from `PROBLEM` and, for code links, from `SUBMISSION`)), applied via the consolidated `services-liquibase` job in
+`PROBLEM_SOLUTION_CODE`; cascade from `PROBLEM` and, for code links, from `SUBMISSION`) +
+`2026/0.0.4/202610140001__0.0.4__DKP-0062__add_problem_output_order.sql` (`PROBLEM.OUTPUT_ORDER`
+`VARCHAR(20) NOT NULL DEFAULT 'ORDERED'` + `CKC_PROBLEM_OUTPUT_ORDER`)), applied via the consolidated `services-liquibase` job in
 `docker-compose.apps.yml` — no standalone single-service `*-liquibase.yml` file of its own (same as
 `ecommerce-service`/`identity-service`/`content-service`/`ai-service`). `TEST_CASE`/
 `METHOD_PARAMETER` both cascade from `PROBLEM` (`ON DELETE CASCADE`); `SUBMISSION`'s FK to `PROBLEM`

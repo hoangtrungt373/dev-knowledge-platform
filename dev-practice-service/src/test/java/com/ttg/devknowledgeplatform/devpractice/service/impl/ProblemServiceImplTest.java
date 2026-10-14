@@ -2,6 +2,7 @@ package com.ttg.devknowledgeplatform.devpractice.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -23,6 +24,7 @@ import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTag;
 import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTagAssignment;
 import com.ttg.devknowledgeplatform.devpractice.entity.TestCase;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.OutputOrder;
 import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionKind;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
@@ -85,7 +87,7 @@ class ProblemServiceImplTest {
     @Test
     void cannotCreateAProblemStraightIntoPublished() {
         ProblemCommands.Create command = new ProblemCommands.Create("Title", "Description", Difficulty.EASY,
-                ContentStatus.PUBLISHED, "solve", ParamType.INT, List.of(param("a", 0)), List.of(testCase("[1]")), null);
+                ContentStatus.PUBLISHED, "solve", ParamType.INT, null, List.of(param("a", 0)), List.of(testCase("[1]")), null);
 
         assertThatThrownBy(() -> service.create(command, "author-1"))
                 .isInstanceOf(BusinessException.class)
@@ -209,6 +211,59 @@ class ProblemServiceImplTest {
     }
 
     @Test
+    void changingTheOutputOrderBumpsTheContractVersion() {
+        Problem problem = storedProblem(ContentStatus.DRAFT, 3);
+        when(problemRepository.findById(5)).thenReturn(Optional.of(problem));
+        when(problemRepository.save(problem)).thenReturn(problem);
+
+        service.update(5, withOutputOrder(update(ContentStatus.DRAFT, "[1]", "1", true), OutputOrder.ANY_ORDER));
+
+        // It decides what counts as correct, so the old reference no longer verifies the problem.
+        assertThat(problem.getOutputOrder()).isEqualTo(OutputOrder.ANY_ORDER);
+        assertThat(problem.getContractVersion()).isEqualTo(4);
+    }
+
+    @Test
+    void changingTheOutputOrderWhilePublishedNeedsAFreshReference() {
+        Problem problem = storedProblem(ContentStatus.PUBLISHED, 3);
+        when(problemRepository.findById(5)).thenReturn(Optional.of(problem));
+
+        // Not the signature lock (submitted code still runs) — the verification check, like a test-data edit.
+        assertThatThrownBy(() -> service.update(5,
+                withOutputOrder(update(ContentStatus.PUBLISHED, "[1]", "1", true), OutputOrder.ANY_ORDER)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(DevPracticeErrorCode.PROBLEM_NOT_VERIFIED));
+    }
+
+    @Test
+    void aNullOutputOrderLeavesItUnchanged() {
+        Problem problem = storedProblem(ContentStatus.DRAFT, 3);
+        problem.setOutputOrder(OutputOrder.ANY_ORDER);
+        when(problemRepository.findById(5)).thenReturn(Optional.of(problem));
+        when(problemRepository.save(problem)).thenReturn(problem);
+
+        service.update(5, update(ContentStatus.DRAFT, "[1]", "1", true));
+
+        assertThat(problem.getOutputOrder()).isEqualTo(OutputOrder.ANY_ORDER);
+        assertThat(problem.getContractVersion()).isEqualTo(3);
+    }
+
+    @Test
+    void createDefaultsToOrderedOutput() {
+        when(problemRepository.save(any(Problem.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Problem created = service.create(create("solve", List.of(param("a", 0)), List.of(testCase("[1]"))), "author-1");
+
+        assertThat(created.getOutputOrder()).isEqualTo(OutputOrder.ORDERED);
+    }
+
+    private static ProblemCommands.Update withOutputOrder(ProblemCommands.Update u, OutputOrder outputOrder) {
+        return new ProblemCommands.Update(u.title(), u.description(), u.difficulty(), u.status(), u.methodName(),
+                u.returnType(), outputOrder, u.parameters(), u.testCases(), u.tagIds());
+    }
+
+    @Test
     void aDraftIsNotFoundByThePublishedLookup() {
         when(problemRepository.findById(5)).thenReturn(Optional.of(storedProblem(ContentStatus.DRAFT, 1)));
 
@@ -229,7 +284,7 @@ class ProblemServiceImplTest {
     }
 
     private static ProblemCommands.Update update(ContentStatus status, String input, String expected, boolean sample) {
-        return new ProblemCommands.Update("Title", "Description", Difficulty.EASY, status, "solve", ParamType.INT,
+        return new ProblemCommands.Update("Title", "Description", Difficulty.EASY, status, "solve", ParamType.INT, null,
                 List.of(param("a", 0)), List.of(new ProblemCommands.TestCaseInput(input, expected, sample)), null);
     }
 
@@ -257,7 +312,7 @@ class ProblemServiceImplTest {
     void rejectsAnUnknownTagIdOnCreate() {
         when(problemTagRepository.findAllById(Set.of(1, 99))).thenReturn(List.of(tag(1, "Array")));
         ProblemCommands.Create command = new ProblemCommands.Create("Title", "Description", Difficulty.EASY, null,
-                "solve", ParamType.INT, List.of(param("a", 0)), List.of(testCase("[1]")), Set.of(1, 99));
+                "solve", ParamType.INT, null, List.of(param("a", 0)), List.of(testCase("[1]")), Set.of(1, 99));
 
         assertThatThrownBy(() -> service.create(command, "author-1"))
                 .isInstanceOf(BusinessException.class)
@@ -283,7 +338,7 @@ class ProblemServiceImplTest {
         when(problemRepository.save(problem)).thenReturn(problem);
 
         service.update(5, new ProblemCommands.Update("Title", "Description", Difficulty.EASY, null,
-                "solve", ParamType.INT, List.of(param("a", 0)), List.of(testCase("[1]")), Set.of(1, 3)));
+                "solve", ParamType.INT, null, List.of(param("a", 0)), List.of(testCase("[1]")), Set.of(1, 3)));
 
         assertThat(problem.getTagAssignments()).hasSize(2).contains(keptAssignment);
         assertThat(problem.getTagAssignments()).extracting(a -> a.getProblemTag().getName())
@@ -300,7 +355,7 @@ class ProblemServiceImplTest {
         when(problemRepository.save(problem)).thenReturn(problem);
 
         service.update(5, new ProblemCommands.Update("Title", "Description", Difficulty.EASY, null,
-                "solve", ParamType.INT, List.of(param("a", 0)), List.of(testCase("[1]")), null));
+                "solve", ParamType.INT, null, List.of(param("a", 0)), List.of(testCase("[1]")), null));
 
         assertThat(problem.getTagAssignments()).hasSize(1);
         verify(problemTagRepository, never()).findAllById(org.mockito.ArgumentMatchers.any());
@@ -315,7 +370,7 @@ class ProblemServiceImplTest {
     private static ProblemCommands.Create create(String methodName, List<ProblemCommands.MethodParameterInput> params,
             List<ProblemCommands.TestCaseInput> testCases) {
         return new ProblemCommands.Create("Title", "Description", Difficulty.EASY, null,
-                methodName, ParamType.INT, params, testCases, null);
+                methodName, ParamType.INT, null, params, testCases, null);
     }
 
     private static ProblemCommands.MethodParameterInput param(String name, int position) {

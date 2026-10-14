@@ -24,6 +24,7 @@ import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionKind;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 import com.ttg.devknowledgeplatform.devpractice.exception.DevPracticeErrorCode;
 import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarnessRegistry;
+import com.ttg.devknowledgeplatform.devpractice.judge.AnswerSpec;
 import com.ttg.devknowledgeplatform.devpractice.judge.CaseJudge;
 import com.ttg.devknowledgeplatform.devpractice.judge.JudgeUnavailableException;
 import com.ttg.devknowledgeplatform.devpractice.repository.SubmissionRepository;
@@ -147,7 +148,7 @@ public class CodeRunServiceImpl implements CodeRunService {
             // constraints. Nothing to compare against; the learner's own run still shows.
             case Answer.ReferenceFailed failed -> toCase(unanswered, mine, ExpectedSource.REFERENCE_FAILED);
             case Answer.Known(String expected) -> toCase(new PlannedCase(input, expected),
-                    caseJudge.compare(mine, expected, problem.getReturnType()), ExpectedSource.REFERENCE);
+                    caseJudge.compare(mine, expected, AnswerSpec.of(problem)), ExpectedSource.REFERENCE);
         };
     }
 
@@ -161,7 +162,7 @@ public class CodeRunServiceImpl implements CodeRunService {
     /** One batch, with an unreachable judge turned into the learner-facing business error. */
     private List<CaseJudge.CaseResult> judgeAll(List<CaseJudge.CaseRequest> requests, Problem problem) {
         try {
-            return caseJudge.runAll(requests, problem.getReturnType());
+            return caseJudge.runAll(requests, AnswerSpec.of(problem));
         } catch (JudgeUnavailableException e) {
             // Operator detail to the log; the learner gets a generic "try again".
             log.warn("Judge unavailable during a run of problem {}: {}", problem.getId(), e.getMessage());

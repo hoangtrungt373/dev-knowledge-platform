@@ -50,6 +50,9 @@ export interface ProblemTag extends ProblemTagSummary {
   createdAt: string;
 }
 
+/** `enums.OutputOrder` — whether the judge accepts the answer's elements (at every nesting level) in any order. */
+export type OutputOrder = 'ORDERED' | 'ANY_ORDER';
+
 /** `ProblemResponse` — the admin get-by-id shape, including hidden test cases. */
 export interface Problem {
   id: number;
@@ -60,13 +63,15 @@ export interface Problem {
   status: ProblemStatus;
   methodName: string;
   returnType: ParamType;
+  /** Part of the grading contract: changing it bumps `contractVersion`. */
+  outputOrder: OutputOrder;
   parameters: MethodParameter[];
   testCases: TestCase[];
   /** Sorted by name. */
   tags: ProblemTagSummary[];
   publishedAt: string | null;
   createdAt: string;
-  /** Bumped by the backend whenever the signature or the test data changes. */
+  /** Bumped by the backend whenever the signature, the test data or the output order changes. */
   contractVersion: number;
   /** Admin responses only: an ACCEPTED reference submission exists at the current
    * `contractVersion`, i.e. the problem may be published. */
@@ -95,6 +100,7 @@ export interface ProblemPayload {
   status: ProblemStatus;
   methodName: string;
   returnType: ParamType;
+  outputOrder: OutputOrder;
   parameters: { name: string; type: ParamType }[];
   testCases: { input: string; expectedOutput: string; sample: boolean }[];
   /** The complete tag set — the form always sends it, so update never relies on "omitted = unchanged". */

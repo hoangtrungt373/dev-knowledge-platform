@@ -1,4 +1,4 @@
-import { ParamType, ParsedSignature, Problem, ProblemPayload } from '../types';
+import { OutputOrder, ParamType, ParsedSignature, Problem, ProblemPayload } from '../types';
 import { orderedParameters } from './runCases';
 
 /** One editable parameter row. `key` is a stable, client-only React key — rows are reordered and
@@ -85,13 +85,17 @@ export function sameSignature(a: Signature, b: Signature): boolean {
 }
 
 /**
- * A comparable fingerprint of the grading contract — the signature plus the ordered test data —
- * mirroring `ProblemServiceImpl#signatureChanged`/`#testDataChanged`: values are trimmed, and the
+ * A comparable fingerprint of the grading contract — the signature, the ordered test data and the
+ * output order — mirroring `ProblemServiceImpl`'s `signatureChanged`/`testDataChanged`/output-order check: values are trimmed, and the
  * `sample` flag is left out (it changes what users see, not what counts as correct). Two forms with
  * the same fingerprint would leave the backend's `contractVersion` unchanged.
  */
-export function contractFingerprint(signature: Signature, testCases: { input: string; expectedOutput: string }[]): string {
-  return JSON.stringify([signature, testCases.map(t => [t.input.trim(), t.expectedOutput.trim()])]);
+export function contractFingerprint(
+  signature: Signature,
+  testCases: { input: string; expectedOutput: string }[],
+  outputOrder: OutputOrder,
+): string {
+  return JSON.stringify([signature, testCases.map(t => [t.input.trim(), t.expectedOutput.trim()]), outputOrder]);
 }
 
 /**
@@ -252,6 +256,7 @@ export interface FormSnapshotFields {
   status: Problem['status'];
   methodName: string;
   returnType: ParamType;
+  outputOrder: OutputOrder;
   parameters: { name: string; type: ParamType }[];
   testCases: { input: string; expectedOutput: string; sample: boolean }[];
   tagIds: number[];
@@ -286,6 +291,7 @@ export function snapshotFieldsOf(problem: Problem): FormSnapshotFields {
     status: problem.status,
     methodName: problem.methodName,
     returnType: problem.returnType,
+    outputOrder: problem.outputOrder,
     parameters: orderedParameters(problem.parameters).map(p => ({ name: p.name, type: p.type })),
     testCases: problem.testCases.map(t => ({ input: t.input, expectedOutput: t.expectedOutput, sample: t.sample })),
     tagIds: problem.tags.map(t => t.id),

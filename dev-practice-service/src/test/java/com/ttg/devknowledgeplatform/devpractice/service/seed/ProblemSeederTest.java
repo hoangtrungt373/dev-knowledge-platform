@@ -56,6 +56,7 @@ import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTag;
 import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.OutputOrder;
 import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 import com.ttg.devknowledgeplatform.devpractice.harness.JavaScriptLanguageHarness;
@@ -65,6 +66,7 @@ import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarness;
 import com.ttg.devknowledgeplatform.devpractice.harness.PythonLanguageHarness;
 import com.ttg.devknowledgeplatform.devpractice.harness.PythonSignatureTemplateParser;
 import com.ttg.devknowledgeplatform.devpractice.harness.SignatureTemplateParserRegistry;
+import com.ttg.devknowledgeplatform.devpractice.judge.AnswerSpec;
 import com.ttg.devknowledgeplatform.devpractice.judge.OutputMatcher;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemRepository;
 import com.ttg.devknowledgeplatform.devpractice.repository.ProblemTagRepository;
@@ -314,7 +316,7 @@ class ProblemSeederTest {
                         problem.methodName(), testCase.input());
                 int index = cases.size();
                 cases.add(() -> judgeCase(index, label, runProgram(command, program, caseDir, testCase.input()),
-                        testCase.expectedOutput(), problem.returnType(), matcher));
+                        testCase.expectedOutput(), specOf(problem), matcher));
             }
         }
 
@@ -353,14 +355,14 @@ class ProblemSeederTest {
 
     /** Turns how one case's process ended into its verdict. */
     private static CaseOutcome judgeCase(int index, String label, ProcessResult result, String expectedOutput,
-                                         ParamType returnType, OutputMatcher matcher) {
+                                         AnswerSpec spec, OutputMatcher matcher) {
         return switch (result) {
             case ProcessResult.TimedOut t ->
                     new CaseOutcome.TimedOut(index, label + " timed out after " + PROCESS_TIMEOUT.toSeconds() + " s");
             case ProcessResult.Exited(int exitCode, String stdout, String stderr) when exitCode != 0 ->
                     new CaseOutcome.Failed(index, label + " exited with " + exitCode + ":" + System.lineSeparator() + stderr.strip());
             case ProcessResult.Exited(int exitCode, String stdout, String stderr) ->
-                    matcher.matches(stdout, expectedOutput, returnType) ? new CaseOutcome.Passed(index)
+                    matcher.matches(stdout, expectedOutput, spec) ? new CaseOutcome.Passed(index)
                             : new CaseOutcome.Failed(index, label + " printed " + stdout.strip() + ", expected " + expectedOutput);
         };
     }
@@ -487,6 +489,12 @@ class ProblemSeederTest {
 
     private List<SeededRun> runsIn(ProgrammingLanguage language) {
         return runsById.values().stream().filter(r -> r.command().language() == language).toList();
+    }
+
+    /** How the judge would compare this problem's answers — its return type and output order. */
+    private static AnswerSpec specOf(ProblemCommands.Create command) {
+        return new AnswerSpec(command.returnType(),
+                command.outputOrder() != null ? command.outputOrder() : OutputOrder.ORDERED);
     }
 
     /** The parts of a problem the harness reads — method name, return type, ordered parameters. */
@@ -641,11 +649,12 @@ class ProblemSeederTest {
             Object[] args = toArguments(json.readTree(testCase.input()), problem.parameters());
             // A fresh instance per case, like the harness — no state leaks between cases.
             Object actual = method.invoke(constructor.newInstance(), args);
-            // Typed local: valueToTree is generic in its return type, which assertThat can't infer.
-            JsonNode actualJson = json.valueToTree(actual);
-            assertThat(actualJson)
-                    .as("%s: %s(%s)", problem.title(), problem.methodName(), testCase.input())
-                    .isEqualTo(json.readTree(testCase.expectedOutput()));
+            // Compared by the judge's own OutputMatcher (so an ANY_ORDER problem accepts any order here too).
+            String actualJson = json.writeValueAsString(actual);
+            assertThat(new OutputMatcher(json).matches(actualJson, testCase.expectedOutput(), specOf(problem)))
+                    .as("%s: %s(%s) returned %s, expected %s", problem.title(), problem.methodName(),
+                            testCase.input(), actualJson, testCase.expectedOutput())
+                    .isTrue();
         }
     }
 

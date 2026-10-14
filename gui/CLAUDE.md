@@ -4634,6 +4634,11 @@ slice" benefit without that cost — revisit only if a genuine second deployable
     saving a draft is usually followed by running a reference. `utils/codeLanguages.ts` holds the
     language → CodeMirror extension map both editors use; `constants.ts` holds `LANGUAGES` and the
     submission status labels/colors.
+  - **Output order**: the Test cases tab starts with an "Accept the answer in any order" switch
+    (`outputOrder`, backend `DKP-0062`). It's part of the grading contract, so it is in
+    `contractFingerprint` (a change disables Run until saved, and publishing needs a fresh reference)
+    and in `formSnapshot`. The learner workspace's `SampleTestCases` adds "Any order is accepted"
+    for such problems.
   - **`ProblemFormPage`'s main column is tabbed** — Details / Signature / Test cases (n) /
     Reference solution (`utils/problemForm.ts#FORM_TABS`); the sidebar (Settings incl. status,
     Tags, Details) stays outside the tabs, always visible. **Tab panels are hidden with

@@ -23,6 +23,7 @@ import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTag;
 import com.ttg.devknowledgeplatform.devpractice.entity.ProblemTagAssignment;
 import com.ttg.devknowledgeplatform.devpractice.entity.TestCase;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.OutputOrder;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionKind;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 import com.ttg.devknowledgeplatform.devpractice.exception.DevPracticeErrorCode;
@@ -73,6 +74,7 @@ public class ProblemServiceImpl implements ProblemService {
                 .authorUuid(authorUuid)
                 .methodName(command.methodName())
                 .returnType(command.returnType())
+                .outputOrder(command.outputOrder() != null ? command.outputOrder() : OutputOrder.ORDERED)
                 .build();
         replaceParameters(problem, command.parameters());
         replaceTestCases(problem, command.testCases());
@@ -115,10 +117,15 @@ public class ProblemServiceImpl implements ProblemService {
         validateTestCaseArity(command.parameters(), command.testCases());
 
         // Compared against the persisted state, so it must run before any field below is mutated.
-        boolean contractChanged = signatureChanged(problem, command) || testDataChanged(problem, command);
+        // The output order is part of the contract too (it decides what counts as correct), but not of
+        // the signature lock: it never stops already-submitted code from compiling or running.
+        OutputOrder newOutputOrder = command.outputOrder() != null ? command.outputOrder() : problem.getOutputOrder();
+        boolean contractChanged = signatureChanged(problem, command) || testDataChanged(problem, command)
+                || newOutputOrder != problem.getOutputOrder();
 
         problem.setMethodName(command.methodName());
         problem.setReturnType(command.returnType());
+        problem.setOutputOrder(newOutputOrder);
         if (willBePublished) {
             problem.publish();
         } else {

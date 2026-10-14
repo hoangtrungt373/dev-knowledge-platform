@@ -7,6 +7,7 @@ import java.util.stream.IntStream;
 
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.OutputOrder;
 import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 
 /**
@@ -19,18 +20,20 @@ public final class ProblemCommands {
     private ProblemCommands() {
     }
 
-    /** {@code tagIds}: {@code null} or empty means no tags. */
+    /** {@code tagIds}: {@code null} or empty means no tags. {@code outputOrder}: {@code null} means {@link OutputOrder#ORDERED}. */
     public record Create(String title, String description, Difficulty difficulty,
-            ContentStatus status, String methodName, ParamType returnType,
+            ContentStatus status, String methodName, ParamType returnType, OutputOrder outputOrder,
             List<MethodParameterInput> parameters, List<TestCaseInput> testCases, Set<Integer> tagIds) {
     }
 
     /**
      * {@code tagIds} is three-state, like {@code ecommerce-service}'s product update: {@code null}
      * leaves the problem's tags unchanged, an empty set clears them, a non-empty set replaces them.
+     * {@code outputOrder}: {@code null} leaves it unchanged, so a client unaware of the field can't
+     * reset an {@link OutputOrder#ANY_ORDER} problem by omitting it.
      */
     public record Update(String title, String description, Difficulty difficulty,
-            ContentStatus status, String methodName, ParamType returnType,
+            ContentStatus status, String methodName, ParamType returnType, OutputOrder outputOrder,
             List<MethodParameterInput> parameters, List<TestCaseInput> testCases, Set<Integer> tagIds) {
     }
 

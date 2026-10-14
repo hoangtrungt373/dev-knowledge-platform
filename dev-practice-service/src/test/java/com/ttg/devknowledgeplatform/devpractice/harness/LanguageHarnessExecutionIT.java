@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ttg.devknowledgeplatform.devpractice.entity.Problem;
 import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
+import com.ttg.devknowledgeplatform.devpractice.judge.AnswerSpec;
 import com.ttg.devknowledgeplatform.devpractice.judge.OutputMatcher;
 
 /**
@@ -101,7 +102,7 @@ class LanguageHarnessExecutionIT {
                 .isZero();
         // The exact comparison production judging uses, so this also proves cross-language output
         // (e.g. JavaScript printing 2 for a double 2.0) is judged correctly, not just printed.
-        assertThat(OUTPUT_MATCHER.matches(result.getStdout(), testCase.expectedOutput(), testCase.problem().getReturnType()))
+        assertThat(OUTPUT_MATCHER.matches(result.getStdout(), testCase.expectedOutput(), AnswerSpec.of(testCase.problem())))
                 .as("stdout %s should match expected %s", result.getStdout(), testCase.expectedOutput())
                 .isTrue();
     }

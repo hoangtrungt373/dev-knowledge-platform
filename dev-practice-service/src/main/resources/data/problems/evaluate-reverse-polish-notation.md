@@ -9,6 +9,9 @@ difficulty: MEDIUM
 # judge publishes it once every test case passes (DKP-0056/0057). If the judge is unreachable it stays
 # a DRAFT.
 status: PUBLISHED
+# Optional `outputOrder: ANY_ORDER` (default ORDERED) for problems whose answer may come back in any
+# order — the judge then sorts every array level of both outputs before comparing (DKP-0062). Not
+# needed here: the answer is a single number.
 tags: [Array, Math, Stack]
 template:
   language: JAVA

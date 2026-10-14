@@ -7,6 +7,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ttg.devknowledgeplatform.devpractice.enums.OutputOrder;
 import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 
 /**
@@ -32,7 +33,7 @@ class OutputMatcherTest {
             "[true,false]            | [true, false]          | BOOLEAN_ARRAY",
     })
     void accepts(String actual, String expected, ParamType returnType) {
-        assertThat(matcher.matches(actual, expected, returnType)).isTrue();
+        assertThat(matcher.matches(actual, expected, AnswerSpec.ordered(returnType))).isTrue();
     }
 
     @ParameterizedTest(name = "{2}: {0} does not match {1}")
@@ -47,13 +48,49 @@ class OutputMatcherTest {
             "[[1,2]]                 | [[1,2],[]]             | INT_MATRIX",
     })
     void rejects(String actual, String expected, ParamType returnType) {
-        assertThat(matcher.matches(actual, expected, returnType)).isFalse();
+        assertThat(matcher.matches(actual, expected, AnswerSpec.ordered(returnType))).isFalse();
+    }
+
+    @ParameterizedTest(name = "any order: {0} matches {1}")
+    @CsvSource(delimiter = '|', value = {
+            "[3,2]                                  | [2,3]",
+            "[2, 3]                                 | [2,3]",
+            "[-1,10,2]                              | [2,-1,10]",
+            "[1.0,2]                                | [2,1]",
+            // Nested: groups in any order, and each group's words in any order.
+            "[[\"tops\",\"pots\"],[\"x\"]]          | [[\"x\"],[\"pots\",\"tops\"]]",
+            "[[\"b\"],[\"a\",\"c\"],[\"c\",\"a\"]]  | [[\"c\",\"a\"],[\"a\",\"c\"],[\"b\"]]",
+            "[[\"\"]]                               | [[\"\"]]",
+            "[]                                     | []",
+    })
+    void anyOrderAcceptsEveryPermutationAtEveryLevel(String actual, String expected) {
+        assertThat(matcher.matches(actual, expected, new AnswerSpec(ParamType.STRING_ARRAY, OutputOrder.ANY_ORDER))).isTrue();
+    }
+
+    @ParameterizedTest(name = "any order: {0} doesn't match {1}")
+    @CsvSource(delimiter = '|', value = {
+            // Duplicates still count — sorted, not compared as sets.
+            "[1,1,2]                                | [1,2,2]",
+            "[1,2]                                  | [1,2,2]",
+            "[2,3,4]                                | [2,3]",
+            // Regrouping the same words is a different answer.
+            "[[\"a\",\"b\"],[\"c\"]]                | [[\"a\"],[\"b\",\"c\"]]",
+            "[[\"a\"],[\"b\"]]                      | [[\"a\",\"b\"]]",
+            "[\"1\",\"2\"]                          | [1,2]",
+    })
+    void anyOrderStillRejectsADifferentMultiset(String actual, String expected) {
+        assertThat(matcher.matches(actual, expected, new AnswerSpec(ParamType.STRING_ARRAY, OutputOrder.ANY_ORDER))).isFalse();
+    }
+
+    @Test
+    void orderedStillRejectsAPermutation() {
+        assertThat(matcher.matches("[3,2]", "[2,3]", AnswerSpec.ordered(ParamType.INT_ARRAY))).isFalse();
     }
 
     @Test
     void rejectsMissingOrMalformedOutput() {
-        assertThat(matcher.matches(null, "[0,1]", ParamType.INT_ARRAY)).isFalse();
-        assertThat(matcher.matches("", "[0,1]", ParamType.INT_ARRAY)).isFalse();
-        assertThat(matcher.matches("Traceback (most recent call last)", "[0,1]", ParamType.INT_ARRAY)).isFalse();
+        assertThat(matcher.matches(null, "[0,1]", AnswerSpec.ordered(ParamType.INT_ARRAY))).isFalse();
+        assertThat(matcher.matches("", "[0,1]", AnswerSpec.ordered(ParamType.INT_ARRAY))).isFalse();
+        assertThat(matcher.matches("Traceback (most recent call last)", "[0,1]", AnswerSpec.ordered(ParamType.INT_ARRAY))).isFalse();
     }
 }

@@ -5,7 +5,6 @@ import java.util.stream.IntStream;
 
 import org.springframework.stereotype.Component;
 
-import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
 import com.ttg.devknowledgeplatform.devpractice.enums.SubmissionStatus;
 
@@ -30,11 +29,11 @@ public class CaseJudge {
      * Runs every request in one batch and judges each result.
      *
      * @param requests   what to run; may mix programs and languages (a learner's and a reference's)
-     * @param returnType the problem's return type — decides how outputs are compared
+     * @param spec       the problem's return type and output order — decides how outputs are compared
      * @return one result per request, in the same order
      * @throws JudgeUnavailableException if the judge backend can't be reached
      */
-    public List<CaseResult> runAll(List<CaseRequest> requests, ParamType returnType) {
+    public List<CaseResult> runAll(List<CaseRequest> requests, AnswerSpec spec) {
         if (requests.isEmpty()) {
             return List.of();
         }
@@ -42,18 +41,18 @@ public class CaseJudge {
                 .map(r -> new JudgeClient.JudgeRequest(r.program(), r.language(), r.input()))
                 .toList());
         return IntStream.range(0, requests.size())
-                .mapToObj(i -> judge(results.get(i), requests.get(i).expectedOutput(), returnType))
+                .mapToObj(i -> judge(results.get(i), requests.get(i).expectedOutput(), spec))
                 .toList();
     }
 
     /** What one finished run means: Judge0's status mapped to ours, then the answer check. */
-    private CaseResult judge(Judge0SubmissionResult result, String expectedOutput, ParamType returnType) {
+    private CaseResult judge(Judge0SubmissionResult result, String expectedOutput, AnswerSpec spec) {
         SubmissionStatus status = switch (result.status()) {
             case COMPILATION_ERROR -> SubmissionStatus.COMPILE_ERROR;
             case TIME_LIMIT_EXCEEDED -> SubmissionStatus.TIME_LIMIT_EXCEEDED;
             case RUNTIME_ERROR, INTERNAL_ERROR, EXEC_FORMAT_ERROR -> SubmissionStatus.RUNTIME_ERROR;
             case ACCEPTED -> expectedOutput == null
-                    || outputMatcher.matches(result.stdout(), expectedOutput, returnType)
+                    || outputMatcher.matches(result.stdout(), expectedOutput, spec)
                     ? SubmissionStatus.ACCEPTED : SubmissionStatus.WRONG_ANSWER;
             // Judge0 only reports WRONG_ANSWER when we supply expected_output (we never do — see
             // Judge0SubmissionResult's Javadoc), and IN_QUEUE/PROCESSING are non-final statuses
@@ -71,10 +70,11 @@ public class CaseJudge {
      *
      * @param ran            the learner's run, made with no expected output
      * @param expectedOutput the JSON-encoded answer to compare against
+     * @param spec           the problem's return type and output order
      * @return {@code ran} itself when it matches (or never ran cleanly), else the same run as {@code WRONG_ANSWER}
      */
-    public CaseResult compare(CaseResult ran, String expectedOutput, ParamType returnType) {
-        if (!ran.passed() || outputMatcher.matches(ran.stdout(), expectedOutput, returnType)) {
+    public CaseResult compare(CaseResult ran, String expectedOutput, AnswerSpec spec) {
+        if (!ran.passed() || outputMatcher.matches(ran.stdout(), expectedOutput, spec)) {
             return ran;
         }
         return new CaseResult(SubmissionStatus.WRONG_ANSWER, ran.stdout(), ran.diagnostic(), ran.runtimeMs(), ran.memoryKb());

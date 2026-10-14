@@ -5,6 +5,7 @@ import java.util.Set;
 
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.OutputOrder;
 import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 import com.ttg.devknowledgeplatform.devpractice.harness.SignatureNameValidator;
 
@@ -41,6 +42,9 @@ public class UpdateProblemRequest {
 
     @NotNull(message = "Return type is required")
     private ParamType returnType;
+
+    /** Optional — {@code null} leaves the problem's output order unchanged. Changing it bumps the contract version. */
+    private OutputOrder outputOrder;
 
     @NotEmpty(message = "At least one parameter is required")
     @Valid

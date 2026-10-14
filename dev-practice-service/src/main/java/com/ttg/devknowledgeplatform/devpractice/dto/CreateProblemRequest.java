@@ -5,6 +5,7 @@ import java.util.Set;
 
 import com.ttg.devknowledgeplatform.common.enums.ContentStatus;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
+import com.ttg.devknowledgeplatform.devpractice.enums.OutputOrder;
 import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 import com.ttg.devknowledgeplatform.devpractice.harness.SignatureNameValidator;
 
@@ -40,6 +41,9 @@ public class CreateProblemRequest {
 
     @NotNull(message = "Return type is required")
     private ParamType returnType;
+
+    /** Optional — {@code ORDERED} if not supplied; {@code ANY_ORDER} accepts the answer's elements in any order. */
+    private OutputOrder outputOrder;
 
     /** Method signature parameters, in order — a parameter's position is its index in this list. */
     @NotEmpty(message = "At least one parameter is required")

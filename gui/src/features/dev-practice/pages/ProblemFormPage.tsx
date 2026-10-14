@@ -1,10 +1,10 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Alert, Box, Button, IconButton, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, FormControlLabel, FormHelperText, IconButton, Stack, Switch, Tab, Tabs, TextField, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import VerifiedIcon from '@mui/icons-material/Verified';
-import { Difficulty, ParamType, ParsedSignature, Problem, ProblemStatus, ProblemTag } from '../types';
+import { Difficulty, OutputOrder, ParamType, ParsedSignature, Problem, ProblemStatus, ProblemTag } from '../types';
 import { devPracticeApi } from '../api/devPracticeApi';
 import {
   contractFingerprint,
@@ -51,7 +51,7 @@ const editPath = (id: number) => `${LIST_PATH}/${id}/edit`;
 /** What a brand-new form holds before any typing — the "clean" state in create mode. Must match the
  * `useState` initial values below, or a fresh /new page would already count as having changes. */
 const NEW_PROBLEM_FIELDS: FormSnapshotFields = {
-  title: '', description: '', difficulty: 'EASY', status: 'DRAFT', methodName: '', returnType: 'INT',
+  title: '', description: '', difficulty: 'EASY', status: 'DRAFT', methodName: '', returnType: 'INT', outputOrder: 'ORDERED',
   parameters: [{ name: '', type: 'INT' }], testCases: [], tagIds: [], stagedTagNames: [],
 };
 
@@ -98,6 +98,7 @@ export default function ProblemFormPage(): JSX.Element {
   const [status, setStatus] = useState<ProblemStatus>('DRAFT');
   const [methodName, setMethodName] = useState('');
   const [returnType, setReturnType] = useState<ParamType>('INT');
+  const [outputOrder, setOutputOrder] = useState<OutputOrder>('ORDERED');
   const [params, setParams] = useState<ParamRow[]>(() => [{ key: nextRowKey(), name: '', type: 'INT' }]);
   const [testCases, setTestCases] = useState<TestCaseRow[]>([]);
   // Same picker as @ecommerce's product form (existing tags + a "New tags" queue created on save).
@@ -131,6 +132,7 @@ export default function ProblemFormPage(): JSX.Element {
     setStatus(problem.status);
     setMethodName(problem.methodName);
     setReturnType(problem.returnType);
+    setOutputOrder(problem.outputOrder);
     setParams(rows.params);
     setTestCases(rows.testCases);
     setSelectedTagIds(new Set(problem.tags.map(t => t.id)));
@@ -169,10 +171,10 @@ export default function ProblemFormPage(): JSX.Element {
   // Does the form hold signature/test-data edits the server hasn't seen? A reference is judged
   // against the saved problem, so it can't verify those until they're saved.
   const savedContract = useMemo(
-    () => (loaded && originalSignature ? contractFingerprint(originalSignature, loaded.testCases) : null),
+    () => (loaded && originalSignature ? contractFingerprint(originalSignature, loaded.testCases, loaded.outputOrder) : null),
     [loaded, originalSignature],
   );
-  const contractDirty = savedContract !== null && savedContract !== contractFingerprint(currentSignature, testCases);
+  const contractDirty = savedContract !== null && savedContract !== contractFingerprint(currentSignature, testCases, outputOrder);
   const publishBlockedReason = publishBlockedReasonOf(loaded, contractDirty);
 
   const runValidation = () =>
@@ -255,7 +257,7 @@ export default function ProblemFormPage(): JSX.Element {
       clearStagedTagNames();
       // Always the complete tag set — never relies on the backend's "omitted = unchanged" update case.
       const payload = toPayload(
-        { title, description, difficulty, status, methodName, returnType, tagIds: [...selectedTagIds, ...newTagIds] },
+        { title, description, difficulty, status, methodName, returnType, outputOrder, tagIds: [...selectedTagIds, ...newTagIds] },
         params,
         testCases,
       );
@@ -283,9 +285,9 @@ export default function ProblemFormPage(): JSX.Element {
   };
 
   const isDirty = useMemo(() => baseline !== null && formSnapshot(baseline) !== formSnapshot({
-    title, description, difficulty, status, methodName, returnType,
+    title, description, difficulty, status, methodName, returnType, outputOrder,
     parameters: params, testCases, tagIds: [...selectedTagIds], stagedTagNames,
-  }), [baseline, title, description, difficulty, status, methodName, returnType, params, testCases, selectedTagIds, stagedTagNames]);
+  }), [baseline, title, description, difficulty, status, methodName, returnType, outputOrder, params, testCases, selectedTagIds, stagedTagNames]);
   const { blocker, allowNextNavigation } = useUnsavedChangesGuard(isDirty);
 
   // `errors` is only filled after the first save attempt, so tabs stay unflagged until then — the
@@ -385,6 +387,22 @@ export default function ProblemFormPage(): JSX.Element {
           </TabPanel>
 
           <TabPanel active={activeTab === 'testCases'}>
+            {/* Part of the grading contract, like the test data below it: changing it needs a fresh reference run. */}
+            <Box sx={{ mb: 2 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={outputOrder === 'ANY_ORDER'}
+                    onChange={e => setOutputOrder(e.target.checked ? 'ANY_ORDER' : 'ORDERED')}
+                  />
+                }
+                label="Accept the answer in any order"
+              />
+              <FormHelperText sx={{ mt: 0 }}>
+                For "return in any order" problems: the judge sorts every list in both the output and the expected
+                answer (nested lists too) before comparing. Duplicates still count.
+              </FormHelperText>
+            </Box>
             <TestCaseEditor
               rows={testCases}
               onChange={setTestCases}

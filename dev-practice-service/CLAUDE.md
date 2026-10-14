@@ -22,7 +22,7 @@ for `JUDGE_ERROR`; `DKP-0055` — problem tags; `DKP-0056` — `PROBLEM.CONTRACT
 `SUBMISSION.PUBLISH_ON_ACCEPT`; `DKP-0058` — `SUBMISSION.RUNTIME_MS`/`MEMORY_KB`; `DKP-0059` —
 partial index `IDX_SUBMISSION_IN_PROGRESS` for the stale-submission sweeper; `DKP-0060` — study plans:
 `STUDY_PLAN`/`STUDY_PLAN_SECTION`/`STUDY_PLAN_PROBLEM`; `DKP-0061` — editorial solutions:
-`PROBLEM_SOLUTION`/`PROBLEM_SOLUTION_CODE`). Routed through `gateway`'s
+`PROBLEM_SOLUTION`/`PROBLEM_SOLUTION_CODE`; `DKP-0062` — `PROBLEM.OUTPUT_ORDER`). Routed through `gateway`'s
 `routing/GatewayRoutesConfig` (`devPracticeServiceRoutes()`) — `/api/v1/admin/problems/**` and
 `/api/v1/public/problems/**` (including `/starter-code`) are two more resource segments under the
 already-shared `/api/v1/admin/**`/`/api/v1/public/**` prefixes; `/api/v1/submissions/**` is a
@@ -225,9 +225,9 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   - **Publishing requires proof the problem is solvable — an `ACCEPTED` `REFERENCE` submission
     judged at the problem's current `contractVersion` (`DKP-0056`).** `Problem.contractVersion`
     (not the `version` optimistic-locking column) is bumped by `ProblemServiceImpl#update` whenever
-    the signature or the test data changes (`signatureChanged`/`testDataChanged` — the ordered,
+    the signature, the test data or the output order changes (`signatureChanged`/`testDataChanged` — the ordered,
     stripped `(input, expectedOutput)` list; toggling only `sample` doesn't count, since it changes
-    visibility, not correctness). `SubmissionJudgeEventListener` stamps the version it judged
+    visibility, not correctness — or a different `outputOrder`). `SubmissionJudgeEventListener` stamps the version it judged
     against onto `Submission.contractVersion`, so a bump makes every older reference stale
     automatically — no flag to forget to clear. `ProblemService#isVerified` is that one `exists`
     query (partial index `IDX_SUBMISSION_ACCEPTED_REFERENCE`); admin responses expose it as
@@ -273,6 +273,20 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   `TestCase.expectedOutput` in `judge.OutputMatcher`. Don't "simplify" by switching to Judge0's own
   comparison; it does a raw string compare, which would make whitespace-only differences
   (`[0, 1]` vs `[0,1]`) and cross-language number rendering (`2` vs `2.0`) fail incorrectly.
+- **"Return in any order" problems set `Problem.outputOrder = ANY_ORDER` (`DKP-0062`, default
+  `ORDERED`).** `OutputMatcher` then *canonicalizes* both outputs before comparing — every array, at
+  every depth, sorted (elements first, then the array) by a total order over JSON values — so
+  `[["tops","pots"],["x"]]` equals `[["x"],["pots","tops"]]`, while duplicates and regroupings still
+  differ (sorting, not set comparison). One flag for all levels: "outer any order, inner exact" can't
+  be expressed and would need a per-problem checker. Everything that judges goes through
+  `judge.AnswerSpec` (return type + output order, built once by `AnswerSpec.of(problem)`) — a
+  parameter object, so no judging path can pass the return type and forget the order. It's part of
+  the grading contract: changing it bumps `contractVersion` (so a published problem needs a fresh
+  reference first) but is **not** covered by the signature lock, since it never breaks submitted
+  code. `ProblemCommands.Update.outputOrder` `null` = unchanged (a client unaware of the field
+  can't reset it); create defaults to `ORDERED`. Seed files set it with `outputOrder: ANY_ORDER`;
+  `ProblemSeederTest` compares every language's output with the real `OutputMatcher` and the file's
+  spec, so a seed file's expected answers may use any of the accepted orders.
 - **No vendor-specific execution-backend detail belongs on `ProgrammingLanguage` (or any other
   domain enum) — it belongs in `judge/impl/`'s own config/mapping.** `judge0LanguageId` used to be a
   field on `ProgrammingLanguage` itself; moved to `JudgeClientProperties#getLanguageIds()`
