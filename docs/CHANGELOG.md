@@ -22,6 +22,15 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **Seed problem: Valid Anagram** (`dev-practice-service`, `data/problems/valid-anagram.md`), EASY,
+  tags Hash Table/String/Sorting, added to NeetCode 150's "Arrays & Hashing" section after Contains
+  Duplicate. The first two-parameter seed problem (`isAnagram(String s, String t)`, pinned by
+  `ProblemSeederTest#seedsValidAnagramWithBothParametersInOrder`). Two editorial approaches —
+  Sorting and Character Count (a 26-slot counter array) — each in Java, Python and JavaScript, all
+  verified by `ProblemSeederTest`'s runners. Hidden cases include traps for common wrong shortcuts
+  (comparing letter sets, summing or XOR-ing character codes); a mutation check confirmed each trap
+  catches its shortcut.
+
 - **Editorial solutions, Phase 1 (backend).** `dev-practice-service`: new `ProblemSolution` (one
   approach — title, Markdown explanation, position) and `ProblemSolutionCode` (links an approach to a
   judge-verified `REFERENCE` submission, one per language), migration `DKP-0061`. Learners only ever

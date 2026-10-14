@@ -17,6 +17,7 @@ sections:
     description: Lookups, counting and grouping with arrays and hash maps — the building blocks for everything after.
     problems:
       - contains-duplicate
+      - valid-anagram
   - title: Stack
     description: Last-in, first-out processing — matching brackets, evaluating expressions, monotonic stacks.
     problems:

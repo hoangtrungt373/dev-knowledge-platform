@@ -3338,6 +3338,10 @@ dev-practice-service/src/main/resources/data/problems/
 ├── contains-duplicate.md — EASY, tags Array/Hash Table/Sorting, Java template
 │   `boolean containsDuplicate(int[] nums)`, 16 test cases (2 samples; empty array, non-adjacent
 │   duplicate, ±x not duplicates, ±10^9 extremes), HashSet reference solution
+├── valid-anagram.md — EASY, tags Hash Table/String/Sorting, Java template
+│   `boolean isAnagram(String s, String t)` (the first two-parameter seed problem), 17 test cases
+│   (3 samples; length mismatch, same letter set with different counts, equal code sums, XOR-zero
+│   pairs, all 26 letters); approaches Sorting and Character Count, each in Java/Python/JavaScript
 └── evaluate-reverse-polish-notation.md — MEDIUM, tags Array/Math/Stack, Java template
     `int evalRPN(String[] tokens)`, 18 test cases (2 samples; truncation-toward-zero, operand
     order, single operand, deep stack, ±200 extremes)

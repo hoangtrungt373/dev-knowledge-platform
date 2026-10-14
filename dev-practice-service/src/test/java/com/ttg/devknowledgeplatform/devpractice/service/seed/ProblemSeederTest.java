@@ -157,6 +157,32 @@ class ProblemSeederTest {
         assertThat(command.testCases().stream().filter(ProblemCommands.TestCaseInput::sample)).hasSize(2);
     }
 
+    /** The first two-parameter seed problem: parameter order is what the judge passes arguments in. */
+    @Test
+    void seedsValidAnagramWithBothParametersInOrder() {
+        seeder.seed();
+
+        ProblemCommands.Create command = createdByTitle().get("Valid Anagram");
+        assertThat(command.difficulty()).isEqualTo(Difficulty.EASY);
+        assertThat(command.status()).isEqualTo(ContentStatus.DRAFT);
+        assertThat(command.methodName()).isEqualTo("isAnagram");
+        assertThat(command.returnType()).isEqualTo(ParamType.BOOLEAN);
+        assertThat(command.parameters()).containsExactly(
+                new ProblemCommands.MethodParameterInput("s", ParamType.STRING, 0),
+                new ProblemCommands.MethodParameterInput("t", ParamType.STRING, 1));
+        assertThat(command.tagIds()).containsExactlyInAnyOrder(
+                "Hash Table".hashCode(), "String".hashCode(), "Sorting".hashCode());
+        assertThat(command.testCases().stream().filter(ProblemCommands.TestCaseInput::sample)).hasSize(3);
+        // Two approaches, each in all three languages: every one of them is verified by the runners below.
+        Integer anagramId = problemsById().entrySet().stream()
+                .filter(e -> e.getValue().title().equals("Valid Anagram"))
+                .map(Map.Entry::getKey).findFirst().orElseThrow();
+        assertThat(runsById.values()).filteredOn(r -> r.command().problemId().equals(anagramId))
+                .extracting(r -> r.command().language())
+                .containsExactlyInAnyOrder(ProgrammingLanguage.JAVA, ProgrammingLanguage.PYTHON, ProgrammingLanguage.JAVASCRIPT,
+                        ProgrammingLanguage.JAVA, ProgrammingLanguage.PYTHON, ProgrammingLanguage.JAVASCRIPT);
+    }
+
     @Test
     void seedsContainsDuplicateWithTheSignatureFromItsTemplate() {
         seeder.seed();

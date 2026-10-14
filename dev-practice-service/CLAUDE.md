@@ -611,8 +611,8 @@ as unverified until the IT runs somewhere with Docker.
 - Result delivery is polling only (`Judge0Client` blocks internally on `GET /submissions/batch?tokens=...`)
   — the webhook-callback alternative discussed in Phase 1 planning was explicitly not chosen this
   round (simpler, no new inbound-auth surface to design).
-- Two seeded problems so far (Evaluate Reverse Polish Notation, Contains Duplicate — see the
-  seeding rule above).
+- Three seeded problems so far (Evaluate Reverse Polish Notation, Contains Duplicate, Valid
+  Anagram — see the seeding rule above).
   The admin GUI exists (`gui`'s `@dev-practice` feature, `/admin/problems`, including the
   reference-solution panel that verifies a problem before it can be published); the public
   problem/submission GUI doesn't yet.
