@@ -3372,8 +3372,14 @@ dev-practice-service/src/test/
 ├── java/.../service/seed/ProblemSeederTest.java — loads the real seed files: signature from the
 │                                         template, tags, sample count, created as DRAFT + a
 │                                         publish-on-accept run (exactly one per problem: the first
-│                                         implementation listed); every Java (in-process) and Python
-│                                         (real harness program, local interpreter, skipped if none)
+│                                         implementation listed); every Java (in-process), Python and
+│                                         JavaScript (real harness program under a local interpreter
+│                                         via one LocalRuntime-driven runner, cases as subtasks of
+│                                         a custom StructuredTaskScope (CollectFailuresScope: all
+│                                         wrong answers reported, stops on a timeout) — preview API,
+│                                         enabled for
+│                                         test compile/surefire only in this module's pom — skipped
+│                                         if none)
 │                                         solutions[].implementations
 │                                         entry compiled (javax.tools) and run against every test
 │                                         case of every seed file (arguments typed by the signature,

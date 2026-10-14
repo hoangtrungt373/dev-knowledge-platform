@@ -24,7 +24,8 @@ template:
 # every test case below, so a wrong expectedOutput (or a wrong implementation) fails the build. Java is
 # written for Judge0's OpenJDK 13 (no arrow-switch), using only java.util — the harness prelude imports
 # it; Python for Judge0's Python 3.8 and the test's local interpreter (no 3.8-only syntax), with
-# typing.List imported by its prelude. The first implementation listed (Java) publishes the problem.
+# typing.List imported by its prelude; JavaScript for Judge0's Node.js 12 (no ?? or ?.), in LeetCode's
+# `var name = function(...)` style. The first implementation listed (Java) publishes the problem.
 # Explanations contain no hand-written code: {{code:JAVA}} on a line of its own is replaced, when served,
 # by this approach's verified JAVA run (CodePlaceholders).
 solutions:
@@ -41,8 +42,9 @@ solutions:
       {{code:JAVA}}
 
       Order matters for `-` and `/`: the first value popped is the **right** operand. Division must
-      truncate toward zero: Java's integer `/` already does, while Python's `//` floors (`-7 // 2` is
-      `-4`), so the Python version divides the magnitudes and then restores the sign.
+      truncate toward zero: Java's integer `/` already does; Python's `//` floors (`-7 // 2` is `-4`),
+      so the Python version divides the magnitudes and then restores the sign; JavaScript's `/` gives a
+      fraction, so it wraps the result in `Math.trunc`.
 
       **Complexity**
 
@@ -89,6 +91,34 @@ solutions:
                       else:
                           stack.append(int(token))
                   return stack.pop()
+      - language: JAVASCRIPT
+        code: |
+          /**
+           * @param {string[]} tokens
+           * @return {number}
+           */
+          var evalRPN = function(tokens) {
+              const stack = [];
+              for (const token of tokens) {
+                  if (token === "+" || token === "-" || token === "*" || token === "/") {
+                      const b = stack.pop();
+                      const a = stack.pop();
+                      if (token === "+") {
+                          stack.push(a + b);
+                      } else if (token === "-") {
+                          stack.push(a - b);
+                      } else if (token === "*") {
+                          stack.push(a * b);
+                      } else {
+                          // Plain / gives a fraction; Math.trunc drops it toward zero, as the problem asks.
+                          stack.push(Math.trunc(a / b));
+                      }
+                  } else {
+                      stack.push(Number(token));
+                  }
+              }
+              return stack.pop();
+          };
 testCases:
   # Example 1 from the description — shown to users.
   - input: '[["1","2","+","3","*","4","-"]]'

@@ -59,7 +59,25 @@ section again. Full unabridged entry-by-entry history for all four lives in
   Reverse Polish Notation's "Stack" approach gained a Python implementation (truncating division done
   on magnitudes, since Python's `//` floors), so the toggle shows for it; `ProblemSeederTest` now runs
   Python implementations as the real `PythonLanguageHarness` program under a local interpreter
-  (skipped when none is installed) and rejects seed implementations in a language it can't run.
+  (skipped when none is installed). A JavaScript implementation followed (`Math.trunc(a / b)`), with
+  the runner generalised: one `LocalRuntime` record per interpreted language (harness, extension,
+  launch commands, version prefix) drives a shared runner, `everyJavaScriptImplementationPassesEveryTestCase`
+  runs the real `JavaScriptLanguageHarness` program under local `node`, and
+  `everyLanguageHasALocalRunner` replaces the old language allow-list — it fails when a
+  `ProgrammingLanguage` is added without a runner. The Stack approach's toggle now offers all three
+  languages. The interpreted-language checks then moved onto virtual threads
+  (`Executors.newVirtualThreadPerTaskExecutor()`, a `Semaphore` capping live processes at the core
+  count; Python 8.8 s → 1.9 s, JavaScript 4.7 s → 1.5 s locally) and report every failing case at once.
+  Fixed on the way: the per-process timeout never fired — stdout was read from a pipe first, which
+  blocks until the process exits — so output now goes to per-case files and a hung program is killed
+  after 10 s. The executor was then replaced by a `StructuredTaskScope.ShutdownOnFailure` (JDK 21
+  preview, JEP 453): the first failing case fails the test and interrupts its siblings, whose
+  processes are killed (a hanging implementation now costs ~10 s instead of one timeout per wave of
+  cases); in exchange only the first failure is reported. `dev-practice-service/pom.xml` enables
+  `--enable-preview` for the `default-testCompile` execution and surefire only. `ShutdownOnFailure`
+  was then replaced by a custom policy, `CollectFailuresScope` (`handleComplete` over a sealed
+  `CaseOutcome`): wrong answers and runtime errors are all collected and reported in case order, while
+  a timeout or a crashed subtask still shuts the scope down and the report counts the cancelled cases.
 - **Study plans.** `dev-practice-service`: curated, ordered problem lists such as
   "NeetCode 150". New `StudyPlan` → ordered `StudyPlanSection` (free-text chapter) → ordered
   `StudyPlanProblem` (explicit join to `Problem`), migration `DKP-0060`. Read-only public API

@@ -424,16 +424,36 @@ Full detail: `docs/PROJECT_STRUCTURE.md`'s `## dev-practice-service` section.
   skips existing slugs; run a reference from the admin form instead. Implementations on a `DRAFT`
   file verify it without publishing. Write Java for Judge0's **OpenJDK 13** (no arrow-`switch`, no
   records/text blocks), using only `java.util` (the harness prelude imports it); Python for Judge0's
-  **3.8** without newer syntax (the prelude imports `typing.List`).
+  **3.8** without newer syntax (the prelude imports `typing.List`); JavaScript for Judge0's
+  **Node.js 12** (no `??`/`?.`), as LeetCode's `var name = function(...)`.
   `ProblemSeederTest#everyJavaImplementationPassesEveryTestCase` compiles each Java one with
-  `javax.tools` and runs it in-process; `#everyPythonImplementationPassesEveryTestCase` writes the
-  **real judge program** (`PythonLanguageHarness#buildProgram`) and runs it under a local Python 3
-  (`python3`/`python`/`py -3`, `PYTHONIOENCODING=utf-8`), one process per test case, compared by
-  the judge's own `OutputMatcher` — **skipped, not failed, without a local Python** (unverified code
-  still can't reach learners: only judge-ACCEPTED runs are shown). Both run on local runtimes, not
-  Judge0's versions. `#everyImplementationIsInALanguageThisTestCanRun` fails on any other language
-  until a runner is added (JavaScript has none yet). The seed file is the single source of the
-  solutions. To re-seed after
+  `javax.tools` and runs it in-process. Python and JavaScript share one runner
+  (`assertPassesUnderLocalRuntime`, driven by a `LocalRuntime` record per language in
+  `LOCAL_RUNTIMES`: harness, file extension, launch commands, expected `--version` prefix): it writes
+  the **real judge program** (`LanguageHarness#buildProgram`) and runs it under the local
+  interpreter (`python3`/`python`/`py -3`; `node`), one process per test case, compared by the
+  judge's own `OutputMatcher`. Cases run as subtasks of one `CollectFailuresScope` — a custom
+  `StructuredTaskScope` policy (virtual threads), with a `Semaphore` capping live interpreters at the
+  core count (virtual threads make threads cheap, not processes). Each subtask returns a sealed
+  `CaseOutcome` (`Passed`/`Failed`/`TimedOut`) and the policy is one exhaustive switch in
+  `handleComplete`: **wrong answers and runtime errors are collected** (cheap — the process already
+  exited) and reported together in case order; **a timeout or a crashed subtask shuts the scope down**
+  (a hang costs 10 s per case and usually hangs them all), cancelling the rest and saying how many
+  were cancelled. Several near-simultaneous timeouts can all land before the shutdown, so expect
+  "1–n timed out". `handleComplete` runs on each subtask's own thread, so its state is concurrent
+  collections. An interrupt stops the wait, never the child
+  process — `runProgram`'s `finally` kills any process still alive; keep that, or a fail-fast run
+  leaves interpreters behind. Output goes to per-case files, not pipes, so the 10 s per-process
+  timeout really fires (a pipe read blocks until exit) — keep that too. **`StructuredTaskScope` is a
+  JDK 21 preview API**, so this module's `pom.xml` passes `--enable-preview` to the
+  `default-testCompile` execution and to surefire only — main code must not use preview APIs (the
+  API changed shape in JDK 25: `StructuredTaskScope.open(Joiner)`), and moving this reactor past
+  JDK 21 means rewriting `assertEveryCasePasses` against the new API. It is
+  **skipped, not failed, when the interpreter is missing**, but only
+  after asserting the seed files carry implementations in that language (unverified code still can't
+  reach learners: only judge-ACCEPTED runs are shown). All run on local runtimes, not Judge0's
+  versions. `#everyLanguageHasALocalRunner` fails when a `ProgrammingLanguage` is added without a
+  `LocalRuntime` entry. The seed file is the single source of the solutions. To re-seed after
   editing a seed file, run `scripts/purge-seed-data.sql` (a plain dev utility outside
   `database/sql/`, so never a migration; mirrors `ecommerce-service`'s) — it `TRUNCATE ... RESTART
   IDENTITY CASCADE`s all 11 `dev_practice` tables, **including users' `SUBMISSION` history**, then

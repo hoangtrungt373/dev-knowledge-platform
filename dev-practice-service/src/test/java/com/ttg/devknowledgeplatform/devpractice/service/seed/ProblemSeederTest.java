@@ -12,6 +12,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.net.URL;
@@ -19,12 +20,19 @@ import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.StructuredTaskScope;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
@@ -50,8 +58,10 @@ import com.ttg.devknowledgeplatform.devpractice.entity.Submission;
 import com.ttg.devknowledgeplatform.devpractice.enums.Difficulty;
 import com.ttg.devknowledgeplatform.devpractice.enums.ParamType;
 import com.ttg.devknowledgeplatform.devpractice.enums.ProgrammingLanguage;
+import com.ttg.devknowledgeplatform.devpractice.harness.JavaScriptLanguageHarness;
 import com.ttg.devknowledgeplatform.devpractice.harness.JavaScriptSignatureTemplateParser;
 import com.ttg.devknowledgeplatform.devpractice.harness.JavaSignatureTemplateParser;
+import com.ttg.devknowledgeplatform.devpractice.harness.LanguageHarness;
 import com.ttg.devknowledgeplatform.devpractice.harness.PythonLanguageHarness;
 import com.ttg.devknowledgeplatform.devpractice.harness.PythonSignatureTemplateParser;
 import com.ttg.devknowledgeplatform.devpractice.harness.SignatureTemplateParserRegistry;
@@ -179,9 +189,10 @@ class ProblemSeederTest {
         Map<Integer, ProblemCommands.Create> problemsById = problemsById();
         assertThat(publishingRunsByProblem.keySet()).isEqualTo(problemsById.keySet());
         assertThat(publishingRunsByProblem.values()).containsOnly(1L);
-        // Each run goes to the id its own problem was created with — not to some other problem.
+        // Each run goes to the id its own problem was created with — not to some other problem. A whole
+        // word, not "name(": JavaScript declares it as `var evalRPN = function(...)`.
         runsById.values().forEach(run -> assertThat(run.command().sourceCode())
-                .contains(" " + problemsById.get(run.command().problemId()).methodName() + "("));
+                .containsPattern("\\b" + problemsById.get(run.command().problemId()).methodName() + "\\b"));
     }
 
     @Test
@@ -199,45 +210,253 @@ class ProblemSeederTest {
     }
 
     /**
-     * Python implementations run as the <em>real</em> judge program — {@link PythonLanguageHarness}
-     * wraps the method exactly as it does for Judge0 — under a local interpreter, one process per test
-     * case, compared by the judge's own {@link OutputMatcher}. Skipped (not failed) when no Python 3 is
-     * installed; the code still can't reach learners unverified, since only runs the real judge
-     * ACCEPTED are ever shown.
+     * A language whose seed implementations run as the <em>real</em> judge program under a local
+     * interpreter: the harness wraps the method exactly as it does for Judge0.
+     *
+     * @param harness       builds the program Judge0 would receive
+     * @param extension     the program file's extension
+     * @param candidates    launch commands to try in order (the first that reports {@code versionPrefix} wins)
+     * @param versionPrefix what {@code <command> --version} must print, to reject e.g. a Python 2
+     */
+    private record LocalRuntime(ProgrammingLanguage language, LanguageHarness harness, String extension,
+                                List<List<String>> candidates, String versionPrefix) { }
+
+    /** Every language not run in-process like Java. A new language needs an entry here (see the guard test). */
+    private static final Map<ProgrammingLanguage, LocalRuntime> LOCAL_RUNTIMES = Map.of(
+            ProgrammingLanguage.PYTHON, new LocalRuntime(ProgrammingLanguage.PYTHON, new PythonLanguageHarness(), ".py",
+                    List.of(List.of("python3"), List.of("python"), List.of("py", "-3")), "Python 3"),
+            ProgrammingLanguage.JAVASCRIPT, new LocalRuntime(ProgrammingLanguage.JAVASCRIPT, new JavaScriptLanguageHarness(), ".js",
+                    List.of(List.of("node")), "v"));
+
+    /**
+     * Python implementations run as the real {@link PythonLanguageHarness} program under a local
+     * Python 3. Skipped (not failed) when none is installed; the code still can't reach learners
+     * unverified, since only runs the real judge ACCEPTED are ever shown.
      */
     @Test
     void everyPythonImplementationPassesEveryTestCase(@TempDir Path dir) throws Exception {
+        assertPassesUnderLocalRuntime(LOCAL_RUNTIMES.get(ProgrammingLanguage.PYTHON), dir);
+    }
+
+    /** JavaScript implementations run as the real {@link JavaScriptLanguageHarness} program under a local Node.js; skipped without one. */
+    @Test
+    void everyJavaScriptImplementationPassesEveryTestCase(@TempDir Path dir) throws Exception {
+        assertPassesUnderLocalRuntime(LOCAL_RUNTIMES.get(ProgrammingLanguage.JAVASCRIPT), dir);
+    }
+
+    /**
+     * Every language has a runner here — Java in-process, the rest through {@link #LOCAL_RUNTIMES} — so
+     * no seed implementation can be checked by nothing. Fails when a {@link ProgrammingLanguage} is added
+     * without one.
+     */
+    @Test
+    void everyLanguageHasALocalRunner() {
+        assertThat(EnumSet.complementOf(EnumSet.of(ProgrammingLanguage.JAVA)))
+                .as("add a LocalRuntime (and a test calling it) for each new language")
+                .isEqualTo(LOCAL_RUNTIMES.keySet());
+    }
+
+    /**
+     * Writes each implementation in {@code runtime}'s language as the real judge program and runs it
+     * once per test case, compared by the judge's own {@link OutputMatcher}. The cases run concurrently,
+     * reporting every failure but stopping at a timeout (see {@link CollectFailuresScope}). Skipped
+     * when the interpreter is missing — but only after asserting the seed files carry such
+     * implementations, so an empty language can't pass vacuously on a machine that has the interpreter.
+     */
+    private void assertPassesUnderLocalRuntime(LocalRuntime runtime, Path dir) throws Exception {
         seeder.seed();
-        List<SeededRun> pythonRuns = runsIn(ProgrammingLanguage.PYTHON);
-        assertThat(pythonRuns).as("seed files carry Python implementations").isNotEmpty();
-        List<String> python = localPython();
-        Assumptions.assumeTrue(python != null, "no local Python 3 interpreter — Python seed implementations not run");
+        List<SeededRun> runs = runsIn(runtime.language());
+        assertThat(runs).as("seed files carry %s implementations", runtime.language()).isNotEmpty();
+        List<String> command = localCommand(runtime);
+        Assumptions.assumeTrue(command != null,
+                "no local " + runtime.language() + " runtime — its seed implementations not run");
 
         Map<Integer, ProblemCommands.Create> problemsById = problemsById();
         OutputMatcher matcher = new OutputMatcher(json);
+        // Programs are written up front, on this thread; only the process runs fan out.
+        List<Callable<CaseOutcome>> cases = new ArrayList<>();
         int i = 0;
-        for (SeededRun run : pythonRuns) {
+        for (SeededRun run : runs) {
             ProblemCommands.Create problem = problemsById.get(run.command().problemId());
-            Path program = dir.resolve("program" + i++ + ".py");
-            Files.writeString(program, new PythonLanguageHarness().buildProgram(toEntity(problem), run.command().sourceCode()));
+            Path program = dir.resolve("program" + i++ + runtime.extension());
+            Files.writeString(program, runtime.harness().buildProgram(toEntity(problem), run.command().sourceCode()));
+            int c = 0;
             for (ProblemCommands.TestCaseInput testCase : problem.testCases()) {
-                String stdout = runPython(python, program, testCase.input());
-                assertThat(matcher.matches(stdout, testCase.expectedOutput(), problem.returnType()))
-                        .as("%s (Python): %s(%s) printed %s, expected %s", problem.title(), problem.methodName(),
-                                testCase.input(), stdout.strip(), testCase.expectedOutput())
-                        .isTrue();
+                // Own directory per case: concurrent cases of one program must not share a stdin file.
+                Path caseDir = Files.createDirectory(dir.resolve(program.getFileName() + "-case" + c++));
+                String label = "%s (%s): %s(%s)".formatted(problem.title(), runtime.language(),
+                        problem.methodName(), testCase.input());
+                int index = cases.size();
+                cases.add(() -> judgeCase(index, label, runProgram(command, program, caseDir, testCase.input()),
+                        testCase.expectedOutput(), problem.returnType(), matcher));
             }
+        }
+
+        assertEveryCasePasses(cases);
+    }
+
+    /** How one test-case process ended — a sealed hierarchy so {@link #judgeCase} must handle both. */
+    private sealed interface ProcessResult {
+        /** Killed after {@link #PROCESS_TIMEOUT}. */
+        record TimedOut() implements ProcessResult { }
+
+        /** Ran to completion, with whatever it printed. */
+        record Exited(int exitCode, String stdout, String stderr) implements ProcessResult { }
+    }
+
+    /** Per process, generous for a cold interpreter start on a loaded machine. */
+    private static final Duration PROCESS_TIMEOUT = Duration.ofSeconds(10);
+
+    /**
+     * One case's verdict, as its subtask returns it. Sealed, so {@link CollectFailuresScope}'s policy
+     * switch must decide what every kind of outcome does to the run. {@code index} is the case's
+     * position, so failures can be reported in case order whatever order they finished in.
+     */
+    private sealed interface CaseOutcome {
+        int index();
+
+        /** Printed the expected answer. */
+        record Passed(int index) implements CaseOutcome { }
+
+        /** Wrong output or a runtime error — cheap (the process already exited), so the run continues. */
+        record Failed(int index, String message) implements CaseOutcome { }
+
+        /** Killed after {@link #PROCESS_TIMEOUT} — expensive, and likely to repeat, so the run stops. */
+        record TimedOut(int index, String message) implements CaseOutcome { }
+    }
+
+    /** Turns how one case's process ended into its verdict. */
+    private static CaseOutcome judgeCase(int index, String label, ProcessResult result, String expectedOutput,
+                                         ParamType returnType, OutputMatcher matcher) {
+        return switch (result) {
+            case ProcessResult.TimedOut t ->
+                    new CaseOutcome.TimedOut(index, label + " timed out after " + PROCESS_TIMEOUT.toSeconds() + " s");
+            case ProcessResult.Exited(int exitCode, String stdout, String stderr) when exitCode != 0 ->
+                    new CaseOutcome.Failed(index, label + " exited with " + exitCode + ":" + System.lineSeparator() + stderr.strip());
+            case ProcessResult.Exited(int exitCode, String stdout, String stderr) ->
+                    matcher.matches(stdout, expectedOutput, returnType) ? new CaseOutcome.Passed(index)
+                            : new CaseOutcome.Failed(index, label + " printed " + stdout.strip() + ", expected " + expectedOutput);
+        };
+    }
+
+    /**
+     * Runs every case as a subtask of one {@link CollectFailuresScope} (a {@link StructuredTaskScope},
+     * JDK 21 preview, JEP 453 — hence {@code --enable-preview} for this module's test compile and
+     * surefire) and fails listing every wrong answer — unless a case times out, which stops the rest.
+     * The scope owns its threads' lifetime: none outlives the {@code try} block.
+     *
+     * <p>Subtasks are virtual threads (the scope's default factory). Each case spends nearly all its
+     * time waiting on a child process, which is the I/O-bound shape virtual threads suit — but they make
+     * <em>threads</em> cheap, not processes: the semaphore caps live interpreters at the core count.
+     *
+     * @throws AssertionError listing the failures (see {@link CollectFailuresScope#throwIfAnyFailed})
+     */
+    private static void assertEveryCasePasses(List<Callable<CaseOutcome>> cases) throws InterruptedException {
+        Semaphore processSlots = new Semaphore(Runtime.getRuntime().availableProcessors());
+        try (var scope = new CollectFailuresScope()) {
+            for (Callable<CaseOutcome> testCase : cases) {
+                scope.fork(() -> {
+                    processSlots.acquire();
+                    try {
+                        return testCase.call();
+                    } finally {
+                        processSlots.release();
+                    }
+                });
+            }
+            scope.join().throwIfAnyFailed();
         }
     }
 
-    /** A seed implementation in a language the two tests above can't run would be checked by nothing here. */
-    @Test
-    void everyImplementationIsInALanguageThisTestCanRun() {
-        seeder.seed();
+    /**
+     * A custom {@link StructuredTaskScope} policy, between the JDK's two built-ins:
+     * {@code ShutdownOnFailure} stops at the first failure (one message, the rest unknown) and
+     * {@code ShutdownOnSuccess} at the first success (useless here). This one keeps going through
+     * cheap failures, collecting them all, and shuts down only on what is expensive to repeat — a
+     * timeout (each costs {@link #PROCESS_TIMEOUT}, and a hang usually hangs every case) or a subtask
+     * that threw (the test's own machinery is broken; more cases won't say anything new).
+     *
+     * <p>The whole policy is {@link #handleComplete}, the scope's extension point: the JDK calls it
+     * on each subtask's <em>own</em> thread as it completes — concurrently, hence the concurrent
+     * collections — and stops calling it once the scope is shut down, so the cancelled siblings'
+     * interrupted results never reach it.
+     */
+    private static final class CollectFailuresScope extends StructuredTaskScope<CaseOutcome> {
+        private final Queue<CaseOutcome> failures = new ConcurrentLinkedQueue<>();
+        private final Queue<Throwable> crashes = new ConcurrentLinkedQueue<>();
+        private final AtomicInteger completed = new AtomicInteger();
+        /** Only the owner thread forks, so a plain field is enough. */
+        private int forked;
 
-        assertThat(runsById.values()).extracting(r -> r.command().language())
-                .allMatch(l -> l == ProgrammingLanguage.JAVA || l == ProgrammingLanguage.PYTHON,
-                        "JAVA or PYTHON — add a local runner here before seeding another language");
+        @Override
+        public <U extends CaseOutcome> Subtask<U> fork(Callable<? extends U> task) {
+            forked++;
+            return super.fork(task);
+        }
+
+        @Override
+        protected void handleComplete(Subtask<? extends CaseOutcome> subtask) {
+            super.handleComplete(subtask);
+            completed.incrementAndGet();
+            switch (subtask.state()) {
+                case SUCCESS -> {
+                    switch (subtask.get()) {
+                        case CaseOutcome.Passed passed -> { }
+                        case CaseOutcome.Failed failed -> failures.add(failed);
+                        case CaseOutcome.TimedOut timedOut -> {
+                            failures.add(timedOut);
+                            shutdown();
+                        }
+                    }
+                }
+                case FAILED -> {
+                    crashes.add(subtask.exception());
+                    shutdown();
+                }
+                // Never passed to handleComplete: UNAVAILABLE means not completed (or completed after shutdown).
+                case UNAVAILABLE -> throw new IllegalStateException("incomplete subtask " + subtask);
+            }
+        }
+
+        /** Covariant override, so {@code scope.join().throwIfAnyFailed()} reads as one step. */
+        @Override
+        public CollectFailuresScope join() throws InterruptedException {
+            super.join();
+            return this;
+        }
+
+        /**
+         * Fails with every collected failure in case order, noting how many cases a shutdown cancelled;
+         * a crash comes first, with any further crashes attached as suppressed.
+         *
+         * @throws AssertionError if any case failed, timed out or crashed
+         * @throws IllegalStateException if called before {@link #join} or by another thread than the owner
+         */
+        void throwIfAnyFailed() {
+            ensureOwnerAndJoined();
+            if (!crashes.isEmpty()) {
+                AssertionError error = new AssertionError("a case crashed", crashes.peek());
+                crashes.stream().skip(1).forEach(error::addSuppressed);
+                throw error;
+            }
+            if (failures.isEmpty()) {
+                return;
+            }
+            List<String> messages = new ArrayList<>(failures.stream()
+                    .sorted(Comparator.comparingInt(CaseOutcome::index))
+                    .map(outcome -> switch (outcome) {
+                        case CaseOutcome.Failed failed -> failed.message();
+                        case CaseOutcome.TimedOut timedOut -> timedOut.message();
+                        case CaseOutcome.Passed passed -> throw new IllegalStateException("collected a pass");
+                    })
+                    .toList());
+            int cancelled = forked - completed.get();
+            if (cancelled > 0) {
+                messages.add(cancelled + " more case(s) cancelled after the timeout — results unknown");
+            }
+            throw new AssertionError(failures.size() + " failure(s):" + System.lineSeparator()
+                    + String.join(System.lineSeparator(), messages));
+        }
     }
 
     private List<SeededRun> runsIn(ProgrammingLanguage language) {
@@ -254,15 +473,16 @@ class ProblemSeederTest {
         return problem;
     }
 
-    /** The first working Python 3 launch command on this machine, or null. */
-    private static List<String> localPython() {
-        for (List<String> candidate : List.of(List.of("python3"), List.of("python"), List.of("py", "-3"))) {
+    /** The first of the runtime's launch commands that works on this machine, or null. */
+    private static List<String> localCommand(LocalRuntime runtime) {
+        for (List<String> candidate : runtime.candidates()) {
             try {
                 List<String> command = new ArrayList<>(candidate);
                 command.add("--version");
                 Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
                 String version = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                if (process.waitFor(10, TimeUnit.SECONDS) && process.exitValue() == 0 && version.startsWith("Python 3")) {
+                if (process.waitFor(10, TimeUnit.SECONDS) && process.exitValue() == 0
+                        && version.startsWith(runtime.versionPrefix())) {
                     return candidate;
                 }
             } catch (Exception e) {
@@ -272,20 +492,36 @@ class ProblemSeederTest {
         return null;
     }
 
-    /** Runs the program with {@code stdin} as its input; fails on a non-zero exit or a timeout. */
-    private static String runPython(List<String> python, Path program, String stdin) throws Exception {
-        List<String> command = new ArrayList<>(python);
+    /**
+     * Runs the program with {@code stdin} as its input. stdout/stderr go to files in {@code caseDir},
+     * not pipes: reading a pipe blocks until the process exits, so a hung program would never reach the
+     * timeout, and a full stderr pipe could stall it while stdout was being read.
+     */
+    private static ProcessResult runProgram(List<String> launch, Path program, Path caseDir, String stdin)
+            throws IOException, InterruptedException {
+        List<String> command = new ArrayList<>(launch);
         command.add(program.toString());
-        Path input = Files.writeString(program.resolveSibling(program.getFileName() + ".in"), stdin, StandardCharsets.UTF_8);
-        ProcessBuilder builder = new ProcessBuilder(command).redirectInput(input.toFile());
-        // Windows consoles otherwise default to a legacy code page for Python's stdio.
+        Path input = Files.writeString(caseDir.resolve("stdin"), stdin, StandardCharsets.UTF_8);
+        Path stdout = caseDir.resolve("stdout");
+        Path stderr = caseDir.resolve("stderr");
+        ProcessBuilder builder = new ProcessBuilder(command)
+                .redirectInput(input.toFile()).redirectOutput(stdout.toFile()).redirectError(stderr.toFile());
+        // Windows consoles otherwise default to a legacy code page for Python's stdio (Node ignores it).
         builder.environment().put("PYTHONIOENCODING", "utf-8");
         Process process = builder.start();
-        String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertThat(process.waitFor(10, TimeUnit.SECONDS)).as("Python timed out on %s", stdin).isTrue();
-        assertThat(process.exitValue()).as("Python failed on %s:%n%s", stdin, stderr).isZero();
-        return stdout;
+        try {
+            if (!process.waitFor(PROCESS_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+                return new ProcessResult.TimedOut();
+            }
+            return new ProcessResult.Exited(process.exitValue(), Files.readString(stdout), Files.readString(stderr));
+        } finally {
+            // Timed out, or interrupted by the scope's shutdown: an interrupt stops the wait, never the
+            // child process, so kill it here or it outlives the test. Wait for the kill (join(), which
+            // ignores interrupts) so Windows releases the output files before @TempDir cleanup.
+            if (process.isAlive()) {
+                process.destroyForcibly().onExit().join();
+            }
+        }
     }
 
     @Test
