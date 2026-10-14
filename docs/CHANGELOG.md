@@ -22,6 +22,14 @@ section again. Full unabridged entry-by-entry history for all four lives in
 
 ### Added
 
+- **Seed problem: Top K Frequent Elements** (`data/problems/top-k-frequent-elements.md`), MEDIUM,
+  fifth in NeetCode 150's "Arrays & Hashing" — `int[] topKFrequent(int[] nums, int k)` with
+  `outputOrder: ANY_ORDER`, no judge change needed. Approaches Sorting, Min-Heap of Size k and Bucket
+  Sort, each in Java, Python and JavaScript (the JS heap is a small hand-written binary heap; Python
+  imports `heapq`). Every case has a unique answer, as the problem promises. Four new starter topics in
+  `data/csv/problem_tags.csv` — Divide and Conquer, Bucket Sort, Counting, Quickselect (23 total;
+  `ProblemTagSeeder` adds missing names, so existing databases gain them on the next seeded
+  startup). Mutation check: a max-heap in place of the min-heap fails 10 of 13 cases.
 - **Seed problem: Group Anagrams** (`data/problems/group-anagrams.md`), MEDIUM, tags Array/Hash
   Table/String/Sorting, fourth in NeetCode 150's "Arrays & Hashing" — the first problem using both
   earlier steps: `outputOrder: ANY_ORDER` and the `STRING_LIST_LIST` return type

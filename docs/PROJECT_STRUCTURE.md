@@ -3337,8 +3337,9 @@ dev-practice-service/src/main/java/com/ttg/devknowledgeplatform/devpractice/
 dev-practice-service/scripts/purge-seed-data.sql — dev utility (not a migration): TRUNCATE ...
 RESTART IDENTITY CASCADE of all 6 dev_practice tables, incl. SUBMISSION, so the seeders reseed
 
-dev-practice-service/src/main/resources/data/csv/problem_tags.csv — the 19 starter topics
-(Array, String, Hash Table, Sorting, Two Pointers, … Math, Bit Manipulation)
+dev-practice-service/src/main/resources/data/csv/problem_tags.csv — the 23 starter topics
+(Array, String, Hash Table, Sorting, Two Pointers, … Math, Bit Manipulation, Divide and Conquer,
+Bucket Sort, Counting, Quickselect)
 
 dev-practice-service/src/main/resources/data/problems/
 ├── contains-duplicate.md — EASY, tags Array/Hash Table/Sorting, Java template
@@ -3357,6 +3358,11 @@ dev-practice-service/src/main/resources/data/problems/
 │   (3 samples; repeated and empty words, different lengths, set-of-letters / sum-of-codes /
 │   unseparated-count-key traps); approaches Sorted Key and Character Count Key, each in
 │   Java/Python/JavaScript
+├── top-k-frequent-elements.md — MEDIUM, 8 tags (Array … Quickselect), Java template
+│   `int[] topKFrequent(int[] nums, int k)`, outputOrder ANY_ORDER, 13 test cases (2 samples; most
+│   frequent first/last, negatives, k = all distinct, frequency order ≠ value order, ±1000); every
+│   case has a unique answer; approaches Sorting, Min-Heap of Size k, Bucket Sort, each in
+│   Java/Python/JavaScript (JS heap hand-written — Node has no priority queue)
 └── evaluate-reverse-polish-notation.md — MEDIUM, tags Array/Math/Stack, Java template
     `int evalRPN(String[] tokens)`, 18 test cases (2 samples; truncation-toward-zero, operand
     order, single operand, deep stack, ±200 extremes)

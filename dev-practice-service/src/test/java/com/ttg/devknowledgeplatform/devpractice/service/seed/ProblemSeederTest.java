@@ -173,9 +173,11 @@ class ProblemSeederTest {
         assertThat(command.parameters())
                 .containsExactly(new ProblemCommands.MethodParameterInput("strs", ParamType.STRING_ARRAY, 0));
         assertThat(command.testCases().stream().filter(ProblemCommands.TestCaseInput::sample)).hasSize(3);
-        // A file without the key keeps the judge's exact-order comparison.
-        assertThat(byTitle.values()).filteredOn(c -> !c.title().equals("Group Anagrams"))
-                .extracting(ProblemCommands.Create::outputOrder).containsOnly(OutputOrder.ORDERED);
+        // Only the files that declare the key get it; every other one keeps the exact-order comparison.
+        assertThat(byTitle.values()).filteredOn(c -> c.outputOrder() == OutputOrder.ANY_ORDER)
+                .extracting(ProblemCommands.Create::title)
+                .containsExactlyInAnyOrder("Group Anagrams", "Top K Frequent Elements");
+        assertThat(byTitle.values()).extracting(ProblemCommands.Create::outputOrder).doesNotContainNull();
     }
 
     /** The first two-parameter seed problem: parameter order is what the judge passes arguments in. */

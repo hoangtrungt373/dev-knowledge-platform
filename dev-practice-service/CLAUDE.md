@@ -633,9 +633,11 @@ as unverified until the IT runs somewhere with Docker.
 - Result delivery is polling only (`Judge0Client` blocks internally on `GET /submissions/batch?tokens=...`)
   — the webhook-callback alternative discussed in Phase 1 planning was explicitly not chosen this
   round (simpler, no new inbound-auth surface to design).
-- Five seeded problems so far (Evaluate Reverse Polish Notation, Contains Duplicate, Valid
+- Six seeded problems so far (Evaluate Reverse Polish Notation, Contains Duplicate, Valid
   Anagram, Two Sum, Group Anagrams — the first `outputOrder: ANY_ORDER` problem and the first
-  returning `STRING_LIST_LIST`; see the seeding rule above).
+  returning `STRING_LIST_LIST` — and Top K Frequent Elements, also `ANY_ORDER`; see the seeding
+  rule above). A seed implementation may import from the standard library (Top K's Python heap
+  approach starts with `import heapq`): user code sits at module level in the Python harness.
   The admin GUI exists (`gui`'s `@dev-practice` feature, `/admin/problems`, including the
   reference-solution panel that verifies a problem before it can be published); the public
   problem/submission GUI doesn't yet.
